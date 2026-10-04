@@ -78,7 +78,7 @@ WADADAK-FrontEnd/
 ## 남은 단계
 
 ### 1. 개발 환경
-- [ ] Flutter SDK 3.29 이상 설치 (`flutter doctor`로 확인)
+- [ ] Flutter SDK 최신 stable 설치 (3.47.6에서 확인 · 3.32 미만은 `flutter_lints 6` 설치 실패) — `flutter doctor`로 확인
 - [ ] 카탈로그 앱 실행 확인: `cd packages/wadadak_design_system/example && flutter run -d chrome`
 
 ### 2. 팀 결정
