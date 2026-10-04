@@ -80,6 +80,7 @@ WADADAK-FrontEnd/
 ### 1. 개발 환경
 - [ ] Flutter SDK 최신 stable 설치 (3.47.6에서 확인 · 3.32 미만은 `flutter_lints 6` 설치 실패) — `flutter doctor`로 확인
 - [ ] 카탈로그 앱 실행 확인: `cd packages/wadadak_design_system/example && flutter run -d chrome`
+- 아마 알겠지만 git clone 하면 pubspec.lock과 .dart_tool/ 이게 없어서 빌드 하다 오류 날 수도 있으니, 안드로이드 스튜디오면 packages/wadadak_design_system/pubspec.yaml 이거 열어서 Pub get 하거나, 터미널에 명령어 입력하셈 : `cd packages/wadadak_design_system && flutter pub get && cd example && flutter pub get` 
 
 ### 2. 팀 결정
 - [ ] 상태 관리 (예: Riverpod) · 화면 이동 (예: go_router) · HTTP 클라이언트 (예: dio)
