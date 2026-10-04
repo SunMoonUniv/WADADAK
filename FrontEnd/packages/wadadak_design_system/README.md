@@ -19,7 +19,7 @@ example/                       # 컴포넌트 카탈로그 앱 (Figma와 나란�
 # app/pubspec.yaml
 dependencies:
   wadadak_design_system:
-    path: ../wadadak_design_system
+    path: ../packages/wadadak_design_system
 ```
 
 ```dart
