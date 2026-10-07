@@ -84,7 +84,7 @@ WADADAK-FrontEnd/
 
 ### 2. 팀 결정
 - [ ] 상태 관리 (예: Riverpod) · 화면 이동 (예: go_router) · HTTP 클라이언트 (예: dio)
-- [ ] 지도 SDK (네이버 · 카카오 · 구글 중 하나)
+- [x] 지도 SDK — 네이버 지도 API
 - [ ] 위치 추적 방식 — 러닝 중 백그라운드 위치 권한 포함
 - [ ] 소셜 로그인 SDK (카카오 · Apple · Google)
 - [ ] 백엔드와 API 명세 · 기능별 인터페이스 정의
