@@ -1,0 +1,47 @@
+spring:
+  application:
+    name: wadadak
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/wadadak}
+    username: ${DB_USERNAME:wadadak}
+    password: ${DB_PASSWORD:wadadak}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        # 엔티티는 @Table(schema = ...)를 명시한다. 기본 스키마는 Modulith 아웃박스(event_publication)용이다.
+        default_schema: common
+        jdbc:
+          time_zone: UTC
+  flyway:
+    # db/migration/{module}/ 아래를 모두 읽는다. 이력 테이블은 common 스키마.
+    default-schema: common
+    out-of-order: true
+  modulith:
+    events:
+      completion-mode: delete
+      # 인스턴스를 여러 대로 늘리면 false로 바꾸고 EventRetryScheduler로 일원화한다(개발 정책 5.5).
+      republish-outstanding-events-on-restart: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          public-key-location: ${JWT_PUBLIC_KEY_LOCATION:file:./.local/jwt/public.pem}
+          # 가입용 토큰(aud wadadak-signup)은 API 호출에 쓸 수 없다.
+          audiences: wadadak
+
+app:
+  stub:
+    member: false
+  member:
+    jwt:
+      # public-key-location과 같은 키 쌍의 개인키(PKCS#8 PEM).
+      private-key-location: ${JWT_PRIVATE_KEY_LOCATION:file:./.local/jwt/private.pem}
+    social:
+      # true: 토큰 문자열을 소셜 ID로 쓰는 로컬용 로그인(prod 프로필에서는 기동 실패). 운영은 false + 아래 값.
+      fake: true
+      kakao-app-id: ${KAKAO_APP_ID:}
+      apple-client-ids: ${APPLE_CLIENT_IDS:}
+      google-client-ids: ${GOOGLE_CLIENT_IDS:}
