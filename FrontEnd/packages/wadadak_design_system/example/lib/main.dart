@@ -211,7 +211,6 @@ class _CatalogPageState extends State<CatalogPage> {
           thumbnailSize: const Size(54, 54),
           tags: const [
             WdTag('만료 D-7', tone: WdTone.warning, filled: false),
-            WdTag('달려본 코스', filled: false),
           ],
           actionLabel: '이 코스로 달리기 ›',
           onAction: () {},
