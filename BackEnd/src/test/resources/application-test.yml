@@ -1,0 +1,11 @@
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          public-key-location: classpath:jwt/test-public.pem
+
+app:
+  member:
+    jwt:
+      private-key-location: classpath:jwt/test-private.pem
