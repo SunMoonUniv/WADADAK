@@ -34,5 +34,6 @@ DB는 로컬 PostgreSQL과 겹치지 않게 5433 포트를 쓴다. 접속 정보
 - 공개 인터페이스·DTO·에러 코드는 모듈 루트, 나머지는 `internal/`
 - 공개 인터페이스 스텁: `internal/{Xxx}ApiStub` + `StubImplementation` + `app.stub.{module}: true`
 - 마이그레이션: `db/migration/{module}/V{yyyyMMdd_HHmm}__{module}_{설명}.sql`, 첫 파일에서 `CREATE SCHEMA {module};`
+- 공간 컬럼(SRID 4326, JTS 타입): 반경 검색용은 `geography`라서 `@Column(columnDefinition = "geography(Point,4326)")`를 붙인다. 경로 판정용 `geometry`(`LineString` 등)는 그대로 매핑된다. PostGIS는 `public`에 있어 함수·타입에 스키마 이름을 붙이지 않는다.
 - Swagger 그룹: 모듈 `internal`에 `GroupedOpenApi` 빈(`/api/v1/{prefix}/**`)
 - 단독 기동 테스트: `@ApplicationModuleTest` + `@ActiveProfiles("test")` + `@Import(TestcontainersConfiguration.class)`
