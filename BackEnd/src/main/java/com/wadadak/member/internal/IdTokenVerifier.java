@@ -38,10 +38,10 @@ class IdTokenVerifier {
     }
 
     static OAuth2TokenValidator<Jwt> validator(Set<String> issuers, List<String> clientIds) {
-        return JwtValidators.createDefaultWithValidators(
+        return JwtValidators.createDefaultWithValidators(List.of(
                 new JwtClaimValidator<Object>(JwtClaimNames.ISS, iss -> issuers.contains(String.valueOf(iss))),
                 new JwtClaimValidator<List<String>>(JwtClaimNames.AUD,
-                        aud -> aud != null && aud.stream().anyMatch(clientIds::contains)));
+                        aud -> aud != null && aud.stream().anyMatch(clientIds::contains))));
     }
 
     SocialAccount verify(String idToken) {
