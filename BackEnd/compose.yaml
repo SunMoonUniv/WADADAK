@@ -1,0 +1,14 @@
+services:
+  postgres:
+    image: postgis/postgis:17-3.5
+    environment:
+      POSTGRES_DB: wadadak
+      POSTGRES_USER: wadadak
+      POSTGRES_PASSWORD: wadadak
+    ports:
+      - "5433:5432"
+    volumes:
+      - wadadak-postgres:/var/lib/postgresql/data
+
+volumes:
+  wadadak-postgres:
