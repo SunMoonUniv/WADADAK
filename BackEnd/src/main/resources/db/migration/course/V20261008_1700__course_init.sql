@@ -7,7 +7,10 @@ CREATE TABLE course.courses
     creator_id       UUID                   NOT NULL,
     -- CUSTOM: 사용자 지정(지도에 입력점), GPS: GPS 주행 등록(정책 공통 3)
     course_type      VARCHAR(10)            NOT NULL CHECK (course_type IN ('CUSTOM', 'GPS')),
+    -- 표시용 이름: NFC 정규화·앞뒤 공백 제거·연속 공백 한 칸.
     name             VARCHAR(50)            NOT NULL,
+    -- 중복 비교용: NFC 정규화·공백 전부 제거·소문자. '한강 러닝'과 '한강러닝'은 같은 이름이다.
+    name_key         VARCHAR(50)            NOT NULL,
     difficulty       VARCHAR(10)            NOT NULL CHECK (difficulty IN ('EASY', 'MEDIUM', 'HARD')),
     -- 코스 특징(FIL-04). 태그를 모두 가진 코스 조회(AND)를 GIN 인덱스로 한다.
     tags             VARCHAR(20)[]          NOT NULL DEFAULT '{}',
@@ -37,7 +40,7 @@ CREATE TABLE course.courses
 
 CREATE INDEX courses_creator_id_idx ON course.courses (creator_id);
 -- 활성 코스만 대상인 부분 인덱스(개발 정책 6.2).
-CREATE UNIQUE INDEX courses_name_uk ON course.courses (lower(name)) WHERE status = 'ACTIVE';
+CREATE UNIQUE INDEX courses_name_key_uk ON course.courses (name_key) WHERE status = 'ACTIVE';
 CREATE INDEX courses_start_point_gix ON course.courses USING gist (start_point) WHERE status = 'ACTIVE';
 -- 85% 유사도 검사에서 겹칠 수 있는 기존 코스를 찾는다.
 CREATE INDEX courses_route_gix ON course.courses USING gist (route) WHERE status = 'ACTIVE';
@@ -52,22 +55,26 @@ CREATE INDEX courses_hidden_at_idx ON course.courses (hidden_at) WHERE status = 
 -- 일일 등록 한도(정책 공통 3: 사용자 지정 1개, GPS 3개). 날짜는 Asia/Seoul, 성공한 등록만 센다.
 CREATE TABLE course.daily_registration_counts
 (
+    id                UUID        NOT NULL PRIMARY KEY,
     member_id         UUID        NOT NULL,
     registration_date DATE        NOT NULL,
     course_type       VARCHAR(10) NOT NULL CHECK (course_type IN ('CUSTOM', 'GPS')),
     registered_count  INTEGER     NOT NULL CHECK (registered_count >= 0),
     created_at        TIMESTAMPTZ NOT NULL,
     updated_at        TIMESTAMPTZ NOT NULL,
-    PRIMARY KEY (member_id, registration_date, course_type)
+    CONSTRAINT daily_registration_counts_uk UNIQUE (member_id, registration_date, course_type)
 );
 
 -- 등록 멱등성(STA-05). 같은 키로 다시 요청하면 이미 만든 코스를 돌려준다.
+-- 키는 앱이 등록 시도마다 만드는 UUID(Idempotency-Key 헤더). 재시도는 짧은 시간 안에 일어나므로 24시간 뒤 지운다(정리 배치는 등록 API에서).
 CREATE TABLE course.registration_requests
 (
+    id              UUID        NOT NULL PRIMARY KEY,
     member_id       UUID        NOT NULL,
     idempotency_key UUID        NOT NULL,
     course_id       UUID        NOT NULL REFERENCES course.courses (id),
     created_at      TIMESTAMPTZ NOT NULL,
     updated_at      TIMESTAMPTZ NOT NULL,
-    PRIMARY KEY (member_id, idempotency_key)
+    CONSTRAINT registration_requests_uk UNIQUE (member_id, idempotency_key)
 );
+CREATE INDEX registration_requests_created_at_idx ON course.registration_requests (created_at);

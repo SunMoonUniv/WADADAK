@@ -60,10 +60,22 @@ class CourseRepositoryTest {
     }
 
     @Test
+    void rejectsSameActiveNameIgnoringSpacesAndCase() {
+        Course saved = courseRepository.saveAndFlush(course(" 한강  러닝 ", Set.of()));
+
+        assertThat(courseRepository.findById(saved.getId()).orElseThrow().getName()).isEqualTo("한강 러닝");
+        assertThat(courseRepository.existsActiveByName("한강러닝")).isTrue();
+        assertThat(courseRepository.existsActiveByName("한 강 러 닝")).isTrue();
+        assertThat(courseRepository.existsActiveByName("한강 러닝코스")).isFalse();
+        assertThatThrownBy(() -> courseRepository.saveAndFlush(course("한강러닝", Set.of())))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
     void rejectsSameActiveNameIgnoringCase() {
         courseRepository.saveAndFlush(course("River Run", Set.of()));
 
-        assertThat(courseRepository.existsActiveByName("river run")).isTrue();
+        assertThat(courseRepository.existsActiveByName("riverrun")).isTrue();
         assertThatThrownBy(() -> courseRepository.saveAndFlush(course("RIVER RUN", Set.of())))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }

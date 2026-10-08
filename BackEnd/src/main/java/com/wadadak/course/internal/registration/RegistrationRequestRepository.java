@@ -2,5 +2,10 @@ package com.wadadak.course.internal.registration;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
-interface RegistrationRequestRepository extends JpaRepository<RegistrationRequest, RegistrationRequestKey> {
+import java.util.Optional;
+import java.util.UUID;
+
+interface RegistrationRequestRepository extends JpaRepository<RegistrationRequest, UUID> {
+
+    Optional<RegistrationRequest> findByMemberIdAndIdempotencyKey(UUID memberId, UUID idempotencyKey);
 }

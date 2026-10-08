@@ -1,13 +1,16 @@
 package com.wadadak.course.internal.course;
 
+import com.wadadak.event.course.CourseStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
 
 import java.util.UUID;
 
 public interface CourseRepository extends JpaRepository<Course, UUID> {
 
-    /** 활성 코스 중 같은 이름(대소문자 무시)이 있는지. DB 부분 유니크 인덱스 {@code courses_name_uk}와 같은 기준이다. */
-    @Query("SELECT count(c) > 0 FROM Course c WHERE lower(c.name) = lower(:name) AND c.status = com.wadadak.event.course.CourseStatus.ACTIVE")
-    boolean existsActiveByName(String name);
+    boolean existsByNameKeyAndStatus(String nameKey, CourseStatus status);
+
+    /** 활성 코스 중 같은 이름이 있는지. 공백·대소문자는 무시한다({@link CourseName#key(String)}). */
+    default boolean existsActiveByName(String name) {
+        return existsByNameKeyAndStatus(CourseName.key(name), CourseStatus.ACTIVE);
+    }
 }

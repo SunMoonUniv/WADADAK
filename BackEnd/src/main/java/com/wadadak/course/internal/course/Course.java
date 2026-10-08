@@ -40,6 +40,9 @@ public class Course extends BaseEntity<UUID> {
 
     private String name;
 
+    /** {@link CourseName#key(String)}. 활성 코스 중 유니크 */
+    private String nameKey;
+
     @Enumerated(EnumType.STRING)
     private Difficulty difficulty;
 
@@ -82,7 +85,8 @@ public class Course extends BaseEntity<UUID> {
         course.id = UuidV7.create();
         course.creatorId = creatorId;
         course.courseType = CourseType.CUSTOM;
-        course.name = name.strip();
+        course.name = CourseName.display(name);
+        course.nameKey = CourseName.key(name);
         course.difficulty = difficulty;
         course.tags = tags.isEmpty() ? EnumSet.noneOf(CourseTag.class) : EnumSet.copyOf(tags);
         course.route = route;
