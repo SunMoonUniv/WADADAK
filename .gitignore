@@ -1,0 +1,2 @@
+# 루트에서 연 IDE 설정. 각 프로젝트 폴더(BackEnd/·FrontEnd/)의 규칙은 그 폴더 .gitignore를 따른다.
+/.idea/
