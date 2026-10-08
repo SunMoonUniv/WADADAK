@@ -16,7 +16,7 @@ android {
     }
 
     defaultConfig {
-        // 임시 ID. 카카오·Google 콘솔 등록 전에 팀이 확정한다(스토어 출시 후에는 바꿀 수 없다).
+        // 확정. 카카오·Google 콘솔에 이 ID로 등록했다(스토어 출시 후에는 바꿀 수 없다).
         applicationId = "com.wadadak.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
@@ -28,6 +28,21 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+    }
+
+    signingConfigs {
+        getByName("debug") {
+            // 팀 공용 디버그 키. 저장소가 공개라 커밋하지 않고(.gitignore의 *.keystore) 팀 내부로만 나눈다.
+            // 이 파일이 있으면 모든 PC의 키 해시가 같아 카카오·Google 콘솔에 하나만 등록하면 된다.
+            // 없으면 각자 PC의 기본 디버그 키로 서명되고, 그 PC에서는 카카오 로그인이 실패한다.
+            val shared = file("debug.keystore")
+            if (shared.exists()) {
+                storeFile = shared
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
     }
 
     buildTypes {
