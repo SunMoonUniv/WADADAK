@@ -44,20 +44,24 @@ class WdTag extends StatelessWidget {
 }
 
 /// 목록 정렬·필터 칩 (홈 Course filters) — h30, 선택 시 ink 배경.
+///
+/// 선택지 칩(프로필 설정 F2 러닝 경력)은 `height: 36`.
 class WdFilterChip extends StatelessWidget {
-  const WdFilterChip(String this.label, {super.key, this.selected = false, required this.onTap})
+  const WdFilterChip(String this.label, {super.key, this.selected = false, this.height = 30, required this.onTap})
       : icon = null,
         semanticLabel = null;
 
   /// 아이콘만 있는 칩 (예: 상세 필터 슬라이더, w32).
   const WdFilterChip.icon(WdIcons this.icon, {super.key, required String this.semanticLabel, required this.onTap})
       : label = null,
-        selected = false;
+        selected = false,
+        height = 30;
 
   final String? label;
   final WdIcons? icon;
   final String? semanticLabel;
   final bool selected;
+  final double height;
   final VoidCallback? onTap;
 
   @override
@@ -69,7 +73,7 @@ class WdFilterChip extends StatelessWidget {
           color: selected ? WdColors.ink : WdColors.soft,
           radius: WdRadius.full,
           width: icon != null ? 32 : null,
-          height: 30,
+          height: height,
           padding: icon != null ? EdgeInsets.zero : const EdgeInsets.symmetric(horizontal: WdSpace.s8),
           onTap: onTap,
           child: Center(

@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../icons.dart';
 import '../tokens.dart';
 import 'surface.dart';
 
 /// Input — 흰 바탕 · 테두리 · radius 10 · 13px (h44).
+///
+/// `soft: true`는 A DS 화면의 입력(프로필 설정 F2 · 프로필 편집 F6): soft 바탕 · 테두리 없음 · radius 12 · 14px (h48).
+/// [onTap]을 주면 입력 없이 탭만 받는다(예: 지역 선택 시트 열기).
 class WdTextField extends StatelessWidget {
   const WdTextField({
     super.key,
@@ -15,7 +19,10 @@ class WdTextField extends StatelessWidget {
     this.textInputAction,
     this.onChanged,
     this.onSubmitted,
+    this.onTap,
+    this.maxLength,
     this.enabled = true,
+    this.soft = false,
   });
 
   final TextEditingController? controller;
@@ -25,35 +32,50 @@ class WdTextField extends StatelessWidget {
   final TextInputAction? textInputAction;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
-  final bool enabled;
+  final VoidCallback? onTap;
 
-  static OutlineInputBorder _border(Color color) =>
-      OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide(color: color));
+  /// 글자 수 상한. 넘게 입력되지 않으며 글자 수 표시는 하지 않는다.
+  final int? maxLength;
+  final bool enabled;
+  final bool soft;
+
+  static OutlineInputBorder _border(Color color, double radius) =>
+      OutlineInputBorder(borderRadius: BorderRadius.circular(radius), borderSide: BorderSide(color: color));
 
   @override
-  Widget build(BuildContext context) => TextField(
-        controller: controller,
-        focusNode: focusNode,
-        keyboardType: keyboardType,
-        textInputAction: textInputAction,
-        onChanged: onChanged,
-        onSubmitted: onSubmitted,
-        enabled: enabled,
-        style: WdText.body13.copyWith(color: WdColors.neutralText),
-        cursorColor: WdColors.ink,
-        decoration: InputDecoration(
-          hintText: hintText,
-          hintStyle: WdText.body13.copyWith(color: WdColors.neutralTextWeak),
-          isDense: true,
-          filled: true,
-          fillColor: WdColors.white,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
-          enabledBorder: _border(WdColors.neutralBorder),
-          disabledBorder: _border(WdColors.neutralBorder),
-          // 포커스 모양은 Figma에 없어 ink 테두리로 표시만 한다.
-          focusedBorder: _border(WdColors.ink),
-        ),
-      );
+  Widget build(BuildContext context) {
+    final radius = soft ? WdRadius.r12 : 10.0;
+    final text = soft ? WdText.raw(14, FontWeight.w400, 20) : WdText.body13;
+    final idle = _border(soft ? const Color(0x00000000) : WdColors.neutralBorder, radius);
+    return TextField(
+      controller: controller,
+      focusNode: focusNode,
+      keyboardType: keyboardType,
+      textInputAction: textInputAction,
+      onChanged: onChanged,
+      onSubmitted: onSubmitted,
+      onTap: onTap,
+      readOnly: onTap != null,
+      // 탭만 받는 칸은 포커스를 받지 않는다. 받으면 시트를 닫은 뒤에도 포커스 테두리가 남는다.
+      canRequestFocus: onTap == null,
+      inputFormatters: maxLength == null ? null : [LengthLimitingTextInputFormatter(maxLength)],
+      enabled: enabled,
+      style: text.copyWith(color: WdColors.neutralText),
+      cursorColor: WdColors.ink,
+      decoration: InputDecoration(
+        hintText: hintText,
+        hintStyle: text.copyWith(color: soft ? WdColors.muted : WdColors.neutralTextWeak),
+        isDense: true,
+        filled: true,
+        fillColor: soft ? WdColors.soft : WdColors.white,
+        contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: soft ? 14 : 13),
+        enabledBorder: idle,
+        disabledBorder: idle,
+        // 포커스 모양은 Figma에 없어 ink 테두리로 표시만 한다.
+        focusedBorder: _border(WdColors.ink, radius),
+      ),
+    );
+  }
 }
 
 /// Search / Bar — soft 바탕 검색 입력.
