@@ -28,7 +28,8 @@ spring:
     oauth2:
       resourceserver:
         jwt:
-          public-key-location: ${JWT_PUBLIC_KEY_LOCATION:file:./.local/jwt/public.pem}
+          # app.local-dir: 로컬 키 폴더. 저장소 루트에서 띄우면 WadadakApplication이 BackEnd/.local로 잡는다.
+          public-key-location: ${JWT_PUBLIC_KEY_LOCATION:file:${app.local-dir:.local}/jwt/public.pem}
           # 가입용 토큰(aud wadadak-signup)은 API 호출에 쓸 수 없다.
           audiences: wadadak
 
@@ -38,7 +39,7 @@ app:
   member:
     jwt:
       # public-key-location과 같은 키 쌍의 개인키(PKCS#8 PEM).
-      private-key-location: ${JWT_PRIVATE_KEY_LOCATION:file:./.local/jwt/private.pem}
+      private-key-location: ${JWT_PRIVATE_KEY_LOCATION:file:${app.local-dir:.local}/jwt/private.pem}
     social:
       # true: 토큰 문자열을 소셜 ID로 쓰는 로컬용 로그인(prod 프로필에서는 기동 실패). 운영은 false + 아래 값.
       fake: true
