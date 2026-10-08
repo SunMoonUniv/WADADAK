@@ -38,3 +38,6 @@ out/
 
 ### Local secrets ###
 .local/
+
+### Android SDK 경로 (IDE가 Gradle을 불러올 때 생성) ###
+/local.properties
