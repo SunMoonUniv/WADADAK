@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart' show KakaoSdk;
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
+import 'core/config.dart';
 import 'router.dart';
 
-void main() => runApp(const ProviderScope(child: WadadakApp()));
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await KakaoSdk.init(nativeAppKey: kakaoNativeAppKey);
+  runApp(const ProviderScope(child: WadadakApp()));
+}
 
 class WadadakApp extends ConsumerWidget {
   const WadadakApp({super.key});
