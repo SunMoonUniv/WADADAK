@@ -35,6 +35,7 @@ spring:
 app:
   stub:
     member: false
+    course: true
   member:
     jwt:
       # public-key-location과 같은 키 쌍의 개인키(PKCS#8 PEM).
