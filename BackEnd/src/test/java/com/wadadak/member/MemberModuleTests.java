@@ -59,8 +59,8 @@ class MemberModuleTests {
         // 인증을 통과하면 없는 경로라 404
         assertThat(mvc.get().uri("/api/v1/members/unknown").header("Authorization", "Bearer " + accessToken))
                 .hasStatus(HttpStatus.NOT_FOUND);
-        assertThat(memberApi.getProfiles(Set.of(memberId)).get(memberId))
-                .isEqualTo(new MemberProfile(memberId, "흐름러너", null, false));
+        assertThat(memberApi.getProfiles(Set.of(memberId)))
+                .containsExactly(new MemberProfile(memberId, "흐름러너", null, false));
         assertThat(jdbcTemplate.queryForMap(
                 "SELECT bio, region_code, affiliation, running_experience FROM member.members WHERE id = ?", memberId))
                 .containsEntry("bio", null)
@@ -125,8 +125,8 @@ class MemberModuleTests {
         UUID memberId = UUID.fromString(SignedJWT.parse(accessToken).getJWTClaimsSet().getSubject());
         jdbcTemplate.update("UPDATE member.members SET status = 'WITHDRAWN', nickname = NULL, social_id = NULL WHERE id = ?", memberId);
 
-        assertThat(memberApi.getProfiles(Set.of(memberId)).get(memberId))
-                .isEqualTo(new MemberProfile(memberId, MemberProfile.WITHDRAWN_NICKNAME, null, true));
+        assertThat(memberApi.getProfiles(Set.of(memberId)))
+                .containsExactly(new MemberProfile(memberId, MemberProfile.WITHDRAWN_NICKNAME, null, true));
     }
 
     @Test

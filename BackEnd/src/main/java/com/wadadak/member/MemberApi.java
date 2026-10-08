@@ -1,6 +1,6 @@
 package com.wadadak.member;
 
-import java.util.Map;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -14,9 +14,9 @@ public interface MemberApi {
 
     /**
      * @param memberIds 최대 {@value #MAX_IDS}개
-     * @return memberId별 프로필. 탈퇴 회원은 닉네임이 {@value MemberProfile#WITHDRAWN_NICKNAME}이고
-     *         {@code withdrawn = true}다. 존재하지 않는 ID는 결과에 없다.
+     * @return 프로필 목록. 탈퇴 회원은 닉네임이 {@value MemberProfile#WITHDRAWN_NICKNAME}이고
+     *         {@code withdrawn = true}다. 존재하지 않는 ID는 결과에서 빠질 수 있다.
      * @throws com.wadadak.common.exception.AppException {@link MemberErrorCode#TOO_MANY_MEMBER_IDS} — 개수 초과
      */
-    Map<UUID, MemberProfile> getProfiles(Set<UUID> memberIds);
+    List<MemberProfile> getProfiles(Set<UUID> memberIds);
 }

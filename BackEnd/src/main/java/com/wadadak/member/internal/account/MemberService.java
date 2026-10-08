@@ -9,10 +9,9 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Map;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -23,14 +22,15 @@ class MemberService implements MemberApi {
 
     @Override
     @Transactional(readOnly = true)
-    public Map<UUID, MemberProfile> getProfiles(Set<UUID> memberIds) {
+    public List<MemberProfile> getProfiles(Set<UUID> memberIds) {
         if (memberIds.size() > MAX_IDS) {
             throw new AppException(MemberErrorCode.TOO_MANY_MEMBER_IDS);
         }
         // ponytail: 프로필 사진 URL은 업로드(ObjectStorage) 기능과 함께 채운다.
-        return memberRepository.findAllById(memberIds).stream().collect(Collectors.toMap(Member::getId,
-                m -> m.isWithdrawn()
+        return memberRepository.findAllById(memberIds).stream()
+                .map(m -> m.isWithdrawn()
                         ? new MemberProfile(m.getId(), MemberProfile.WITHDRAWN_NICKNAME, null, true)
-                        : new MemberProfile(m.getId(), m.getNickname(), null, false)));
+                        : new MemberProfile(m.getId(), m.getNickname(), null, false))
+                .toList();
     }
 }
