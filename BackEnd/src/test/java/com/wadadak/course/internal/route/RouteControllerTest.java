@@ -85,7 +85,7 @@ class RouteControllerTest {
     @Test
     void rejectsMoreThanMaxAnchorPoints() {
         // 위도 0.00005도(약 5.5m)씩 북쪽으로 최대 수 + 1개. 거리는 1~100km 안이지만 점 수가 넘는다
-        String points = IntStream.range(0, RouteRequest.MAX_ANCHOR_POINTS + 1)
+        String points = IntStream.range(0, RouteService.MAX_ANCHOR_POINTS + 1)
                 .mapToObj(i -> "{\"lat\": %.5f, \"lng\": 127.0750}".formatted(36.7990 + i * 0.00005))
                 .collect(Collectors.joining(","));
 
