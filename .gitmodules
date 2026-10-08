@@ -1,6 +1,0 @@
-[submodule "FrontEnd"]
-	path = FrontEnd
-	url = https://github.com/SunMoonUniv/WADADAK-FrontEnd.git
-[submodule "BackEnd"]
-	path = BackEnd
-	url = https://github.com/SunMoonUniv/WADADAK-BackEnd.git
