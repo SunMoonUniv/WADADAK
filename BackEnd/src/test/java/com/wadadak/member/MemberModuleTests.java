@@ -74,6 +74,17 @@ class MemberModuleTests {
     }
 
     @Test
+    void logoutRevokesRefreshToken() throws Exception {
+        String signupToken = data(post("/login", login("kakao-logout"))).get("signupToken").asString();
+        String refreshToken = data(post("/signup", signup(signupToken, "로그아웃러너", true))).get("refreshToken").asString();
+
+        assertThat(post("/logout", refresh(refreshToken))).hasStatusOk();
+        assertThat(post("/refresh", refresh(refreshToken)))
+                .hasStatus(HttpStatus.UNAUTHORIZED)
+                .bodyJson().extractingPath("$.code").isEqualTo("MEMBER-004");
+    }
+
+    @Test
     void signupTokenCannotCallApi() throws Exception {
         String signupToken = data(post("/login", login("kakao-signup-only"))).get("signupToken").asString();
 

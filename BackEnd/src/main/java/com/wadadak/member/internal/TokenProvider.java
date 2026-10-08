@@ -71,7 +71,7 @@ class TokenProvider {
                 .generatePublic(new RSAPublicKeySpec(privateKey.getModulus(), privateKey.getPublicExponent()));
         this.encoder = NimbusJwtEncoder.withKeyPair(publicKey, privateKey).build();
         this.signupDecoder = NimbusJwtDecoder.withPublicKey(publicKey).build();
-        this.signupDecoder.setJwtValidator(JwtValidators.createDefaultWithValidators(new JwtAudienceValidator(SIGNUP_AUDIENCE)));
+        this.signupDecoder.setJwtValidator(JwtValidators.createDefaultWithValidators(List.of(new JwtAudienceValidator(SIGNUP_AUDIENCE))));
         this.clock = clock;
     }
 
