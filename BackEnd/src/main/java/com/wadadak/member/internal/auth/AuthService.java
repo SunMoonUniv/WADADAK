@@ -51,7 +51,7 @@ class AuthService {
     @Transactional
     TokenResponse refresh(RefreshRequest request) {
         String hash = TokenProvider.hash(request.refreshToken());
-        RefreshToken token = refreshTokenRepository.findById(hash)
+        RefreshToken token = refreshTokenRepository.findByTokenHash(hash)
                 .filter(t -> t.getExpiresAt().isAfter(clock.instant()))
                 .orElseThrow(() -> new AppException(MemberErrorCode.INVALID_REFRESH_TOKEN));
         if (refreshTokenRepository.deleteByTokenHash(hash) == 0) {
