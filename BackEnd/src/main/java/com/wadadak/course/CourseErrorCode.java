@@ -15,7 +15,8 @@ public enum CourseErrorCode implements ErrorCode {
     ROUTE_TOO_LONG(HttpStatus.BAD_REQUEST, "COURSE-005", "직접 만든 코스는 100km를 넘을 수 없습니다."),
     NAME_TAKEN(HttpStatus.CONFLICT, "COURSE-006", "이미 사용 중인 코스 이름입니다."),
     SIMILAR_COURSE_EXISTS(HttpStatus.CONFLICT, "COURSE-007", "기존 코스와 85% 이상 겹쳐 등록할 수 없습니다."),
-    DAILY_LIMIT_EXCEEDED(HttpStatus.CONFLICT, "COURSE-008", "오늘 등록할 수 있는 코스 수를 넘었습니다.");
+    // 요청 내용이 아니라 횟수 제한이라 429. 다음 날 00:00(Asia/Seoul)에 풀린다
+    DAILY_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "COURSE-008", "오늘 등록할 수 있는 코스 수를 넘었습니다.");
 
     private final HttpStatus status;
     private final String code;
