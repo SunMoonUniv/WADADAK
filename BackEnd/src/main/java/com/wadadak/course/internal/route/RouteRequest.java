@@ -11,6 +11,6 @@ import java.util.List;
  */
 record RouteRequest(@NotNull @Size(max = RouteRequest.MAX_ANCHOR_POINTS) List<@NotNull GeoPoint> anchorPoints) {
 
-    // ponytail: 입력점 최대 수는 정책 미정(정책 문서 미정 목록). 지도에서 손으로 찍는 수로는 넉넉한 값
+    // 입력점 최대 500개(정책 B3-01). 넘으면 COMMON-001
     static final int MAX_ANCHOR_POINTS = 500;
 }
