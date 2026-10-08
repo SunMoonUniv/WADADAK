@@ -16,11 +16,12 @@
 | 공통 컴포넌트 위젯 58개 | ✅ 완료 |
 | 컴포넌트 카탈로그 앱 + 스모크 테스트 | ✅ 완료 |
 | Figma 디자인 시스템 페이지 (변수 · 스타일 · 컴포넌트 82개 / 29세트) | ✅ 완료 |
-| 앱 프로젝트 (`app/`) | ⬜ 시작 전 |
-| 화면 | ⬜ 0 / 72 |
-| 로그인 · API · 지도 · 위치 추적 연동 | ⬜ 시작 전 |
+| 앱 프로젝트 (`app/`) — Riverpod · go_router · dio, 하단 탭 4개 | ✅ 뼈대 |
+| 화면 | 🟡 4 / 72 (온보딩: A1 · 소셜 정보 동의 · 권한 안내 · F2) |
+| 로그인 · 토큰 저장 · 자동 갱신 | 🟡 서버 연동 완료, 카카오 · Google SDK는 아직 (가짜 로그인) |
+| API · 지도 · 위치 추적 연동 | ⬜ 시작 전 |
 
-즉 **화면을 조립할 부품(디자인 시스템)까지 준비된 상태**이고, 앱과 화면은 아직 없다.
+즉 **디자인 시스템과 앱 뼈대, 온보딩까지 준비된 상태**다. 탭 화면 4개는 자리만 있다.
 
 ### 구현된 컴포넌트
 
@@ -46,12 +47,17 @@ Figma 컴포넌트와의 1:1 대응표, 토큰 사용법은 [디자인 시스템
 ```
 WADADAK-FrontEnd/
 ├─ README.md
-├─ app/                                 # ⬜ 실제 앱 (flutter create app 으로 만들 예정)
+├─ app/                                 # ✅ 실제 앱
 │  └─ lib/
-│     ├─ main.dart
+│     ├─ main.dart                      # ProviderScope + MaterialApp.router
+│     ├─ router.dart · routes.dart      # 로그인 상태로 화면 분기 (A1 · 온보딩 · 탭)
+│     ├─ main_shell.dart                # 하단 탭 4개 (각 탭은 담당자가 채운다)
 │     ├─ core/                          # API 클라이언트 · 인증 · 위치 · 공통 오류/빈 상태 화면
+│     │  ├─ config.dart                 #   서버 주소 (API_BASE_URL)
+│     │  ├─ api/                        #   Dio · ApiResult 해석 · 서버 모듈별 클라이언트
+│     │  └─ auth/                       #   로그인 상태 · 토큰 보안 저장 · 401 자동 갱신 · 소셜 로그인
 │     └─ features/                      # Figma 디자인 페이지 섹션 단위
-│        ├─ onboarding/                 #   🚪 온보딩
+│        ├─ onboarding/                 #   🚪 온보딩 (A1 · 동의 · 권한 · 프로필)
 │        ├─ home/                       #   🏠 홈 · 코스 탐색
 │        ├─ course/                     #   📍 코스 상세 · 만들기
 │        ├─ run/                        #   🏃 달리기 준비 · ⏱ 러닝 중 · 📊 러닝 결과 · 분석
@@ -73,7 +79,26 @@ WADADAK-FrontEnd/
       └─ example/                       #   컴포넌트 카탈로그 앱 + 스모크 테스트
 ```
 
-`app/` 아래 구조는 제안이다. 앱 뼈대를 만들 때 확정한다.
+`features/` 아래 온보딩 외 폴더는 각 담당자가 화면을 만들 때 생긴다.
+
+## 앱 실행
+
+앱은 로컬 백엔드(`WADADAK-BackEnd`, 가짜 소셜 로그인)에 붙는다. 백엔드 README의 로컬 실행을 먼저 한다.
+
+```bash
+cd app
+flutter pub get
+flutter run                                                        # Android 에뮬레이터 → http://10.0.2.2:8080
+flutter run --dart-define=API_BASE_URL=http://localhost:8080       # iOS 시뮬레이터
+flutter run --dart-define=API_BASE_URL=http://<PC의 IP>:8080        # 실기기 (같은 와이파이)
+flutter test
+```
+
+- 로그인 버튼은 지금 가짜 소셜 로그인이다. 설치마다 같은 ID를 써서, 같은 기기는 같은 회원으로 로그인한다. 새 회원으로 시험하려면 앱 데이터를 지운다.
+- 저장소 경로에 한글(예: `바탕화면\와다닥`)이 있으면:
+  - Android 빌드: `app/android/gradle.properties`의 `android.overridePathCheck=true`로 이미 막아 두었다.
+  - `flutter analyze`가 분석 서버 오류로 멈춘다. 대신 `dart analyze`를 쓴다.
+- 앱 ID `com.wadadak.app`은 임시다. 카카오 · Google 콘솔에 등록하기 전에 팀이 확정한다(스토어 출시 후에는 바꿀 수 없다).
 
 ## 남은 단계
 
@@ -83,37 +108,30 @@ WADADAK-FrontEnd/
 - 아마 알겠지만 git clone 하면 pubspec.lock과 .dart_tool/ 이게 없어서 빌드 하다 오류 날 수도 있으니, 안드로이드 스튜디오면 packages/wadadak_design_system/pubspec.yaml 이거 열어서 Pub get 하거나, 터미널에 명령어 입력하셈 : `cd packages/wadadak_design_system && flutter pub get && cd example && flutter pub get` 
 
 ### 2. 팀 결정
-- [ ] 상태 관리 (예: Riverpod) · 화면 이동 (예: go_router) · HTTP 클라이언트 (예: dio)
+- [x] 상태 관리 Riverpod 3 · 화면 이동 go_router · HTTP 클라이언트 dio
 - [x] 지도 SDK — 네이버 지도 API
 - [ ] 위치 추적 방식 — 러닝 중 백그라운드 위치 권한 포함
-- [ ] 소셜 로그인 SDK (카카오 · Apple · Google)
+- [ ] 소셜 로그인 SDK — 카카오 · Google 먼저. Apple은 보류(iOS 심사 전 필요: App Store 심사 지침 4.8)
 - [ ] 백엔드와 API 명세 · 기능별 인터페이스 정의
 
 ### 3. 앱 뼈대
-- [ ] `flutter create app` 후 디자인 시스템 연결
+- [x] `flutter create app` 후 디자인 시스템 연결
+- [x] `MaterialApp.router(theme: WdTheme.light())`, 라우팅, 하단 탭 4개 (홈 · 달리기 · 랭킹 · MY — `WdBottomNav` 기본값)
 
-  ```yaml
-  # app/pubspec.yaml
-  dependencies:
-    wadadak_design_system:
-      path: ../packages/wadadak_design_system
-  ```
-- [ ] `MaterialApp(theme: WdTheme.light())`, 라우팅, 하단 탭 4개 (홈 · 달리기 · 랭킹 · MY — `WdBottomNav` 기본값)
-
-### 4. 화면 구현 (0 / 72)
+### 4. 화면 구현 (4 / 72)
 
 Figma `디자인 · 전체 화면 (와이어프레임 기준)` 페이지의 섹션 순서 그대로다.
 처음에는 가짜 데이터로 화면만 만들고, API는 나중에 붙인다. 화면 코드에는 색 · 간격 · 글꼴 값을 직접 쓰지 않고 디자인 시스템 토큰과 위젯만 쓴다.
 
 <details>
-<summary>🚪 온보딩 (0 / 6)</summary>
+<summary>🚪 온보딩 (4 / 6)</summary>
 
 - [ ] A0-1 · 소개 — 코스 공유
 - [ ] 소개 — 고스트 대결 (Figma 프레임 이름이 `Frame`)
-- [ ] A1 · 스플래시 / 로그인
-- [ ] 소셜 정보 동의 (선택 전 · 선택 후)
-- [ ] 권한 안내 (위치 · 동작 및 피트니스)
-- [ ] F2 · 프로필 초기 설정
+- [x] A1 · 스플래시 / 로그인 — Apple 버튼은 보류로 숨김
+- [x] 소셜 정보 동의 (선택 전 · 선택 후) — "보기 ›"는 약관 본문(F7)이 생기면 연결
+- [x] 권한 안내 (위치 · 동작 및 피트니스)
+- [x] F2 · 프로필 초기 설정 — 프로필 사진은 서버 사진 업로드가 생기면 추가. 활동 지역은 임시 목록(지역 API 생기면 교체)
 
 카카오 로그인 화면(Figma `카카로 로그인`)은 참고 이미지다. 카카오 SDK가 띄우는 화면이라 직접 만들지 않는다.
 </details>
@@ -230,8 +248,9 @@ Figma `디자인 · 전체 화면 (와이어프레임 기준)` 페이지의 섹�
 </details>
 
 ### 5. 연동
-- [ ] 소셜 로그인 · 토큰 저장
-- [ ] 위치 · 동작 및 피트니스 권한 요청 (권한 안내 화면 순서대로)
+- [ ] 소셜 로그인 — 카카오 · Google SDK (`core/auth/social_login.dart`의 가짜 로그인을 교체)
+- [x] 토큰 보안 저장 · 401 자동 갱신(갱신은 한 번에 하나) · 로그아웃
+- [x] 위치 · 동작 및 피트니스 권한 요청 (권한 안내 화면 순서대로)
 - [ ] API 연결 (가짜 데이터 → 실제 데이터)
 - [ ] 지도 SDK — 코스 경로 · km 표지 · 지역별 개수 표시
 - [ ] GPS 러닝 기록 — 백그라운드 추적, 페이스 · 거리 · 구간 계산, 경로 이탈 판정

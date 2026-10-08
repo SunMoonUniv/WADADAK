@@ -62,12 +62,20 @@ class WdIcon extends StatelessWidget {
 /// 와다닥 로고 (Logo / Primary): 스피드 고스트 심볼 + 워드마크.
 ///
 /// 밝은 배경은 기본값(ink), 어두운 배경은 `color: WdColors.lime`.
+/// 스플래시(A1 · Brand / Splash logo)처럼 심볼과 워드마크를 따로 놓을 때는 [symbolOnly] · [wordmarkOnly].
 class WdLogo extends StatelessWidget {
-  const WdLogo({super.key, this.height = 32, this.color = WdColors.ink, this.symbolOnly = false});
+  const WdLogo({
+    super.key,
+    this.height = 32,
+    this.color = WdColors.ink,
+    this.symbolOnly = false,
+    this.wordmarkOnly = false,
+  }) : assert(!(symbolOnly && wordmarkOnly));
 
   final double height;
   final Color color;
   final bool symbolOnly;
+  final bool wordmarkOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -75,11 +83,17 @@ class WdLogo extends StatelessWidget {
     final symbol = SvgPicture.asset('assets/icons/logo_symbol.svg',
         package: wdPackage, width: height, height: height, colorFilter: filter, semanticsLabel: '와다닥');
     if (symbolOnly) return symbol;
+    final wordmark = SvgPicture.asset('assets/icons/logo_wordmark.svg',
+        package: wdPackage,
+        height: height,
+        colorFilter: filter,
+        semanticsLabel: wordmarkOnly ? '와다닥' : null,
+        excludeFromSemantics: !wordmarkOnly);
+    if (wordmarkOnly) return wordmark;
     return Row(mainAxisSize: MainAxisSize.min, children: [
       symbol,
       SizedBox(width: height * 0.2), // Figma: 심볼 240 · 간격 48
-      SvgPicture.asset('assets/icons/logo_wordmark.svg',
-          package: wdPackage, height: height, colorFilter: filter, excludeFromSemantics: true),
+      wordmark,
     ]);
   }
 }

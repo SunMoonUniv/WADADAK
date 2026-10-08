@@ -81,9 +81,11 @@ Figma는 아직 Noto Sans KR · Inter다. 디자이너 PC에 Pretendard를 설�
 | A DS / Button | `WdButton` (`onPressed: null` → 비활성) |
 | Bottom bar / Pinned CTA · Dual CTA | `WdBottomBar.pinned` · `.dual` |
 | Social login button | `WdSocialLoginButton` |
-| Course filters (홈) | `WdFilterChip`, `WdFilterChip.icon` |
+| Course filters (홈) · 선택지 칩(F2 러닝 경력) | `WdFilterChip`, `WdFilterChip.icon` · `WdFilterChip(height: 36)` |
 | Tag | `WdTag` (`filled: false` = 카드 안 글자 태그) |
 | Input · Search / Bar · Search / Header | `WdTextField` · `WdSearchBar` · `WdSearchHeader` |
+| Input (F2·F6의 soft 바탕 덮어쓰기) | `WdTextField(soft: true)` |
+| Brand / Splash logo | 앱 마크 `WdIcon(WdIcons.brandGhost)` + `WdLogo(wordmarkOnly: true)` |
 | Consent row · List row · Stepper | `WdConsentRow` · `WdListRow` (+`WdSwitch`) · `WdStepper` |
 | Review / Rating form · Photo upload | `WdRatingRow` · `WdPhotoUpload` |
 | Info banner · State / Message | `WdInfoBanner` · `WdStateMessage` |
