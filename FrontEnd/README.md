@@ -1,4 +1,4 @@
-# WADADAK-FrontEnd
+# 와다닥 앱
 
 와다닥 러닝 앱의 Flutter 클라이언트.
 
@@ -45,7 +45,7 @@ Figma 컴포넌트와의 1:1 대응표, 토큰 사용법은 [디자인 시스템
 ## 디렉터리 구조
 
 ```
-WADADAK-FrontEnd/
+FrontEnd/
 ├─ README.md
 ├─ app/                                 # ✅ 실제 앱
 │  └─ lib/
@@ -83,7 +83,7 @@ WADADAK-FrontEnd/
 
 ## 앱 실행
 
-앱은 로컬 백엔드(`WADADAK-BackEnd`, 가짜 소셜 로그인)에 붙는다. 백엔드 README의 로컬 실행을 먼저 한다.
+앱은 로컬 백엔드(`BackEnd/`, 가짜 소셜 로그인)에 붙는다. [백엔드 README](../BackEnd/README.md)의 로컬 실행을 먼저 한다.
 
 ```bash
 cd app

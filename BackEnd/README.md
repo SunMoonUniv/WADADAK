@@ -1,7 +1,7 @@
 # 와다닥 백엔드 (MSA 분리 전)
 
 Spring Boot 4.1 · Spring Modulith 2.1 · Java 21 · PostgreSQL 17 + PostGIS 3.5.
-구조·규칙은 문서 저장소의 `개발 정책 v3.md`를 따른다.
+구조·규칙은 [`개발 정책 v3.md`](../개발%20정책%20v3.md)를 따른다.
 
 ## 로컬 실행
 
