@@ -12,6 +12,9 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 
@@ -77,6 +80,16 @@ class RouteControllerTest {
         assertError(post("""
                 {"anchorPoints": [{"lat": 127.0750, "lng": 36.7990}, {"lat": 36.8035, "lng": 127.0750}]}"""),
                 HttpStatus.BAD_REQUEST, "COMMON-001");
+    }
+
+    @Test
+    void rejectsMoreThanMaxAnchorPoints() {
+        // 위도 0.00005도(약 5.5m)씩 북쪽으로 최대 수 + 1개. 거리는 1~100km 안이지만 점 수가 넘는다
+        String points = IntStream.range(0, RouteRequest.MAX_ANCHOR_POINTS + 1)
+                .mapToObj(i -> "{\"lat\": %.5f, \"lng\": 127.0750}".formatted(36.7990 + i * 0.00005))
+                .collect(Collectors.joining(","));
+
+        assertError(post("{\"anchorPoints\": [" + points + "]}"), HttpStatus.BAD_REQUEST, "COMMON-001");
     }
 
     @Test
