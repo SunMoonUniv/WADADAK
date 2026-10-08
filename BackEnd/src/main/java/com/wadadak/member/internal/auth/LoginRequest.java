@@ -1,5 +1,6 @@
-package com.wadadak.member.internal;
+package com.wadadak.member.internal.auth;
 
+import com.wadadak.member.internal.social.SocialProvider;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 

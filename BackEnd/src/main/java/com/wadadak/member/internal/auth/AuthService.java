@@ -1,7 +1,11 @@
-package com.wadadak.member.internal;
+package com.wadadak.member.internal.auth;
 
 import com.wadadak.common.exception.AppException;
 import com.wadadak.member.MemberErrorCode;
+import com.wadadak.member.internal.account.Member;
+import com.wadadak.member.internal.account.MemberRepository;
+import com.wadadak.member.internal.social.SocialAccount;
+import com.wadadak.member.internal.social.SocialTokenVerifier;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,7 +41,9 @@ class AuthService {
         if (memberRepository.existsByNicknameIgnoreCase(request.nickname())) {
             throw new AppException(MemberErrorCode.NICKNAME_TAKEN);
         }
-        Member member = memberRepository.save(Member.join(account, request, clock.instant()));
+        String email = request.agreements().email() ? account.email() : null;
+        Member member = memberRepository.save(Member.join(account, email, request.nickname(), request.bio(),
+                request.regionCode(), request.affiliation(), request.runningExperience(), clock.instant()));
         return issueTokens(member.getId());
     }
 

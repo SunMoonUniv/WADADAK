@@ -1,4 +1,4 @@
-package com.wadadak.member.internal;
+package com.wadadak.member.internal.social;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.wadadak.common.exception.AppException;

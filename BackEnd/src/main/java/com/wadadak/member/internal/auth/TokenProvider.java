@@ -1,7 +1,9 @@
-package com.wadadak.member.internal;
+package com.wadadak.member.internal.auth;
 
 import com.wadadak.common.exception.AppException;
 import com.wadadak.member.MemberErrorCode;
+import com.wadadak.member.internal.social.SocialAccount;
+import com.wadadak.member.internal.social.SocialProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.Resource;
 import org.springframework.security.converter.RsaKeyConverters;

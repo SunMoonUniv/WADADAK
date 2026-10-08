@@ -1,4 +1,4 @@
-package com.wadadak.member.internal;
+package com.wadadak.member.internal.social;
 
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.JWSHeader;
