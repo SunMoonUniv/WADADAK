@@ -61,6 +61,12 @@ class MemberModuleTests {
                 .hasStatus(HttpStatus.NOT_FOUND);
         assertThat(memberApi.getProfiles(Set.of(memberId)).get(memberId))
                 .isEqualTo(new MemberProfile(memberId, "흐름러너", null, false));
+        assertThat(jdbcTemplate.queryForMap(
+                "SELECT bio, region_code, affiliation, running_experience FROM member.members WHERE id = ?", memberId))
+                .containsEntry("bio", null)
+                .containsEntry("region_code", "1129000000")
+                .containsEntry("affiliation", "선문대학교")
+                .containsEntry("running_experience", "MONTHS_6");
 
         JsonNode again = data(post("/login", login("kakao-flow")));
         assertThat(again.get("signupRequired").asBoolean()).isFalse();

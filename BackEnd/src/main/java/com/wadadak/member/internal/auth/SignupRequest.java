@@ -1,5 +1,6 @@
-package com.wadadak.member.internal;
+package com.wadadak.member.internal.auth;
 
+import com.wadadak.member.internal.account.RunningExperience;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotBlank;

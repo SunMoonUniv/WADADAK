@@ -1,4 +1,4 @@
-package com.wadadak.member.internal;
+package com.wadadak.member.internal.social;
 
 import com.wadadak.common.exception.AppException;
 import com.wadadak.member.MemberErrorCode;

@@ -1,4 +1,4 @@
-package com.wadadak.member.internal;
+package com.wadadak.member.internal.social;
 
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;

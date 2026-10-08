@@ -1,4 +1,4 @@
-package com.wadadak.member.internal;
+package com.wadadak.member.internal.auth;
 
 /**
  * 가입된 회원이면 {@code tokens}, 처음이면 {@code signupRequired = true}와 가입 요청에 쓸 {@code signupToken}(1시간 유효).

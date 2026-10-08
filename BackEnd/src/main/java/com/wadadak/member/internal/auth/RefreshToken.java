@@ -1,4 +1,4 @@
-package com.wadadak.member.internal;
+package com.wadadak.member.internal.auth;
 
 import com.wadadak.common.entity.BaseEntity;
 import jakarta.persistence.Entity;
