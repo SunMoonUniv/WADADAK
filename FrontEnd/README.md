@@ -18,7 +18,7 @@
 | Figma 디자인 시스템 페이지 (변수 · 스타일 · 컴포넌트 82개 / 29세트) | ✅ 완료 |
 | 앱 프로젝트 (`app/`) — Riverpod · go_router · dio, 하단 탭 4개 | ✅ 뼈대 |
 | 화면 | 🟡 4 / 72 (온보딩: A1 · 소셜 정보 동의 · 권한 안내 · F2) |
-| 로그인 · 토큰 저장 · 자동 갱신 | 🟡 서버 연동 완료, 카카오 · Google SDK는 아직 (가짜 로그인) |
+| 로그인 · 토큰 저장 · 자동 갱신 | 🟡 서버 연동 · 카카오 SDK 완료, Google · Apple SDK는 아직 |
 | API · 지도 · 위치 추적 연동 | ⬜ 시작 전 |
 
 즉 **디자인 시스템과 앱 뼈대, 온보딩까지 준비된 상태**다. 탭 화면 4개는 자리만 있다.
@@ -94,11 +94,21 @@ flutter run --dart-define=API_BASE_URL=http://<PC의 IP>:8080        # 실기기
 flutter test
 ```
 
-- 로그인 버튼은 지금 가짜 소셜 로그인이다. 설치마다 같은 ID를 써서, 같은 기기는 같은 회원으로 로그인한다. 새 회원으로 시험하려면 앱 데이터를 지운다.
+- 로그인 버튼은 기본이 가짜 소셜 로그인이다. 설치마다 같은 ID를 써서, 같은 기기는 같은 회원으로 로그인한다. 새 회원으로 시험하려면 앱 데이터를 지운다.
+- **실제 카카오 로그인**으로 시험하려면 앱과 서버를 둘 다 실제 모드로 띄운다(한쪽만 바꾸면 로그인이 실패하거나 매번 새 회원이 생긴다).
+  ```bash
+  # BackEnd/ — 카카오 앱 ID로 실제 검증
+  KAKAO_APP_ID=1573475 ./gradlew bootRun --args='--app.member.social.fake=false'
+  # FrontEnd/app/
+  flutter run --dart-define=REAL_SOCIAL_LOGIN=true
+  ```
+  - **공용 디버그 키 필요**: 팀 공용 `debug.keystore`를 팀 내부 공유처에서 받아 `app/android/app/debug.keystore`에 둔다. 저장소가 공개라 커밋하지 않는다(`.gitignore`). 없으면 각자 PC의 기본 디버그 키로 서명돼 키 해시가 달라 카카오 로그인이 실패한다.
+  - 카카오 콘솔에는 공용 디버그 키의 해시만 등록돼 있다. 출시 전에 디버그 키 해시는 빼고 출시용 키 해시만 남긴다.
+  - Google · Apple 로그인은 아직 연결하지 않았다.
 - 저장소 경로에 한글(예: `바탕화면\와다닥`)이 있으면:
   - Android 빌드: `app/android/gradle.properties`의 `android.overridePathCheck=true`로 이미 막아 두었다.
   - `flutter analyze`가 분석 서버 오류로 멈춘다. 대신 `dart analyze`를 쓴다.
-- 앱 ID `com.wadadak.app`은 임시다. 카카오 · Google 콘솔에 등록하기 전에 팀이 확정한다(스토어 출시 후에는 바꿀 수 없다).
+- 앱 ID `com.wadadak.app`으로 확정했고 카카오 콘솔에 등록했다(스토어 출시 후에는 바꿀 수 없다).
 
 ## 남은 단계
 
@@ -248,7 +258,8 @@ Figma `디자인 · 전체 화면 (와이어프레임 기준)` 페이지의 섹�
 </details>
 
 ### 5. 연동
-- [ ] 소셜 로그인 — 카카오 · Google SDK (`core/auth/social_login.dart`의 가짜 로그인을 교체)
+- [x] 소셜 로그인 — 카카오 SDK (`core/auth/social_login.dart`의 `SdkSocialLogin`, 에뮬레이터에서 가입·로그인 확인)
+- [ ] 소셜 로그인 — Google · Apple SDK
 - [x] 토큰 보안 저장 · 401 자동 갱신(갱신은 한 번에 하나) · 로그아웃
 - [x] 위치 · 동작 및 피트니스 권한 요청 (권한 안내 화면 순서대로)
 - [ ] API 연결 (가짜 데이터 → 실제 데이터)

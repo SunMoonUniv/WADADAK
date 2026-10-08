@@ -4,6 +4,7 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../../core/api/member_api_client.dart';
 import '../../core/auth/auth_controller.dart';
+import '../../core/auth/social_login.dart';
 import '../../core/error_message.dart';
 
 /// A1 · 스플래시 / 로그인. 저장된 로그인을 확인하는 동안에는 로고만 보인다.
@@ -21,6 +22,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     setState(() => _busy = true);
     try {
       await ref.read(authControllerProvider.notifier).login(provider);
+    } on SocialLoginCanceled {
+      // 로그인 창을 닫았으면 안내 없이 그대로 둔다.
     } catch (e) {
       if (mounted) showError(context, e);
     } finally {
