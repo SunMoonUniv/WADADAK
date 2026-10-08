@@ -12,7 +12,7 @@ cd "$(dirname "$0")/../.."
 
 OUT=${OUT:-src/main/resources/db/migration/common/V20261008_1001__common_region_seed.sql}
 # 경계 단순화 허용 오차(m). 클수록 파일이 작고 경계가 거칠다.
-TOLERANCE_M=${TOLERANCE_M:-30}
+TOLERANCE_M=${TOLERANCE_M:-20}
 # 변환 전용. 개발 DB 이미지(postgis/postgis:17-3.5)는 Debian 11이라 지원이 끝나 apt 설치를 믿을 수 없어 Debian 13 이미지에 PostGIS를 설치해 쓴다.
 IMAGE=postgres:17.6-trixie
 CONTAINER=wadadak-region-build-$$
