@@ -19,6 +19,8 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class RouteService {
 
+    /** 입력점 최대 500개(정책 B3-01). 요청 검증(@Size)에서 쓰고, 넘으면 COMMON-001 */
+    public static final int MAX_ANCHOR_POINTS = 500;
     static final int MIN_DISTANCE_METERS = 1_000;
     static final int MAX_CUSTOM_DISTANCE_METERS = 100_000;
     private static final int MARKER_INTERVAL_METERS = 1_000;
