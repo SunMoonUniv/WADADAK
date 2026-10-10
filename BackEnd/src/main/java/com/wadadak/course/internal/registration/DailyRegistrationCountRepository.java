@@ -21,6 +21,11 @@ interface DailyRegistrationCountRepository extends JpaRepository<DailyRegistrati
             ON CONFLICT (member_id, registration_date, course_type) DO NOTHING""", nativeQuery = true)
     void insertIfAbsent(UUID id, UUID memberId, LocalDate date, String courseType);
 
+    /** 잠그지 않고 읽는다(조회용). 그날 등록이 없으면 빈 값 */
+    @Query("SELECT d.registeredCount FROM DailyRegistrationCount d "
+            + "WHERE d.memberId = :memberId AND d.registrationDate = :date AND d.courseType = :courseType")
+    Optional<Integer> findRegisteredCount(UUID memberId, LocalDate date, CourseType courseType);
+
     /** 같은 회원의 동시 등록이 한도를 함께 넘지 않게 행을 잠그고 읽는다. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     Optional<DailyRegistrationCount> findByMemberIdAndRegistrationDateAndCourseType(UUID memberId, LocalDate registrationDate,

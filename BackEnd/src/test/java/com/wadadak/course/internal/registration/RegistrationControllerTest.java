@@ -150,6 +150,47 @@ class RegistrationControllerTest {
                 .hasStatus(HttpStatus.BAD_REQUEST);
     }
 
+    @Test
+    void rejectsMalformedIdempotencyKey() {
+        assertThat(mvc.post().uri("/api/v1/courses").with(jwt().jwt(j -> j.subject(UUID.randomUUID().toString())))
+                .header("Idempotency-Key", "not-a-uuid")
+                .contentType(MediaType.APPLICATION_JSON).content(body("키 형식 오류 코스", northLine(127.0510))))
+                .hasStatus(HttpStatus.BAD_REQUEST).bodyJson().extractingPath("$.code").isEqualTo("COMMON-001");
+    }
+
+    @Test
+    void quotaCountsEachTypeSeparately() {
+        UUID memberId = UUID.randomUUID();
+        assertQuota(memberId, 1, 3);
+
+        assertThat(register(memberId, UUID.randomUUID(), body("한도 조회 코스", northLine(127.0520)))).hasStatusOk();
+
+        // 사용자 지정만 줄고 GPS는 그대로
+        assertQuota(memberId, 0, 3);
+    }
+
+    @Test
+    void quotaIgnoresPreviousDay() {
+        UUID memberId = UUID.randomUUID();
+        // 고정 시각의 전날(9/30)에 사용자 지정 1개·GPS 3개를 썼어도 오늘(10/1)은 다시 채워진다
+        jdbcTemplate.update("""
+                INSERT INTO course.daily_registration_counts (id, member_id, registration_date, course_type, registered_count, created_at, updated_at)
+                VALUES (gen_random_uuid(), ?, DATE '2026-09-30', 'CUSTOM', 1, now(), now()),
+                       (gen_random_uuid(), ?, DATE '2026-09-30', 'GPS', 3, now(), now())""", memberId, memberId);
+
+        assertQuota(memberId, 1, 3);
+    }
+
+    private void assertQuota(UUID memberId, int customRemaining, int gpsRemaining) {
+        MvcTestResult result = mvc.get().uri("/api/v1/courses/registration-quota")
+                .with(jwt().jwt(j -> j.subject(memberId.toString()))).exchange();
+        assertThat(result).hasStatusOk();
+        assertThat(result).bodyJson().extractingPath("$.data.custom.limit").isEqualTo(1);
+        assertThat(result).bodyJson().extractingPath("$.data.custom.remaining").isEqualTo(customRemaining);
+        assertThat(result).bodyJson().extractingPath("$.data.gps.limit").isEqualTo(3);
+        assertThat(result).bodyJson().extractingPath("$.data.gps.remaining").isEqualTo(gpsRemaining);
+    }
+
     /** 서울 도심 위도 37.570에서 북쪽으로 약 1.2km */
     private static String northLine(double lng) {
         return """

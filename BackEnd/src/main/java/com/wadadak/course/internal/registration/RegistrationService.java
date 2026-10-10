@@ -33,7 +33,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 class RegistrationService {
 
-    static final int DAILY_CUSTOM_LIMIT = 1;
     /** 등록일 포함 30일(정책 공통 4) */
     static final int RETENTION_DAYS = 30;
 
@@ -56,7 +55,7 @@ class RegistrationService {
 
         String name = CourseName.requireValid(request.name());
         GeneratedRoute generated = routeService.generateCustom(request.anchorPoints());
-        LocalDate today = LocalDate.now(clock.withZone(TimeConfig.SEOUL));
+        LocalDate today = today();
         consumeDailyLimit(memberId, today);
 
         if (courseRepository.existsActiveByName(name)) {
@@ -81,9 +80,26 @@ class RegistrationService {
         dailyCountRepository.insertIfAbsent(UuidV7.create(), memberId, today, CourseType.CUSTOM.name());
         DailyRegistrationCount count = dailyCountRepository
                 .findByMemberIdAndRegistrationDateAndCourseType(memberId, today, CourseType.CUSTOM).orElseThrow();
-        if (!count.tryIncrement(DAILY_CUSTOM_LIMIT)) {
+        if (!count.tryIncrement(DailyLimit.of(CourseType.CUSTOM))) {
             throw new AppException(CourseErrorCode.DAILY_LIMIT_EXCEEDED);
         }
+    }
+
+    /** 유형별 오늘(Asia/Seoul) 남은 등록 수. 앱이 B3·B5·B6 진입 시 미리 막고 안내하는 데 쓴다(B4-07·B6-06). */
+    @Transactional(readOnly = true)
+    RegistrationQuota quota(UUID memberId) {
+        LocalDate today = today();
+        return new RegistrationQuota(remaining(memberId, today, CourseType.CUSTOM), remaining(memberId, today, CourseType.GPS));
+    }
+
+    private RegistrationQuota.TypeQuota remaining(UUID memberId, LocalDate today, CourseType type) {
+        int used = dailyCountRepository.findRegisteredCount(memberId, today, type).orElse(0);
+        int limit = DailyLimit.of(type);
+        return new RegistrationQuota.TypeQuota(limit, Math.max(limit - used, 0));
+    }
+
+    private LocalDate today() {
+        return LocalDate.now(clock.withZone(TimeConfig.SEOUL));
     }
 
     /** 등록일 포함 {@value #RETENTION_DAYS}일째 23:59:59(Asia/Seoul). 10/1 등록이면 10/30 23:59:59 */

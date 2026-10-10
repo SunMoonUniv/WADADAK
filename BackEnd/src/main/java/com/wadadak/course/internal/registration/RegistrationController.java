@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
@@ -31,5 +32,13 @@ class RegistrationController {
             @Parameter(description = "등록 시도마다 앱이 만드는 UUID. 같은 등록을 재시도할 때는 같은 값") @RequestHeader("Idempotency-Key") UUID idempotencyKey,
             @Valid @RequestBody RegisterCourseRequest request) {
         return ApiResult.success(registrationService.registerCustom(UUID.fromString(jwt.getSubject()), idempotencyKey, request));
+    }
+
+    @Operation(summary = "오늘 남은 등록 수",
+            description = "유형별로 따로 센다: 사용자 지정 하루 1개, GPS(B5·B6 합산) 하루 3개. Asia/Seoul 00:00에 초기화. "
+                    + "remaining이 0이면 앱은 해당 방식의 코스 만들기를 막고 안내한다(B4-07·B6-06).")
+    @GetMapping("/registration-quota")
+    ApiResult<RegistrationQuota> quota(@AuthenticationPrincipal Jwt jwt) {
+        return ApiResult.success(registrationService.quota(UUID.fromString(jwt.getSubject())));
     }
 }
