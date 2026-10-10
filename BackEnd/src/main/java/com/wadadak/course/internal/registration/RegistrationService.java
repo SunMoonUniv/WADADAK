@@ -48,7 +48,7 @@ class RegistrationService {
 
     @Transactional
     RegisteredCourse registerCustom(UUID memberId, UUID idempotencyKey, RegisterCourseRequest request) {
-        // 같은 키로 이미 처리했으면 요청 내용과 관계없이 처음 결과를 돌려준다(개발 정책 7장)
+        // 같은 키로 성공한 등록이 있으면 요청 내용과 관계없이 그 결과를 돌려준다. 실패한 요청은 롤백돼 기록이 없다(개발 정책 10.2 course)
         var previous = requestRepository.findByMemberIdAndIdempotencyKey(memberId, idempotencyKey);
         if (previous.isPresent()) {
             return RegisteredCourse.from(courseRepository.findById(previous.get().getCourseId()).orElseThrow());
