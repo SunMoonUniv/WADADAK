@@ -21,7 +21,7 @@ final class LoginSignupRequired extends LoginResult {
   final String signupToken;
 }
 
-/// 소셜 정보 동의. 필수 5개를 모두 동의해야 가입할 수 있다. [email]만 선택.
+/// 약관 동의. 모두 필수라 전부 동의해야 가입할 수 있다.
 class Agreements {
   const Agreements({
     this.over14 = false,
@@ -29,7 +29,6 @@ class Agreements {
     this.privacyPolicy = false,
     this.locationTerms = false,
     this.profileInfo = false,
-    this.email = false,
   });
 
   const Agreements.all(bool value)
@@ -37,13 +36,11 @@ class Agreements {
         serviceTerms = value,
         privacyPolicy = value,
         locationTerms = value,
-        profileInfo = value,
-        email = value;
+        profileInfo = value;
 
-  final bool over14, serviceTerms, privacyPolicy, locationTerms, profileInfo, email;
+  final bool over14, serviceTerms, privacyPolicy, locationTerms, profileInfo;
 
-  bool get allRequired => over14 && serviceTerms && privacyPolicy && locationTerms && profileInfo;
-  bool get all => allRequired && email;
+  bool get all => over14 && serviceTerms && privacyPolicy && locationTerms && profileInfo;
 
   Agreements copyWith({
     bool? over14,
@@ -51,7 +48,6 @@ class Agreements {
     bool? privacyPolicy,
     bool? locationTerms,
     bool? profileInfo,
-    bool? email,
   }) =>
       Agreements(
         over14: over14 ?? this.over14,
@@ -59,7 +55,6 @@ class Agreements {
         privacyPolicy: privacyPolicy ?? this.privacyPolicy,
         locationTerms: locationTerms ?? this.locationTerms,
         profileInfo: profileInfo ?? this.profileInfo,
-        email: email ?? this.email,
       );
 
   Map<String, Object?> toJson() => {
@@ -68,7 +63,6 @@ class Agreements {
         'privacyPolicy': privacyPolicy,
         'locationTerms': locationTerms,
         'profileInfo': profileInfo,
-        'email': email,
       };
 }
 

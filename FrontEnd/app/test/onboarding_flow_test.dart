@@ -65,7 +65,7 @@ void main() {
     expect(find.text('Apple로 로그인'), findsNothing);
 
     await tap(tester, find.text('카카오 로그인'));
-    expect(find.text('[선택] 카카오 계정 이메일 제공'), findsOneWidget);
+    expect(find.textContaining('이메일'), findsNothing);
 
     // 필수 동의 전에는 계속할 수 없다.
     await tap(tester, find.text('동의하고 계속하기'));
@@ -73,7 +73,7 @@ void main() {
     expect(find.text('필수 항목에 모두 동의해야 계속할 수 있어요.'), findsOneWidget);
 
     await tap(tester, find.text('전체 동의하기'));
-    expect(find.text('선택 항목에 동의하지 않아도 서비스를 이용할 수 있어요.'), findsOneWidget);
+    expect(find.text('필수 항목에 모두 동의해야 계속할 수 있어요.'), findsNothing);
     await tap(tester, find.text('동의하고 계속하기'));
 
     await tap(tester, find.text('권한 허용하기'));

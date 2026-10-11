@@ -24,10 +24,6 @@ class ConsentScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final agreements = ref.watch(agreementsProvider);
-    final provider = switch (ref.watch(authControllerProvider).value) {
-      SignupRequired(:final provider) => provider,
-      _ => SocialProvider.kakao,
-    };
     void set(Agreements value) => ref.read(agreementsProvider.notifier).set(value);
     void cancel() => ref.read(authControllerProvider.notifier).cancelSignup();
 
@@ -38,11 +34,6 @@ class ConsentScreen extends ConsumerWidget {
       ('[필수] 개인정보 수집 및 이용', agreements.privacyPolicy, (v) => agreements.copyWith(privacyPolicy: v)),
       ('[필수] 위치기반서비스 이용약관', agreements.locationTerms, (v) => agreements.copyWith(locationTerms: v)),
       ('[필수] 프로필 정보 (닉네임 · 프로필 사진)', agreements.profileInfo, (v) => agreements.copyWith(profileInfo: v)),
-      (
-        '[선택] ${provider == SocialProvider.google ? 'Google' : '카카오'} 계정 이메일 제공',
-        agreements.email,
-        (v) => agreements.copyWith(email: v),
-      ),
     ];
 
     return PopScope(
@@ -70,11 +61,13 @@ class ConsentScreen extends ConsumerWidget {
                   WdConsentRow(label: label, checked: checked, onChanged: (v) => set(toggle(v))),
               ],
             ),
-            const SizedBox(height: WdSpace.s16),
-            Text(
-              agreements.allRequired ? '선택 항목에 동의하지 않아도 서비스를 이용할 수 있어요.' : '필수 항목에 모두 동의해야 계속할 수 있어요.',
-              style: WdText.raw(12, FontWeight.w400, 18).copyWith(color: WdColors.muted),
-            ),
+            if (!agreements.all) ...[
+              const SizedBox(height: WdSpace.s16),
+              Text(
+                '필수 항목에 모두 동의해야 계속할 수 있어요.',
+                style: WdText.raw(12, FontWeight.w400, 18).copyWith(color: WdColors.muted),
+              ),
+            ],
           ],
         ),
         bottomNavigationBar: SafeArea(
@@ -82,7 +75,7 @@ class ConsentScreen extends ConsumerWidget {
           minimum: const EdgeInsets.all(WdSpace.s24),
           child: WdButton(
             '동의하고 계속하기',
-            onPressed: agreements.allRequired ? () => context.push(Routes.permission) : null,
+            onPressed: agreements.all ? () => context.push(Routes.permission) : null,
           ),
         ),
       ),
