@@ -35,7 +35,7 @@ DB는 로컬 PostgreSQL과 겹치지 않게 5433 포트를 쓴다. 접속 정보
 - `internal/`은 기능별 하위 패키지로 나눈다. 예: member는 `auth`(로그인·가입·토큰) · `account`(회원 계정·`MemberApi` 구현) · `social`(소셜 토큰 검증). 컨트롤러·서비스·DTO는 그 기능 폴더에 함께 둔다.
   - 하위 패키지끼리 쓰는 타입만 `public`으로 둔다. 다른 모듈은 `public`이어도 `internal`에 접근할 수 없다(`verify()`가 막는다).
 - 공개 인터페이스 스텁: `internal/{기능}/{Xxx}ApiStub` + `StubImplementation` + `app.stub.{module}: true`
-- 마이그레이션: `db/migration/{module}/V{yyyyMMdd_HHmm}__{module}_{설명}.sql`, 첫 파일에서 `CREATE SCHEMA {module};`
+- 마이그레이션: `db/migration/{module}/V{yyyyMMdd_HHmm}__{module}_{설명}.sql`, 첫 파일에서 `CREATE SCHEMA {module};`. 같은 PR에서 [`DB 구조.md`](../DB%20구조.md)를 고친다.
 - 공간 컬럼(SRID 4326, JTS 타입): 반경 검색용은 `geography`라서 `@Column(columnDefinition = "geography(Point,4326)")`를 붙인다. 경로 판정용 `geometry`(`LineString` 등)는 그대로 매핑된다. PostGIS는 `public`에 있어 함수·타입에 스키마 이름을 붙이지 않는다.
 - Swagger 그룹: 모듈 `internal`에 `GroupedOpenApi` 빈(`/api/v1/{prefix}/**`)
 - 단독 기동 테스트: `@ApplicationModuleTest` + `@ActiveProfiles("test")` + `@Import(TestcontainersConfiguration.class)`
