@@ -47,7 +47,7 @@ class IdTokenVerifier {
     SocialAccount verify(String idToken) {
         try {
             Jwt jwt = decoder.decode(idToken);
-            return new SocialAccount(provider, jwt.getSubject(), jwt.getClaimAsString("email"));
+            return new SocialAccount(provider, jwt.getSubject());
         } catch (JwtException e) {
             throw new AppException(MemberErrorCode.INVALID_SOCIAL_TOKEN);
         }

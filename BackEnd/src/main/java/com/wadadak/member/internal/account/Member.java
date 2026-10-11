@@ -35,7 +35,6 @@ public class Member extends BaseEntity<UUID> {
     private SocialProvider socialProvider;
 
     private String socialId;
-    private String email;
     private String nickname;
     private String bio;
     private String regionCode;
@@ -46,25 +45,19 @@ public class Member extends BaseEntity<UUID> {
 
     private boolean infoPublic;
     private boolean profileSearchable;
-    private Instant termsAgreedAt;
     private Instant withdrawnAt;
 
     @Version
     private Long version;
 
-    /**
-     * 가입. 필수 약관에는 {@code agreedAt}에 동의했다.
-     *
-     * @param email 이메일 제공에 동의하지 않았으면 {@code null}
-     */
-    public static Member join(SocialAccount account, String email, String nickname, String bio, String regionCode,
-                              String affiliation, RunningExperience runningExperience, Instant agreedAt) {
+    /** 가입. 약관 동의는 {@link Agreement}에 따로 남긴다. */
+    public static Member join(SocialAccount account, String nickname, String bio, String regionCode,
+                              String affiliation, RunningExperience runningExperience) {
         Member member = new Member();
         member.id = UuidV7.create();
         member.status = Status.ACTIVE;
         member.socialProvider = account.provider();
         member.socialId = account.socialId();
-        member.email = email;
         member.nickname = nickname.strip();
         member.bio = blankToNull(bio);
         member.regionCode = regionCode;
@@ -72,7 +65,6 @@ public class Member extends BaseEntity<UUID> {
         member.runningExperience = runningExperience;
         member.infoPublic = true;
         member.profileSearchable = true;
-        member.termsAgreedAt = agreedAt;
         return member;
     }
 

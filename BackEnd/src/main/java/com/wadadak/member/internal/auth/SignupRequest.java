@@ -23,13 +23,12 @@ record SignupRequest(
         @Size(max = 30) String affiliation,
         @NotNull RunningExperience runningExperience) {
 
-    /** 필수 5개는 모두 true여야 한다. {@code email}만 선택. */
+    /** 모두 필수라 true여야 한다. */
     record Agreements(
             @AssertTrue boolean over14,
             @AssertTrue boolean serviceTerms,
             @AssertTrue boolean privacyPolicy,
             @AssertTrue boolean locationTerms,
-            @AssertTrue boolean profileInfo,
-            boolean email) {
+            @AssertTrue boolean profileInfo) {
     }
 }

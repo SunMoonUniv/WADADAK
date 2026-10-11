@@ -40,7 +40,8 @@ class IdTokenVerifierTest {
     void acceptsTokenForOurApp() throws Exception {
         SocialAccount account = verifier.verify(idToken(ISSUER, CLIENT_ID));
 
-        assertThat(account).isEqualTo(new SocialAccount(SocialProvider.APPLE, "apple-user", "runner@example.com"));
+        // 토큰에 email이 있어도 받지 않는다.
+        assertThat(account).isEqualTo(new SocialAccount(SocialProvider.APPLE, "apple-user"));
     }
 
     @Test

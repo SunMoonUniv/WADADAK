@@ -14,6 +14,6 @@ class FakeSocialTokenVerifier implements SocialTokenVerifier, StubImplementation
 
     @Override
     public SocialAccount verify(SocialProvider provider, String token) {
-        return new SocialAccount(provider, token, null);
+        return new SocialAccount(provider, token);
     }
 }

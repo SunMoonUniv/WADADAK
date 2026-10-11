@@ -24,17 +24,14 @@ class KakaoTokenVerifierTest {
     private final KakaoTokenVerifier verifier = new KakaoTokenVerifier(builder, APP_ID);
 
     @Test
-    void returnsKakaoIdAndEmail() {
+    void returnsKakaoId() {
         server.expect(requestTo("https://kapi.kakao.com/v1/user/access_token_info"))
                 .andExpect(header("Authorization", "Bearer token"))
                 .andRespond(withSuccess("""
                         {"id": 42, "expires_in": 3600, "app_id": 1234}""", MediaType.APPLICATION_JSON));
-        server.expect(requestTo("https://kapi.kakao.com/v2/user/me"))
-                .andRespond(withSuccess("""
-                        {"id": 42, "kakao_account": {"email": "runner@kakao.com", "is_email_valid": true}}""",
-                        MediaType.APPLICATION_JSON));
 
-        assertThat(verifier.verify("token")).isEqualTo(new SocialAccount(SocialProvider.KAKAO, "42", "runner@kakao.com"));
+        assertThat(verifier.verify("token")).isEqualTo(new SocialAccount(SocialProvider.KAKAO, "42"));
+        server.verify();
     }
 
     @Test
