@@ -1,7 +1,0 @@
-{
-  "tool_name": "Bash",
-  "tool_input_preview": "{\"command\":\"cd \\\"C:/Users/USER/Documents/workspace-spring-tools-for-eclipse-4.32.2.RELEASE/WADADAK/FrontEnd/app\\\"; grep -n -i -B3 -A25 \\\"socialLoginProvider\\\\|signIn\\\" lib/features/onboarding/login_sc...",
-  "error": "Exit code 2",
-  "timestamp": "2026-10-11T08:14:45.905Z",
-  "retry_count": 1
-}
