@@ -22,31 +22,19 @@ class KakaoTokenVerifier {
 
     SocialAccount verify(String accessToken) {
         try {
-            TokenInfo info = get("/v1/user/access_token_info", accessToken, TokenInfo.class);
+            TokenInfo info = restClient.get().uri("/v1/user/access_token_info")
+                    .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
+                    .retrieve()
+                    .body(TokenInfo.class);
             if (info == null || info.appId() != appId) {
                 throw new AppException(MemberErrorCode.INVALID_SOCIAL_TOKEN);
             }
-            UserMe me = get("/v2/user/me", accessToken, UserMe.class);
-            String email = me == null || me.kakaoAccount() == null ? null : me.kakaoAccount().email();
-            return new SocialAccount(SocialProvider.KAKAO, String.valueOf(info.id()), email);
+            return new SocialAccount(SocialProvider.KAKAO, String.valueOf(info.id()));
         } catch (HttpClientErrorException e) {
             throw new AppException(MemberErrorCode.INVALID_SOCIAL_TOKEN);
         }
     }
 
-    private <T> T get(String uri, String accessToken, Class<T> type) {
-        return restClient.get().uri(uri)
-                .header(HttpHeaders.AUTHORIZATION, "Bearer " + accessToken)
-                .retrieve()
-                .body(type);
-    }
-
     record TokenInfo(long id, @JsonProperty("app_id") long appId) {
-    }
-
-    record UserMe(@JsonProperty("kakao_account") KakaoAccount kakaoAccount) {
-    }
-
-    record KakaoAccount(String email) {
     }
 }

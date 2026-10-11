@@ -2,6 +2,8 @@ package com.wadadak.member.internal.auth;
 
 import com.wadadak.common.exception.AppException;
 import com.wadadak.member.MemberErrorCode;
+import com.wadadak.member.internal.account.Agreement;
+import com.wadadak.member.internal.account.AgreementRepository;
 import com.wadadak.member.internal.account.Member;
 import com.wadadak.member.internal.account.MemberRepository;
 import com.wadadak.member.internal.social.SocialAccount;
@@ -19,6 +21,7 @@ import java.util.UUID;
 class AuthService {
 
     private final MemberRepository memberRepository;
+    private final AgreementRepository agreementRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final TokenProvider tokenProvider;
     private final SocialTokenVerifier socialTokenVerifier;
@@ -41,9 +44,9 @@ class AuthService {
         if (memberRepository.existsByNicknameIgnoreCase(request.nickname())) {
             throw new AppException(MemberErrorCode.NICKNAME_TAKEN);
         }
-        String email = request.agreements().email() ? account.email() : null;
-        Member member = memberRepository.save(Member.join(account, email, request.nickname(), request.bio(),
-                request.regionCode(), request.affiliation(), request.runningExperience(), clock.instant()));
+        Member member = memberRepository.save(Member.join(account, request.nickname(), request.bio(),
+                request.regionCode(), request.affiliation(), request.runningExperience()));
+        agreementRepository.saveAll(Agreement.agreeAll(member.getId()));
         return issueTokens(member.getId());
     }
 

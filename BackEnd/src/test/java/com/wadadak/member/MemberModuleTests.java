@@ -67,6 +67,9 @@ class MemberModuleTests {
                 .containsEntry("region_code", "1129000000")
                 .containsEntry("affiliation", "선문대학교")
                 .containsEntry("running_experience", "MONTHS_6");
+        assertThat(jdbcTemplate.queryForList(
+                "SELECT type FROM member.agreements WHERE member_id = ? AND version = '1' AND agreed", String.class, memberId))
+                .containsExactlyInAnyOrder("OVER_14", "SERVICE_TERMS", "PRIVACY_POLICY", "LOCATION_TERMS", "PROFILE_INFO");
 
         JsonNode again = data(post("/login", login("kakao-flow")));
         assertThat(again.get("signupRequired").asBoolean()).isFalse();
@@ -162,7 +165,7 @@ class MemberModuleTests {
                 {
                   "signupToken": "%s",
                   "agreements": {"over14": true, "serviceTerms": true, "privacyPolicy": true,
-                                 "locationTerms": %s, "profileInfo": true, "email": false},
+                                 "locationTerms": %s, "profileInfo": true},
                   "nickname": "%s",
                   "regionCode": "1129000000",
                   "affiliation": "선문대학교",

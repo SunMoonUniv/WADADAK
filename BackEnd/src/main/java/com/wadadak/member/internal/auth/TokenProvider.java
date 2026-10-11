@@ -88,23 +88,19 @@ class TokenProvider {
 
     String signupToken(SocialAccount account) {
         Instant now = clock.instant();
-        JwtClaimsSet.Builder claims = JwtClaimsSet.builder()
+        return encode(JwtClaimsSet.builder()
                 .subject(account.socialId())
                 .audience(List.of(SIGNUP_AUDIENCE))
                 .claim("provider", account.provider().name())
                 .issuedAt(now)
-                .expiresAt(now.plus(SIGNUP_TTL));
-        if (account.email() != null) {
-            claims.claim("email", account.email());
-        }
-        return encode(claims.build());
+                .expiresAt(now.plus(SIGNUP_TTL))
+                .build());
     }
 
     SocialAccount parseSignupToken(String token) {
         try {
             Jwt jwt = signupDecoder.decode(token);
-            return new SocialAccount(SocialProvider.valueOf(jwt.getClaimAsString("provider")), jwt.getSubject(),
-                    jwt.getClaimAsString("email"));
+            return new SocialAccount(SocialProvider.valueOf(jwt.getClaimAsString("provider")), jwt.getSubject());
         } catch (JwtException | IllegalArgumentException e) {
             throw new AppException(MemberErrorCode.INVALID_SIGNUP_TOKEN);
         }
