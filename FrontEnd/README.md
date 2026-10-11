@@ -83,7 +83,7 @@ FrontEnd/
 
 ## 앱 실행
 
-앱은 로컬 백엔드(`BackEnd/`, 가짜 소셜 로그인)에 붙는다. [백엔드 README](../BackEnd/README.md)의 로컬 실행을 먼저 한다.
+앱은 로컬 백엔드(`BackEnd/`)에 붙는다. [백엔드 README](../BackEnd/README.md)의 로컬 실행을 먼저 한다.
 
 ```bash
 cd app
@@ -94,17 +94,17 @@ flutter run --dart-define=API_BASE_URL=http://<PC의 IP>:8080        # 실기기
 flutter test
 ```
 
-- 로그인 버튼은 기본이 가짜 소셜 로그인이다. 설치마다 같은 ID를 써서, 같은 기기는 같은 회원으로 로그인한다. 새 회원으로 시험하려면 앱 데이터를 지운다.
-- **실제 카카오 로그인**으로 시험하려면 앱과 서버를 둘 다 실제 모드로 띄운다(한쪽만 바꾸면 로그인이 실패하거나 매번 새 회원이 생긴다).
-  ```bash
-  # BackEnd/ — 카카오 앱 ID로 실제 검증
-  KAKAO_APP_ID=1573475 ./gradlew bootRun --args='--app.member.social.fake=false'
-  # FrontEnd/app/
-  flutter run --dart-define=REAL_SOCIAL_LOGIN=true
-  ```
+- 로그인 버튼은 카카오 SDK로 실제 로그인한다. 서버도 기본이 실제 검증이라 따로 설정하지 않는다. 에뮬레이터에는 카카오톡이 없어 카카오계정(웹) 로그인 창이 뜬다.
   - **공용 디버그 키 필요**: 팀 공용 `debug.keystore`를 팀 내부 공유처에서 받아 `app/android/app/debug.keystore`에 둔다. 저장소가 공개라 커밋하지 않는다(`.gitignore`). 없으면 각자 PC의 기본 디버그 키로 서명돼 키 해시가 달라 카카오 로그인이 실패한다.
   - 카카오 콘솔에는 공용 디버그 키의 해시만 등록돼 있다. 출시 전에 디버그 키 해시는 빼고 출시용 키 해시만 남긴다.
   - Google · Apple 로그인은 아직 연결하지 않았다.
+- **가짜 로그인**(카카오 계정 없이)으로 시험하려면 앱과 서버를 둘 다 가짜 모드로 띄운다(한쪽만 바꾸면 로그인이 실패하거나 매번 새 회원이 생긴다). 설치마다 같은 ID를 써서, 같은 기기는 같은 회원으로 로그인한다. 새 회원으로 시험하려면 앱 데이터를 지운다.
+  ```bash
+  # BackEnd/
+  ./gradlew bootRun --args='--app.member.social.fake=true'
+  # FrontEnd/app/
+  flutter run --dart-define=REAL_SOCIAL_LOGIN=false
+  ```
 - 저장소 경로에 한글(예: `바탕화면\와다닥`)이 있으면:
   - Android 빌드: `app/android/gradle.properties`의 `android.overridePathCheck=true`로 이미 막아 두었다.
   - `flutter analyze`가 분석 서버 오류로 멈춘다. 대신 `dart analyze`를 쓴다.

@@ -42,8 +42,9 @@ app:
       # public-key-location과 같은 키 쌍의 개인키(PKCS#8 PEM).
       private-key-location: ${JWT_PRIVATE_KEY_LOCATION:file:${app.local-dir:.local}/jwt/private.pem}
     social:
-      # true: 토큰 문자열을 소셜 ID로 쓰는 로컬용 로그인(prod 프로필에서는 기동 실패). 운영은 false + 아래 값.
-      fake: true
-      kakao-app-id: ${KAKAO_APP_ID:}
+      # true: 토큰 문자열을 소셜 ID로 쓰는 가짜 로그인(prod 프로필에서는 기동 실패). 테스트만 켠다.
+      fake: false
+      # 카카오 앱 ID는 공개 값이다(토큰 정보로 누구나 본다). 키가 아니다.
+      kakao-app-id: ${KAKAO_APP_ID:1573475}
       apple-client-ids: ${APPLE_CLIENT_IDS:}
       google-client-ids: ${GOOGLE_CLIENT_IDS:}
