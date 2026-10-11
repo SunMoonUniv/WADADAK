@@ -9,3 +9,5 @@ app:
   member:
     jwt:
       private-key-location: classpath:jwt/test-private.pem
+    social:
+      fake: true
