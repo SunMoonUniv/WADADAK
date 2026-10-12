@@ -76,9 +76,6 @@ abstract interface class MapController {
   /// [points]가 모두 보이게 옮긴다(코스 전체 보기).
   Future<void> fitPoints(List<GeoPoint> points);
 
-  /// 줌을 [delta]만큼 바꾼다. +1이면 축척 2배 확대(정책 A4-02).
-  Future<void> zoomBy(double delta);
-
   /// 현재 위치를 표시하고 따라간다. 위치 권한이 없으면 묻는다. 지도를 끌면 따라가기만 멈춘다.
   /// 개발용 지도는 위치를 모르므로 아무것도 하지 않는다.
   void showMyLocation();

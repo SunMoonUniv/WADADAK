@@ -65,8 +65,10 @@ void main() {
     expect(cameras.last.center, const GeoPoint(37.5, 127.1));
     expect(cameras.last.zoom, 16);
 
-    await map.zoomBy(-1);
-    expect(cameras.last.zoom, 15);
+    // 줌을 주지 않으면 지금 줌을 유지한다.
+    await map.moveTo(const GeoPoint(37.51, 127.11));
+    expect(cameras.last.center, const GeoPoint(37.51, 127.11));
+    expect(cameras.last.zoom, 16);
   });
 
   testWidgets('fits all points on screen without zooming out further than needed', (tester) async {
@@ -78,7 +80,8 @@ void main() {
       expectOnScreen(cameras.last, point);
     }
 
-    await map.zoomBy(1);
+    // 한 단계 더 확대하면 다 들어가지 않는다.
+    await map.moveTo(cameras.last.center, zoom: cameras.last.zoom + 1);
     expect(points.every((point) {
       final camera = cameras.last;
       return point.lat >= camera.southWest.lat &&

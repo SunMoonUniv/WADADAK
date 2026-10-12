@@ -106,9 +106,6 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
   }
 
   @override
-  Future<void> zoomBy(double delta) async => _setCamera(_center, _zoom + delta);
-
-  @override
   void showMyLocation() {}
 
   @override

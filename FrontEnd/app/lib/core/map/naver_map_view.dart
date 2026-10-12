@@ -193,9 +193,6 @@ class _NaverMapController implements MapController {
   }
 
   @override
-  Future<void> zoomBy(double delta) => _controller.updateCamera(NCameraUpdate.zoomBy(delta));
-
-  @override
   void showMyLocation() => _controller.setLocationTrackingMode(NLocationTrackingMode.follow);
 }
 
