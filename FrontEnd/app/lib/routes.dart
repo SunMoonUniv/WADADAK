@@ -6,6 +6,12 @@ abstract final class Routes {
   static const profile = '/onboarding/profile';
 
   static const home = '/home';
+
+  /// B3 코스 만들기(경로 그리기). 하단 탭 위에 쌓는다. extra: 홈 지도 위치(`MapCamera`).
+  static const courseCreate = '/course/new';
+
+  /// B4 코스 정보 입력. B3 위에 쌓아 돌아오면 입력점이 그대로다. extra: `GeneratedRoute`.
+  static const courseInfo = '/course/new/info';
   static const run = '/run';
   static const ranking = '/ranking';
   static const my = '/my';

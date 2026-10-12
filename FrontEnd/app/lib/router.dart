@@ -2,7 +2,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/api/course_api_client.dart';
 import 'core/auth/auth_controller.dart';
+import 'core/map/map_view.dart';
+import 'features/course/create/course_info_screen.dart';
+import 'features/course/create/route_draw_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/onboarding/consent_screen.dart';
 import 'features/onboarding/login_screen.dart';
@@ -39,6 +43,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: Routes.consent, builder: (_, _) => const ConsentScreen()),
       GoRoute(path: Routes.permission, builder: (_, _) => const PermissionScreen()),
       GoRoute(path: Routes.profile, builder: (_, _) => const ProfileSetupScreen()),
+      GoRoute(path: Routes.courseCreate, builder: (_, state) => RouteDrawScreen(camera: state.extra as MapCamera?)),
+      GoRoute(path: Routes.courseInfo, builder: (_, state) => CourseInfoScreen(route: state.extra! as GeneratedRoute)),
       StatefulShellRoute.indexedStack(
         builder: (_, _, shell) => MainShell(shell: shell),
         branches: [
