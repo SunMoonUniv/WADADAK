@@ -5,6 +5,7 @@ import com.wadadak.event.course.CourseStatus;
 import com.wadadak.event.course.CourseStatusChangedEvent;
 import com.wadadak.event.course.CourseStatusReason;
 import com.wadadak.event.member.MemberVisibilityChangedEvent;
+import com.wadadak.event.member.MemberWithdrawnEvent;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
@@ -64,6 +65,22 @@ class RankingEventHandlerTest {
         assertThat(visible(member)).isTrue();
     }
 
+    @Test
+    void deletesRankingRecordsOfWithdrawnMember() {
+        UUID course = UUID.randomUUID();
+        UUID member = UUID.randomUUID();
+        insertEntry(course, member);
+        insertEntry(course, UUID.randomUUID());
+        MemberWithdrawnEvent withdrawn = new MemberWithdrawnEvent(UUID.randomUUID(), Instant.now(), member, Instant.now());
+
+        publish(withdrawn);
+        publish(withdrawn);   // 중복
+
+        assertThat(entryCount(course)).isOne();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ranking.withdrawn_members WHERE member_id = ?", Long.class, member))
+                .isOne();
+    }
+
     private void publish(Object event) {
         transactionTemplate.executeWithoutResult(status -> publisher.publishEvent(event));
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
@@ -75,10 +92,14 @@ class RankingEventHandlerTest {
     }
 
     private void insertEntry(UUID courseId) {
+        insertEntry(courseId, UUID.randomUUID());
+    }
+
+    private void insertEntry(UUID courseId, UUID memberId) {
         jdbc.update("""
                 INSERT INTO ranking.course_ranking_entries (run_record_id, course_id, member_id, course_elapsed_seconds,
                     course_distance_meters, completed_at, registered_at, created_at, updated_at)
-                VALUES (?, ?, ?, 300, 1000, now(), now(), now(), now())""", UUID.randomUUID(), courseId, UUID.randomUUID());
+                VALUES (?, ?, ?, 300, 1000, now(), now(), now(), now())""", UUID.randomUUID(), courseId, memberId);
     }
 
     private String courseStatus(UUID courseId) {

@@ -44,3 +44,12 @@ CREATE TABLE ranking.member_visibility_copies
     created_at     TIMESTAMPTZ NOT NULL,
     updated_at     TIMESTAMPTZ NOT NULL
 );
+
+-- 탈퇴 회원. 랭킹 기록은 모두 지우고 이 표시만 남겨, 탈퇴 뒤에 도착한 완주 기록을 받지 않는다.
+CREATE TABLE ranking.withdrawn_members
+(
+    member_id    UUID        NOT NULL PRIMARY KEY,
+    withdrawn_at TIMESTAMPTZ NOT NULL,
+    created_at   TIMESTAMPTZ NOT NULL,
+    updated_at   TIMESTAMPTZ NOT NULL
+);

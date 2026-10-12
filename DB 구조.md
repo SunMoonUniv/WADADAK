@@ -13,7 +13,7 @@
 | --- | --- | --- |
 | `member` | member | `members`, `agreements`, `refresh_tokens` |
 | `course` | course | `courses`, `daily_registration_counts`, `registration_requests` |
-| `ranking` | ranking | `course_ranking_entries`, `course_status_copies`, `member_visibility_copies` |
+| `ranking` | ranking | `course_ranking_entries`, `course_status_copies`, `member_visibility_copies`, `withdrawn_members` |
 | `common` | common | `region`, `event_publication`, `shedlock`, `flyway_schema_history` |
 
 run, review, notification 스키마는 아직 없다. 해당 모듈을 구현할 때 이 문서에 추가한다.
@@ -49,6 +49,7 @@ erDiagram
     members ||..o{ course_ranking_entries : "member_id"
     courses ||..o| course_status_copies : "course_id"
     members ||..o| member_visibility_copies : "member_id"
+    members ||..o| withdrawn_members : "member_id"
 
     members {
         uuid id PK
@@ -130,6 +131,10 @@ erDiagram
         uuid member_id PK "member ID"
         boolean visible
         bigint source_version
+    }
+    withdrawn_members {
+        uuid member_id PK "member ID"
+        timestamptz withdrawn_at
     }
     region {
         varchar(10) code PK "법정동 코드"
@@ -313,6 +318,16 @@ erDiagram
 
 - `MemberVisibilityChangedEvent`로 채운다. 행이 없으면 공개다.
 - 비공개 회원은 순위 계산·참여 수·평균·고스트 후보에서 빠진다. 엔트리는 남아 있어서 다시 공개하면 그대로 보인다.
+
+#### `ranking.withdrawn_members` — 탈퇴 회원
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `member_id` | `UUID` | | PK. 회원 ID(member 모듈) |
+| `withdrawn_at` | `TIMESTAMPTZ` | | 탈퇴 시각 |
+
+- `MemberWithdrawnEvent`를 받으면 그 회원의 랭킹 엔트리와 공개 복사본을 바로 지우고 이 행을 남긴다.
+- 탈퇴 뒤에 도착한 그 회원의 완주 기록은 받지 않는다.
 
 ### 3.4 common
 

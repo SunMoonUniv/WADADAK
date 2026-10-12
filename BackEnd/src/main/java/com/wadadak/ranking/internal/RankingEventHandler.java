@@ -3,10 +3,14 @@ package com.wadadak.ranking.internal;
 import com.wadadak.event.course.CourseStatus;
 import com.wadadak.event.course.CourseStatusChangedEvent;
 import com.wadadak.event.member.MemberVisibilityChangedEvent;
+import com.wadadak.event.member.MemberWithdrawnEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Component;
+
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 
 /**
  * 다른 모듈 이벤트를 ranking 복사본에 반영한다. 중복·순서 역전에도 결과가 같다(개발 정책 5.4).
@@ -50,6 +54,24 @@ class RankingEventHandler {
                 .param("memberId", event.memberId())
                 .param("visible", event.visible())
                 .param("version", event.version())
+                .update();
+    }
+
+    /** 탈퇴 회원의 랭킹 기록을 바로 지운다. 탈퇴 표시를 남겨 늦게 온 완주 기록을 받지 않는다. */
+    @ApplicationModuleListener
+    public void on(MemberWithdrawnEvent event) {
+        jdbc.sql("""
+                        INSERT INTO ranking.withdrawn_members (member_id, withdrawn_at, created_at, updated_at)
+                        VALUES (:memberId, :withdrawnAt, now(), now())
+                        ON CONFLICT (member_id) DO NOTHING""")
+                .param("memberId", event.memberId())
+                .param("withdrawnAt", OffsetDateTime.ofInstant(event.withdrawnAt(), ZoneOffset.UTC))
+                .update();
+        jdbc.sql("DELETE FROM ranking.course_ranking_entries WHERE member_id = :memberId")
+                .param("memberId", event.memberId())
+                .update();
+        jdbc.sql("DELETE FROM ranking.member_visibility_copies WHERE member_id = :memberId")
+                .param("memberId", event.memberId())
                 .update();
     }
 }
