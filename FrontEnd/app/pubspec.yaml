@@ -42,6 +42,7 @@ dependencies:
   flutter_svg: ^2.3.0
   wadadak_design_system:
     path: ../packages/wadadak_design_system
+  google_sign_in: ^7.2.0
 
 dev_dependencies:
   flutter_test:

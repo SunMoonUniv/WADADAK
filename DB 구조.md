@@ -13,13 +13,15 @@
 | --- | --- | --- |
 | `member` | member | `members`, `agreements`, `refresh_tokens` |
 | `course` | course | `courses`, `daily_registration_counts`, `registration_requests` |
+| `ranking` | ranking | `course_ranking_entries`, `course_status_copies`, `member_visibility_copies`, `withdrawn_members` |
 | `common` | common | `region`, `event_publication`, `shedlock`, `flyway_schema_history` |
 
-run, ranking, review, notification 스키마는 아직 없다. 해당 모듈을 구현할 때 이 문서에 추가한다.
+run, review, notification 스키마는 아직 없다. 해당 모듈을 구현할 때 이 문서에 추가한다.
 
 ### 공통 규칙 (개발 정책 6장)
 
 - **PK**: 애플리케이션이 만든 UUID v7(`UuidV7.create()`). 예외는 `region`(법정동 코드), `shedlock`(작업 이름), `event_publication`(Modulith가 만듦), `flyway_schema_history`(Flyway가 관리)다.
+  - 다른 모듈의 행 하나에 정확히 한 행이 대응하는 테이블은 그 모듈의 ID를 PK로 쓴다. 이벤트를 다시 받아도 PK로 한 번만 저장된다(개발 정책 5.4). 예: `course_ranking_entries`(run 기록 ID), 복사본 테이블(코스·회원 ID)
 - **시각**: `TIMESTAMPTZ`에 UTC로 저장한다. 엔티티 테이블은 모두 `created_at`·`updated_at`을 가진다(`BaseEntity`).
 - **enum**: Java enum 이름을 `VARCHAR`로 저장하고 `CHECK`로 값을 제한한다.
 - **낙관적 락**: 상태 변경 이벤트를 발행하는 테이블(`members`, `courses`)은 `version` 컬럼을 가진다.
@@ -30,7 +32,8 @@ run, ranking, review, notification 스키마는 아직 없다. 해당 모듈을 
 
 - 실선: 같은 스키마 안의 FK
 - 점선: 다른 모듈(스키마)의 ID를 값으로만 저장한 참조. FK 없음
-- 모든 엔티티 테이블에 있는 `created_at`·`updated_at`은 생략했다. `common`의 인프라 테이블(`event_publication`, `shedlock`, `flyway_schema_history`)은 다른 테이블과 관계가 없어 4장에서만 설명한다.
+- 모든 엔티티 테이블에 있는 `created_at`·`updated_at`은 생략했다. `common`의 인프라 테이블(`event_publication`, `shedlock`, `flyway_schema_history`)은 다른 테이블과 관계가 없어 3.4에서만 설명한다.
+- `course_ranking_entries.run_record_id`는 run 모듈의 러닝 기록 ID다. run 스키마가 생기면 ERD에 잇는다.
 
 ```mermaid
 erDiagram
@@ -42,6 +45,11 @@ erDiagram
     members ||..o{ registration_requests : "member_id"
     region ||..o{ members : "region_code"
     region ||..o{ courses : "emd_code, sigungu_code, sido_code"
+    courses ||..o{ course_ranking_entries : "course_id"
+    members ||..o{ course_ranking_entries : "member_id"
+    courses ||..o| course_status_copies : "course_id"
+    members ||..o| member_visibility_copies : "member_id"
+    members ||..o| withdrawn_members : "member_id"
 
     members {
         uuid id PK
@@ -103,6 +111,30 @@ erDiagram
         uuid member_id "member ID"
         uuid idempotency_key
         uuid course_id FK
+    }
+    course_ranking_entries {
+        uuid run_record_id PK "run 기록 ID"
+        uuid course_id "course ID"
+        uuid member_id "member ID"
+        integer course_elapsed_seconds "정수 초"
+        integer course_distance_meters
+        timestamptz completed_at
+        timestamptz registered_at "기간 기준"
+        boolean deleted
+    }
+    course_status_copies {
+        uuid course_id PK "course ID"
+        varchar(10) status "HIDDEN, DELETED"
+        bigint source_version
+    }
+    member_visibility_copies {
+        uuid member_id PK "member ID"
+        boolean visible
+        bigint source_version
+    }
+    withdrawn_members {
+        uuid member_id PK "member ID"
+        timestamptz withdrawn_at
     }
     region {
         varchar(10) code PK "법정동 코드"
@@ -240,7 +272,64 @@ erDiagram
 - `registration_requests_created_at_idx`: `(created_at)`. 24시간 지난 행을 지우는 데 쓴다.
 - 24시간 지난 행을 지우는 배치는 아직 없다.
 
-### 3.3 common
+### 3.3 ranking
+
+순위는 저장하지 않고 조회할 때 계산한다. 기간·공개 여부로 거른 뒤 회원마다 가장 짧은 기록 1건을 대표로 고르고, `RANK()`로 공동순위(1·2·2·4)를 매긴다(정책 공통 6). 같은 순위 안에서는 먼저 등록된 기록이 앞이다.
+
+#### `ranking.course_ranking_entries` — 코스 랭킹 엔트리
+
+서버가 확정한 완주 기록 1건이 1행이다.
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `run_record_id` | `UUID` | | PK. run 모듈의 러닝 기록 ID. 같은 완주 이벤트가 다시 와도 한 번만 저장된다 |
+| `course_id` | `UUID` | | 코스 ID(course 모듈, FK 없음) |
+| `member_id` | `UUID` | | 회원 ID(member 모듈, FK 없음) |
+| `course_elapsed_seconds` | `INTEGER` | | 코스 총 소요시간(정수 초). 순위는 이 값으로만 매긴다 |
+| `course_distance_meters` | `INTEGER` | | 코스 전체 거리(m). 페이스 계산용 |
+| `completed_at` | `TIMESTAMPTZ` | | 완주 시각. 화면에 보이는 날짜 |
+| `registered_at` | `TIMESTAMPTZ` | | 기록 등록 시각. 이번 주·이번 달을 이 값으로 나눈다(Asia/Seoul) |
+| `deleted` | `BOOLEAN` | | 기록이 삭제됐다. 기본 `false` |
+
+- `course_ranking_entries_course_id_idx`: `(course_id)`, 삭제되지 않은 행만
+- `course_ranking_entries_member_id_idx`: `(member_id)`
+- 기록을 지우면 행을 지우지 않고 `deleted`만 켠다. 삭제 이벤트가 완주 이벤트보다 먼저 처리돼도 완주 저장이 PK 충돌로 무시돼 되살아나지 않는다.
+- 코스가 삭제되면 그 코스의 행을 모두 지운다.
+- 행을 쌓는 run 완주·삭제 이벤트 처리는 아직 없다(run 이벤트 계약 대기).
+
+#### `ranking.course_status_copies` — 코스 상태 복사본
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `course_id` | `UUID` | | PK. 코스 ID(course 모듈) |
+| `status` | `VARCHAR(10)` | | `HIDDEN`, `DELETED` |
+| `source_version` | `BIGINT` | | course가 보낸 버전. 더 큰 버전만 반영한다 |
+
+- `CourseStatusChangedEvent`로 채운다. 숨김·삭제된 코스만 행이 있고, 행이 없으면 `ACTIVE`다.
+- 행이 있는 코스는 랭킹을 비워서 돌려준다. 삭제된 코스도 행을 남겨 늦게 온 완주 기록을 받지 않는다.
+
+#### `ranking.member_visibility_copies` — 회원 공개 복사본
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `member_id` | `UUID` | | PK. 회원 ID(member 모듈) |
+| `visible` | `BOOLEAN` | | 내 정보 공개 |
+| `source_version` | `BIGINT` | | member가 보낸 버전. 더 큰 버전만 반영한다 |
+
+- `MemberVisibilityChangedEvent`로 채운다. 행이 없으면 공개다.
+- 비공개 회원은 순위 계산·참여 수·평균·고스트 후보에서 빠진다. 엔트리는 남아 있어서 다시 공개하면 그대로 보인다.
+
+#### `ranking.withdrawn_members` — 탈퇴 회원
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `member_id` | `UUID` | | PK. 회원 ID(member 모듈) |
+| `withdrawn_at` | `TIMESTAMPTZ` | | 탈퇴 시각 |
+
+- `MemberWithdrawnEvent`를 받으면 그 회원의 랭킹 엔트리와 공개 복사본을 바로 지우고 이 행을 남긴다.
+- 탈퇴 뒤에 도착한 그 회원의 완주 기록은 받지 않는다.
+
+### 3.4 common
 
 #### `common.region` — 법정구역
 
