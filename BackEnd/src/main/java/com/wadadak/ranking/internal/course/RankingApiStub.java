@@ -1,13 +1,11 @@
 package com.wadadak.ranking.internal.course;
 
-import com.wadadak.common.exception.AppException;
-import com.wadadak.common.exception.CommonErrorCode;
 import com.wadadak.common.paging.CursorSlice;
 import com.wadadak.common.paging.Cursorable;
 import com.wadadak.common.stub.StubImplementation;
+import com.wadadak.member.MemberProfile;
 import com.wadadak.ranking.GhostCandidate;
 import com.wadadak.ranking.RankingApi;
-import com.wadadak.ranking.RankingErrorCode;
 import com.wadadak.ranking.RankingPeriod;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
@@ -18,10 +16,14 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * 랭킹 스텁. 어떤 코스든 아래 고정 기록에 요청자 기록을 끼워 순위를 매긴다. 스텁 코스(약 1km)를 5~6분에 달린 기록이다.
+ * 응답은 실제 구현과 같은 {@link CourseRankingAssembler}로 만든다.
  * <ul>
  *     <li>{@code ALL}: 12명, 요청자 5위. 2위·9위가 공동순위</li>
  *     <li>{@code MONTH}: 6명, 요청자 3위</li>
@@ -38,7 +40,6 @@ class RankingApiStub implements RankingApi, CourseRankingReader, StubImplementat
 
     /** {@code CourseApiStub}의 코스 거리 */
     private static final int COURSE_DISTANCE_METERS = 1001;
-    private static final int TOP_SIZE = 5;
     private static final Instant BASE_TIME = Instant.parse("2026-10-01T00:00:00Z");
 
     /** 다른 러너의 대표 기록: 회원 번호와 코스 총 소요시간(초) */
@@ -49,89 +50,48 @@ class RankingApiStub implements RankingApi, CourseRankingReader, StubImplementat
             RankingPeriod.WEEK, List.of(other(3, 301), other(5, 301), other(7, 333)));
     /** 요청자의 대표 기록(초). {@code WEEK}는 없다 */
     private static final Map<RankingPeriod, Integer> MINE = Map.of(RankingPeriod.ALL, 318, RankingPeriod.MONTH, 318);
+    private static final Map<UUID, String> NICKNAMES = OTHERS.values().stream().flatMap(List::stream)
+            .collect(Collectors.toMap(Run::memberId, Run::nickname, (same, ignored) -> same));
 
     @Override
     public List<GhostCandidate> getPublicGhostCandidates(UUID courseId, RankingPeriod period, UUID requesterId, int limit) {
-        if (limit < 1 || limit > MAX_LIMIT) {
-            throw new AppException(RankingErrorCode.INVALID_GHOST_LIMIT);
-        }
-        return ranking(courseId, period, requesterId).stream()
-                .filter(ranked -> !ranked.run().memberId().equals(requesterId))
-                .limit(limit)
-                .map(Ranked::toGhost)
-                .toList();
+        return CourseRankingAssembler.ghostCandidates(ranking(courseId, period, requesterId), requesterId, limit);
     }
 
     @Override
     public CourseRankingSummary summary(UUID courseId, RankingPeriod period, UUID requesterId) {
-        List<Ranked> ranking = ranking(courseId, period, requesterId);
-        Integer average = ranking.isEmpty() ? null
-                : (int) Math.round(ranking.stream().mapToInt(ranked -> ranked.run().elapsedSeconds()).average().orElseThrow());
-        return new CourseRankingSummary(ranking.size(), average, me(courseId, period, requesterId, ranking),
-                ranking.stream().limit(TOP_SIZE).map(ranked -> ranked.toEntry(requesterId)).toList(),
-                getPublicGhostCandidates(courseId, period, requesterId, 1).stream().findFirst().orElse(null));
+        boolean visible = !PRIVATE_COURSE_ID.equals(courseId);
+        RankedRecord privateRecord = visible || !MINE.containsKey(period) ? null : mine(requesterId, period).toRecord(0);
+        return CourseRankingAssembler.summary(ranking(courseId, period, requesterId), requesterId, visible, privateRecord,
+                profiles(requesterId));
     }
 
     @Override
     public CursorSlice<CourseRankingEntry> entries(UUID courseId, RankingPeriod period, UUID requesterId, Cursorable page) {
-        List<Ranked> ranking = ranking(courseId, period, requesterId);
-        int from = Math.min(offset(page.cursor()), ranking.size());
-        int to = Math.min(from + page.size(), ranking.size());
-        return new CursorSlice<>(ranking.subList(from, to).stream().map(ranked -> ranked.toEntry(requesterId)).toList(),
-                to < ranking.size() ? String.valueOf(to) : null);
+        return CourseRankingAssembler.entries(ranking(courseId, period, requesterId), requesterId, page, profiles(requesterId));
     }
 
-    /** 내 정보 비공개 회원은 빼고, 코스 총 소요시간 순으로 공동순위를 매긴다(1·2·2·4). */
-    private static List<Ranked> ranking(UUID courseId, RankingPeriod period, UUID requesterId) {
+    /** 내 정보 비공개 회원은 빼고 코스 총 소요시간 순으로 공동순위를 매긴다(1·2·2·4). */
+    private static List<RankedRecord> ranking(UUID courseId, RankingPeriod period, UUID requesterId) {
         if (NO_RECORD_COURSE_ID.equals(courseId)) {
             return List.of();
         }
         List<Run> runs = new ArrayList<>(OTHERS.get(period));
         if (MINE.containsKey(period) && !PRIVATE_COURSE_ID.equals(courseId)) {
-            runs.add(mine(requesterId, MINE.get(period)));
+            runs.add(mine(requesterId, period));
         }
         runs.sort(Comparator.comparingInt(Run::elapsedSeconds));
-        List<Ranked> ranking = new ArrayList<>();
+        List<RankedRecord> ranking = new ArrayList<>();
         for (int i = 0; i < runs.size(); i++) {
             boolean tie = i > 0 && runs.get(i).elapsedSeconds() == runs.get(i - 1).elapsedSeconds();
-            ranking.add(new Ranked(tie ? ranking.get(i - 1).rank() : i + 1, runs.get(i)));
+            ranking.add(runs.get(i).toRecord(tie ? ranking.get(i - 1).rank() : i + 1));
         }
         return ranking;
     }
 
-    private static MyCourseRanking me(UUID courseId, RankingPeriod period, UUID requesterId, List<Ranked> ranking) {
-        if (PRIVATE_COURSE_ID.equals(courseId) && MINE.containsKey(period)) {
-            Run mine = mine(requesterId, MINE.get(period));
-            return new MyCourseRanking(MyCourseRanking.Status.PRIVATE, null, mine.elapsedSeconds(), pace(mine.elapsedSeconds()),
-                    mine.completedAt(), null);
-        }
-        return ranking.stream()
-                .filter(ranked -> ranked.run().memberId().equals(requesterId))
-                .findFirst()
-                .map(ranked -> new MyCourseRanking(MyCourseRanking.Status.RANKED, ranked.rank(), ranked.run().elapsedSeconds(),
-                        pace(ranked.run().elapsedSeconds()), ranked.run().completedAt(),
-                        (int) Math.ceil(ranked.rank() * 100.0 / ranking.size())))
-                .orElse(new MyCourseRanking(PRIVATE_COURSE_ID.equals(courseId) ? MyCourseRanking.Status.PRIVATE
-                        : MyCourseRanking.Status.NO_RECORD, null, null, null, null, null));
-    }
-
-    private static int offset(String cursor) {
-        if (cursor == null || cursor.isBlank()) {
-            return 0;
-        }
-        try {
-            int offset = Integer.parseInt(cursor);
-            if (offset >= 0) {
-                return offset;
-            }
-        } catch (NumberFormatException ignored) {
-            // 아래에서 잘못된 커서로 거절한다
-        }
-        throw new AppException(CommonErrorCode.INVALID_REQUEST, "cursor: 잘못된 값입니다.");
-    }
-
-    private static int pace(int elapsedSeconds) {
-        return (int) Math.round(elapsedSeconds * 1000.0 / COURSE_DISTANCE_METERS);
+    private static Function<Set<UUID>, Map<UUID, MemberProfile>> profiles(UUID requesterId) {
+        return memberIds -> memberIds.stream().collect(Collectors.toMap(id -> id, id -> new MemberProfile(id,
+                id.equals(requesterId) ? "러너-" + id.toString().substring(0, 4) : NICKNAMES.get(id), null, false)));
     }
 
     private static Run other(int n, int elapsedSeconds) {
@@ -140,23 +100,16 @@ class RankingApiStub implements RankingApi, CourseRankingReader, StubImplementat
                 "러너" + n, elapsedSeconds, BASE_TIME.plus(Duration.ofDays(n)));
     }
 
-    private static Run mine(UUID requesterId, int elapsedSeconds) {
-        return new Run(requesterId, UUID.fromString("00000000-0000-0000-0001-%012d".formatted(elapsedSeconds)),
-                "러너-" + requesterId.toString().substring(0, 4), elapsedSeconds, BASE_TIME);
+    private static Run mine(UUID requesterId, RankingPeriod period) {
+        int elapsedSeconds = MINE.get(period);
+        return new Run(requesterId, UUID.fromString("00000000-0000-0000-0001-%012d".formatted(elapsedSeconds)), null,
+                elapsedSeconds, BASE_TIME);
     }
 
     private record Run(UUID memberId, UUID runRecordId, String nickname, int elapsedSeconds, Instant completedAt) {
-    }
 
-    private record Ranked(int rank, Run run) {
-
-        GhostCandidate toGhost() {
-            return new GhostCandidate(run.runRecordId(), run.memberId(), rank, run.elapsedSeconds());
-        }
-
-        CourseRankingEntry toEntry(UUID requesterId) {
-            return new CourseRankingEntry(rank, run.memberId(), run.nickname(), null, run.elapsedSeconds(),
-                    pace(run.elapsedSeconds()), run.completedAt(), run.memberId().equals(requesterId));
+        RankedRecord toRecord(int rank) {
+            return new RankedRecord(rank, runRecordId, memberId, elapsedSeconds, COURSE_DISTANCE_METERS, completedAt);
         }
     }
 }

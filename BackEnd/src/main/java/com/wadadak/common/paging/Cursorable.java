@@ -1,5 +1,7 @@
 package com.wadadak.common.paging;
 
+import com.wadadak.common.exception.AppException;
+import com.wadadak.common.exception.CommonErrorCode;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 
@@ -18,5 +20,25 @@ public record Cursorable(String cursor, @Min(1) @Max(MAX_SIZE) Integer size) {
         if (size == null) {
             size = DEFAULT_SIZE;
         }
+    }
+
+    /**
+     * 오프셋 커서(0부터 시작하는 위치)로 읽는다. 커서가 비어 있으면 0이다.
+     *
+     * @throws AppException {@link CommonErrorCode#INVALID_REQUEST} — 0 이상의 정수가 아닌 커서
+     */
+    public int offset() {
+        if (cursor == null || cursor.isBlank()) {
+            return 0;
+        }
+        try {
+            int offset = Integer.parseInt(cursor);
+            if (offset >= 0) {
+                return offset;
+            }
+        } catch (NumberFormatException ignored) {
+            // 아래에서 잘못된 커서로 거절한다
+        }
+        throw new AppException(CommonErrorCode.INVALID_REQUEST, "cursor: 잘못된 값입니다.");
     }
 }
