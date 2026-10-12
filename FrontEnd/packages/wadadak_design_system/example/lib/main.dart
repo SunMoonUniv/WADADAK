@@ -323,7 +323,6 @@ class _CatalogPageState extends State<CatalogPage> {
           child: Column(spacing: 16, crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(spacing: 16, children: [
               WdMapLocateButton(onPressed: () {}),
-              WdMapZoomControl(onZoomIn: () {}, onZoomOut: () {}),
               const WdKmMarker('1 km'),
               const WdRoutePoint(),
               const WdRegionCountBubble(count: '1,240', region: '서울'),

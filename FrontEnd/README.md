@@ -38,7 +38,7 @@
 | 카드 | `WdSummaryTile(s)` `WdMetric` `WdStatSummary` `WdAvatar` `WdRouteThumbnail` `WdCourseCard` `WdRunRecordCard` `WdReviewCard` |
 | 랭킹 | `WdRankRow` `WdRankList` `WdMyRankCard` |
 | 러닝 | `WdRunHeader` `WdElapsedTime` `WdRunMetricTile` `WdLapRecords` `WdGhostLeadCard` `WdCourseProgress` `WdPageIndicator` `WdRunPauseButton` `WdRunPausedButtons` `WdSensorStatus` `WdSelectedCourseCard` `WdRecordCard` |
-| 지도 위 요소 | `WdMapLocateButton` `WdMapZoomControl` `WdKmMarker` `WdRoutePoint` `WdRegionCountBubble` `WdSheetPeek` |
+| 지도 위 요소 | `WdMapLocateButton` `WdKmMarker` `WdRoutePoint` `WdRegionCountBubble` `WdSheetPeek` |
 | 분석 | `WdSegmentChart` `WdSegmentTable` |
 
 Figma 컴포넌트와의 1:1 대응표, 토큰 사용법은 [디자인 시스템 README](packages/wadadak_design_system/README.md)에 있다.
