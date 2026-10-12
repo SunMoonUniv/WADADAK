@@ -2,20 +2,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import 'core/api/course_api_client.dart';
 import 'core/auth/auth_controller.dart';
-import 'core/map/map_view.dart';
-import 'features/course/create/course_info_screen.dart';
-import 'features/course/create/route_draw_screen.dart';
-import 'features/home/home_screen.dart';
 import 'features/onboarding/consent_screen.dart';
 import 'features/onboarding/login_screen.dart';
 import 'features/onboarding/permission_screen.dart';
 import 'features/onboarding/profile_setup_screen.dart';
-import 'features/ranking/ranking_screen.dart';
-import 'features/ranking/region_ranking_screen.dart';
-import 'features/ranking/region_select_screen.dart';
-import 'features/run/presentation/free_run_screen.dart';
 import 'main_shell.dart';
 import 'routes.dart';
 
@@ -47,20 +38,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: Routes.consent, builder: (_, _) => const ConsentScreen()),
       GoRoute(path: Routes.permission, builder: (_, _) => const PermissionScreen()),
       GoRoute(path: Routes.profile, builder: (_, _) => const ProfileSetupScreen()),
-      GoRoute(path: Routes.courseCreate, builder: (_, state) => RouteDrawScreen(camera: state.extra as MapCamera?)),
-      GoRoute(path: Routes.courseInfo, builder: (_, state) => CourseInfoScreen(route: state.extra! as GeneratedRoute)),
       StatefulShellRoute.indexedStack(
         builder: (_, _, shell) => MainShell(shell: shell),
         branches: [
-          StatefulShellBranch(routes: [GoRoute(path: Routes.home, builder: (_, _) => const HomeScreen())]),
-          StatefulShellBranch(routes: [GoRoute(path: Routes.run, builder: (_, _) => const FreeRunScreen())]),
-          StatefulShellBranch(routes: [GoRoute(path: Routes.ranking, builder: (_, _) => const RankingScreen())]),
+          for (final (path, title) in [(Routes.home, '홈'), (Routes.run, '달리기'), (Routes.ranking, '랭킹')])
+            StatefulShellBranch(routes: [GoRoute(path: path, builder: (_, _) => PlaceholderTab(title: title))]),
           StatefulShellBranch(routes: [GoRoute(path: Routes.my, builder: (_, _) => const MyPlaceholderTab())]),
         ],
       ),
-      // 하단 탭을 덮는 화면
-      GoRoute(path: Routes.rankingRegion, builder: (_, _) => const RegionRankingScreen()),
-      GoRoute(path: Routes.rankingRegionSelect, builder: (_, _) => const RegionSelectScreen()),
     ],
   );
   ref.onDispose(router.dispose);
