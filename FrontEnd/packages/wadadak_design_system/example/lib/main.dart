@@ -328,6 +328,17 @@ class _CatalogPageState extends State<CatalogPage> {
               const WdRegionCountBubble(count: '1,240', region: '서울'),
             ]),
             const WdSheetPeek(title: '↑ 위로 올려 코스 목록 보기', meta: ' 전국 3,412'),
+            const WdMapHint('지도를 탭해 경로 그리기 · 점을 순서대로 연결'),
+            Row(spacing: 16, children: [
+              WdMapPillButton('↺  되돌리기', bold: true, onPressed: () {}),
+              WdMapPillButton('✕  전체 지우기', onPressed: () {}),
+              WdMapPillButton.small('＋ 코스 만들기', onPressed: () {}),
+            ]),
+            const Row(spacing: 16, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              WdRouteEndpoint.start(),
+              WdRouteEndpoint.end(),
+              WdRouteLegend(),
+            ]),
           ]),
         ),
       ]);

@@ -25,6 +25,12 @@ abstract final class WdTheme {
           error: WdColors.warningText,
         ),
         dividerTheme: const DividerThemeData(color: WdColors.map, thickness: 1, space: 1),
+        // 기본은 주색(라임)이라 흰 다이얼로그 위에서 읽기 어렵다.
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(foregroundColor: WdColors.ink, textStyle: WdText.button15),
+        ),
+        // 스낵바는 어두운 바탕이라 동작 버튼을 라임으로 둔다.
+        snackBarTheme: const SnackBarThemeData(actionTextColor: WdColors.lime),
         textTheme: const TextTheme(
           titleLarge: WdText.ko20Bold,
           titleMedium: WdText.ko16Bold,

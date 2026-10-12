@@ -7,10 +7,13 @@ enum WdBannerTone { info, warning, success }
 
 /// Info banner — 규칙·상태 안내. 스피드 고스트 아이콘 + 11px 문구.
 class WdInfoBanner extends StatelessWidget {
-  const WdInfoBanner(this.text, {super.key, this.tone = WdBannerTone.info});
+  const WdInfoBanner(this.text, {super.key, this.tone = WdBannerTone.info, this.plain = false});
 
   final String text;
   final WdBannerTone tone;
+
+  /// 바탕 없이 회색 12px 문구(B3 하루 등록 한도 안내). 아이콘은 [tone]을 따른다.
+  final bool plain;
 
   @override
   Widget build(BuildContext context) {
@@ -19,6 +22,19 @@ class WdInfoBanner extends StatelessWidget {
       WdBannerTone.warning => (WdColors.warningBg, WdColors.warning, WdIcons.ghostWarning),
       WdBannerTone.success => (WdColors.successBg, WdColors.success, WdIcons.ghostSuccess),
     };
+    if (plain) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: WdSpace.s8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          spacing: WdSpace.s8,
+          children: [
+            WdIcon(icon, size: 16),
+            Expanded(child: Text(text, style: WdText.raw(12, FontWeight.w400, 18).copyWith(color: WdColors.muted))),
+          ],
+        ),
+      );
+    }
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: WdSpace.s12, vertical: WdSpace.s10),
       decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
