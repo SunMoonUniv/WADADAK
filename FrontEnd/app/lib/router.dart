@@ -12,6 +12,9 @@ import 'features/onboarding/consent_screen.dart';
 import 'features/onboarding/login_screen.dart';
 import 'features/onboarding/permission_screen.dart';
 import 'features/onboarding/profile_setup_screen.dart';
+import 'features/ranking/ranking_screen.dart';
+import 'features/ranking/region_ranking_screen.dart';
+import 'features/ranking/region_select_screen.dart';
 import 'main_shell.dart';
 import 'routes.dart';
 
@@ -49,11 +52,14 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, _, shell) => MainShell(shell: shell),
         branches: [
           StatefulShellBranch(routes: [GoRoute(path: Routes.home, builder: (_, _) => const HomeScreen())]),
-          for (final (path, title) in [(Routes.run, '달리기'), (Routes.ranking, '랭킹')])
-            StatefulShellBranch(routes: [GoRoute(path: path, builder: (_, _) => PlaceholderTab(title: title))]),
+          StatefulShellBranch(routes: [GoRoute(path: Routes.run, builder: (_, _) => const PlaceholderTab(title: '달리기'))]),
+          StatefulShellBranch(routes: [GoRoute(path: Routes.ranking, builder: (_, _) => const RankingScreen())]),
           StatefulShellBranch(routes: [GoRoute(path: Routes.my, builder: (_, _) => const MyPlaceholderTab())]),
         ],
       ),
+      // 하단 탭을 덮는 화면
+      GoRoute(path: Routes.rankingRegion, builder: (_, _) => const RegionRankingScreen()),
+      GoRoute(path: Routes.rankingRegionSelect, builder: (_, _) => const RegionSelectScreen()),
     ],
   );
   ref.onDispose(router.dispose);

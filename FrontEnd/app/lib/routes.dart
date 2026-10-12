@@ -15,4 +15,10 @@ abstract final class Routes {
   static const run = '/run';
   static const ranking = '/ranking';
   static const my = '/my';
+
+  /// I5 · 지역 주간 전체 순위
+  static const rankingRegion = '/ranking/region';
+
+  /// I6 · 지역 선택
+  static const rankingRegionSelect = '/ranking/region/select';
 }
