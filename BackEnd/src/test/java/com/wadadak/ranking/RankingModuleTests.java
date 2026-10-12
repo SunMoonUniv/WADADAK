@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -28,13 +29,15 @@ class RankingModuleTests {
     RankingApi rankingApi;
 
     @Test
-    void returnsCandidatesInRankOrderWithoutRequester() {
-        UUID firstPlace = UUID.fromString("00000000-0000-0000-0002-000000000001");
+    void returnsOtherRunnersInRankOrder() {
+        UUID requester = UUID.randomUUID();
 
-        assertThat(rankingApi.getPublicGhostCandidates(COURSE_ID, RankingPeriod.ALL, firstPlace, RankingApi.MAX_LIMIT))
-                .extracting(GhostCandidate::rank)
-                .containsExactly(2, 2, 4);
-        assertThat(rankingApi.getPublicGhostCandidates(COURSE_ID, RankingPeriod.WEEK, UUID.randomUUID(), 1))
+        List<GhostCandidate> candidates = rankingApi.getPublicGhostCandidates(COURSE_ID, RankingPeriod.ALL, requester, RankingApi.MAX_LIMIT);
+
+        // 요청자(5위)는 후보에서만 빠지고 다른 러너의 순위는 그대로다.
+        assertThat(candidates).extracting(GhostCandidate::rank).containsExactly(1, 2, 2, 4, 6, 7, 8, 9, 9, 11);
+        assertThat(candidates).extracting(GhostCandidate::memberId).doesNotContain(requester);
+        assertThat(rankingApi.getPublicGhostCandidates(COURSE_ID, RankingPeriod.WEEK, requester, 1))
                 .extracting(GhostCandidate::rank)
                 .containsExactly(1);
     }
