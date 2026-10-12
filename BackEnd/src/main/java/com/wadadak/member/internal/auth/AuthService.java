@@ -1,6 +1,8 @@
 package com.wadadak.member.internal.auth;
 
+import com.wadadak.common.entity.UuidV7;
 import com.wadadak.common.exception.AppException;
+import com.wadadak.event.member.MemberRegionChangedEvent;
 import com.wadadak.member.MemberErrorCode;
 import com.wadadak.member.internal.account.Agreement;
 import com.wadadak.member.internal.account.AgreementRepository;
@@ -9,6 +11,7 @@ import com.wadadak.member.internal.account.MemberRepository;
 import com.wadadak.member.internal.social.SocialAccount;
 import com.wadadak.member.internal.social.SocialTokenVerifier;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,6 +28,7 @@ class AuthService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final TokenProvider tokenProvider;
     private final SocialTokenVerifier socialTokenVerifier;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
 
     /** 소셜 검증(외부 호출)은 트랜잭션 밖에서 한다. */
@@ -47,6 +51,8 @@ class AuthService {
         Member member = memberRepository.save(Member.join(account, request.nickname(), request.bio(),
                 request.regionCode(), request.affiliation(), request.runningExperience()));
         agreementRepository.saveAll(Agreement.agreeAll(member.getId()));
+        events.publishEvent(new MemberRegionChangedEvent(UuidV7.create(), clock.instant(), member.getId(),
+                member.getRegionCode(), null, member.getVersion()));
         return issueTokens(member.getId());
     }
 

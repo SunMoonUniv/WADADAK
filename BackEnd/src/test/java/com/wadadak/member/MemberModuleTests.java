@@ -3,6 +3,7 @@ package com.wadadak.member;
 import com.nimbusds.jwt.SignedJWT;
 import com.wadadak.TestcontainersConfiguration;
 import com.wadadak.common.exception.AppException;
+import com.wadadak.event.member.MemberRegionChangedEvent;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -11,6 +12,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
+import org.springframework.modulith.test.AssertablePublishedEvents;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
@@ -48,7 +50,7 @@ class MemberModuleTests {
     JdbcTemplate jdbcTemplate;
 
     @Test
-    void signupThenLoginThenRefresh() throws Exception {
+    void signupThenLoginThenRefresh(AssertablePublishedEvents events) throws Exception {
         JsonNode first = data(post("/login", login("kakao-flow")));
         assertThat(first.get("signupRequired").asBoolean()).isTrue();
 
@@ -70,6 +72,10 @@ class MemberModuleTests {
         assertThat(jdbcTemplate.queryForList(
                 "SELECT type FROM member.agreements WHERE member_id = ? AND version = '1' AND agreed", String.class, memberId))
                 .containsExactlyInAnyOrder("OVER_14", "SERVICE_TERMS", "PRIVACY_POLICY", "LOCATION_TERMS", "PROFILE_INFO");
+        // 가입 때 정한 활동 지역은 이전 지역 없이 발행한다(ranking이 바로 반영).
+        assertThat(events).contains(MemberRegionChangedEvent.class)
+                .matching(e -> e.memberId().equals(memberId) && e.regionCode().equals("1129000000")
+                        && e.previousRegionCode() == null && e.version() == 0);
 
         JsonNode again = data(post("/login", login("kakao-flow")));
         assertThat(again.get("signupRequired").asBoolean()).isFalse();
