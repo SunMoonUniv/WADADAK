@@ -39,6 +39,7 @@ dependencies:
   kakao_flutter_sdk_user: ^2.0.1
   wadadak_design_system:
     path: ../packages/wadadak_design_system
+  google_sign_in: ^7.2.0
 
 dev_dependencies:
   flutter_test:
