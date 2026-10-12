@@ -59,16 +59,18 @@ class _NaverMapViewState extends State<NaverMapView> {
       await controller.deleteOverlay(NOverlayInfo(type: NOverlayType.pathOverlay, id: id));
       _shownLines.remove(id);
     }
-    final changedLines = lines.values.where((line) {
-      final shown = _shownLines[line.id];
-      return shown == null || shown.style != line.style || !listEquals(shown.points, line.points);
-    }).toList();
+    // 화면이 같은 목록에 점을 이어 붙여도(러닝 주행선) 비교되게 점을 복사해 두고, 그 복사본을 올린다.
+    // 올리기를 기다린 뒤에 복사하면 그사이 붙은 점이 올라간 것으로 기록돼 다음 반영이 빠진다.
+    final changedLines = lines.values
+        .where((line) {
+          final shown = _shownLines[line.id];
+          return shown == null || shown.style != line.style || !listEquals(shown.points, line.points);
+        })
+        .map((line) => MapLine(id: line.id, points: List.of(line.points), style: line.style))
+        .toList();
     // 같은 id로 다시 올리면 SDK가 이전 것을 바꿔 끼운다.
     if (changedLines.isNotEmpty) await controller.addOverlayAll({for (final line in changedLines) _path(line)});
-    // 화면이 같은 목록을 고쳐 다시 넘겨도 비교되게 올린 때의 점을 복사해 둔다.
-    _shownLines.addAll({
-      for (final line in changedLines) line.id: MapLine(id: line.id, points: List.of(line.points), style: line.style),
-    });
+    _shownLines.addAll({for (final line in changedLines) line.id: line});
 
     final markers = {for (final marker in widget.map.markers) marker.id: marker};
     for (final id in _shownMarkers.keys.where((id) => !markers.containsKey(id)).toList()) {
