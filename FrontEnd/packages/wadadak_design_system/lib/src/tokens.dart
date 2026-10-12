@@ -71,6 +71,9 @@ abstract final class WdColors {
   static const chartBar = Color(0xFFC7D1BF); // 구간 차트 기본 막대
   static const photoPlaceholder = Color(0xFFDFE5D8); // 리뷰 사진 자리
   static const switchOff = Color(0xFFD9D9DE);
+  static const podiumGold = Color(0xFFF2C94C); // 랭킹 시상대 1위
+  static const podiumSilver = Color(0xFFCFD5D8); // 랭킹 시상대 2위
+  static const podiumBronze = Color(0xFFD49A6A); // 랭킹 시상대 3위
 }
 
 /// 간격 토큰 (--a-space-*).
