@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/auth/auth_controller.dart';
+import 'features/home/home_screen.dart';
 import 'features/onboarding/consent_screen.dart';
 import 'features/onboarding/login_screen.dart';
 import 'features/onboarding/permission_screen.dart';
@@ -41,7 +42,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       StatefulShellRoute.indexedStack(
         builder: (_, _, shell) => MainShell(shell: shell),
         branches: [
-          for (final (path, title) in [(Routes.home, '홈'), (Routes.run, '달리기'), (Routes.ranking, '랭킹')])
+          StatefulShellBranch(routes: [GoRoute(path: Routes.home, builder: (_, _) => const HomeScreen())]),
+          for (final (path, title) in [(Routes.run, '달리기'), (Routes.ranking, '랭킹')])
             StatefulShellBranch(routes: [GoRoute(path: path, builder: (_, _) => PlaceholderTab(title: title))]),
           StatefulShellBranch(routes: [GoRoute(path: Routes.my, builder: (_, _) => const MyPlaceholderTab())]),
         ],

@@ -5,6 +5,8 @@ import 'package:wadadak/core/api/api_client.dart';
 import 'package:wadadak/core/api/member_api_client.dart';
 import 'package:wadadak/core/auth/social_login.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
+import 'package:wadadak/core/map/map_view.dart';
+import 'package:wadadak/features/home/home_screen.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
 import 'package:wadadak/main.dart';
 
@@ -26,6 +28,7 @@ void main() {
         tokenStorageProvider.overrideWithValue(storage),
         socialLoginProvider.overrideWithValue(FakeSocialLogin()),
         runPermissionsProvider.overrideWithValue(permissions),
+        mapEngineProvider.overrideWithValue(MapEngine.dev),
       ],
       child: const WadadakApp(),
     ));
@@ -82,7 +85,7 @@ void main() {
     await fillProfile(tester, '흐름러너');
     await tap(tester, find.text('시작하기'));
 
-    expect(find.text('준비 중인 화면이에요'), findsOneWidget);
+    expect(find.byType(HomeScreen), findsOneWidget);
     expect(api.signedUp, {
       'signupToken': 'signup-token',
       'agreements': const Agreements.all(true).toJson(),
@@ -132,7 +135,7 @@ void main() {
     await startApp(tester);
 
     await tap(tester, find.text('카카오 로그인'));
-    expect(find.text('준비 중인 화면이에요'), findsOneWidget);
+    expect(find.byType(HomeScreen), findsOneWidget);
 
     await tap(tester, find.text('MY'));
     await tap(tester, find.text('로그아웃'));
@@ -146,6 +149,6 @@ void main() {
     storage.tokens = testTokens;
     await startApp(tester);
 
-    expect(find.text('준비 중인 화면이에요'), findsOneWidget);
+    expect(find.byType(HomeScreen), findsOneWidget);
   });
 }

@@ -101,14 +101,14 @@ Figma는 아직 Noto Sans KR · Inter다. 디자이너 PC에 Pretendard를 설�
 | Run / Lap records · Ghost lead card · Course progress | `WdLapRecords` · `WdGhostLeadCard` · `WdCourseProgress` |
 | Run controls / Pause · Paused buttons · Countdown | `WdPageIndicator` + `WdRunPauseButton` · `WdRunPausedButtons` · `WdSensorStatus` + `WdButton` |
 | Run prep / Selected course · Record card | `WdSelectedCourseCard` · `WdRecordCard` |
-| Map button / Locate · Zoom · Km marker · Route point | `WdMapLocateButton` · `WdMapZoomControl` · `WdKmMarker` · `WdRoutePoint` |
+| Map button / Locate · Km marker · Route point | `WdMapLocateButton` · `WdKmMarker` · `WdRoutePoint` |
 | Map / Region count bubble · Sheet peek · Thumbnail | `WdRegionCountBubble` · `WdSheetPeek` · `WdRouteThumbnail` |
 | Analysis / Segment chart · Segment table | `WdSegmentChart` · `WdSegmentTable` |
 | A 확장 / Avatar | `WdAvatar` |
 | Information · Notice / Speed ghost, 브랜드 로고 | `WdIcon(WdIcons.ghostInfo …)`, `WdLogo` |
 
 옮기지 않은 것: Status bar·홈 인디케이터(OS가 그림), Map / Base illustration(시안용 지도 그림 — 실제는 지도 SDK),
-Backdrop 사각형(전시용 배경).
+Backdrop 사각형(전시용 배경), Map button / Zoom(확대·축소 버튼 — 정책 MAP-02로 두지 않는다, 확대·축소는 지도 제스처).
 
 ## 아이콘
 
