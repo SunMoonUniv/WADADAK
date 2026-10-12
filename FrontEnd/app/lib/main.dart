@@ -4,11 +4,13 @@ import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart' show KakaoSd
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import 'core/config.dart';
+import 'core/map/map_view.dart';
 import 'router.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await KakaoSdk.init(nativeAppKey: kakaoNativeAppKey);
+  await initMap();
   runApp(const ProviderScope(child: WadadakApp()));
 }
 

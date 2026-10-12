@@ -19,7 +19,8 @@
 | 앱 프로젝트 (`app/`) — Riverpod · go_router · dio, 하단 탭 4개 | ✅ 뼈대 |
 | 화면 | 🟡 4 / 72 (온보딩: A1 · 소셜 정보 동의 · 권한 안내 · F2) |
 | 로그인 · 토큰 저장 · 자동 갱신 | 🟡 서버 연동 · 카카오 SDK 완료, Google · Apple SDK는 아직 |
-| API · 지도 · 위치 추적 연동 | ⬜ 시작 전 |
+| 지도 — `core/map` (네이버 지도 SDK 래퍼 · 키 없이 도는 개발용 지도) | 🟡 홈 탭에 연결 |
+| API · 위치 추적 연동 | ⬜ 시작 전 |
 
 즉 **디자인 시스템과 앱 뼈대, 온보딩까지 준비된 상태**다. 탭 화면 4개는 자리만 있다.
 
@@ -53,9 +54,10 @@ FrontEnd/
 │     ├─ router.dart · routes.dart      # 로그인 상태로 화면 분기 (A1 · 온보딩 · 탭)
 │     ├─ main_shell.dart                # 하단 탭 4개 (각 탭은 담당자가 채운다)
 │     ├─ core/                          # API 클라이언트 · 인증 · 위치 · 공통 오류/빈 상태 화면
-│     │  ├─ config.dart                 #   서버 주소 (API_BASE_URL)
+│     │  ├─ config.dart                 #   서버 주소 (API_BASE_URL) · 로그인 · 지도 방식과 공개 키
 │     │  ├─ api/                        #   Dio · ApiResult 해석 · 서버 모듈별 클라이언트
-│     │  └─ auth/                       #   로그인 상태 · 토큰 보안 저장 · 401 자동 갱신 · 소셜 로그인
+│     │  ├─ auth/                       #   로그인 상태 · 토큰 보안 저장 · 401 자동 갱신 · 소셜 로그인
+│     │  └─ map/                        #   MapView · MapController (화면은 이것만 쓴다)
 │     └─ features/                      # Figma 디자인 페이지 섹션 단위
 │        ├─ onboarding/                 #   🚪 온보딩 (A1 · 동의 · 권한 · 프로필)
 │        ├─ home/                       #   🏠 홈 · 코스 탐색
@@ -105,6 +107,9 @@ flutter test
   # FrontEnd/app/
   flutter run --dart-define=REAL_SOCIAL_LOGIN=false
   ```
+- 지도는 네이버 지도 SDK다. Client ID는 `core/config.dart`의 공개 값이다(NCP 콘솔 Application에 앱 ID `com.wadadak.app`으로 등록, Client Secret은 쓰지 않는다).
+  - 화면은 `core/map`의 `MapView`만 쓴다. 선 · 표지는 값으로 넘기고, 카메라는 `onCreated`로 받은 `MapController`로 움직인다.
+  - 키 없이 시험하려면 `flutter run --dart-define=REAL_MAP=false` — 개발용 지도(배경색 위에 선 · 표지만)가 뜬다. 위젯 테스트는 `mapEngineProvider`를 `MapEngine.dev`로 바꾼다.
 - 저장소 경로에 한글(예: `바탕화면\와다닥`)이 있으면:
   - Android 빌드: `app/android/gradle.properties`의 `android.overridePathCheck=true`로 이미 막아 두었다.
   - `flutter analyze`가 분석 서버 오류로 멈춘다. 대신 `dart analyze`를 쓴다.
@@ -115,6 +120,7 @@ flutter test
 ### 1. 개발 환경
 - [ ] Flutter SDK 최신 stable 설치 (3.47.6에서 확인 · 3.32 미만은 `flutter_lints 6` 설치 실패) — `flutter doctor`로 확인
 - [ ] 카탈로그 앱 실행 확인: `cd packages/wadadak_design_system/example && flutter run -d chrome`
+- Android 빌드가 `Android sdkmanager did not install NDK ...`로 실패하면: 새 Command-line Tools는 패키지 이름이 `ndk/버전` 형식이라 Gradle의 NDK 자동 설치가 실패한다. 오류에 나온 버전을 직접 설치한다 — `<Android SDK>/cmdline-tools/latest/bin/android sdk install ndk/28.2.13676358` 또는 Android Studio SDK Manager → SDK Tools → NDK (Side by side) → Show Package Details
 - 아마 알겠지만 git clone 하면 pubspec.lock과 .dart_tool/ 이게 없어서 빌드 하다 오류 날 수도 있으니, 안드로이드 스튜디오면 packages/wadadak_design_system/pubspec.yaml 이거 열어서 Pub get 하거나, 터미널에 명령어 입력하셈 : `cd packages/wadadak_design_system && flutter pub get && cd example && flutter pub get` 
 
 ### 2. 팀 결정
@@ -263,7 +269,8 @@ Figma `디자인 · 전체 화면 (와이어프레임 기준)` 페이지의 섹�
 - [x] 토큰 보안 저장 · 401 자동 갱신(갱신은 한 번에 하나) · 로그아웃
 - [x] 위치 · 동작 및 피트니스 권한 요청 (권한 안내 화면 순서대로)
 - [ ] API 연결 (가짜 데이터 → 실제 데이터)
-- [ ] 지도 SDK — 코스 경로 · km 표지 · 지역별 개수 표시
+- [x] 지도 SDK 연결 — `core/map` `MapView`(선 · 표지 · 누른 위치 · 카메라 범위 · 현재 위치), 홈 탭에 표시
+- [ ] 지도 위 코스 경로 · km 표지 · 지역별 개수 표시 (각 화면에서)
 - [ ] GPS 러닝 기록 — 백그라운드 추적, 페이스 · 거리 · 구간 계산, 경로 이탈 판정
 - [ ] 케이던스 측정 (걸음 센서)
 - [ ] 고스트 대결 — 기록 재생과 앞섬/뒤처짐 비교
