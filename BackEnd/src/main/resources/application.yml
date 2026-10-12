@@ -48,4 +48,5 @@ app:
       # 카카오 앱 ID는 공개 값이다(토큰 정보로 누구나 본다). 키가 아니다.
       kakao-app-id: ${KAKAO_APP_ID:1573475}
       apple-client-ids: ${APPLE_CLIENT_IDS:}
-      google-client-ids: ${GOOGLE_CLIENT_IDS:}
+      # Google 웹 클라이언트 ID(wadadak-server)도 공개 값이다. 앱이 serverClientId로 넘겨 ID 토큰의 aud가 된다.
+      google-client-ids: ${GOOGLE_CLIENT_IDS:1048451496052-jmrq4n20oah17vkcru3qv6gikrc23obs.apps.googleusercontent.com}

@@ -171,7 +171,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                   children: [
                     const WdIcon(WdIcons.ghostInfo, size: 16),
                     Expanded(
-                      child: Text('지역과 소속은 주간 랭킹 그룹을 정하는 데 쓰여요.', style: helper.copyWith(color: WdColors.muted)),
+                      child: Text('활동 지역은 지역 주간 랭킹에 쓰여요.', style: helper.copyWith(color: WdColors.muted)),
                     ),
                   ],
                 ),

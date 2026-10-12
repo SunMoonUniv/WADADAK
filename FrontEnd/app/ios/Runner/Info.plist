@@ -26,6 +26,13 @@
 				<string>kakao57b43e47368fd814ab5a8ae64dd726d3</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<!-- Google 로그인 후 앱으로 돌아오는 스킴. iOS 클라이언트 ID의 역방향(lib/core/config.dart googleIosClientId와 짝) -->
+				<string>com.googleusercontent.apps.1048451496052-d45s2heki1u509122fh6g7d3q5cpdpre</string>
+			</array>
+		</dict>
 	</array>
 	<key>LSApplicationQueriesSchemes</key>
 	<array>

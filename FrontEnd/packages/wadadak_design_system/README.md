@@ -88,7 +88,7 @@ Figma는 아직 Noto Sans KR · Inter다. 디자이너 PC에 Pretendard를 설�
 | Brand / Splash logo | 앱 마크 `WdIcon(WdIcons.brandGhost)` + `WdLogo(wordmarkOnly: true)` |
 | Consent row · List row · Stepper | `WdConsentRow` · `WdListRow` (+`WdSwitch`) · `WdStepper` |
 | Review / Rating form · Photo upload | `WdRatingRow` · `WdPhotoUpload` |
-| Info banner · State / Message | `WdInfoBanner` · `WdStateMessage` |
+| Info banner · State / Message | `WdInfoBanner`(B3처럼 바탕 없는 회색 문구는 `plain: true`) · `WdStateMessage` |
 | Progress bar · Progress / Remaining distance | `WdProgressBar` · `WdRemainingDistance(dark:)` |
 | Course / Summary tile · Info grid · Build summary | `WdSummaryTile` · `WdSummaryTiles` |
 | A DS / Metric · Card / Stat summary | `WdMetric(dark:)` · `WdStatSummary` |
@@ -101,14 +101,15 @@ Figma는 아직 Noto Sans KR · Inter다. 디자이너 PC에 Pretendard를 설�
 | Run / Lap records · Ghost lead card · Course progress | `WdLapRecords` · `WdGhostLeadCard` · `WdCourseProgress` |
 | Run controls / Pause · Paused buttons · Countdown | `WdPageIndicator` + `WdRunPauseButton` · `WdRunPausedButtons` · `WdSensorStatus` + `WdButton` |
 | Run prep / Selected course · Record card | `WdSelectedCourseCard` · `WdRecordCard` |
-| Map button / Locate · Zoom · Km marker · Route point | `WdMapLocateButton` · `WdMapZoomControl` · `WdKmMarker` · `WdRoutePoint` |
+| Map button / Locate · Km marker · Route point | `WdMapLocateButton` · `WdKmMarker` · `WdRoutePoint` |
 | Map / Region count bubble · Sheet peek · Thumbnail | `WdRegionCountBubble` · `WdSheetPeek` · `WdRouteThumbnail` |
+| (컴포넌트 아님) B3 지도 안내 · 되돌리기·전체 지우기·홈 `＋ 코스 만들기` · 출발·도착 · 범례 | `WdMapHint` · `WdMapPillButton`(`.small`) · `WdRouteEndpoint.start/.end` · `WdRouteLegend` — B3·A4 화면에 그려진 값을 옮겼다 |
 | Analysis / Segment chart · Segment table | `WdSegmentChart` · `WdSegmentTable` |
 | A 확장 / Avatar | `WdAvatar` |
 | Information · Notice / Speed ghost, 브랜드 로고 | `WdIcon(WdIcons.ghostInfo …)`, `WdLogo` |
 
 옮기지 않은 것: Status bar·홈 인디케이터(OS가 그림), Map / Base illustration(시안용 지도 그림 — 실제는 지도 SDK),
-Backdrop 사각형(전시용 배경).
+Backdrop 사각형(전시용 배경), Map button / Zoom(확대·축소 버튼 — 정책 MAP-02로 두지 않는다, 확대·축소는 지도 제스처).
 
 ## 아이콘
 

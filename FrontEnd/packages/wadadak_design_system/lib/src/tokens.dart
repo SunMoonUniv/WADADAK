@@ -63,7 +63,7 @@ abstract final class WdColors {
   static const courseTrack = Color(0xFF363636); // 코스 진행 트랙
   static const ghostMarker = Color(0xFFABABAB); // 코스 진행 위 고스트 위치
   static const runDotInactive = Color(0xFF4A504C); // 페이지 인디케이터
-  static const divider = Color(0xFFE3E6DF); // 지도 줌 버튼 구분선
+  static const divider = Color(0xFFE3E6DF); // 목록 구분선 (권한 안내)
   static const disabledBg = Color(0xFFE3E6DF); // 비활성 버튼 배경
   static const disabledText = Color(0xFF8B9388); // 비활성 버튼 글자
   static const checkOff = Color(0xFFC9CEC6); // 동의 전 체크
@@ -71,6 +71,9 @@ abstract final class WdColors {
   static const chartBar = Color(0xFFC7D1BF); // 구간 차트 기본 막대
   static const photoPlaceholder = Color(0xFFDFE5D8); // 리뷰 사진 자리
   static const switchOff = Color(0xFFD9D9DE);
+  static const podiumGold = Color(0xFFF2C94C); // 랭킹 시상대 1위
+  static const podiumSilver = Color(0xFFCFD5D8); // 랭킹 시상대 2위
+  static const podiumBronze = Color(0xFFD49A6A); // 랭킹 시상대 3위
 }
 
 /// 간격 토큰 (--a-space-*).

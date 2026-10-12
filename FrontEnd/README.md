@@ -1,3 +1,4 @@
+
 # 와다닥 앱
 
 와다닥 러닝 앱의 Flutter 클라이언트.
@@ -13,15 +14,16 @@
 |---|---|
 | 디자인 토큰 — 색 · 간격 · 반경 · 그림자 · 글자 스타일 52종 | ✅ 완료 |
 | 테마 (`WdTheme.light()`) · 아이콘 26개 · 로고 · 글꼴(Pretendard) | ✅ 완료 |
-| 공통 컴포넌트 위젯 58개 | ✅ 완료 |
+| 공통 컴포넌트 위젯 61개 | ✅ 완료 |
 | 컴포넌트 카탈로그 앱 + 스모크 테스트 | ✅ 완료 |
 | Figma 디자인 시스템 페이지 (변수 · 스타일 · 컴포넌트 82개 / 29세트) | ✅ 완료 |
 | 앱 프로젝트 (`app/`) — Riverpod · go_router · dio, 하단 탭 4개 | ✅ 뼈대 |
-| 화면 | 🟡 4 / 72 (온보딩: A1 · 소셜 정보 동의 · 권한 안내 · F2) |
+| 화면 | 🟡 9 / 72 (온보딩: A1 · 소셜 정보 동의 · 권한 안내 · F2, 코스: B3 경로 그리기, 랭킹: E1 · I2 · I5 · I6) |
 | 로그인 · 토큰 저장 · 자동 갱신 | 🟡 서버 연동 · 카카오 SDK 완료, Google · Apple SDK는 아직 |
-| API · 지도 · 위치 추적 연동 | ⬜ 시작 전 |
+| 지도 — `core/map` (네이버 지도 SDK 래퍼 · 키 없이 도는 개발용 지도) | 🟡 홈 탭에 연결 |
+| API · 위치 추적 연동 | 🟡 코스 API(경로 생성 · 오늘 남은 등록 수) · 랭킹 API(서버 거리 집계는 아직 스텁), 위치 추적은 시작 전 |
 
-즉 **디자인 시스템과 앱 뼈대, 온보딩까지 준비된 상태**다. 탭 화면 4개는 자리만 있다.
+즉 **디자인 시스템과 앱 뼈대, 온보딩, 랭킹 탭까지 준비된 상태**다. 홈 탭은 지도와 코스 만들기(B3)만 있고, 달리기 · MY 탭은 자리만 있다.
 
 ### 구현된 컴포넌트
 
@@ -37,7 +39,7 @@
 | 카드 | `WdSummaryTile(s)` `WdMetric` `WdStatSummary` `WdAvatar` `WdRouteThumbnail` `WdCourseCard` `WdRunRecordCard` `WdReviewCard` |
 | 랭킹 | `WdRankRow` `WdRankList` `WdMyRankCard` |
 | 러닝 | `WdRunHeader` `WdElapsedTime` `WdRunMetricTile` `WdLapRecords` `WdGhostLeadCard` `WdCourseProgress` `WdPageIndicator` `WdRunPauseButton` `WdRunPausedButtons` `WdSensorStatus` `WdSelectedCourseCard` `WdRecordCard` |
-| 지도 위 요소 | `WdMapLocateButton` `WdMapZoomControl` `WdKmMarker` `WdRoutePoint` `WdRegionCountBubble` `WdSheetPeek` |
+| 지도 위 요소 | `WdMapLocateButton` `WdKmMarker` `WdRoutePoint` `WdRegionCountBubble` `WdSheetPeek` `WdMapHint` `WdMapPillButton` `WdRouteEndpoint` `WdRouteLegend` |
 | 분석 | `WdSegmentChart` `WdSegmentTable` |
 
 Figma 컴포넌트와의 1:1 대응표, 토큰 사용법은 [디자인 시스템 README](packages/wadadak_design_system/README.md)에 있다.
@@ -53,15 +55,16 @@ FrontEnd/
 │     ├─ router.dart · routes.dart      # 로그인 상태로 화면 분기 (A1 · 온보딩 · 탭)
 │     ├─ main_shell.dart                # 하단 탭 4개 (각 탭은 담당자가 채운다)
 │     ├─ core/                          # API 클라이언트 · 인증 · 위치 · 공통 오류/빈 상태 화면
-│     │  ├─ config.dart                 #   서버 주소 (API_BASE_URL)
+│     │  ├─ config.dart                 #   서버 주소 (API_BASE_URL) · 로그인 · 지도 방식과 공개 키
 │     │  ├─ api/                        #   Dio · ApiResult 해석 · 서버 모듈별 클라이언트
-│     │  └─ auth/                       #   로그인 상태 · 토큰 보안 저장 · 401 자동 갱신 · 소셜 로그인
+│     │  ├─ auth/                       #   로그인 상태 · 토큰 보안 저장 · 401 자동 갱신 · 소셜 로그인
+│     │  └─ map/                        #   MapView · MapController (화면은 이것만 쓴다)
 │     └─ features/                      # Figma 디자인 페이지 섹션 단위
 │        ├─ onboarding/                 #   🚪 온보딩 (A1 · 동의 · 권한 · 프로필)
 │        ├─ home/                       #   🏠 홈 · 코스 탐색
 │        ├─ course/                     #   📍 코스 상세 · 만들기
 │        ├─ run/                        #   🏃 달리기 준비 · ⏱ 러닝 중 · 📊 러닝 결과 · 분석
-│        ├─ ranking/                    #   🏆 랭킹
+│        ├─ ranking/                    #   🏆 랭킹 (E1 · I2 · I5 · I6)
 │        ├─ review/                     #   💬 리뷰 · 커뮤니티
 │        └─ my/                         #   👤 MY · 설정
 └─ packages/
@@ -79,7 +82,7 @@ FrontEnd/
       └─ example/                       #   컴포넌트 카탈로그 앱 + 스모크 테스트
 ```
 
-`features/` 아래 온보딩 외 폴더는 각 담당자가 화면을 만들 때 생긴다.
+`features/` 아래 온보딩 · 랭킹 외 폴더는 각 담당자가 화면을 만들 때 생긴다.
 
 ## 앱 실행
 
@@ -105,6 +108,14 @@ flutter test
   # FrontEnd/app/
   flutter run --dart-define=REAL_SOCIAL_LOGIN=false
   ```
+- 지도는 네이버 지도 SDK다. Client ID는 `core/config.dart`의 공개 값이다(NCP 콘솔 Application에 앱 ID `com.wadadak.app`으로 등록, Client Secret은 쓰지 않는다).
+  - 화면은 `core/map`의 `MapView`만 쓴다. 선 · 표지는 값으로 넘기고, 카메라는 `onCreated`로 받은 `MapController`로 움직인다.
+  - 현재 위치: 홈은 지도 SDK가 기기 위치를 받는다(`MyLocationSource.map`, 기본). 러닝은 측정한 좌표를 넘긴다(`MyLocationSource.app` + `myLocation`). 둘 다 `showMyLocation()`으로 따라가고, 지도를 움직이면 따라가기가 꺼진다(`onFollowingChanged`). `hideMyLocation()`으로 끝낸다.
+  - 선 모양은 쓰는 곳마다 나눈다: 홈 · 코스 만들기 코스선 `course`(라임), 러닝 화면 코스선 `runCourse`(흰색), 러닝 주행선 `track`(라임, 코스선 위).
+  - 러닝 화면은 `MapView(dark: true)` — 네이버 지도 야간 모드(내비 지도 유형).
+  - 지도 위에 버튼 · 범례를 올리면 그 높이만큼 `padding`을 준다. 네이버 로고 · 축척이 그 위로 올라가 가리지 않는다(네이버 지도는 로고를 가리면 안 된다).
+  - 거리는 `GeoPoint.distanceTo` · `GeoPoint.pathLength` — 서버(PostGIS `ST_Length(geography)`)와 같은 WGS84 타원체 기준이다.
+  - 키 없이 시험하려면 `flutter run --dart-define=REAL_MAP=false` — 개발용 지도(배경색 위에 선 · 표지만)가 뜬다. 위젯 테스트는 `mapEngineProvider`를 `MapEngine.dev`로 바꾼다.
 - 저장소 경로에 한글(예: `바탕화면\와다닥`)이 있으면:
   - Android 빌드: `app/android/gradle.properties`의 `android.overridePathCheck=true`로 이미 막아 두었다.
   - `flutter analyze`가 분석 서버 오류로 멈춘다. 대신 `dart analyze`를 쓴다.
@@ -115,6 +126,7 @@ flutter test
 ### 1. 개발 환경
 - [ ] Flutter SDK 최신 stable 설치 (3.47.6에서 확인 · 3.32 미만은 `flutter_lints 6` 설치 실패) — `flutter doctor`로 확인
 - [ ] 카탈로그 앱 실행 확인: `cd packages/wadadak_design_system/example && flutter run -d chrome`
+- Android 빌드가 `Android sdkmanager did not install NDK ...`로 실패하면: 새 Command-line Tools는 패키지 이름이 `ndk/버전` 형식이라 Gradle의 NDK 자동 설치가 실패한다. 오류에 나온 버전을 직접 설치한다 — `<Android SDK>/cmdline-tools/latest/bin/android sdk install ndk/28.2.13676358` 또는 Android Studio SDK Manager → SDK Tools → NDK (Side by side) → Show Package Details
 - 아마 알겠지만 git clone 하면 pubspec.lock과 .dart_tool/ 이게 없어서 빌드 하다 오류 날 수도 있으니, 안드로이드 스튜디오면 packages/wadadak_design_system/pubspec.yaml 이거 열어서 Pub get 하거나, 터미널에 명령어 입력하셈 : `cd packages/wadadak_design_system && flutter pub get && cd example && flutter pub get` 
 
 ### 2. 팀 결정
@@ -128,7 +140,7 @@ flutter test
 - [x] `flutter create app` 후 디자인 시스템 연결
 - [x] `MaterialApp.router(theme: WdTheme.light())`, 라우팅, 하단 탭 4개 (홈 · 달리기 · 랭킹 · MY — `WdBottomNav` 기본값)
 
-### 4. 화면 구현 (4 / 72)
+### 4. 화면 구현 (9 / 72)
 
 Figma `디자인 · 전체 화면 (와이어프레임 기준)` 페이지의 섹션 순서 그대로다.
 처음에는 가짜 데이터로 화면만 만들고, API는 나중에 붙인다. 화면 코드에는 색 · 간격 · 글꼴 값을 직접 쓰지 않고 디자인 시스템 토큰과 위젯만 쓴다.
@@ -161,13 +173,13 @@ Figma `디자인 · 전체 화면 (와이어프레임 기준)` 페이지의 섹�
 </details>
 
 <details>
-<summary>📍 코스 상세 · 만들기 (0 / 9)</summary>
+<summary>📍 코스 상세 · 만들기 (1 / 9)</summary>
 
 - [ ] B1 · 코스 상세 — 정보
 - [ ] B8 · 코스 상세 — 리뷰
 - [ ] B9 · 코스 상세 — 랭킹
 - [ ] G3 · 코스 전체 순위
-- [ ] B3 · 코스 만들기 (경로 그리기)
+- [x] B3 · 코스 만들기 (경로 그리기) — 생성 방식 탭의 `내가 달려서 등록`은 자리만(F7)
 - [ ] B4 · 코스 만들기 — 내가 달려서 등록
 - [ ] B5 · 코스 정보 입력 & 등록
 - [ ] B6 · 내 기록에서 코스 등록
@@ -228,12 +240,12 @@ Figma `디자인 · 전체 화면 (와이어프레임 기준)` 페이지의 섹�
 </details>
 
 <details>
-<summary>🏆 랭킹 (0 / 4)</summary>
+<summary>🏆 랭킹 (4 / 4)</summary>
 
-- [ ] E1 · 랭킹 — 전체 러너 / 지역 주간
-- [ ] I2 · 지역 주간 랭킹
-- [ ] I5 · 지역 주간 전체 순위
-- [ ] I6 · 지역 선택
+- [x] E1 · 랭킹 — 전체 러너 / 지역 주간 — 러너를 누르면 I3로 가는 연결은 I3가 생기면 추가. 내 순위 카드 이름은 `나`(내 프로필 조회 API가 생기면 `나 (닉네임)`)
+- [x] I2 · 지역 주간 랭킹
+- [x] I5 · 지역 주간 전체 순위
+- [x] I6 · 지역 선택 — 최근 선택은 로그인한 동안만 기억
 </details>
 
 <details>
@@ -263,7 +275,10 @@ Figma `디자인 · 전체 화면 (와이어프레임 기준)` 페이지의 섹�
 - [x] 토큰 보안 저장 · 401 자동 갱신(갱신은 한 번에 하나) · 로그아웃
 - [x] 위치 · 동작 및 피트니스 권한 요청 (권한 안내 화면 순서대로)
 - [ ] API 연결 (가짜 데이터 → 실제 데이터)
-- [ ] 지도 SDK — 코스 경로 · km 표지 · 지역별 개수 표시
+  - [x] 코스: 경로 생성 · 오늘 남은 등록 수 (`core/api/course_api_client.dart`)
+  - [x] 랭킹: 누적 거리 · 지역 주간 랭킹, 지역 검색 (`core/api/ranking_api_client.dart`)
+- [x] 지도 SDK 연결 — `core/map` `MapView`(선 · 표지 · 누른 위치 · 카메라 범위 · 현재 위치 · 러닝 좌표 따라가기), 홈 탭에 표시
+- [ ] 지도 위 코스 경로 · km 표지 · 지역별 개수 표시 (각 화면에서)
 - [ ] GPS 러닝 기록 — 백그라운드 추적, 페이스 · 거리 · 구간 계산, 경로 이탈 판정
 - [ ] 케이던스 측정 (걸음 센서)
 - [ ] 고스트 대결 — 기록 재생과 앞섬/뒤처짐 비교

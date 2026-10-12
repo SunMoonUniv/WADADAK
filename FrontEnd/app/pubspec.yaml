@@ -38,8 +38,12 @@ dependencies:
   flutter_secure_storage: ^11.2.0
   permission_handler: ^13.0.2
   kakao_flutter_sdk_user: ^2.0.1
+  flutter_naver_map: ^1.4.4
+  # 지도 표지에 디자인 시스템 SVG 아이콘을 그림으로 올린다. 디자인 시스템과 같은 버전.
+  flutter_svg: ^2.3.0
   wadadak_design_system:
     path: ../packages/wadadak_design_system
+  google_sign_in: ^7.2.0
 
 dev_dependencies:
   flutter_test:

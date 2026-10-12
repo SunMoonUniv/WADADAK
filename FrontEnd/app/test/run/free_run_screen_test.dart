@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wadadak/core/map/map_view.dart';
 import 'package:wadadak/features/run/application/free_run_controller.dart';
 import 'package:wadadak/features/run/domain/free_run_session.dart';
 import 'package:wadadak/features/run/domain/run_models.dart';
@@ -115,6 +116,7 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [
+          mapEngineProvider.overrideWithValue(MapEngine.dev),
           freeRunControllerProvider.overrideWithValue(controller),
           tokenStorageProvider.overrideWithValue(
             MemoryTokenStorage(testTokens),
