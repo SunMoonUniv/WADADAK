@@ -67,8 +67,17 @@ class WdMetric extends StatelessWidget {
 class WdStatSummary extends StatelessWidget {
   const WdStatSummary(this.items, {super.key});
 
-  /// (라벨, 값)
+  /// (라벨, 값). 값의 마지막 공백 뒤는 단위로 보고 13px로 작게 쓴다 (예: `102.4 km`).
   final List<(String, String)> items;
+
+  static TextSpan _value(String value) {
+    final space = value.lastIndexOf(' ');
+    if (space < 0) return TextSpan(text: value);
+    return TextSpan(
+      text: value.substring(0, space),
+      children: [TextSpan(text: value.substring(space), style: const TextStyle(fontSize: 13))],
+    );
+  }
 
   @override
   Widget build(BuildContext context) => Row(
@@ -84,7 +93,7 @@ class WdStatSummary extends StatelessWidget {
                   spacing: WdSpace.s6,
                   children: [
                     Text(label, style: WdText.raw(12, FontWeight.w500, 16).copyWith(color: WdColors.muted)),
-                    Text(value,
+                    Text.rich(_value(value),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: WdText.raw(22, FontWeight.w700, 28).copyWith(color: WdColors.ink)),

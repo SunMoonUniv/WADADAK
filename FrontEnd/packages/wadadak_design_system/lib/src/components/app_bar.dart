@@ -156,7 +156,7 @@ class _FullHeightTap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Semantics(
-        button: true,
+        button: onTap != null,
         label: semanticLabel,
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
