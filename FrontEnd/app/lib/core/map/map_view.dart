@@ -38,6 +38,7 @@ class MapView extends ConsumerWidget {
     this.lines = const [],
     this.markers = const [],
     this.padding = EdgeInsets.zero,
+    this.dark = false,
     this.myLocationSource = MyLocationSource.map,
     this.myLocation,
     this.onCreated,
@@ -55,6 +56,9 @@ class MapView extends ConsumerWidget {
 
   /// 지도 위를 덮는 화면 요소(시트·버튼)만큼 안쪽 여백. 카메라 중심·전체 보기가 이 여백을 뺀 영역 기준이 된다.
   final EdgeInsets padding;
+
+  /// 어두운 지도(러닝 화면). 네이버 지도는 야간 모드로 그린다(야간 모드를 지원하는 내비 지도 유형). 지도를 띄운 뒤 바꾸지 않는다.
+  final bool dark;
 
   /// 현재 위치를 어디서 받나. 지도를 띄운 뒤 바꾸지 않는다.
   final MyLocationSource myLocationSource;
@@ -135,14 +139,16 @@ class MapLine {
   final MapLineStyle style;
 }
 
-/// 선 모양. 겹치면 뒤에 적힌 모양이 위에 그려진다.
+/// 선 모양. 쓰는 곳마다 나눠 두어 한 곳의 색을 바꿔도 다른 곳은 그대로다. 겹치면 뒤에 적힌 모양이 위에 그려진다.
 enum MapLineStyle {
-  /// 코스 경로. 라임 선 + 잉크 테두리(Figma 코스 썸네일과 같다). 자유 러닝 주행선도 이것이다(Figma H4-1).
+  /// 홈·코스 만들기·코스 상세의 코스 경로. 라임 선 + 잉크 테두리(Figma 코스 썸네일과 같다).
   course(color: WdColors.lime, outlineColor: WdColors.ink, width: 6, outlineWidth: 2),
 
-  /// 코스 러닝에서 코스 위에 겹치는 실제 주행선. 코스선 안에 보이게 가늘다.
-  /// Figma(C4-1)에 코스선과 구분된 주행선이 없어 정한 임시 값이다. 디자인이 나오면 바꾼다.
-  recorded(color: WdColors.white, outlineColor: WdColors.ink, width: 3, outlineWidth: 1);
+  /// 러닝 화면(어두운 지도)의 코스 경로. 흰 선 + 잉크 테두리. 위에 겹치는 [track]과 구분된다.
+  runCourse(color: WdColors.white, outlineColor: WdColors.ink, width: 6, outlineWidth: 2),
+
+  /// 러닝 화면의 실제 주행선(자유·코스 러닝·고스트 대결). 라임 선 + 잉크 테두리(Figma H4-1). 코스선 위에 그려진다.
+  track(color: WdColors.lime, outlineColor: WdColors.ink, width: 6, outlineWidth: 2);
 
   const MapLineStyle({required this.color, required this.outlineColor, required this.width, required this.outlineWidth});
 

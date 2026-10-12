@@ -173,7 +173,7 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
             }),
             onScaleEnd: (_) => _idle(),
             child: ColoredBox(
-              color: WdColors.map,
+              color: map.dark ? WdColors.dark : WdColors.map,
               child: Stack(
                 children: [
                   Positioned.fill(
