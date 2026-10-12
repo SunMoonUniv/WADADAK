@@ -7,6 +7,7 @@ import 'features/onboarding/consent_screen.dart';
 import 'features/onboarding/login_screen.dart';
 import 'features/onboarding/permission_screen.dart';
 import 'features/onboarding/profile_setup_screen.dart';
+import 'features/run/presentation/free_run_screen.dart';
 import 'main_shell.dart';
 import 'routes.dart';
 
@@ -42,7 +43,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (_, _, shell) => MainShell(shell: shell),
         branches: [
           for (final (path, title) in [(Routes.home, '홈'), (Routes.run, '달리기'), (Routes.ranking, '랭킹')])
-            StatefulShellBranch(routes: [GoRoute(path: path, builder: (_, _) => PlaceholderTab(title: title))]),
+            StatefulShellBranch(routes: [GoRoute(path: path, builder: (_, _) => path == Routes.run ? const FreeRunScreen() : PlaceholderTab(title: title))]),
           StatefulShellBranch(routes: [GoRoute(path: Routes.my, builder: (_, _) => const MyPlaceholderTab())]),
         ],
       ),

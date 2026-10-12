@@ -72,12 +72,16 @@ class WdElapsedTime extends StatelessWidget {
           spacing: WdSpace.s6,
           children: [
             Text(label, style: WdText.raw(14, FontWeight.w500, 17).copyWith(color: WdColors.runTextSub)),
-            Text(
-              time,
-              style: WdText.numeric88.copyWith(
-                color: WdColors.white,
-                // 초가 바뀔 때 글자 폭이 흔들리지 않도록 고정폭 숫자.
-                fontFeatures: const [FontFeature.tabularFigures()],
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                time,
+                maxLines: 1,
+                style: WdText.numeric88.copyWith(
+                  color: WdColors.white,
+                  // 초가 바뀔 때 글자 폭이 흔들리지 않도록 고정폭 숫자.
+                  fontFeatures: const [FontFeature.tabularFigures()],
+                ),
               ),
             ),
             if (caption != null)
