@@ -1,8 +1,10 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:kakao_flutter_sdk_user/kakao_flutter_sdk_user.dart' as kakao;
 
 import '../api/member_api_client.dart';
@@ -44,9 +46,30 @@ class SdkSocialLogin implements SocialLogin {
   @override
   Future<String> signIn(SocialProvider provider) async => switch (provider) {
         SocialProvider.kakao => await _kakao(),
-        // ponytail: Google·Apple SDK는 콘솔 키를 받은 뒤 붙인다.
-        SocialProvider.google || SocialProvider.apple => throw UnsupportedError('${provider.name} 로그인은 아직 연결하지 않았습니다'),
+        SocialProvider.google => await _google(),
+        // ponytail: Apple 로그인은 iOS 출시(Apple Developer Program 가입) 때 붙인다(개발 정책 1.2).
+        SocialProvider.apple => throw UnsupportedError('apple 로그인은 아직 연결하지 않았습니다'),
       };
+
+  /// GoogleSignIn.initialize는 앱 실행 중 한 번만 호출해야 한다.
+  static Future<void>? _googleInit;
+
+  /// Google 계정을 고르고 서버가 검증할 ID 토큰을 받는다.
+  Future<String> _google() async {
+    final google = GoogleSignIn.instance;
+    await (_googleInit ??= google.initialize(
+      clientId: defaultTargetPlatform == TargetPlatform.iOS ? googleIosClientId : null,
+      serverClientId: googleServerClientId,
+    ));
+    try {
+      final idToken = (await google.authenticate()).authentication.idToken;
+      if (idToken == null) throw StateError('Google ID 토큰을 받지 못했습니다');
+      return idToken;
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) throw const SocialLoginCanceled();
+      rethrow;
+    }
+  }
 
   /// 카카오톡이 있으면 카카오톡으로, 없거나 카카오톡 로그인이 실패하면 카카오계정(웹)으로 로그인한다.
   Future<String> _kakao() async {
