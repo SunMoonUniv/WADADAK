@@ -27,8 +27,13 @@ class NaverMapView extends StatefulWidget {
   State<NaverMapView> createState() => _NaverMapViewState();
 }
 
-class _NaverMapViewState extends State<NaverMapView> {
+class _NaverMapViewState extends State<NaverMapView> implements MapController {
   NaverMapController? _controller;
+
+  bool _following = false;
+
+  // MyLocationSource.app일 때 현재 위치 점을 보이는 중인지. map이면 SDK가 위치 추적 모드로 관리한다.
+  bool _showingAppLocation = false;
 
   // 지도에 올라가 있는 선·표지. 다시 그릴 때 이것과 비교해 바뀐 것만 반영한다.
   final _shownLines = <String, MapLine>{};
@@ -40,6 +45,7 @@ class _NaverMapViewState extends State<NaverMapView> {
   void didUpdateWidget(NaverMapView oldWidget) {
     super.didUpdateWidget(oldWidget);
     _sync();
+    if (widget.map.myLocation != oldWidget.map.myLocation) _placeAppLocation();
   }
 
   /// 표지 그림을 만드는 동안 다시 그려질 수 있어 차례로 반영한다.
@@ -111,7 +117,7 @@ class _NaverMapViewState extends State<NaverMapView> {
         color: line.style.color,
         outlineWidth: line.style.outlineWidth,
         outlineColor: line.style.outlineColor,
-      );
+      )..setZIndex(line.style.index);
 
   Future<NOverlayImage> _image(MapMarker marker) => _images[marker.look] ??= switch (marker) {
         MapMarker(:final icon?) => _iconImage(icon),
@@ -165,37 +171,87 @@ class _NaverMapViewState extends State<NaverMapView> {
         ),
         onMapReady: (controller) {
           _controller = controller;
-          widget.map.onCreated?.call(_NaverMapController(controller));
+          widget.map.onCreated?.call(this);
           _sync();
           // 처음 카메라는 준비 전에 멈춰 onCameraIdle이 오지 않는다.
           _cameraIdle();
         },
         onMapTapped: (_, latLng) => widget.map.onTap?.call(_geoPoint(latLng)),
+        // SDK의 위치 추적과 같은 규칙: 따라가기 말고 다른 이유로 카메라가 움직이면 따라가기를 끈다.
+        onCameraChange: (reason, _) {
+          if (reason != NCameraUpdateReason.location) _setFollowing(false);
+        },
         onCameraIdle: _cameraIdle,
       );
-}
 
-class _NaverMapController implements MapController {
-  _NaverMapController(this._controller);
+  void _setFollowing(bool following) {
+    if (_following == following) return;
+    _following = following;
+    widget.map.onFollowingChanged?.call(following);
+  }
 
-  final NaverMapController _controller;
+  /// [MyLocationSource.app]의 현재 위치 점을 [MapView.myLocation]에 놓고, 따라가는 중이면 카메라도 옮긴다.
+  void _placeAppLocation() {
+    final controller = _controller;
+    if (controller == null || widget.map.myLocationSource != MyLocationSource.app) return;
+    final location = widget.map.myLocation;
+    final overlay = controller.getLocationOverlay();
+    if (!_showingAppLocation || location == null) {
+      overlay.setIsVisible(false);
+      return;
+    }
+    overlay
+      ..setPosition(_latLng(location))
+      // 방향을 모르므로 방향 표시는 뺀다.
+      ..setSubIcon(null)
+      ..setIsVisible(true);
+    if (_following) {
+      controller.updateCamera(NCameraUpdate.withParams(target: _latLng(location))..setReason(NCameraUpdateReason.location));
+    }
+  }
 
   @override
-  Future<void> moveTo(GeoPoint center, {double? zoom}) =>
-      _controller.updateCamera(NCameraUpdate.scrollAndZoomTo(target: _latLng(center), zoom: zoom));
+  Future<void> moveTo(GeoPoint center, {double? zoom}) async {
+    await _controller?.updateCamera(NCameraUpdate.scrollAndZoomTo(target: _latLng(center), zoom: zoom));
+  }
 
   @override
   Future<void> fitPoints(List<GeoPoint> points) async {
     if (points.isEmpty) return;
     if (points.length == 1) return moveTo(points.single);
-    await _controller.updateCamera(NCameraUpdate.fitBounds(
+    await _controller?.updateCamera(NCameraUpdate.fitBounds(
       NLatLngBounds.from(points.map(_latLng)),
       padding: const EdgeInsets.all(WdSpace.s24),
     ));
   }
 
   @override
-  void showMyLocation() => _controller.setLocationTrackingMode(NLocationTrackingMode.follow);
+  void showMyLocation() {
+    final controller = _controller;
+    if (controller == null) return;
+    _setFollowing(true);
+    switch (widget.map.myLocationSource) {
+      case MyLocationSource.map:
+        controller.setLocationTrackingMode(NLocationTrackingMode.follow);
+      case MyLocationSource.app:
+        _showingAppLocation = true;
+        _placeAppLocation();
+    }
+  }
+
+  @override
+  void hideMyLocation() {
+    final controller = _controller;
+    if (controller == null) return;
+    _setFollowing(false);
+    switch (widget.map.myLocationSource) {
+      case MyLocationSource.map:
+        controller.setLocationTrackingMode(NLocationTrackingMode.none);
+      case MyLocationSource.app:
+        _showingAppLocation = false;
+        _placeAppLocation();
+    }
+  }
 }
 
 NLatLng _latLng(GeoPoint point) => NLatLng(point.lat, point.lng);

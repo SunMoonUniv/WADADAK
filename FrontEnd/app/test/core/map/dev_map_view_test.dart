@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wadadak/core/map/dev_map_view.dart';
 import 'package:wadadak/core/map/map_view.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
@@ -114,5 +115,72 @@ void main() {
     // onTap이 없는 표지는 누름을 지도로 넘긴다.
     await tester.tap(find.byType(WdIcon), warnIfMissed: false);
     expect(taps, hasLength(1));
+  });
+
+  testWidgets('follows the app location until the camera moves for another reason', (tester) async {
+    final location = ValueNotifier<GeoPoint?>(null);
+    addTearDown(location.dispose);
+    final following = <bool>[];
+    tester.view
+      ..physicalSize = const Size(400, 800)
+      ..devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(ProviderScope(
+      overrides: [mapEngineProvider.overrideWithValue(MapEngine.dev)],
+      child: MaterialApp(
+        home: ValueListenableBuilder(
+          valueListenable: location,
+          builder: (_, value, _) => MapView(
+            myLocationSource: MyLocationSource.app,
+            myLocation: value,
+            onCreated: (controller) => map = controller,
+            onCameraIdle: cameras.add,
+            onFollowingChanged: following.add,
+          ),
+        ),
+      ),
+    ));
+    await tester.pump();
+    final dot = find.byKey(DevMapView.myLocationKey);
+
+    // 위치가 아직 없으면 기다렸다가 생기면 그리로 간다.
+    map.showMyLocation();
+    await tester.pump();
+    expect(following, [true]);
+    expect(dot, findsNothing);
+    location.value = const GeoPoint(37.55, 126.99);
+    await tester.pump();
+    expect(cameras.last.center, location.value);
+    expect(tester.getCenter(dot), const Offset(200, 400));
+
+    // 새 위치마다 따라간다.
+    location.value = const GeoPoint(37.551, 126.991);
+    await tester.pump();
+    expect(cameras.last.center, location.value);
+    expect(tester.getCenter(dot), const Offset(200, 400));
+
+    // 손으로 끌면 따라가기만 멈춘다. 점은 계속 위치를 따른다.
+    await tester.drag(find.byType(MapView), const Offset(0, 100));
+    expect(following, [true, false]);
+    final moved = cameras.last.center;
+    location.value = const GeoPoint(37.552, 126.992);
+    await tester.pump();
+    expect(cameras.last.center, moved);
+    expect(dot, findsOneWidget);
+    expect(tester.getCenter(dot), isNot(const Offset(200, 400)));
+
+    // 다시 켜면 현재 위치로 돌아간다.
+    map.showMyLocation();
+    await tester.pump();
+    expect(following, [true, false, true]);
+    expect(cameras.last.center, location.value);
+
+    // 코드로 카메라를 옮겨도 꺼진다.
+    await map.moveTo(MapView.seoulCityHall);
+    expect(following, [true, false, true, false]);
+
+    map.hideMyLocation();
+    await tester.pump();
+    expect(dot, findsNothing);
   });
 }

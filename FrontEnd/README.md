@@ -109,6 +109,8 @@ flutter test
   ```
 - 지도는 네이버 지도 SDK다. Client ID는 `core/config.dart`의 공개 값이다(NCP 콘솔 Application에 앱 ID `com.wadadak.app`으로 등록, Client Secret은 쓰지 않는다).
   - 화면은 `core/map`의 `MapView`만 쓴다. 선 · 표지는 값으로 넘기고, 카메라는 `onCreated`로 받은 `MapController`로 움직인다.
+  - 현재 위치: 홈은 지도 SDK가 기기 위치를 받는다(`MyLocationSource.map`, 기본). 러닝은 측정한 좌표를 넘긴다(`MyLocationSource.app` + `myLocation`). 둘 다 `showMyLocation()`으로 따라가고, 지도를 움직이면 따라가기가 꺼진다(`onFollowingChanged`). `hideMyLocation()`으로 끝낸다.
+  - 선 모양: 코스선 · 자유 러닝 주행선 `MapLineStyle.course`, 코스 위에 겹치는 주행선 `MapLineStyle.recorded`(임시 값, 디자인 확인 필요).
   - 키 없이 시험하려면 `flutter run --dart-define=REAL_MAP=false` — 개발용 지도(배경색 위에 선 · 표지만)가 뜬다. 위젯 테스트는 `mapEngineProvider`를 `MapEngine.dev`로 바꾼다.
 - 저장소 경로에 한글(예: `바탕화면\와다닥`)이 있으면:
   - Android 빌드: `app/android/gradle.properties`의 `android.overridePathCheck=true`로 이미 막아 두었다.
@@ -269,7 +271,7 @@ Figma `디자인 · 전체 화면 (와이어프레임 기준)` 페이지의 섹�
 - [x] 토큰 보안 저장 · 401 자동 갱신(갱신은 한 번에 하나) · 로그아웃
 - [x] 위치 · 동작 및 피트니스 권한 요청 (권한 안내 화면 순서대로)
 - [ ] API 연결 (가짜 데이터 → 실제 데이터)
-- [x] 지도 SDK 연결 — `core/map` `MapView`(선 · 표지 · 누른 위치 · 카메라 범위 · 현재 위치), 홈 탭에 표시
+- [x] 지도 SDK 연결 — `core/map` `MapView`(선 · 표지 · 누른 위치 · 카메라 범위 · 현재 위치 · 러닝 좌표 따라가기), 홈 탭에 표시
 - [ ] 지도 위 코스 경로 · km 표지 · 지역별 개수 표시 (각 화면에서)
 - [ ] GPS 러닝 기록 — 백그라운드 추적, 페이스 · 거리 · 구간 계산, 경로 이탈 판정
 - [ ] 케이던스 측정 (걸음 센서)

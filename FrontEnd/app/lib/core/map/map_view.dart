@@ -38,9 +38,12 @@ class MapView extends ConsumerWidget {
     this.lines = const [],
     this.markers = const [],
     this.padding = EdgeInsets.zero,
+    this.myLocationSource = MyLocationSource.map,
+    this.myLocation,
     this.onCreated,
     this.onTap,
     this.onCameraIdle,
+    this.onFollowingChanged,
   });
 
   static const seoulCityHall = GeoPoint(37.5666, 126.9784);
@@ -53,6 +56,13 @@ class MapView extends ConsumerWidget {
   /// 지도 위를 덮는 화면 요소(시트·버튼)만큼 안쪽 여백. 카메라 중심·전체 보기가 이 여백을 뺀 영역 기준이 된다.
   final EdgeInsets padding;
 
+  /// 현재 위치를 어디서 받나. 지도를 띄운 뒤 바꾸지 않는다.
+  final MyLocationSource myLocationSource;
+
+  /// [MyLocationSource.app]의 현재 위치. 아직 없으면 null.
+  /// [MapController.showMyLocation] 뒤로는 바뀔 때마다 현재 위치 점이 옮겨지고, 따라가는 중이면 카메라도 옮겨진다.
+  final GeoPoint? myLocation;
+
   final ValueChanged<MapController>? onCreated;
 
   /// 지도 빈 곳을 눌렀다(B3 점 찍기). 표지를 누르면 [MapMarker.onTap]만 불린다.
@@ -60,6 +70,11 @@ class MapView extends ConsumerWidget {
 
   /// 카메라가 멈췄다(처음 뜰 때 포함). 화면 범위로 코스를 다시 조회할 때 쓴다.
   final ValueChanged<MapCamera>? onCameraIdle;
+
+  /// 현재 위치 따라가기가 켜지거나 꺼졌다. [MapController.showMyLocation]으로 켜지고,
+  /// 카메라가 따라가기 말고 다른 이유로 움직이면(사용자가 지도를 끌거나 [MapController.moveTo] 등) 꺼진다.
+  /// 꺼져도 현재 위치 점은 남는다.
+  final ValueChanged<bool>? onFollowingChanged;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => switch (ref.watch(mapEngineProvider)) {
@@ -76,9 +91,22 @@ abstract interface class MapController {
   /// [points]가 모두 보이게 옮긴다(코스 전체 보기).
   Future<void> fitPoints(List<GeoPoint> points);
 
-  /// 현재 위치를 표시하고 따라간다. 위치 권한이 없으면 묻는다. 지도를 끌면 따라가기만 멈춘다.
-  /// 개발용 지도는 위치를 모르므로 아무것도 하지 않는다.
+  /// 현재 위치 점을 보이고 따라간다. 지도를 끌면 따라가기만 멈춘다([MapView.onFollowingChanged]).
+  /// [MyLocationSource.map]은 위치 권한이 없으면 묻는다. 개발용 지도는 기기 위치를 모르므로 이때 아무것도 하지 않는다.
+  /// [MyLocationSource.app]은 [MapView.myLocation]으로 간다. 아직 없으면 생길 때 간다.
   void showMyLocation();
+
+  /// 현재 위치 점을 숨기고 따라가기를 끝낸다. [MyLocationSource.map]은 위치 받기도 멈춘다.
+  void hideMyLocation();
+}
+
+/// 현재 위치를 어디서 받나.
+enum MyLocationSource {
+  /// 지도 SDK가 기기 위치를 받는다(홈).
+  map,
+
+  /// 화면이 [MapView.myLocation]으로 넘긴다(러닝). 측정에 쓴 좌표를 그대로 보여 지도와 측정의 위치가 어긋나지 않는다.
+  app,
 }
 
 /// 멈춘 카메라와 보이는 범위.
@@ -96,6 +124,8 @@ class MapCamera {
 }
 
 /// 지도 위 선. 좌표 순서대로 잇는다. 점이 2개보다 적으면 그리지 않는다.
+///
+/// 화면이 같은 [points] 목록에 점을 이어 붙여 다시 넘겨도 된다(러닝 주행선).
 @immutable
 class MapLine {
   const MapLine({required this.id, required this.points, this.style = MapLineStyle.course});
@@ -105,9 +135,14 @@ class MapLine {
   final MapLineStyle style;
 }
 
+/// 선 모양. 겹치면 뒤에 적힌 모양이 위에 그려진다.
 enum MapLineStyle {
-  /// 코스 경로. 라임 선 + 잉크 테두리(Figma 코스 썸네일과 같다).
-  course(color: WdColors.lime, outlineColor: WdColors.ink, width: 6, outlineWidth: 2);
+  /// 코스 경로. 라임 선 + 잉크 테두리(Figma 코스 썸네일과 같다). 자유 러닝 주행선도 이것이다(Figma H4-1).
+  course(color: WdColors.lime, outlineColor: WdColors.ink, width: 6, outlineWidth: 2),
+
+  /// 코스 러닝에서 코스 위에 겹치는 실제 주행선. 코스선 안에 보이게 가늘다.
+  /// Figma(C4-1)에 코스선과 구분된 주행선이 없어 정한 임시 값이다. 디자인이 나오면 바꾼다.
+  recorded(color: WdColors.white, outlineColor: WdColors.ink, width: 3, outlineWidth: 1);
 
   const MapLineStyle({required this.color, required this.outlineColor, required this.width, required this.outlineWidth});
 

@@ -13,6 +13,9 @@ class DevMapView extends StatefulWidget {
 
   final MapView map;
 
+  /// 현재 위치 점([MyLocationSource.app]만 그린다). 테스트에서 찾을 때 쓴다.
+  static const myLocationKey = ValueKey('dev-map-my-location');
+
   @override
   State<DevMapView> createState() => _DevMapViewState();
 }
@@ -30,6 +33,11 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
   GeoPoint? _gestureAnchor;
   double _gestureZoom = 0;
 
+  bool _following = false;
+  bool _showingAppLocation = false;
+
+  bool get _usesAppLocation => widget.map.myLocationSource == MyLocationSource.app;
+
   @override
   void initState() {
     super.initState();
@@ -38,6 +46,25 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
       widget.map.onCreated?.call(this);
       _idle();
     });
+  }
+
+  @override
+  void didUpdateWidget(DevMapView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final location = widget.map.myLocation;
+    if (_following && _showingAppLocation && location != null && location != oldWidget.map.myLocation) {
+      // 다시 그리는 중이라 카메라 보고는 그린 뒤에 한다(받는 화면이 setState할 수 있다).
+      _center = location;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _idle();
+      });
+    }
+  }
+
+  void _setFollowing(bool following) {
+    if (_following == following) return;
+    _following = following;
+    widget.map.onFollowingChanged?.call(following);
   }
 
   /// 카메라 중심이 놓이는 화면 위치. [MapView.padding]을 뺀 영역의 가운데다.
@@ -84,7 +111,10 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
   }
 
   @override
-  Future<void> moveTo(GeoPoint center, {double? zoom}) async => _setCamera(center, zoom ?? _zoom);
+  Future<void> moveTo(GeoPoint center, {double? zoom}) async {
+    _setFollowing(false);
+    _setCamera(center, zoom ?? _zoom);
+  }
 
   @override
   Future<void> fitPoints(List<GeoPoint> points) async {
@@ -102,11 +132,26 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
     final zoom = span == Offset.zero
         ? _zoom
         : math.log(math.min(room.width / span.dx, room.height / span.dy)) / math.ln2;
+    _setFollowing(false);
     _setCamera(_geo(topLeft + span / 2, 0), zoom);
   }
 
+  /// 기기 위치를 모르므로 [MyLocationSource.app]만 한다.
   @override
-  void showMyLocation() {}
+  void showMyLocation() {
+    if (!_usesAppLocation) return;
+    _setFollowing(true);
+    setState(() => _showingAppLocation = true);
+    final location = widget.map.myLocation;
+    if (location != null) _setCamera(location, _zoom);
+  }
+
+  @override
+  void hideMyLocation() {
+    if (!_usesAppLocation) return;
+    _setFollowing(false);
+    setState(() => _showingAppLocation = false);
+  }
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(builder: (context, constraints) {
@@ -117,6 +162,7 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
             behavior: HitTestBehavior.opaque,
             onTapUp: (details) => map.onTap?.call(_toGeo(details.localPosition)),
             onScaleStart: (details) {
+              _setFollowing(false);
               _gestureAnchor = _toGeo(details.localFocalPoint);
               _gestureZoom = _zoom;
             },
@@ -132,11 +178,13 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
                 children: [
                   Positioned.fill(
                     child: CustomPaint(painter: _LinesPainter([
-                      for (final line in map.lines)
+                      // 뒤에 적힌 모양이 위에 오게 모양 순서대로 그린다.
+                      for (final line in [...map.lines]..sort((a, b) => a.style.index - b.style.index))
                         if (line.points.length >= 2) (line.style, line.points.map(_toScreen).toList()),
                     ])),
                   ),
                   for (final marker in map.markers) _marker(marker),
+                  if (_showingAppLocation && map.myLocation != null) _myLocation(map.myLocation!),
                   Positioned(
                     left: WdSpace.s8,
                     bottom: WdSpace.s8,
@@ -161,6 +209,29 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
         translation: -marker.anchor,
         // onTap이 없으면 누름이 지도로 간다(네이버 지도와 같다).
         child: onTap == null ? IgnorePointer(child: look) : GestureDetector(onTap: onTap, child: look),
+      ),
+    );
+  }
+
+  Widget _myLocation(GeoPoint location) {
+    final position = _toScreen(location);
+    return Positioned(
+      left: position.dx,
+      top: position.dy,
+      child: FractionalTranslation(
+        translation: -MapMarker.center,
+        child: IgnorePointer(
+          child: Container(
+            key: DevMapView.myLocationKey,
+            width: WdSpace.s16,
+            height: WdSpace.s16,
+            decoration: BoxDecoration(
+              color: WdColors.info,
+              shape: BoxShape.circle,
+              border: Border.all(color: WdColors.white, width: 3),
+            ),
+          ),
+        ),
       ),
     );
   }
