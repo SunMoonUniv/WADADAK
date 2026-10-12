@@ -27,44 +27,6 @@ class WdMapLocateButton extends StatelessWidget {
       );
 }
 
-/// Map button / Zoom — 확대·축소 (40 × 81, 그림자).
-class WdMapZoomControl extends StatelessWidget {
-  const WdMapZoomControl({super.key, required this.onZoomIn, required this.onZoomOut});
-
-  final VoidCallback? onZoomIn;
-  final VoidCallback? onZoomOut;
-
-  @override
-  Widget build(BuildContext context) => DecoratedBox(
-        decoration: BoxDecoration(
-          color: WdColors.white,
-          borderRadius: BorderRadius.circular(WdRadius.r12),
-          boxShadow: WdShadows.floating,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _button('＋', '확대', onZoomIn),
-            const ColoredBox(color: WdColors.divider, child: SizedBox(width: 24, height: 1)),
-            _button('－', '축소', onZoomOut),
-          ],
-        ),
-      );
-
-  Widget _button(String glyph, String label, VoidCallback? onTap) => Semantics(
-        button: true,
-        label: label,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: onTap,
-          child: SizedBox.square(
-            dimension: 40,
-            child: Center(child: Text(glyph, style: WdText.raw(18, FontWeight.w500).copyWith(color: WdColors.ink))),
-          ),
-        ),
-      );
-}
-
 /// Km marker — 경로를 따라 1 km마다 놓는 표지.
 class WdKmMarker extends StatelessWidget {
   const WdKmMarker(this.label, {super.key});

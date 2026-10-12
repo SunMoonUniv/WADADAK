@@ -23,3 +23,14 @@ const googleServerClientId = '1048451496052-jmrq4n20oah17vkcru3qv6gikrc23obs.app
 /// Google iOS 클라이언트 ID(Google Cloud `wadadak-ios`, 번들 ID com.wadadak.app). iOS에서만 쓴다.
 /// Info.plist의 URL 스킴(역방향 클라이언트 ID `com.googleusercontent.apps.…`)과 짝이다.
 const googleIosClientId = '1048451496052-d45s2heki1u509122fh6g7d3q5cpdpre.apps.googleusercontent.com';
+
+/// 지도 방식.
+/// - true(기본): 네이버 지도 SDK
+/// - false: 키 없이 도는 개발용 지도(배경색 위에 선·표지만 그린다)
+///
+/// 개발용 지도로 실행: `flutter run --dart-define=REAL_MAP=false`
+const realMap = bool.fromEnvironment('REAL_MAP', defaultValue: true);
+
+/// 네이버 지도(NCP Maps · Dynamic Map) Client ID. 앱 안에 들어가는 공개 값이다. Client Secret은 쓰지 않으며 앱·저장소 어디에도 두지 않는다.
+/// NCP 콘솔 Application에 앱 ID `com.wadadak.app`(Android 패키지 이름 · iOS Bundle ID)으로 등록했다.
+const naverMapClientId = '4jno8yckyz';
