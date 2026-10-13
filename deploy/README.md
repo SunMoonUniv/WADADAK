@@ -116,6 +116,7 @@ Actions → Backend CI → Run workflow(main). deploy 작업이 통과하면 서
 | 되돌리기 | 문제 PR을 revert PR로 머지한다 |
 | 비밀값 바꾸기 | 환경 `wadadak-server`의 Secrets 수정 → 수동 배포 |
 | 상태 · 로그 | `docker compose -p wadadak-server ps` · `docker logs -f wadadak-server-backend-1` |
+| 요청 로그 | `docker logs -f wadadak-server-backend-1 2>&1 \| grep RequestLogFilter` — 한 줄에 메서드 · 경로 · 상태 · 처리 시간 · IP. `/actuator`는 빠진다 |
 | DB 접속 | `docker exec -it wadadak-server-postgres-1 psql -U wadadak` |
 | DB 초기화 (데이터 전부 삭제) | `docker compose -p wadadak-server down` → `docker volume rm wadadak-server_db` → 수동 배포 |
 

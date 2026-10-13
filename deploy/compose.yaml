@@ -35,6 +35,8 @@ services:
       JWT_PRIVATE_KEY_LOCATION: base64:${JWT_PRIVATE_KEY:?GitHub Secrets에 JWT_PRIVATE_KEY가 없다}
       # cloudflared가 넘기는 X-Forwarded-*로 https 주소를 만든다(Swagger의 서버 주소 등).
       SERVER_FORWARD_HEADERS_STRATEGY: native
+      # 요청마다 한 줄 로그(RequestLogFilter). 앱이 받은 응답을 서버에서 확인한다.
+      APP_COMMON_REQUESTLOG_ENABLED: "true"
     # 포트를 열지 않는다. 밖에서는 cloudflared를 거쳐서만 들어온다.
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:8080/actuator/health"]
