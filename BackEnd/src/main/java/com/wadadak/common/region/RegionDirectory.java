@@ -5,6 +5,7 @@ import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -23,6 +24,17 @@ public class RegionDirectory {
                 .param("code", code)
                 .query(REGION)
                 .optional();
+    }
+
+    /** 시·군·구 여러 개를 한 번에. 없는 코드는 빠진다. */
+    public List<Region> findSigungus(Collection<String> codes) {
+        if (codes.isEmpty()) {
+            return List.of();
+        }
+        return jdbc.sql("SELECT code, name, full_name FROM common.region WHERE code IN (:codes) AND level = 'SIGUNGU'")
+                .param("codes", codes)
+                .query(REGION)
+                .list();
     }
 
     /** 이름이나 상위 구역 이름에 {@code query}가 들어간 시·군·구. 이름이 정확히 같으면 앞, 그다음 짧은 이름 순이다. */
