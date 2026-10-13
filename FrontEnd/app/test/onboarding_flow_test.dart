@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wadadak/core/api/api_client.dart';
+import 'package:wadadak/core/api/course_api_client.dart';
 import 'package:wadadak/core/api/member_api_client.dart';
 import 'package:wadadak/core/api/region_api_client.dart';
 import 'package:wadadak/core/auth/social_login.dart';
@@ -30,6 +31,7 @@ void main() {
         socialLoginProvider.overrideWithValue(FakeSocialLogin()),
         runPermissionsProvider.overrideWithValue(permissions),
         mapEngineProvider.overrideWithValue(MapEngine.dev),
+        courseApiClientProvider.overrideWithValue(FakeCourseApi()),
         regionApiClientProvider.overrideWithValue(FakeRegionApi()),
       ],
       child: const WadadakApp(),

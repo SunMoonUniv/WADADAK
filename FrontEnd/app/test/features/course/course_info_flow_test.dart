@@ -112,10 +112,13 @@ void main() {
     expect(sent.idempotencyKey, isNotEmpty);
 
     expect(find.text('코스를 등록했어요'), findsOneWidget);
+    // 서버에 새 코스가 생겼다. 홈 지도는 출발점으로 옮긴 범위에서 다시 받는다.
+    courses.onMap = [MapCourse(courseId: 'course-1', name: name, route: sent.anchorPoints)];
     await tap(tester, find.text('확인'));
     expect(find.byType(HomeScreen), findsOneWidget);
     expect(find.byType(CourseInfoScreen), findsNothing);
     expect(find.byType(RouteDrawScreen), findsNothing);
+    expect(find.widgetWithText(WdMapCourseLabel, name), findsOneWidget);
 
     // 홈 지도가 새 코스 출발점으로 옮겨져, 다음 코스 만들기도 그곳에서 열린다.
     await tap(tester, find.text('＋ 코스 만들기'));

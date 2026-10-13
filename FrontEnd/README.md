@@ -14,16 +14,16 @@
 |---|---|
 | 디자인 토큰 — 색 · 간격 · 반경 · 그림자 · 글자 스타일 52종 | ✅ 완료 |
 | 테마 (`WdTheme.light()`) · 아이콘 26개 · 로고 · 글꼴(Pretendard) | ✅ 완료 |
-| 공통 컴포넌트 위젯 61개 | ✅ 완료 |
+| 공통 컴포넌트 위젯 62개 | ✅ 완료 |
 | 컴포넌트 카탈로그 앱 + 스모크 테스트 | ✅ 완료 |
 | Figma 디자인 시스템 페이지 (변수 · 스타일 · 컴포넌트 82개 / 29세트) | ✅ 완료 |
 | 앱 프로젝트 (`app/`) — Riverpod · go_router · dio, 하단 탭 4개 | ✅ 뼈대 |
 | 화면 | 🟡 10 / 72 (온보딩: A1 · 소셜 정보 동의 · 권한 안내 · F2, 코스: B3 경로 그리기 · B5 코스 정보 입력, 랭킹: E1 · I2 · I5 · I6) |
 | 로그인 · 토큰 저장 · 자동 갱신 | 🟡 서버 연동 · 카카오 SDK 완료, Google · Apple SDK는 아직 |
-| 지도 — `core/map` (네이버 지도 SDK 래퍼 · 키 없이 도는 개발용 지도) | 🟡 홈 탭에 연결 |
-| API · 위치 추적 연동 | 🟡 코스 API(경로 생성 · 오늘 남은 등록 수 · 이름 확인 · 등록) · 랭킹 API(서버 거리 집계는 아직 스텁) · 지역 검색 API, 위치 추적은 시작 전 |
+| 지도 — `core/map` (네이버 지도 SDK 래퍼 · 키 없이 도는 개발용 지도) | 🟡 홈 탭에 연결, 지도 범위 안 코스 경로 · 이름표 |
+| API · 위치 추적 연동 | 🟡 코스 API(경로 생성 · 오늘 남은 등록 수 · 이름 확인 · 등록 · 지도 범위 안 코스) · 랭킹 API(서버 거리 집계는 아직 스텁) · 지역 검색 API, 위치 추적은 시작 전 |
 
-즉 **디자인 시스템과 앱 뼈대, 온보딩, 랭킹 탭까지 준비된 상태**다. 홈 탭은 지도와 코스 만들기 · 등록(B3 · B5)만 있고, 달리기 · MY 탭은 자리만 있다.
+즉 **디자인 시스템과 앱 뼈대, 온보딩, 랭킹 탭까지 준비된 상태**다. 홈 탭은 지도(범위 안 코스 표시)와 코스 만들기 · 등록(B3 · B5)만 있고, 달리기 · MY 탭은 자리만 있다.
 
 ### 구현된 컴포넌트
 
@@ -39,7 +39,7 @@
 | 카드 | `WdSummaryTile(s)` `WdMetric` `WdStatSummary` `WdAvatar` `WdRouteThumbnail` `WdCourseCard` `WdRunRecordCard` `WdReviewCard` |
 | 랭킹 | `WdRankRow` `WdRankList` `WdMyRankCard` |
 | 러닝 | `WdRunHeader` `WdElapsedTime` `WdRunMetricTile` `WdLapRecords` `WdGhostLeadCard` `WdCourseProgress` `WdPageIndicator` `WdRunPauseButton` `WdRunPausedButtons` `WdSensorStatus` `WdSelectedCourseCard` `WdRecordCard` |
-| 지도 위 요소 | `WdMapLocateButton` `WdKmMarker` `WdRoutePoint` `WdRegionCountBubble` `WdSheetPeek` `WdMapHint` `WdMapPillButton` `WdRouteEndpoint` `WdRouteLegend` |
+| 지도 위 요소 | `WdMapLocateButton` `WdKmMarker` `WdRoutePoint` `WdRegionCountBubble` `WdSheetPeek` `WdMapHint` `WdMapPillButton` `WdRouteEndpoint` `WdRouteLegend` `WdMapCourseLabel` |
 | 분석 | `WdSegmentChart` `WdSegmentTable` |
 
 Figma 컴포넌트와의 1:1 대응표, 토큰 사용법은 [디자인 시스템 README](packages/wadadak_design_system/README.md)에 있다.
@@ -279,11 +279,12 @@ Figma `디자인 · 전체 화면 (와이어프레임 기준)` 페이지의 섹�
 - [x] 토큰 보안 저장 · 401 자동 갱신(갱신은 한 번에 하나) · 로그아웃
 - [x] 위치 · 동작 및 피트니스 권한 요청 (권한 안내 화면 순서대로)
 - [ ] API 연결 (가짜 데이터 → 실제 데이터)
-  - [x] 코스: 경로 생성 · 오늘 남은 등록 수 · 이름 확인 · 등록 (`core/api/course_api_client.dart`)
+  - [x] 코스: 경로 생성 · 오늘 남은 등록 수 · 이름 확인 · 등록 · 지도 범위 안 코스 (`core/api/course_api_client.dart`)
   - [x] 랭킹: 누적 거리 · 지역 주간 랭킹 (`core/api/ranking_api_client.dart`)
   - [x] 지역: 시·군·구 검색, 로그인 없이 (`core/api/region_api_client.dart`) — 가입 활동 지역 · I6가 같은 검색 화면(`core/region_search.dart`)을 쓴다
 - [x] 지도 SDK 연결 — `core/map` `MapView`(선 · 표지 · 누른 위치 · 카메라 범위 · 현재 위치 · 러닝 좌표 따라가기), 홈 탭에 표시
 - [ ] 지도 위 코스 경로 · km 표지 · 지역별 개수 표시 (각 화면에서)
+  - [x] 홈: 지도 범위 안 코스 경로 · 이름표 — 지도가 멈출 때마다 다시 받는다. 지역별 개수(A4)는 아직
 - [ ] GPS 러닝 기록 — 백그라운드 추적, 페이스 · 거리 · 구간 계산, 경로 이탈 판정
 - [ ] 케이던스 측정 (걸음 센서)
 - [ ] 고스트 대결 — 기록 재생과 앞섬/뒤처짐 비교
