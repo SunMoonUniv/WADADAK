@@ -17,14 +17,15 @@
 | `member` | member | `members`, `agreements`, `refresh_tokens` |
 | `course` | course | `courses`, `daily_registration_counts`, `registration_requests` |
 | `ranking` | ranking | `course_ranking_entries`, `course_status_copies`, `member_visibility_copies`, `withdrawn_members` |
+| `review` | review | `reviews`, `review_photos`, `review_tags`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
 | `common` | common | `region`, `event_publication`, `shedlock`, `flyway_schema_history` |
 
-run, review, notification 스키마는 아직 없다. 해당 모듈을 구현할 때 이 문서에 추가한다.
+run, notification 스키마는 아직 없다. 해당 모듈을 구현할 때 이 문서에 추가한다.
 
 ### 공통 규칙 (개발 정책 6장)
 
 - **PK**: 애플리케이션이 만든 UUID v7(`UuidV7.create()`). 예외는 `region`(법정동 코드), `shedlock`(작업 이름), `event_publication`(Modulith가 만듦), `flyway_schema_history`(Flyway가 관리)다.
-  - 다른 모듈의 행 하나에 정확히 한 행이 대응하는 테이블은 그 모듈의 ID를 PK로 쓴다. 이벤트를 다시 받아도 PK로 한 번만 저장된다(개발 정책 5.4). 예: `course_ranking_entries`(run 기록 ID), 복사본 테이블(코스·회원 ID)
+  - 다른 모듈의 행 하나에 정확히 한 행이 대응하는 테이블은 그 모듈의 ID를 PK로 쓴다. 이벤트를 다시 받아도 PK로 한 번만 저장된다(개발 정책 5.4). 예: `course_ranking_entries`·`review.course_run_records`(run 기록 ID), 복사본 테이블(코스·회원 ID)
 - **시각**: `TIMESTAMPTZ`에 UTC로 저장한다. 엔티티 테이블은 모두 `created_at`·`updated_at`을 가진다(`BaseEntity`).
 - **enum**: Java enum 이름을 `VARCHAR`로 저장하고 `CHECK`로 값을 제한한다.
 - **낙관적 락**: 상태 변경 이벤트를 발행하는 테이블(`members`, `courses`)은 `version` 컬럼을 가진다.
@@ -35,8 +36,9 @@ run, review, notification 스키마는 아직 없다. 해당 모듈을 구현할
 
 - 실선: 같은 스키마 안의 FK
 - 점선: 다른 모듈(스키마)의 ID를 값으로만 저장한 참조. FK 없음
-- 모든 엔티티 테이블에 있는 `created_at`·`updated_at`은 생략했다. `common`의 인프라 테이블(`event_publication`, `shedlock`, `flyway_schema_history`)은 다른 테이블과 관계가 없어 3.4에서만 설명한다.
-- `course_ranking_entries.run_record_id`는 run 모듈의 러닝 기록 ID다. run 스키마가 생기면 ERD에 잇는다.
+- 모든 엔티티 테이블에 있는 `created_at`·`updated_at`은 생략했다. `common`의 인프라 테이블(`event_publication`, `shedlock`, `flyway_schema_history`)은 다른 테이블과 관계가 없어 3.5에서만 설명한다.
+- `course_ranking_entries.run_record_id`, `course_run_records.run_record_id`, `reviews.source_run_record_id`는 run 모듈의 러닝 기록 ID다. run 스키마가 생기면 ERD에 잇는다.
+- `course_status_copies`·`withdrawn_members`는 ranking과 review에 같은 이름으로 있다. ERD에서는 review 쪽을 `review_` 접두사로 구분했다.
 
 ```mermaid
 erDiagram
@@ -53,6 +55,15 @@ erDiagram
     courses ||..o| course_status_copies : "course_id"
     members ||..o| member_visibility_copies : "member_id"
     members ||..o| withdrawn_members : "member_id"
+    reviews ||--o{ review_photos : "review_id"
+    reviews ||--o{ review_tags : "review_id"
+    courses ||..o{ reviews : "course_id"
+    members ||..o{ reviews : "member_id"
+    course_run_records ||..o{ reviews : "source_run_record_id"
+    courses ||..o{ course_run_records : "course_id"
+    members ||..o{ course_run_records : "member_id"
+    courses ||..o| review_course_status_copies : "course_id"
+    members ||..o| review_withdrawn_members : "member_id"
 
     members {
         uuid id PK
@@ -136,6 +147,50 @@ erDiagram
         bigint source_version
     }
     withdrawn_members {
+        uuid member_id PK "member ID"
+        timestamptz withdrawn_at
+    }
+    reviews {
+        uuid id PK
+        uuid course_id "course ID"
+        uuid member_id "member ID"
+        uuid source_run_record_id "run 기록 ID"
+        smallint rating "1~5"
+        smallint safety_rating "1~5"
+        smallint road_rating "1~5"
+        smallint lighting_rating "1~5"
+        smallint amenity_rating "1~5"
+        varchar(200) content "선택"
+        smallint best_progress_percent "0~100"
+    }
+    review_photos {
+        uuid id PK
+        uuid review_id FK
+        varchar(100) photo_key "review/..."
+        smallint display_order "0~4"
+    }
+    review_tags {
+        uuid review_id PK, FK
+        varchar(20) tag PK "NIGHT_VIEW, FEW_SIGNALS, GOOD_SURFACE, CROWDED"
+    }
+    course_run_records {
+        uuid run_record_id PK "run 기록 ID"
+        uuid course_id "course ID"
+        uuid member_id "member ID"
+        boolean review_eligible
+        boolean completed
+        smallint progress_percent "0~100"
+        integer course_distance_meters
+        integer course_elapsed_seconds
+        timestamptz ended_at
+        boolean deleted
+    }
+    review_course_status_copies {
+        uuid course_id PK "course ID"
+        varchar(10) status "HIDDEN, DELETED"
+        bigint source_version
+    }
+    review_withdrawn_members {
         uuid member_id PK "member ID"
         timestamptz withdrawn_at
     }
@@ -332,7 +387,89 @@ erDiagram
 - `MemberWithdrawnEvent`를 받으면 그 회원의 랭킹 엔트리와 공개 복사본을 바로 지우고 이 행을 남긴다.
 - 탈퇴 뒤에 도착한 그 회원의 완주 기록은 받지 않는다.
 
-### 3.4 common
+### 3.4 review
+
+평점 요약(전체 평균·분포·항목 평균)은 저장하지 않고 조회할 때 `reviews`에서 계산한다(B8·G2). 코스 목록 정렬·필터용 평점 합계는 course가 리뷰 이벤트로 따로 가진다(개발 정책 5.6).
+
+#### `review.reviews` — 리뷰
+
+회원당 코스별 1개다(`reviews_member_course_uk`). 다시 달린 뒤에는 기존 리뷰를 수정한다(정책 공통 5).
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `id` | `UUID` | | PK |
+| `course_id` | `UUID` | | 코스 ID(course 모듈, FK 없음) |
+| `member_id` | `UUID` | | 회원 ID(member 모듈, FK 없음) |
+| `source_run_record_id` | `UUID` | | 근거 기록 ID(run 모듈). 기록이 삭제돼도 남긴다. `course_run_records.deleted`로 B10-1 "근거 기록이 삭제됐어요"를 알린다 |
+| `rating` | `SMALLINT` | | 전체 별점 1~5 |
+| `safety_rating` · `road_rating` · `lighting_rating` · `amenity_rating` | `SMALLINT` | | 항목별 평가 1~5: 안전성·도로 상태·야간 조명·편의시설. 모두 필수 |
+| `content` | `VARCHAR(200)` | ✓ | 한줄 후기. 선택 입력 |
+| `best_progress_percent` | `SMALLINT` | | 리뷰에 표시하는 그 회원의 이 코스 최고 진행도(%). 근거 기록이 삭제돼도 다시 계산하지 않는다 |
+| `created_at` | `TIMESTAMPTZ` | | 작성 시각. 수정해도 바뀌지 않는다. 리뷰 이벤트의 `createdAt`이고 course 일별 평점이 이 날짜에 쌓인다 |
+
+- `reviews_course_id_created_at_idx`: `(course_id, created_at DESC)`. 최신순
+- `reviews_course_id_rating_idx`: `(course_id, rating, created_at DESC)`. 높은·낮은 평점순
+- `member_id`는 유니크 제약 `(member_id, course_id)`의 앞 컬럼이라 따로 인덱스를 두지 않는다. `source_run_record_id`는 같은 스키마 `course_run_records`의 PK로 찾기만 해서 인덱스가 없다.
+- `source_run_record_id`는 같은 스키마지만 FK를 걸지 않는다. 자격 복사본이 이벤트로 오기 전에 run에 직접 확인하고 쓰는 경우가 있다(개발 정책 4.3 `RunApi`).
+- 리뷰 카드의 완주 횟수는 저장하지 않고 `course_run_records`에서 센다(정책 제4부 4.1 D-09).
+
+#### `review.review_photos` — 리뷰 사진
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `id` | `UUID` | | PK |
+| `review_id` | `UUID` | | FK `reviews.id`. 리뷰를 지우면 함께 지운다(`ON DELETE CASCADE`) |
+| `photo_key` | `VARCHAR(100)` | | S3 키. `review/`로 시작한다(개발 정책 7장 사진 업로드) |
+| `display_order` | `SMALLINT` | | 표시 순서 0~4. 리뷰당 5장까지 |
+
+- `review_photos_review_order_uk`: `(review_id, display_order)`. B8·G2 "사진만" 조건도 이 인덱스로 찾는다.
+- 행을 지울 때 S3 파일도 지운다(리뷰 삭제·회원 탈퇴).
+
+#### `review.review_tags` — 리뷰 태그
+
+정해진 4개 중 여러 개를 고른다(B2). 리뷰에 딸린 값 목록이라 `created_at`·`updated_at`이 없다.
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `review_id` | `UUID` | | PK·FK `reviews.id`. 리뷰를 지우면 함께 지운다 |
+| `tag` | `VARCHAR(20)` | | PK. `NIGHT_VIEW`(야경 좋음), `FEW_SIGNALS`(신호 적음), `GOOD_SURFACE`(노면 좋음), `CROWDED`(붐빔) |
+
+#### `review.course_run_records` — 코스 주행 기록 복사본
+
+run이 확정한 코스 주행 기록 1건이 1행이다(`RunSessionEndedEvent`, 자유 러닝은 받지 않는다). 리뷰 작성 자격과 리뷰 카드의 완주 횟수에 쓴다.
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `run_record_id` | `UUID` | | PK. run 모듈의 러닝 기록 ID. 같은 이벤트가 다시 와도 한 번만 저장된다 |
+| `course_id` | `UUID` | | 코스 ID(course 모듈) |
+| `member_id` | `UUID` | | 회원 ID(member 모듈) |
+| `review_eligible` | `BOOLEAN` | | 리뷰 자격(정책 5.1: 한 세션 인정 거리 ≥ max(1km, 전체 × 20%)) |
+| `completed` | `BOOLEAN` | | 서버 완주 판정. 리뷰 자격과 따로 저장한다. 완주해도 자격이 없을 수 있다(1km 코스를 0.95km 인정으로 완주 등) |
+| `progress_percent` | `SMALLINT` | | 코스 진행도(%) 0~100 |
+| `course_distance_meters` · `course_elapsed_seconds` · `ended_at` | | | B2 상단 근거 기록 표시("5.2km · 2026.09.08 완주 100% · 27:14") |
+| `deleted` | `BOOLEAN` | | 기록이 삭제됐다. 기본 `false` |
+
+- `course_run_records_member_course_idx`: `(member_id, course_id)`, 삭제되지 않은 행만. 리뷰 자격·최고 진행도·완주 횟수
+- `course_run_records_course_id_idx`: `(course_id)`. 코스 삭제 때 정리
+- 기록을 지우면 행을 지우지 않고 `deleted`만 켠다. 그 기록으로 얻은 자격은 사라지고 다른 기록의 자격은 남는다. 이미 쓴 리뷰는 그대로다(정책 제4부 4.1 D-09).
+- 완주 횟수는 `completed`이고 삭제되지 않은 행 수다. 0이면 리뷰 카드에 표시하지 않는다.
+- 행을 쌓는 run 이벤트 처리는 아직 없다(run 이벤트 계약 대기).
+
+#### `review.course_status_copies` — 코스 상태 복사본
+
+ranking의 같은 이름 테이블과 같다(3.3). 숨김·삭제된 코스만 행이 있고, 행이 없으면 `ACTIVE`다.
+
+- 숨김·삭제된 코스에는 새 리뷰를 쓸 수 없다(`REVIEW-005`). 숨김 코스의 리뷰는 보이지 않는다.
+- 코스가 `DELETED`가 되면 그 코스의 리뷰(사진·태그 포함)와 주행 기록 복사본을 지운다. 이때 `ReviewDeletedEvent`는 발행하지 않는다(course가 그 코스 통계를 직접 지운다, 개발 정책 5.6).
+
+#### `review.withdrawn_members` — 탈퇴 회원
+
+ranking의 같은 이름 테이블과 같다(3.3).
+
+- `MemberWithdrawnEvent`를 받으면 그 회원의 리뷰(사진·S3 파일 포함)와 주행 기록 복사본을 바로 지우고 이 행을 남긴다. 리뷰마다 `ReviewDeletedEvent`를 발행해 course 평점에서 뺀다(정책 공통 4·5).
+- 탈퇴 뒤에 도착한 그 회원의 주행 기록은 받지 않는다.
+
+### 3.5 common
 
 #### `common.region` — 법정구역
 
