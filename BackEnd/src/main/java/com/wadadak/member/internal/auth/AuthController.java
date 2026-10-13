@@ -22,7 +22,8 @@ class AuthController {
         return ApiResult.success(authService.login(request));
     }
 
-    @Operation(summary = "가입", description = "소셜 정보 동의 + 프로필 초기 설정을 한 번에 보낸다.")
+    @Operation(summary = "가입", description = "소셜 정보 동의 + 프로필 초기 설정을 한 번에 보낸다. "
+            + "활동 지역(regionCode)은 지역 검색(GET /api/v1/regions)으로 고른 시·군·구 코드다. 시·도·읍·면·동이나 없는 코드는 MEMBER-007.")
     @PostMapping("/signup")
     ApiResult<TokenResponse> signup(@Valid @RequestBody SignupRequest request) {
         return ApiResult.success(authService.signup(request));

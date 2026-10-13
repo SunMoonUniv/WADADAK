@@ -164,7 +164,7 @@ erDiagram
 | `social_id` | `VARCHAR(255)` | O | 소셜 회원번호. 카카오는 회원번호, Apple·Google은 ID 토큰의 `sub`. 탈퇴하면 비운다 |
 | `nickname` | `VARCHAR(10)` | O | 2~10자 한글·영문·숫자. 탈퇴하면 비운다 |
 | `bio` | `VARCHAR(50)` | O | 한 줄 소개 |
-| `region_code` | `VARCHAR(10)` | | 활동 지역(시·군·구) 법정동 코드. `common.region` 값이지만 FK는 없다 |
+| `region_code` | `VARCHAR(10)` | | 활동 지역(시·군·구) 법정동 코드. FK가 없어 가입할 때 `common.region`의 시·군·구인지 확인한다 |
 | `affiliation` | `VARCHAR(30)` | O | 소속(학교·회사·크루) |
 | `running_experience` | `VARCHAR(20)` | | `BEGINNER`, `MONTHS_6`, `YEAR_1`, `YEAR_3` |
 | `info_public` | `BOOLEAN` | | 정보 공개. 기본 `true` |

@@ -13,7 +13,8 @@ public enum MemberErrorCode implements ErrorCode {
     INVALID_SIGNUP_TOKEN(HttpStatus.UNAUTHORIZED, "MEMBER-003", "가입 시간이 지났습니다. 다시 로그인해 주세요."),
     INVALID_REFRESH_TOKEN(HttpStatus.UNAUTHORIZED, "MEMBER-004", "로그인이 만료되었습니다. 다시 로그인해 주세요."),
     ALREADY_REGISTERED(HttpStatus.CONFLICT, "MEMBER-005", "이미 가입된 계정입니다."),
-    NICKNAME_TAKEN(HttpStatus.CONFLICT, "MEMBER-006", "이미 사용 중인 닉네임입니다.");
+    NICKNAME_TAKEN(HttpStatus.CONFLICT, "MEMBER-006", "이미 사용 중인 닉네임입니다."),
+    REGION_NOT_FOUND(HttpStatus.BAD_REQUEST, "MEMBER-007", "활동 지역을 찾을 수 없습니다. 다시 선택해 주세요.");
 
     private final HttpStatus status;
     private final String code;

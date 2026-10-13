@@ -2,6 +2,7 @@ package com.wadadak.member.internal.auth;
 
 import com.wadadak.common.entity.UuidV7;
 import com.wadadak.common.exception.AppException;
+import com.wadadak.common.region.RegionDirectory;
 import com.wadadak.event.member.MemberRegionChangedEvent;
 import com.wadadak.member.MemberErrorCode;
 import com.wadadak.member.internal.account.Agreement;
@@ -28,6 +29,7 @@ class AuthService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final TokenProvider tokenProvider;
     private final SocialTokenVerifier socialTokenVerifier;
+    private final RegionDirectory regions;
     private final ApplicationEventPublisher events;
     private final Clock clock;
 
@@ -47,6 +49,10 @@ class AuthService {
         }
         if (memberRepository.existsByNicknameIgnoreCase(request.nickname())) {
             throw new AppException(MemberErrorCode.NICKNAME_TAKEN);
+        }
+        // FK가 없으니 시·도·읍·면·동이나 없는 코드를 여기서 막는다. 지역 주간 랭킹이 이 코드로 회원을 묶는다.
+        if (regions.findSigungu(request.regionCode()).isEmpty()) {
+            throw new AppException(MemberErrorCode.REGION_NOT_FOUND);
         }
         Member member = memberRepository.save(Member.join(account, request.nickname(), request.bio(),
                 request.regionCode(), request.affiliation(), request.runningExperience()));
