@@ -4,10 +4,11 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/api/member_api_client.dart';
+import '../../core/api/region_api_client.dart';
 import '../../core/auth/auth_controller.dart';
 import '../../core/error_message.dart';
+import '../../core/region_search.dart';
 import 'consent_screen.dart';
-import 'regions.dart';
 
 /// F2 · 프로필 초기 설정. "시작하기"를 누르면 동의 내용과 함께 가입한다.
 ///
@@ -57,26 +58,11 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
       _nicknameValue.isNotEmpty && _nicknameProblem == null && _selectedRegion != null && _experience != null;
 
   Future<void> _pickRegion() async {
-    final region = await showModalBottomSheet<Region>(
-      context: context,
-      backgroundColor: WdColors.paper,
-      builder: (context) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          padding: const EdgeInsets.fromLTRB(WdSpace.s24, WdSpace.s20, WdSpace.s24, WdSpace.s12),
-          children: [
-            Text('활동 지역', style: WdText.ko16Bold.copyWith(color: WdColors.ink)),
-            const SizedBox(height: WdSpace.s8),
-            for (final region in kRegions)
-              WdListRow(label: region.name, onTap: () => Navigator.pop(context, region)),
-          ],
-        ),
-      ),
-    );
+    final region = await RegionPickScreen.open(context);
     if (region != null) {
       setState(() {
         _selectedRegion = region;
-        _region.text = region.name;
+        _region.text = '${region.province} ${region.name}';
       });
     }
   }

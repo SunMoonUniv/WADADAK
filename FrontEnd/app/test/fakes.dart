@@ -1,6 +1,7 @@
 import 'package:wadadak/core/api/api_client.dart';
 import 'package:wadadak/core/api/course_api_client.dart';
 import 'package:wadadak/core/api/member_api_client.dart';
+import 'package:wadadak/core/api/region_api_client.dart';
 import 'package:wadadak/core/auth/social_login.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/map/geo_point.dart';
@@ -65,6 +66,18 @@ class FakeMemberApi implements MemberApiClient {
 class FakeSocialLogin implements SocialLogin {
   @override
   Future<String> signIn(SocialProvider provider) async => 'social-token';
+}
+
+/// 성북구 · 아산시만 있다. 서버처럼 이름이나 상위 구역 이름에 검색어가 들어가면 찾는다.
+class FakeRegionApi implements RegionApiClient {
+  static const _regions = [
+    {'code': '1129000000', 'name': '성북구', 'fullName': '서울특별시 성북구'},
+    {'code': '4420000000', 'name': '아산시', 'fullName': '충청남도 아산시'},
+  ];
+
+  @override
+  Future<List<Region>> search(String query) async =>
+      [for (final region in _regions) if (region['fullName']!.contains(query)) Region.fromJson(region)];
 }
 
 class FakeRunPermissions implements RunPermissions {
