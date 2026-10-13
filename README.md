@@ -4,6 +4,7 @@
 - 문서·백엔드·앱을 이 저장소 하나에서 관리함.
 - 백엔드 : [`BackEnd/`](BackEnd/README.md)
 - 앱 : [`FrontEnd/`](FrontEnd/README.md)
+- 공용 서버(배포) : [`deploy/`](deploy/README.md)
 - DB 구조 : [`DB 구조.md`](DB%20구조.md)
 
 ## 프로젝트 주소

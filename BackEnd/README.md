@@ -22,6 +22,10 @@ DB는 로컬 PostgreSQL과 겹치지 않게 5433 포트를 쓴다. 접속 정보
 
 운영은 `prod` 프로필로 띄운다. 스텁·가짜 소셜 검증이 켜져 있으면 기동이 실패한다. `APPLE_CLIENT_IDS`·`GOOGLE_CLIENT_IDS`를 넘긴다.
 
+## 공용 서버
+
+main에 머지되면 팀 공용 서버 PC에 자동 배포된다(`Dockerfile`, `backend.yml`의 deploy 작업). 서버 PC 준비·운영은 [`deploy/README.md`](../deploy/README.md).
+
 ## 테스트
 
 `./gradlew test` — Docker가 떠 있어야 한다(Testcontainers).
