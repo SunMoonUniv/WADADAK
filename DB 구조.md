@@ -236,7 +236,7 @@ erDiagram
 | --- | --- | --- | --- |
 | `courses_creator_id_idx` | `creator_id` | | 회원이 등록한 코스 |
 | `courses_name_key_uk` | `name_key` (UNIQUE) | `ACTIVE` | 이름 중복 검사 |
-| `courses_start_point_gix` | `start_point` (GiST) | `ACTIVE` | 반경 검색 |
+| `courses_start_point_gix` | `start_point` (GiST) | `ACTIVE` | 반경 검색, 지도 범위 안 코스(A2·A5) |
 | `courses_route_gix` | `route` (GiST) | `ACTIVE` | 유사 코스 후보 찾기 |
 | `courses_tags_gin` | `tags` (GIN) | `ACTIVE` | 태그를 모두 가진 코스 조회 |
 | `courses_emd_code_idx`, `courses_sigungu_code_idx`, `courses_sido_code_idx` | 지역 코드 | `ACTIVE` | 지역별 조회 |
