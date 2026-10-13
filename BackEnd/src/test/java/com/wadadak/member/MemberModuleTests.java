@@ -19,6 +19,7 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -119,6 +120,20 @@ class MemberModuleTests {
     }
 
     @Test
+    void rejectsRegionThatIsNotSigungu() throws Exception {
+        String signupToken = data(post("/login", login("kakao-region"))).get("signupToken").asString();
+
+        // 시·도(서울특별시), 읍·면·동(청운동), 없는 코드
+        for (String regionCode : List.of("1100000000", "1111010100", "0000000000")) {
+            assertThat(post("/signup", signup(signupToken, "지역러너", true, regionCode)))
+                    .hasStatus(HttpStatus.BAD_REQUEST)
+                    .bodyJson().extractingPath("$.code").isEqualTo("MEMBER-007");
+        }
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM member.members WHERE social_id = 'kakao-region'", Integer.class)).isZero();
+    }
+
+    @Test
     void requiresAllMandatoryAgreements() throws Exception {
         String signupToken = data(post("/login", login("kakao-terms"))).get("signupToken").asString();
 
@@ -167,15 +182,19 @@ class MemberModuleTests {
     }
 
     private static String signup(String signupToken, String nickname, boolean agreeAll) {
+        return signup(signupToken, nickname, agreeAll, "1129000000");
+    }
+
+    private static String signup(String signupToken, String nickname, boolean agreeAll, String regionCode) {
         return """
                 {
                   "signupToken": "%s",
                   "agreements": {"over14": true, "serviceTerms": true, "privacyPolicy": true,
                                  "locationTerms": %s, "profileInfo": true},
                   "nickname": "%s",
-                  "regionCode": "1129000000",
+                  "regionCode": "%s",
                   "affiliation": "선문대학교",
                   "runningExperience": "MONTHS_6"
-                }""".formatted(signupToken, agreeAll, nickname);
+                }""".formatted(signupToken, agreeAll, nickname, regionCode);
     }
 }
