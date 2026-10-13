@@ -6,7 +6,10 @@
 
 ## 1. 개요
 
-- PostgreSQL 17 + PostGIS 3.5. 로컬은 `BackEnd/compose.yaml`로 띄운다(포트 5433).
+- PostgreSQL 17 + PostGIS 3.5.
+  - 로컬: `BackEnd/compose.yaml`(포트 5433)
+  - 팀 공용 서버: `deploy/compose.yaml`. 서버 PC의 Docker에 따로 뜨고 포트를 열지 않는다. 접속·초기화는 [deploy/README.md](deploy/README.md)의 운영 표를 따른다.
+  - 서버가 뜰 때 Flyway가 마이그레이션을 적용한다. 공용 서버 DB에는 머지된 마이그레이션이 이미 적용돼 있어서, 머지된 파일을 고치면 체크섬이 어긋나 서버가 뜨지 않는다(개발 정책 6.5).
 - 모듈마다 스키마 하나를 쓴다. 다른 모듈의 스키마는 조회·JOIN·FK 모두 하지 않는다(개발 정책 2장·6.1).
 
 | 스키마 | 모듈 | 테이블 |
@@ -335,6 +338,9 @@ erDiagram
 
 읽기 전용 참조 데이터다. 시드 마이그레이션이 데이터를 넣는다. 시드 파일은 `BackEnd/scripts/region/build-seed.sh`로 만들고 직접 고치지 않는다.
 
+- 원본: 국가공간정보포털 법정구역 경계(`AL_D001_00_20260909`). 경계는 20m로 단순화했다.
+- 행 수: 시·도 16, 시·군·구 256, 읍·면·동 5,067(모두 5,339). 광주·전남은 시·도 하나(`전남광주통합특별시`, `1200000000`)다.
+
 | 컬럼 | 타입 | NULL | 설명 |
 | --- | --- | --- | --- |
 | `code` | `VARCHAR(10)` | | PK. 법정동 코드 10자리. 시·도는 앞 2자리, 시·군·구는 앞 5자리만 쓰고 나머지를 0으로 채운다 |
@@ -343,7 +349,8 @@ erDiagram
 | `full_name` | `VARCHAR(100)` | | 상위 구역을 붙인 이름. 예: `충청남도 아산시 탕정면` |
 | `boundary` | `geometry(MultiPolygon, 4326)` | O | 경계. 읍·면·동만 가진다 |
 
-- `region_boundary_gix`: `boundary` GiST. 좌표가 속한 읍·면·동을 찾는다(`RegionResolver`). 상위 구역은 코드 앞자리로 정한다.
+- `region_boundary_gix`: `boundary` GiST. 좌표가 속한 읍·면·동을 찾는다(`RegionResolver`, 코스 등록). 상위 구역은 코드 앞자리로 정한다.
+- 시·군·구 이름 검색(`RegionDirectory`, `GET /api/v1/regions`)은 `name`·`full_name`에 검색어가 들어간 행을 찾는다. 가입 활동 지역과 지역 랭킹의 지역 선택에 쓴다. 5천여 행이라 이름 인덱스 없이 훑는다.
 - 다른 모듈은 코드 값만 저장하고 FK를 걸지 않는다.
 
 #### `common.event_publication` — 이벤트 아웃박스
