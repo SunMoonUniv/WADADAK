@@ -165,6 +165,16 @@ void main() {
     expect(find.widgetWithText(WdRegionCountBubble, '서울'), findsOneWidget);
   });
 
+  testWidgets('does not zoom out past a 50km scale', (tester) async {
+    await openHome(tester);
+    await zoomTo(tester, 6);
+    await zoomTo(tester, 3);
+
+    final [..., atSix, atThree] = courses.regionRequests;
+    expect(atThree.southWest, atSix.southWest, reason: '줌 6(축척 50km)보다 축소되지 않는다(MAP-02)');
+    expect(atThree.northEast, atSix.northEast);
+  });
+
   testWidgets('shows the courses again when zoomed back in to 500m', (tester) async {
     courses
       ..onMap = [seongbukcheon]

@@ -167,6 +167,7 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
   Widget build(BuildContext context) => NaverMap(
         options: NaverMapViewOptions(
           initialCameraPosition: NCameraPosition(target: _latLng(widget.map.initialCenter), zoom: widget.map.initialZoom),
+          minZoom: widget.map.minZoom,
           // 야간 모드는 내비 지도 유형에서만 된다.
           mapType: widget.map.dark ? NMapType.navi : NMapType.basic,
           nightModeEnable: widget.map.dark,

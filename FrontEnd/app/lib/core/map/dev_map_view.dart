@@ -23,7 +23,6 @@ class DevMapView extends StatefulWidget {
 
 class _DevMapViewState extends State<DevMapView> implements MapController {
   static const _tileSize = 256.0;
-  static const _minZoom = 0.0;
   static const _maxZoom = 21.0;
 
   late GeoPoint _center = widget.map.initialCenter;
@@ -113,7 +112,7 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
   void _setCamera(GeoPoint center, double zoom) {
     setState(() {
       _center = center;
-      _zoom = zoom.clamp(_minZoom, _maxZoom);
+      _zoom = zoom.clamp(widget.map.minZoom, _maxZoom);
     });
     _idle();
   }
@@ -175,7 +174,7 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
               _gestureZoom = _zoom;
             },
             onScaleUpdate: (details) => setState(() {
-              _zoom = (_gestureZoom + math.log(details.scale) / math.ln2).clamp(_minZoom, _maxZoom);
+              _zoom = (_gestureZoom + math.log(details.scale) / math.ln2).clamp(widget.map.minZoom, _maxZoom);
               // 시작 때 손가락 아래 있던 곳이 지금 손가락 아래 오게 한다.
               _center = _geo(_world(_gestureAnchor!, _zoom) - details.localFocalPoint + _focus, _zoom);
             }),

@@ -10,7 +10,7 @@ void main() {
   late List<MapCamera> cameras;
   late List<GeoPoint> taps;
 
-  Future<void> show(WidgetTester tester, {List<MapMarker> markers = const []}) async {
+  Future<void> show(WidgetTester tester, {List<MapMarker> markers = const [], double minZoom = 0}) async {
     tester.view
       ..physicalSize = const Size(400, 800)
       ..devicePixelRatio = 1;
@@ -24,6 +24,7 @@ void main() {
             MapLine(id: 'one-point', points: [GeoPoint(37.56, 126.97)]),
           ],
           markers: markers,
+          minZoom: minZoom,
           onCreated: (controller) => map = controller,
           onTap: taps.add,
           onCameraIdle: cameras.add,
@@ -70,6 +71,23 @@ void main() {
     await map.moveTo(const GeoPoint(37.51, 127.11));
     expect(cameras.last.center, const GeoPoint(37.51, 127.11));
     expect(cameras.last.zoom, 16);
+  });
+
+  testWidgets('does not zoom out past the min zoom', (tester) async {
+    await show(tester, minZoom: 6);
+
+    await map.moveTo(MapView.seoulCityHall, zoom: 3);
+    expect(cameras.last.zoom, 6);
+
+    // 오므리기도 막는다.
+    final first = await tester.startGesture(const Offset(100, 400));
+    final second = await tester.startGesture(const Offset(300, 400));
+    await first.moveTo(const Offset(190, 400));
+    await second.moveTo(const Offset(210, 400));
+    await first.up();
+    await second.up();
+    await tester.pump();
+    expect(cameras.last.zoom, 6);
   });
 
   testWidgets('reports the scale bar the Naver map shows at the same zoom', (tester) async {

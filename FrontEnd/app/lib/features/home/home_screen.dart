@@ -38,6 +38,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// 가장 최근 조회 번호. 늦게 도착한 예전 응답은 버린다.
   var _request = 0;
 
+  /// 최대 축소. 축척 막대가 50km보다 넓어지지 않는다(MAP-02). 줌 6은 제주(위도 33°)부터 강원 북쪽(38.6°)까지 50km다.
+  static const _minZoom = 6.0;
+
   // 위아래 여백 + 현재 위치 버튼.
   static const _buttonRowHeight = WdSpace.s16 * 2 + WdMapLocateButton.size;
 
@@ -94,6 +97,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         body: Stack(
           children: [
             MapView(
+              minZoom: _minZoom,
               // 아래 버튼 줄만큼 비워 네이버 로고·축척이 버튼에 가리지 않게 한다.
               padding: const EdgeInsets.only(bottom: _buttonRowHeight),
               lines: [for (final course in _courses) MapLine(id: 'course-${course.courseId}', points: course.route)],

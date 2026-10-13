@@ -35,6 +35,7 @@ class MapView extends ConsumerWidget {
     super.key,
     this.initialCenter = seoulCityHall,
     this.initialZoom = 14,
+    this.minZoom = 0,
     this.lines = const [],
     this.markers = const [],
     this.padding = EdgeInsets.zero,
@@ -51,6 +52,9 @@ class MapView extends ConsumerWidget {
 
   final GeoPoint initialCenter;
   final double initialZoom;
+
+  /// 이보다 축소하지 않는다(예: 홈은 축척 막대 50km까지, MAP-02). 지도를 띄운 뒤 바꾸지 않는다.
+  final double minZoom;
   final List<MapLine> lines;
   final List<MapMarker> markers;
 
