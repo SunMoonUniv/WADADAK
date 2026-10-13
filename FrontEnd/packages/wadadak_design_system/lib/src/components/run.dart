@@ -31,6 +31,7 @@ class WdRunHeader extends StatelessWidget {
             children: [
               Expanded(
                 child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   spacing: 2,
                   children: [

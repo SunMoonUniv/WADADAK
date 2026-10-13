@@ -66,10 +66,14 @@ class WdBottomNav extends StatelessWidget {
           minimum: const EdgeInsets.only(bottom: 18), // Figma 84 = 12 + 54 + 18
           child: Padding(
             padding: const EdgeInsets.fromLTRB(WdSpace.s20, WdSpace.s12, WdSpace.s20, 0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [for (var i = 0; i < items.length; i++) _tab(i)],
-            ),
+            child: LayoutBuilder(builder: (context, constraints) {
+              // 402px 시안에서는 76px을 유지하고 좁은 기기에서는 균등하게 줄인다.
+              final width = (constraints.maxWidth / items.length).clamp(0.0, 76.0).toDouble();
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [for (var i = 0; i < items.length; i++) SizedBox(width: width, child: _tab(i))],
+              );
+            }),
           ),
         ),
       );

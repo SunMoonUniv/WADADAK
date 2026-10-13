@@ -1,0 +1,11 @@
+<svg preserveAspectRatio="none" overflow="visible" style="display: block;" width="26" height="24" viewBox="0 0 26 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<g id="Icon / run" clip-path="url(#clip0_0_98)">
+<path id="body" d="M4 21.6L8.55 20.2L10.0667 16.5L13.3167 11M10.0667 16.5L13.9667 18.4L13.1 23M18.3 13L15.7 14.2L12.6667 12.2L9.2 12.6L7.03333 15" stroke="#171B19" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="head" d="M15.0938 1.0498C17.9601 1.0498 20.1377 3.17585 20.1377 5.625C20.1377 8.07415 17.9601 10.2002 15.0938 10.2002C12.2274 10.2002 10.0498 8.07415 10.0498 5.625C10.0498 3.17585 12.2274 1.0498 15.0938 1.0498Z" stroke="#171B19" stroke-width="2.1"/>
+</g>
+<defs>
+<clipPath id="clip0_0_98">
+<rect width="26" height="24" fill="white"/>
+</clipPath>
+</defs>
+</svg>

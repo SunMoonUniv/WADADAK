@@ -43,11 +43,14 @@ class WdSummaryTiles extends StatelessWidget {
 
 /// A DS / Metric — 라벨 + 숫자. [dark]는 어두운 배경용.
 class WdMetric extends StatelessWidget {
-  const WdMetric({super.key, required this.label, required this.value, this.dark = false});
+  const WdMetric({super.key, required this.label, required this.value, this.dark = false, this.labelStyle});
 
   final String label;
   final String value;
   final bool dark;
+
+  /// C4 러닝 지표처럼 화면에서 라벨 크기를 지정할 때 사용한다.
+  final TextStyle? labelStyle;
 
   @override
   Widget build(BuildContext context) => Column(
@@ -56,7 +59,7 @@ class WdMetric extends StatelessWidget {
         spacing: WdSpace.s6,
         children: [
           Text(label,
-              style: WdText.ko11Medium
+              style: (labelStyle ?? WdText.ko11Medium)
                   .copyWith(color: dark ? WdColors.textInverseSecondary : WdColors.textSecondary)),
           Text(value, style: WdText.numeric24.copyWith(color: dark ? WdColors.textInverse : WdColors.textPrimary)),
         ],
