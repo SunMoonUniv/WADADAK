@@ -4,22 +4,34 @@ import 'package:go_router/go_router.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import 'core/auth/auth_controller.dart';
+import 'features/run/application/free_run_controller.dart';
+import 'features/run/domain/run_models.dart';
 
 /// 하단 탭 4개(홈 · 달리기 · 랭킹 · MY). 탭마다 자기 화면 기록을 유지한다.
-class MainShell extends StatelessWidget {
+class MainShell extends ConsumerWidget {
   const MainShell({super.key, required this.shell});
 
   final StatefulNavigationShell shell;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-        body: shell,
-        bottomNavigationBar: WdBottomNav(
-          currentIndex: shell.currentIndex,
-          // 지금 탭을 다시 누르면 그 탭의 첫 화면으로 돌아간다.
-          onTap: (index) => shell.goBranch(index, initialLocation: index == shell.currentIndex),
-        ),
-      );
+  Widget build(BuildContext context, WidgetRef ref) {
+    final run = ref.watch(freeRunControllerProvider);
+    return ListenableBuilder(
+      listenable: run,
+      builder: (context, _) {
+        // C5만 탭을 표시하고 H4/C4/D1-2는 피그마의 전체 화면을 쓴다.
+        final fullScreen = shell.currentIndex == 1 &&
+            (run.countdown != null || run.snapshot.state != RunState.ready);
+        return Scaffold(
+          body: shell,
+          bottomNavigationBar: fullScreen ? null : WdBottomNav(
+            currentIndex: shell.currentIndex,
+            onTap: (index) => shell.goBranch(index, initialLocation: index == shell.currentIndex),
+          ),
+        );
+      },
+    );
+  }
 }
 
 /// 각 탭 담당자가 실제 화면으로 바꾼다.
