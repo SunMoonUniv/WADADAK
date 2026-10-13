@@ -72,6 +72,19 @@ void main() {
     expect(cameras.last.zoom, 16);
   });
 
+  testWidgets('reports the scale bar the Naver map shows at the same zoom', (tester) async {
+    await show(tester);
+    // 에뮬레이터의 네이버 지도도 시청 · 줌 14에서 축척 막대가 200m다.
+    expect(cameras.single.scaleMeters, 200);
+
+    final scales = <int>[];
+    for (final zoom in <double>[13, 12, 11, 10, 9]) {
+      await map.moveTo(MapView.seoulCityHall, zoom: zoom);
+      scales.add(cameras.last.scaleMeters);
+    }
+    expect(scales, [500, 1000, 2000, 2000, 5000]);
+  });
+
   testWidgets('fits all points on screen without zooming out further than needed', (tester) async {
     await show(tester);
     const points = [GeoPoint(37.50, 127.00), GeoPoint(37.60, 127.10), GeoPoint(37.55, 126.95)];

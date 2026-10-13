@@ -116,15 +116,25 @@ enum MyLocationSource {
 /// 멈춘 카메라와 보이는 범위.
 @immutable
 class MapCamera {
-  const MapCamera({required this.center, required this.zoom, required this.southWest, required this.northEast});
+  const MapCamera({
+    required this.center,
+    required this.zoom,
+    required this.southWest,
+    required this.northEast,
+    required this.scaleMeters,
+  });
 
   final GeoPoint center;
   final double zoom;
   final GeoPoint southWest;
   final GeoPoint northEast;
 
+  /// 축척 막대에 보이는 거리(m, 1·2·5 단계). 정책의 "축척 2km"·"축척 500m"가 이 값이다(MAP-02).
+  /// 개발용 지도는 축척 막대가 없어 네이버 지도가 같은 위도·줌에서 보일 값을 준다.
+  final int scaleMeters;
+
   @override
-  String toString() => 'MapCamera($center, zoom: $zoom, $southWest ~ $northEast)';
+  String toString() => 'MapCamera($center, zoom: $zoom, scale: ${scaleMeters}m, $southWest ~ $northEast)';
 }
 
 /// 지도 위 선. 좌표 순서대로 잇는다. 점이 2개보다 적으면 그리지 않는다.

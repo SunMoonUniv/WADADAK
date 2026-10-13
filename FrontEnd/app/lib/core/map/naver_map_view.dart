@@ -156,6 +156,10 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
       zoom: position.zoom,
       southWest: _geoPoint(bounds.southWest),
       northEast: _geoPoint(bounds.northEast),
+      // 화면의 축척 막대도 SDK의 이 계산으로 그린다.
+      scaleMeters: ScaleBarWidget.fromMeterPerDp(
+        controller.getMeterPerDpAtLatitude(latitude: position.target.latitude, zoom: position.zoom),
+      ).currentMeter,
     ));
   }
 

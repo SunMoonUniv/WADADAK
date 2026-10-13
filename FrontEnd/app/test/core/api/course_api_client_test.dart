@@ -89,6 +89,30 @@ void main() {
     expect(map.courses.single.route, const [start, end]);
   });
 
+  test('counts the courses in the map area by region', () async {
+    final server = _FakeServer({
+      'totalCount': 3,
+      'regions': [
+        {'code': '1129000000', 'name': '성북구', 'count': 2, 'center': start.toJson()},
+        {'code': '1144000000', 'name': '마포구', 'count': 1, 'center': end.toJson()},
+      ],
+    });
+
+    final counts = await client(server).regionCounts(
+      southWest: const GeoPoint(37.58, 127.01),
+      northEast: const GeoPoint(37.60, 127.03),
+      level: RegionLevel.district,
+    );
+
+    expect(server.request.path, '/api/v1/courses/map/regions');
+    expect(server.request.queryParameters,
+        {'swLat': 37.58, 'swLng': 127.01, 'neLat': 37.60, 'neLng': 127.03, 'level': 'DISTRICT'});
+    expect(counts.totalCount, 3);
+    expect([for (final region in counts.regions) '${region.name} ${region.count}'], ['성북구 2', '마포구 1']);
+    expect(counts.regions.first.code, '1129000000');
+    expect(counts.regions.first.center, start);
+  });
+
   test('keeps the anchor points a route was made from', () async {
     final server = _FakeServer({
       'route': [start.toJson(), end.toJson()],

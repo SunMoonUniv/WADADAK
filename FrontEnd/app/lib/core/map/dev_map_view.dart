@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
+import 'package:flutter_naver_map/flutter_naver_map.dart' show ScaleBarWidget;
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import 'map_view.dart';
@@ -100,7 +101,14 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
         zoom: _zoom,
         southWest: _toGeo(Offset(0, _size.height)),
         northEast: _toGeo(Offset(_size.width, 0)),
+        scaleMeters: _naverScaleMeters(_center, _zoom),
       ));
+
+  /// 네이버 지도가 같은 위도·줌에서 축척 막대에 보일 값. 축척으로 표시를 바꾸는 화면(홈 MAP-02)이 두 지도에서 같은 줌에 바뀐다.
+  /// 네이버 지도의 1dp = 지구 반지름 × π ÷ 256 ÷ 2^줌 × cos(위도)다(flutter_naver_map `getMeterPerDpAtLatitude`).
+  static int _naverScaleMeters(GeoPoint center, double zoom) => ScaleBarWidget.fromMeterPerDp(
+        6378137 * math.pi / 256 / math.pow(2, zoom) * math.cos(center.lat * math.pi / 180),
+      ).currentMeter;
 
   void _setCamera(GeoPoint center, double zoom) {
     setState(() {
