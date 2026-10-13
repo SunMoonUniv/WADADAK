@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
+import '../../core/api/course_api_client.dart';
 import '../../core/map/map_view.dart';
 import '../../routes.dart';
 
@@ -22,6 +23,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 위아래 여백 + 현재 위치 버튼.
   static const _buttonRowHeight = WdSpace.s16 * 2 + WdMapLocateButton.size;
+
+  /// 코스를 등록하고 돌아오면 지도를 새 코스 출발점으로 옮긴다(B4-07). 줌은 그대로 둔다.
+  Future<void> _createCourse() async {
+    final course = await context.push<RegisteredCourse>(Routes.courseCreate, extra: _camera);
+    if (course != null) await _map?.moveTo(course.startPoint);
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -44,10 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       // Figma A4·A5와 같이 왼쪽 24.
                       Padding(
                         padding: const EdgeInsets.only(left: WdSpace.s8),
-                        child: WdMapPillButton.small(
-                          '＋ 코스 만들기',
-                          onPressed: () => context.push(Routes.courseCreate, extra: _camera),
-                        ),
+                        child: WdMapPillButton.small('＋ 코스 만들기', onPressed: _createCourse),
                       ),
                       WdMapLocateButton(onPressed: () => _map?.showMyLocation()),
                     ],

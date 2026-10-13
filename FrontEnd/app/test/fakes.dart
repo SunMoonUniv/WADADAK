@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:wadadak/core/api/api_client.dart';
 import 'package:wadadak/core/api/course_api_client.dart';
 import 'package:wadadak/core/api/member_api_client.dart';
@@ -95,6 +97,14 @@ class FakeCourseApi implements CourseApiClient {
   ApiException? routeError;
   List<GeoPoint>? sentPoints;
 
+  /// 이미 있는 코스 이름. 서버처럼 공백 · 대소문자를 무시하고 비교한다.
+  Set<String> takenNames = {};
+  ApiException? registerError;
+
+  /// 있으면 끝날 때까지 등록 응답을 미룬다(등록 중 화면).
+  Completer<void>? registerGate;
+  final registrations = <FakeRegistration>[];
+
   @override
   Future<RegistrationQuota> registrationQuota() async => quota;
 
@@ -104,9 +114,43 @@ class FakeCourseApi implements CourseApiClient {
     sentPoints = anchorPoints;
     if (routeError != null) throw routeError!;
     return GeneratedRoute(
+      anchorPoints: anchorPoints,
       route: anchorPoints,
       distanceMeters: GeoPoint.pathLength(anchorPoints).round(),
       distanceMarkers: [DistanceMarker(1, anchorPoints.last)],
     );
   }
+
+  @override
+  Future<bool> isNameAvailable(String name) async => !takenNames.map(_nameKey).contains(_nameKey(name));
+
+  @override
+  Future<RegisteredCourse> registerCustom({
+    required String idempotencyKey,
+    required List<GeoPoint> anchorPoints,
+    required String name,
+    required Difficulty difficulty,
+    required Set<CourseTag> tags,
+  }) async {
+    registrations.add((
+      idempotencyKey: idempotencyKey,
+      anchorPoints: anchorPoints,
+      name: name,
+      difficulty: difficulty,
+      tags: {...tags},
+    ));
+    await registerGate?.future;
+    if (registerError != null) throw registerError!;
+    return RegisteredCourse(courseId: 'course-${registrations.length}', name: name, startPoint: anchorPoints.first);
+  }
+
+  static String _nameKey(String name) => name.replaceAll(RegExp(r'\s+'), '').toLowerCase();
 }
+
+typedef FakeRegistration = ({
+  String idempotencyKey,
+  List<GeoPoint> anchorPoints,
+  String name,
+  Difficulty difficulty,
+  Set<CourseTag> tags,
+});
