@@ -28,7 +28,8 @@ class CourseMapController {
 
     @Operation(summary = "지도 범위 안 지역별 코스 수 (A4 지도 축소)",
             description = "지도 범위 안 코스(출발점 기준)를 출발점 지역별로 센다. 범위·필터는 지도 범위 안 코스와 같다. "
-                    + "CITY는 특별·광역·특별자치시를 통째로, 도는 시·군마다, DISTRICT는 시·군·구마다 하나. 코스가 많은 지역부터.")
+                    + "CITY는 특별·광역·특별자치시를 통째로, 도는 시·군마다(전남광주통합특별시는 도처럼 세고 옛 광주광역시의 구는 '광주' 하나), "
+                    + "DISTRICT는 시·군·구마다 하나. 코스가 많은 지역부터.")
     @GetMapping("/regions")
     ApiResult<RegionCounts> regions(
             @ParameterObject @Valid CourseMapRequest request,

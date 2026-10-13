@@ -132,7 +132,7 @@ class CourseMapControllerTest {
         insertIn("4111300000", 33.484, 126.304, "HARD");
         insertIn("4115000000", 33.486, 126.306, "EASY");
         insertIn("4180000000", 33.487, 126.307, "EASY");
-        insertIn("1129000000", 33.470, 126.301, "EASY");
+        insertIn("1129000000", 33.495, 126.301, "EASY");
         String area = "swLat=33.480&swLng=126.300&neLat=33.490&neLng=126.310";
 
         // 시 단위: 특별·광역시는 통째로, 도는 시·군마다(수원시 장안구 + 권선구 → 수원). 범위 밖 코스는 세지 않는다
@@ -150,6 +150,25 @@ class CourseMapControllerTest {
                 .containsExactly("성북구 2", "마포구 1", "장안구 1", "권선구 1", "의정부시 1", "연천군 1");
         // 필터도 지도 범위 안 코스와 같다(MAP-07)
         assertThat(counts(data(regions(area + "&level=CITY&difficulties=HARD")))).containsExactly("서울 1", "수원 1");
+    }
+
+    @Test
+    void countsOldGwangjuDistrictsAsOneCity() throws Exception {
+        // 전남광주통합특별시: 동구 · 광산구(옛 광주광역시), 목포시, 담양군
+        insertIn("1221000000", 33.521, 126.301, "EASY");
+        insertIn("1233000000", 33.522, 126.302, "EASY");
+        insertIn("1211000000", 33.523, 126.303, "EASY");
+        insertIn("1271000000", 33.524, 126.304, "EASY");
+        String area = "swLat=33.520&swLng=126.300&neLat=33.530&neLng=126.310";
+
+        // 시 단위: 통합특별시는 도처럼 시·군마다, 옛 광주광역시의 구는 '광주' 하나
+        JsonNode city = data(regions(area + "&level=CITY"));
+        assertThat(counts(city)).containsExactly("광주 2", "목포 1", "담양군 1");
+        assertThat(city.get("regions").get(0).get("code").asString()).isEqualTo("2900000000");
+
+        // 구 단위는 다른 시·도와 같다
+        assertThat(counts(data(regions(area + "&level=DISTRICT"))))
+                .containsExactly("목포시 1", "동구 1", "광산구 1", "담양군 1");
     }
 
     @Test

@@ -15,6 +15,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -33,6 +34,13 @@ class CourseMapRepository {
     private static final Map<String, String> METRO_CITIES = Map.of(
             "11", "서울", "26", "부산", "27", "대구", "28", "인천",
             "29", "광주", "30", "대전", "31", "울산", "36", "세종");
+
+    /**
+     * 옛 광주광역시의 구(동·서·남·북·광산구). 광주는 전라남도와 합쳐 전남광주통합특별시(12)가 되어 시·도 코드가 없다.
+     * 통합특별시는 도처럼 시·군마다 세고, 이 구들은 옛 광주광역시 코드(29)로 묶어 '광주' 하나로 센다.
+     */
+    private static final Set<String> GWANGJU_DISTRICTS = Set.of(
+            "1221000000", "1224000000", "1227000000", "1230000000", "1233000000");
 
     private final JdbcClient jdbc;
     private final RegionDirectory regionDirectory;
@@ -59,7 +67,10 @@ class CourseMapRepository {
         String key = switch (level) {
             case DISTRICT -> "c.sigungu_code";
             // 도의 시·군은 시·군·구 코드 앞 4자리가 같다(예: 수원시 장안구 41111 · 권선구 41113 → 4111)
-            case CITY -> "CASE WHEN left(c.sido_code, 2) IN (:metro) THEN c.sido_code ELSE left(c.sigungu_code, 4) || '000000' END";
+            case CITY -> """
+                    CASE WHEN c.sigungu_code IN (:gwangju) THEN '2900000000'
+                         WHEN left(c.sido_code, 2) IN (:metro) THEN c.sido_code
+                         ELSE left(c.sigungu_code, 4) || '000000' END""";
         };
         List<Group> groups = jdbc.sql("""
                         SELECT g.code, min(g.sigungu_code) AS sigungu_code, count(*) AS n, avg(g.lat) AS lat, avg(g.lng) AS lng
@@ -71,6 +82,7 @@ class CourseMapRepository {
                         ORDER BY n DESC, g.code""".formatted(key, filter.where()))
                 .params(filter.params())
                 .param("metro", METRO_CITIES.keySet())
+                .param("gwangju", GWANGJU_DISTRICTS)
                 .query((rs, rowNum) -> new Group(rs.getString("code"), rs.getString("sigungu_code"), rs.getInt("n"),
                         new GeoPoint(rs.getDouble("lat"), rs.getDouble("lng"))))
                 .list();
@@ -84,7 +96,7 @@ class CourseMapRepository {
     }
 
     /**
-     * 지도에 보일 짧은 이름. 구 단위는 이름의 마지막 말(수원시 장안구 → 장안구), 시 단위는 특별·광역시는 짧은 이름(서울),
+     * 지도에 보일 짧은 이름. 구 단위는 이름의 마지막 말(수원시 장안구 → 장안구), 시 단위는 특별·광역시는 짧은 이름(서울 · 광주),
      * 도의 시는 '시'를 뗀 이름(의정부시 · 수원시 장안구 → 의정부 · 수원), 군은 그대로(연천군).
      */
     private static String name(RegionLevel level, Group group, Region sigungu) {

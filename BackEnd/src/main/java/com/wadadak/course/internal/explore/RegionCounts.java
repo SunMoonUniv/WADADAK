@@ -13,8 +13,9 @@ import java.util.List;
 record RegionCounts(int totalCount, List<RegionCount> regions) {
 
     /**
-     * @param code   구 단위는 시·군·구 코드. 시 단위는 특별·광역시면 시·도 코드, 도의 시·군이면 앞 4자리 뒤를 0으로 채운 코드
-     * @param name   지도에 보일 짧은 이름(서울 · 의정부 · 연천군 · 성북구)
+     * @param code   구 단위는 시·군·구 코드. 시 단위는 특별·광역시면 시·도 코드, 도의 시·군이면 앞 4자리 뒤를 0으로 채운 코드,
+     *               옛 광주광역시 구면 옛 광주광역시 코드(2900000000)
+     * @param name   지도에 보일 짧은 이름(서울 · 광주 · 의정부 · 연천군 · 성북구)
      * @param center 이 지역의 범위 안 코스 출발점들의 가운데. 개수 배지를 놓는다
      */
     record RegionCount(String code, String name, int count, GeoPoint center) {
