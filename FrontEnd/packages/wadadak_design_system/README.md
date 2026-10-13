@@ -104,6 +104,7 @@ Figma는 아직 Noto Sans KR · Inter다. 디자이너 PC에 Pretendard를 설�
 | Map button / Locate · Km marker · Route point | `WdMapLocateButton` · `WdKmMarker` · `WdRoutePoint` |
 | Map / Region count bubble · Sheet peek · Thumbnail | `WdRegionCountBubble` · `WdSheetPeek` · `WdRouteThumbnail` |
 | (컴포넌트 아님) B3 지도 안내 · 되돌리기·전체 지우기·홈 `＋ 코스 만들기` · 출발·도착 · 범례 | `WdMapHint` · `WdMapPillButton`(`.small`) · `WdRouteEndpoint.start/.end` · `WdRouteLegend` — B3·A4 화면에 그려진 값을 옮겼다 |
+| (컴포넌트 아님) A5 지도 위 코스 이름표 | `WdMapCourseLabel` — A5 화면에 그려진 값을 옮겼다 |
 | Analysis / Segment chart · Segment table | `WdSegmentChart` · `WdSegmentTable` |
 | A 확장 / Avatar | `WdAvatar` |
 | Information · Notice / Speed ghost, 브랜드 로고 | `WdIcon(WdIcons.ghostInfo …)`, `WdLogo` |

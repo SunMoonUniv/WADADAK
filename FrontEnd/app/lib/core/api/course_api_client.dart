@@ -93,6 +93,40 @@ class RegisteredCourse {
   final GeoPoint startPoint;
 }
 
+/// 지도 범위 안 코스(A2·A5). 출발점이 범위 안에 있는 활성 코스다(정책 MAP-04).
+@immutable
+class CourseMap {
+  const CourseMap({required this.totalCount, required this.courses});
+
+  factory CourseMap.fromJson(Map<Object?, Object?> json) => CourseMap(
+        totalCount: json['totalCount']! as int,
+        courses: [for (final course in json['courses']! as List) MapCourse.fromJson(course as Map)],
+      );
+
+  /// 범위 안 코스 전체 수(지도의 "코스 N개").
+  final int totalCount;
+
+  /// 그중 최대 100개, 최근 등록순.
+  final List<MapCourse> courses;
+}
+
+@immutable
+class MapCourse {
+  const MapCourse({required this.courseId, required this.name, required this.route});
+
+  factory MapCourse.fromJson(Map<Object?, Object?> json) => MapCourse(
+        courseId: json['courseId']! as String,
+        name: json['name']! as String,
+        route: [for (final point in json['route']! as List) GeoPoint.fromJson(point as Map)],
+      );
+
+  final String courseId;
+  final String name;
+
+  /// 첫 점 출발, 마지막 점 도착(코스 방향).
+  final List<GeoPoint> route;
+}
+
 /// 오늘(Asia/Seoul) 남은 등록 수. 유형마다 따로 센다.
 @immutable
 class RegistrationQuota {
@@ -162,6 +196,17 @@ class CourseApiClient {
           options: Options(headers: {'Idempotency-Key': idempotencyKey}),
         ));
     return RegisteredCourse.fromJson(data! as Map);
+  }
+
+  /// 지도 범위(남서쪽·북동쪽 끝) 안 코스(A2·A5).
+  Future<CourseMap> mapCourses({required GeoPoint southWest, required GeoPoint northEast}) async {
+    final data = await callApi(() => _dio.get('$_courses/map', queryParameters: {
+          'swLat': southWest.lat,
+          'swLng': southWest.lng,
+          'neLat': northEast.lat,
+          'neLng': northEast.lng,
+        }));
+    return CourseMap.fromJson(data! as Map);
   }
 
   /// 오늘 남은 등록 수. 0이면 그 방식의 코스 만들기를 미리 막는다(개발 정책 10.2 course).

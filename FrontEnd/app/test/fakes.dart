@@ -105,6 +105,11 @@ class FakeCourseApi implements CourseApiClient {
   Completer<void>? registerGate;
   final registrations = <FakeRegistration>[];
 
+  /// 지도 범위와 상관없이 돌려줄 코스.
+  List<MapCourse> onMap = [];
+  ApiException? mapError;
+  final mapRequests = <({GeoPoint southWest, GeoPoint northEast})>[];
+
   @override
   Future<RegistrationQuota> registrationQuota() async => quota;
 
@@ -142,6 +147,13 @@ class FakeCourseApi implements CourseApiClient {
     await registerGate?.future;
     if (registerError != null) throw registerError!;
     return RegisteredCourse(courseId: 'course-${registrations.length}', name: name, startPoint: anchorPoints.first);
+  }
+
+  @override
+  Future<CourseMap> mapCourses({required GeoPoint southWest, required GeoPoint northEast}) async {
+    mapRequests.add((southWest: southWest, northEast: northEast));
+    if (mapError != null) throw mapError!;
+    return CourseMap(totalCount: onMap.length, courses: onMap);
   }
 
   static String _nameKey(String name) => name.replaceAll(RegExp(r'\s+'), '').toLowerCase();

@@ -148,6 +148,25 @@ class WdMapHint extends StatelessWidget {
       );
 }
 
+/// 지도 위 코스 이름표 — A5 "성북천 벚꽃길 3K · ★4.8". 평점이 없으면 이름만 보인다.
+///
+/// 지도 표지로 올릴 때는 아래 가운데를 코스 출발점에 둔다.
+class WdMapCourseLabel extends StatelessWidget {
+  const WdMapCourseLabel(this.name, {super.key, this.rating});
+
+  final String name;
+
+  /// 예: "4.8"
+  final String? rating;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: WdSpace.s8, vertical: WdSpace.s4),
+        decoration: BoxDecoration(color: WdColors.ink, borderRadius: BorderRadius.circular(WdRadius.full)),
+        child: Text(rating == null ? name : '$name · ★$rating', style: WdText.ko12Medium.copyWith(color: WdColors.white)),
+      );
+}
+
 /// 지도 위 흰 알약 버튼.
 class WdMapPillButton extends StatelessWidget {
   /// B3 `↺  되돌리기` · `✕  전체 지우기` — 여백 10·8, 떠 있는 그림자. Figma는 되돌리기만 [bold]다.

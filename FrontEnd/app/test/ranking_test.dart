@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wadadak/core/api/api_client.dart';
+import 'package:wadadak/core/api/course_api_client.dart';
 import 'package:wadadak/core/api/member_api_client.dart';
 import 'package:wadadak/core/api/ranking_api_client.dart';
 import 'package:wadadak/core/api/region_api_client.dart';
@@ -120,6 +121,7 @@ void main() {
         rankingApiClientProvider.overrideWithValue(api),
         regionApiClientProvider.overrideWithValue(FakeRegionApi()),
         mapEngineProvider.overrideWithValue(MapEngine.dev),
+        courseApiClientProvider.overrideWithValue(FakeCourseApi()),
       ],
       child: const WadadakApp(),
     ));

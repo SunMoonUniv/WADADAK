@@ -71,6 +71,24 @@ void main() {
     expect(server.request.queryParameters, {'name': '한강 러닝'});
   });
 
+  test('asks for the courses in a map area', () async {
+    final server = _FakeServer({
+      'totalCount': 24,
+      'courses': [
+        {'courseId': 'c1', 'name': '성북천 벚꽃길 3K', 'route': [start.toJson(), end.toJson()]},
+      ],
+    });
+
+    final map = await client(server).mapCourses(southWest: const GeoPoint(37.58, 127.01), northEast: const GeoPoint(37.60, 127.03));
+
+    expect(server.request.method, 'GET');
+    expect(server.request.path, '/api/v1/courses/map');
+    expect(server.request.queryParameters, {'swLat': 37.58, 'swLng': 127.01, 'neLat': 37.60, 'neLng': 127.03});
+    expect(map.totalCount, 24);
+    expect(map.courses.single.name, '성북천 벚꽃길 3K');
+    expect(map.courses.single.route, const [start, end]);
+  });
+
   test('keeps the anchor points a route was made from', () async {
     final server = _FakeServer({
       'route': [start.toJson(), end.toJson()],

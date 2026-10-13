@@ -6,12 +6,12 @@ import 'api/api_client.dart';
 String errorMessage(Object error) =>
     error is ApiException && error.message.isNotEmpty ? error.message : '문제가 생겼어요. 잠시 후 다시 시도해 주세요.';
 
-/// 오류를 화면 아래 스낵바로 알린다. [onRetry]가 있으면 `다시 시도`를 붙인다.
-void showError(BuildContext context, Object error, {VoidCallback? onRetry}) {
+/// 오류를 화면 아래 스낵바로 알린다. 정책이 문구를 정한 곳은 [message]로 넘긴다. [onRetry]가 있으면 `다시 시도`를 붙인다.
+void showError(BuildContext context, Object error, {String? message, VoidCallback? onRetry}) {
   ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(SnackBar(
-      content: Text(errorMessage(error)),
+      content: Text(message ?? errorMessage(error)),
       action: onRetry == null ? null : SnackBarAction(label: '다시 시도', onPressed: onRetry),
     ));
 }

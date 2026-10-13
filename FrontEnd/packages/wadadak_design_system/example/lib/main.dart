@@ -329,6 +329,10 @@ class _CatalogPageState extends State<CatalogPage> {
             ]),
             const WdSheetPeek(title: '↑ 위로 올려 코스 목록 보기', meta: ' 전국 3,412'),
             const WdMapHint('지도를 탭해 경로 그리기 · 점을 순서대로 연결'),
+            const Row(spacing: 16, children: [
+              WdMapCourseLabel('성북천 벚꽃길 3K', rating: '4.8'),
+              WdMapCourseLabel('정릉 오르막 4K'),
+            ]),
             Row(spacing: 16, children: [
               WdMapPillButton('↺  되돌리기', bold: true, onPressed: () {}),
               WdMapPillButton('✕  전체 지우기', onPressed: () {}),
