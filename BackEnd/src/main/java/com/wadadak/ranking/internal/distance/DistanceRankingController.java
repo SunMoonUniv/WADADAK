@@ -11,8 +11,6 @@ import com.wadadak.ranking.RankingPeriod;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
 import jakarta.validation.Valid;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Size;
 import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -22,7 +20,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.List;
 import java.util.UUID;
 
 @RestController
@@ -30,7 +27,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 class DistanceRankingController {
 
-    private static final int REGION_SEARCH_LIMIT = 20;
     private static final String PERIOD = "ALL 누적, MONTH 이번 달(1일 00:00부터), WEEK 이번 주(월요일 00:00부터). 기록 등록 시각(Asia/Seoul) 기준";
     private static final String REGION = "시·군·구 법정동 코드. 비우면 요청자의 이번 주 활동 지역";
 
@@ -81,14 +77,6 @@ class DistanceRankingController {
             @Parameter(description = REGION) @RequestParam(required = false) String regionCode,
             @ParameterObject @Valid Cursorable page) {
         return ApiResult.success(reader.regionWeeklyEntries(region(regionCode), memberId(jwt), page));
-    }
-
-    @Operation(summary = "시·군·구 검색 (I6 지역 선택)",
-            description = "이름이나 상위 구역 이름에 검색어가 들어간 시·군·구를 최대 20개. 이름이 정확히 같은 지역이 먼저 온다. "
-                    + "빈 검색어나 20자 초과는 COMMON-001.")
-    @GetMapping("/regions")
-    ApiResult<List<Region>> searchRegions(@RequestParam @NotBlank @Size(max = 20) String query) {
-        return ApiResult.success(regions.searchSigungu(query, REGION_SEARCH_LIMIT));
     }
 
     private Region region(String regionCode) {
