@@ -152,7 +152,7 @@ class MapLine {
 /// 선 모양. 쓰는 곳마다 나눠 두어 한 곳의 색을 바꿔도 다른 곳은 그대로다. 겹치면 뒤에 적힌 모양이 위에 그려진다.
 enum MapLineStyle {
   /// 홈·코스 만들기·코스 상세의 코스 경로. 라임 선 + 잉크 테두리(Figma 코스 썸네일과 같다).
-  course(color: WdColors.lime, outlineColor: WdColors.ink, width: 6, outlineWidth: 2),
+  course(color: WdColors.lime, outlineColor: WdColors.ink, width: 4, outlineWidth: 2),
 
   /// 러닝 화면(어두운 지도)의 코스 경로. 흰 선 + 잉크 테두리. 위에 겹치는 [track]과 구분된다.
   runCourse(color: WdColors.white, outlineColor: WdColors.ink, width: 6, outlineWidth: 2),
