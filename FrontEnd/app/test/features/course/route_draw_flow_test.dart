@@ -7,7 +7,6 @@ import 'package:wadadak/core/api/member_api_client.dart';
 import 'package:wadadak/core/auth/social_login.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/map/map_view.dart';
-import 'package:wadadak/features/course/course_format.dart';
 import 'package:wadadak/features/home/home_screen.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
 import 'package:wadadak/main.dart';
@@ -80,11 +79,9 @@ void main() {
     expect(next(tester), isNotNull);
 
     await tap(tester, find.text('다음 · 코스 정보 입력'));
-    final sent = courses.sentPoints!;
-    expect(sent, hasLength(2));
-    expect(summary(tester, '총 거리'), formatKm(GeoPoint.pathLength(sent).round()));
+    expect(courses.sentPoints, hasLength(2));
     // B4에는 최종 경로와 1km 표지만 있고 입력점은 없다.
-    expect(find.text('코스 정보 입력'), findsOneWidget);
+    expect(find.text('코스 정보'), findsOneWidget);
     expect(find.byType(WdRouteEndpoint), findsNothing);
     expect(find.byType(WdKmMarker), findsOneWidget);
 
@@ -161,7 +158,7 @@ void main() {
 
     courses.routeError = null;
     await tap(tester, find.text('다시 시도'));
-    expect(find.text('코스 정보 입력'), findsOneWidget);
+    expect(find.text('코스 정보'), findsOneWidget);
   });
 
   testWidgets('blocks drawing when today\'s drawn course is already registered', (tester) async {

@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -31,7 +29,6 @@ enum _Method { draw, run }
 class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
   // 범례 + 아래 여백.
   static const _legendHeight = WdRouteLegend.height + WdSpace.s16;
-  static const _quotaUsedUpMessage = '오늘은 그려서 만든 코스를 이미 등록했어요. 내일 다시 만들 수 있어요.';
 
   var _draft = const RouteDraft();
   var _method = _Method.draw;
@@ -166,7 +163,7 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
                 ('찍은 점', '${_draft.points.length}'),
               ]),
               if (_quotaUsedUp)
-                const WdInfoBanner(_quotaUsedUpMessage, tone: WdBannerTone.warning)
+                const WdInfoBanner(customQuotaUsedUpMessage, tone: WdBannerTone.warning)
               else
                 const WdInfoBanner('그려서 만드는 코스는 하루 1개까지 등록할 수 있어요.', tone: WdBannerTone.warning, plain: true),
               // 입력점 2개 이상, 1km 이상 100km 이하가 아니면 비활성(B3-06).
@@ -179,7 +176,7 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
   void _addPoint(GeoPoint point) {
     // 보낸 점과 화면의 점이 달라지지 않게 경로를 만드는 동안은 찍지 않는다.
     if (_generating) return;
-    if (_quotaUsedUp) return _notify(_quotaUsedUpMessage);
+    if (_quotaUsedUp) return _notify(customQuotaUsedUpMessage);
     if (_draft.isFull) return _notify(_fullMessage);
     setState(() => _draft = _draft.add(point));
     if (_draft.isFull) _notify(_fullMessage);
@@ -202,16 +199,20 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
   /// 서버에 최종 경로를 만들어 B4로 간다. 실패하면 B3에 머물러 점을 그대로 두고 다시 시도할 수 있게 한다(B3-06).
   Future<void> _next() async {
     setState(() => _generating = true);
+    final GeneratedRoute route;
     try {
-      final route = await ref.read(courseApiClientProvider).generateRoute(_draft.points);
-      if (!mounted) return;
-      // B4를 이 화면 위에 쌓는다. 돌아오면 입력점이 그대로 있어 고칠 수 있다(정책 공통 3).
-      unawaited(context.push(Routes.courseInfo, extra: route));
+      route = await ref.read(courseApiClientProvider).generateRoute(_draft.points);
     } on ApiException catch (e) {
       if (mounted) showError(context, e, onRetry: _next);
+      return;
     } finally {
       if (mounted) setState(() => _generating = false);
     }
+    if (!mounted) return;
+    // B4를 이 화면 위에 쌓는다. 돌아오면 입력점이 그대로 있어 고칠 수 있다(정책 공통 3).
+    final course = await context.push<RegisteredCourse>(Routes.courseInfo, extra: route);
+    // 등록했으면 홈으로 돌아가 새 코스 위치를 보여 준다(B4-07).
+    if (course != null && mounted) context.pop(course);
   }
 
   Future<void> _changeMethod(_Method method) async {
