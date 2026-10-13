@@ -1,9 +1,14 @@
 package com.wadadak.course.internal.explore;
 
 import com.wadadak.common.geo.GeoPoint;
+import com.wadadak.common.paging.CursorSlice;
+import com.wadadak.common.paging.Cursorable;
 import com.wadadak.common.region.Region;
 import com.wadadak.common.region.RegionDirectory;
 import com.wadadak.course.internal.course.CourseGeometry;
+import com.wadadak.course.internal.course.CourseTag;
+import com.wadadak.course.internal.course.CourseType;
+import com.wadadak.course.internal.course.Difficulty;
 import lombok.RequiredArgsConstructor;
 import org.locationtech.jts.geom.LineString;
 import org.locationtech.jts.io.ParseException;
@@ -11,7 +16,12 @@ import org.locationtech.jts.io.WKBReader;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +31,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * 지도 범위 안 코스 조회(A2·A4·A5). 지도·목록·코스 수가 같은 조건을 써야 해서(MAP-07) 조건을 이곳 한 군데에서 만든다.
+ * 지도 범위 안 코스 조회(A2·A4·A5·A6). 지도·목록·코스 수가 같은 조건을 써야 해서(MAP-07) 조건을 이곳 한 군데에서 만든다.
  */
 @Repository
 @RequiredArgsConstructor
@@ -41,6 +51,11 @@ class CourseMapRepository {
      */
     private static final Set<String> GWANGJU_DISTRICTS = Set.of(
             "1221000000", "1224000000", "1227000000", "1230000000", "1233000000");
+
+    /** 목록 카드에 쓰는 열과 최신순 커서용 등록 시각. */
+    private static final String LIST_COLUMNS = """
+            c.id, c.name, c.distance_meters, c.difficulty, c.tags, c.course_type, c.expires_at, ST_AsBinary(c.route) AS route,
+            c.created_at""";
 
     private final JdbcClient jdbc;
     private final RegionDirectory regionDirectory;
@@ -93,6 +108,74 @@ class CourseMapRepository {
                 .map(g -> new RegionCounts.RegionCount(g.code(), name(level, g, sigungus.get(g.sigunguCode())), g.count(), g.center()))
                 .toList();
         return new RegionCounts(groups.stream().mapToInt(Group::count).sum(), regions);
+    }
+
+    /**
+     * 범위 안 코스 목록 한 쪽(A2 · A6). 조건은 지도 · 지역별 코스 수와 같다(MAP-07).
+     * 최신순은 등록 시각이 늦은 코스부터, 가까운순은 [origin]에서 출발점까지 가까운 코스부터다. 정렬 값이 같으면 ID순.
+     *
+     * @param origin 현재 위치. 가까운순이면 있어야 한다
+     */
+    CursorSlice<CourseListItem> list(CourseMapRequest request, CourseListSort sort, GeoPoint origin, Cursorable page) {
+        Filter filter = Filter.of(request);
+        CourseListCursor after = CourseListCursor.decode(page.cursor(), sort);
+        Map<String, Object> params = new HashMap<>(filter.params());
+        params.put("limit", page.size() + 1);
+        if (after != null) {
+            params.put("afterId", after.id());
+        }
+        String sql = switch (sort) {
+            case LATEST -> {
+                if (after != null) {
+                    params.put("afterCreatedAt", OffsetDateTime.ofInstant(after.createdAt(), ZoneOffset.UTC));
+                }
+                yield """
+                        SELECT %s
+                        FROM course.courses c
+                        WHERE %s%s
+                        ORDER BY c.created_at DESC, c.id DESC
+                        LIMIT :limit""".formatted(LIST_COLUMNS, filter.where(),
+                        after == null ? "" : "\n  AND (c.created_at, c.id) < (:afterCreatedAt, :afterId)");
+            }
+            case NEAREST -> {
+                params.put("originLat", origin.lat());
+                params.put("originLng", origin.lng());
+                if (after != null) {
+                    params.put("afterDistance", after.distanceMeters());
+                }
+                yield """
+                        SELECT *
+                        FROM (SELECT %s,
+                                     ST_Distance(c.start_point, ST_SetSRID(ST_MakePoint(:originLng, :originLat), 4326)::geography) AS distance
+                              FROM course.courses c
+                              WHERE %s) l%s
+                        ORDER BY l.distance, l.id
+                        LIMIT :limit""".formatted(LIST_COLUMNS, filter.where(),
+                        after == null ? "" : "\nWHERE (l.distance, l.id) > (:afterDistance, :afterId)");
+            }
+        };
+        List<ListRow> rows = jdbc.sql(sql).params(params).query((rs, rowNum) -> listRow(rs, sort)).list();
+        if (rows.size() <= page.size()) {
+            return new CursorSlice<>(rows.stream().map(ListRow::item).toList(), null);
+        }
+        List<ListRow> shown = rows.subList(0, page.size());
+        return new CursorSlice<>(shown.stream().map(ListRow::item).toList(), shown.getLast().cursor().encode());
+    }
+
+    private static ListRow listRow(ResultSet rs, CourseListSort sort) throws SQLException {
+        UUID id = rs.getObject("id", UUID.class);
+        List<CourseTag> tags = Arrays.stream((String[]) rs.getArray("tags").getArray())
+                .map(CourseTag::valueOf)
+                .sorted()
+                .toList();
+        CourseListItem item = new CourseListItem(id, rs.getString("name"), rs.getInt("distance_meters"),
+                Difficulty.valueOf(rs.getString("difficulty")), tags, CourseType.valueOf(rs.getString("course_type")),
+                rs.getObject("expires_at", OffsetDateTime.class).toInstant(), points(rs.getBytes("route")));
+        CourseListCursor cursor = switch (sort) {
+            case LATEST -> CourseListCursor.latest(rs.getObject("created_at", OffsetDateTime.class).toInstant(), id);
+            case NEAREST -> CourseListCursor.nearest(rs.getDouble("distance"), id);
+        };
+        return new ListRow(item, cursor);
     }
 
     /**
@@ -161,6 +244,10 @@ class CourseMapRepository {
     }
 
     private record Row(int total, CourseMap.MapCourse course) {
+    }
+
+    /** @param cursor 이 코스 다음 쪽을 가리키는 커서 */
+    private record ListRow(CourseListItem item, CourseListCursor cursor) {
     }
 
     /** @param sigunguCode 이 묶음의 시·군·구 하나. 이름을 찾는 데 쓴다 */
