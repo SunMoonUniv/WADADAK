@@ -17,7 +17,7 @@
 | `member` | member | `members`, `agreements`, `refresh_tokens` |
 | `course` | course | `courses`, `daily_registration_counts`, `registration_requests` |
 | `ranking` | ranking | `course_ranking_entries`, `course_status_copies`, `member_visibility_copies`, `withdrawn_members` |
-| `review` | review | `reviews`, `review_photos`, `review_tags`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
+| `review` | review | `reviews`, `review_photos`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
 | `common` | common | `region`, `event_publication`, `shedlock`, `flyway_schema_history` |
 
 run, notification 스키마는 아직 없다. 해당 모듈을 구현할 때 이 문서에 추가한다.
@@ -56,7 +56,6 @@ erDiagram
     members ||..o| member_visibility_copies : "member_id"
     members ||..o| withdrawn_members : "member_id"
     reviews ||--o{ review_photos : "review_id"
-    reviews ||--o{ review_tags : "review_id"
     courses ||..o{ reviews : "course_id"
     members ||..o{ reviews : "member_id"
     course_run_records ||..o{ reviews : "source_run_record_id"
@@ -155,23 +154,20 @@ erDiagram
         uuid course_id "course ID"
         uuid member_id "member ID"
         uuid source_run_record_id "run 기록 ID"
-        smallint rating "1~5"
-        smallint safety_rating "1~5"
-        smallint road_rating "1~5"
-        smallint lighting_rating "1~5"
-        smallint amenity_rating "1~5"
+        integer rating "1~5"
+        integer safety_rating "1~5"
+        integer road_rating "1~5"
+        integer lighting_rating "1~5"
+        integer amenity_rating "1~5"
         varchar(200) content "선택"
-        smallint best_progress_percent "0~100"
+        varchar_array tags "NIGHT_VIEW, FEW_SIGNALS, GOOD_SURFACE, CROWDED"
+        integer best_progress_percent "0~100"
     }
     review_photos {
         uuid id PK
         uuid review_id FK
         varchar(100) photo_key "review/..."
-        smallint display_order "0~4"
-    }
-    review_tags {
-        uuid review_id PK, FK
-        varchar(20) tag PK "NIGHT_VIEW, FEW_SIGNALS, GOOD_SURFACE, CROWDED"
+        integer display_order "0~4"
     }
     course_run_records {
         uuid run_record_id PK "run 기록 ID"
@@ -179,7 +175,7 @@ erDiagram
         uuid member_id "member ID"
         boolean review_eligible
         boolean completed
-        smallint progress_percent "0~100"
+        integer progress_percent "0~100"
         integer course_distance_meters
         integer course_elapsed_seconds
         timestamptz ended_at
@@ -401,10 +397,11 @@ erDiagram
 | `course_id` | `UUID` | | 코스 ID(course 모듈, FK 없음) |
 | `member_id` | `UUID` | | 회원 ID(member 모듈, FK 없음) |
 | `source_run_record_id` | `UUID` | | 근거 기록 ID(run 모듈). 기록이 삭제돼도 남긴다. `course_run_records.deleted`로 B10-1 "근거 기록이 삭제됐어요"를 알린다 |
-| `rating` | `SMALLINT` | | 전체 별점 1~5 |
-| `safety_rating` · `road_rating` · `lighting_rating` · `amenity_rating` | `SMALLINT` | | 항목별 평가 1~5: 안전성·도로 상태·야간 조명·편의시설. 모두 필수 |
+| `rating` | `INTEGER` | | 전체 별점 1~5 |
+| `safety_rating` · `road_rating` · `lighting_rating` · `amenity_rating` | `INTEGER` | | 항목별 평가 1~5: 안전성·도로 상태·야간 조명·편의시설. 모두 필수 |
 | `content` | `VARCHAR(200)` | ✓ | 한줄 후기. 선택 입력 |
-| `best_progress_percent` | `SMALLINT` | | 리뷰에 표시하는 그 회원의 이 코스 최고 진행도(%). 근거 기록이 삭제돼도 다시 계산하지 않는다 |
+| `tags` | `VARCHAR(20)[]` | | 태그. `NIGHT_VIEW`(야경 좋음), `FEW_SIGNALS`(신호 적음), `GOOD_SURFACE`(노면 좋음), `CROWDED`(붐빔) 중 여러 개(B2). 기본 빈 배열. course 태그와 같은 배열 컬럼이다(`V20261013_2000`에서 `review_tags` 테이블을 옮김) |
+| `best_progress_percent` | `INTEGER` | | 리뷰에 표시하는 그 회원의 이 코스 최고 진행도(%). 근거 기록이 삭제돼도 다시 계산하지 않는다 |
 | `created_at` | `TIMESTAMPTZ` | | 작성 시각. 수정해도 바뀌지 않는다. 리뷰 이벤트의 `createdAt`이고 course 일별 평점이 이 날짜에 쌓인다 |
 
 - `reviews_course_id_created_at_idx`: `(course_id, created_at DESC)`. 최신순
@@ -420,19 +417,10 @@ erDiagram
 | `id` | `UUID` | | PK |
 | `review_id` | `UUID` | | FK `reviews.id`. 리뷰를 지우면 함께 지운다(`ON DELETE CASCADE`) |
 | `photo_key` | `VARCHAR(100)` | | S3 키. `review/`로 시작한다(개발 정책 7장 사진 업로드) |
-| `display_order` | `SMALLINT` | | 표시 순서 0~4. 리뷰당 5장까지 |
+| `display_order` | `INTEGER` | | 표시 순서 0~4. 리뷰당 5장까지 |
 
 - `review_photos_review_order_uk`: `(review_id, display_order)`. B8·G2 "사진만" 조건도 이 인덱스로 찾는다.
 - 행을 지울 때 S3 파일도 지운다(리뷰 삭제·회원 탈퇴).
-
-#### `review.review_tags` — 리뷰 태그
-
-정해진 4개 중 여러 개를 고른다(B2). 리뷰에 딸린 값 목록이라 `created_at`·`updated_at`이 없다.
-
-| 컬럼 | 타입 | NULL | 설명 |
-| --- | --- | --- | --- |
-| `review_id` | `UUID` | | PK·FK `reviews.id`. 리뷰를 지우면 함께 지운다 |
-| `tag` | `VARCHAR(20)` | | PK. `NIGHT_VIEW`(야경 좋음), `FEW_SIGNALS`(신호 적음), `GOOD_SURFACE`(노면 좋음), `CROWDED`(붐빔) |
 
 #### `review.course_run_records` — 코스 주행 기록 복사본
 
@@ -445,7 +433,7 @@ run이 확정한 코스 주행 기록 1건이 1행이다(`RunSessionEndedEvent`,
 | `member_id` | `UUID` | | 회원 ID(member 모듈) |
 | `review_eligible` | `BOOLEAN` | | 리뷰 자격(정책 5.1: 한 세션 인정 거리 ≥ max(1km, 전체 × 20%)) |
 | `completed` | `BOOLEAN` | | 서버 완주 판정. 리뷰 자격과 따로 저장한다. 완주해도 자격이 없을 수 있다(1km 코스를 0.95km 인정으로 완주 등) |
-| `progress_percent` | `SMALLINT` | | 코스 진행도(%) 0~100 |
+| `progress_percent` | `INTEGER` | | 코스 진행도(%) 0~100 |
 | `course_distance_meters` · `course_elapsed_seconds` · `ended_at` | | | B2 상단 근거 기록 표시("5.2km · 2026.09.08 완주 100% · 27:14") |
 | `deleted` | `BOOLEAN` | | 기록이 삭제됐다. 기본 `false` |
 
@@ -460,7 +448,7 @@ run이 확정한 코스 주행 기록 1건이 1행이다(`RunSessionEndedEvent`,
 ranking의 같은 이름 테이블과 같다(3.3). 숨김·삭제된 코스만 행이 있고, 행이 없으면 `ACTIVE`다.
 
 - 숨김·삭제된 코스에는 새 리뷰를 쓸 수 없다(`REVIEW-005`). 숨김 코스의 리뷰는 보이지 않는다.
-- 코스가 `DELETED`가 되면 그 코스의 리뷰(사진·태그 포함)와 주행 기록 복사본을 지운다. 이때 `ReviewDeletedEvent`는 발행하지 않는다(course가 그 코스 통계를 직접 지운다, 개발 정책 5.6).
+- 코스가 `DELETED`가 되면 그 코스의 리뷰(사진 포함)와 주행 기록 복사본을 지운다. 이때 `ReviewDeletedEvent`는 발행하지 않는다(course가 그 코스 통계를 직접 지운다, 개발 정책 5.6).
 
 #### `review.withdrawn_members` — 탈퇴 회원
 
