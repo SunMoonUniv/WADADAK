@@ -5,6 +5,8 @@ on:
   pull_request:
   push:
     branches: [main]
+  # 공용 서버를 다시 띄울 때(서버 PC 재설치 등) Actions 화면에서 main으로 실행한다.
+  workflow_dispatch:
 
 jobs:
   backend:
@@ -21,3 +23,37 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       # verify(), 모듈 단독 기동 테스트 포함. Testcontainers는 러너의 Docker를 쓴다.
       - run: ./gradlew test
+
+  # 테스트를 통과한 main 커밋만 공용 서버 PC(self-hosted 러너)에 배포한다. PR에서는 돌지 않는다.
+  # 서버 PC 준비·보안 설정은 deploy/README.md.
+  deploy:
+    needs: backend
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, wadadak-server]
+    # 비밀값은 이 환경의 Secrets에 둔다. 환경의 배포 브랜치를 main으로 묶어 다른 브랜치·PR은 읽지 못한다.
+    environment: wadadak-server
+    # 배포는 한 번에 하나. 밀린 배포는 가장 최근 것만 남는다.
+    concurrency:
+      group: wadadak-server
+      cancel-in-progress: false
+    defaults:
+      run:
+        shell: cmd
+    steps:
+      - uses: actions/checkout@v4
+      # BackEnd가 그대로면 캐시로 같은 이미지가 나와 서버를 다시 띄우지 않는다.
+      # provenance(빌드 시각이 든 출처 정보)를 붙이면 매번 다른 이미지가 되어 꺼 둔다.
+      - name: 이미지 빌드
+        run: docker build --provenance=false -t wadadak-backend BackEnd
+      # 바뀐 서비스만 교체하고 healthy가 될 때까지 기다린다. 서버가 못 뜨면 이 작업이 실패한다.
+      - name: 서버 교체
+        env:
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          JWT_PUBLIC_KEY: ${{ secrets.JWT_PUBLIC_KEY }}
+          JWT_PRIVATE_KEY: ${{ secrets.JWT_PRIVATE_KEY }}
+          TUNNEL_TOKEN: ${{ secrets.TUNNEL_TOKEN }}
+          # 터널 토큰을 넣기 전(도메인 준비 전)에는 cloudflared 없이 띄운다.
+          COMPOSE_PROFILES: ${{ secrets.TUNNEL_TOKEN != '' && 'tunnel' || '' }}
+        run: docker compose -f deploy/compose.yaml up -d --wait --wait-timeout 300 --remove-orphans
+      - name: 이전 이미지 정리
+        run: docker image prune -f

@@ -1,0 +1,72 @@
+# 공용 서버 실행 구성. 절차는 deploy/README.md.
+# 비밀값(DB_PASSWORD · JWT_* · TUNNEL_TOKEN)은 배포 작업(backend.yml deploy)이 GitHub Secrets에서 환경 변수로 넘긴다.
+# 서버 PC에는 비밀값 파일을 두지 않는다.
+name: wadadak-server
+
+services:
+  postgres:
+    image: postgis/postgis:17-3.5
+    environment:
+      POSTGRES_DB: wadadak
+      POSTGRES_USER: wadadak
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?GitHub Secrets에 DB_PASSWORD가 없다}
+    # 포트를 열지 않는다. 같은 compose 안의 backend만 붙는다.
+    volumes:
+      - db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wadadak -d wadadak"]
+      interval: 5s
+      retries: 12
+    restart: unless-stopped
+
+  backend:
+    # 배포 작업이 main 커밋으로 빌드한 이미지. 레지스트리에서 받지 않는다.
+    image: wadadak-backend
+    pull_policy: never
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/wadadak
+      DB_USERNAME: wadadak
+      DB_PASSWORD: ${DB_PASSWORD}
+      # PEM 파일을 base64 한 줄로 받는다(Spring Boot의 base64: 리소스). 파일 없이 키를 넘긴다.
+      JWT_PUBLIC_KEY_LOCATION: base64:${JWT_PUBLIC_KEY:?GitHub Secrets에 JWT_PUBLIC_KEY가 없다}
+      JWT_PRIVATE_KEY_LOCATION: base64:${JWT_PRIVATE_KEY:?GitHub Secrets에 JWT_PRIVATE_KEY가 없다}
+      # cloudflared가 넘기는 X-Forwarded-*로 https 주소를 만든다(Swagger의 서버 주소 등).
+      SERVER_FORWARD_HEADERS_STRATEGY: native
+    # 포트를 열지 않는다. 밖에서는 cloudflared를 거쳐서만 들어온다.
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 180s
+      start_interval: 3s
+      retries: 3
+    restart: unless-stopped
+
+  # Cloudflare 터널. GitHub Secrets에 TUNNEL_TOKEN이 있을 때만 뜬다(배포 작업이 COMPOSE_PROFILES=tunnel을 켠다).
+  # 터널의 공개 호스트 이름은 서비스 주소 http://backend:8080으로 보낸다.
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    profiles: [tunnel]
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:-}
+      # 상태 확인(tunnel ready)이 같은 주소를 본다.
+      TUNNEL_METRICS: 127.0.0.1:20241
+    # Cloudflare에 연결돼야 healthy. 토큰이 틀리면 배포 작업이 실패한다.
+    healthcheck:
+      test: ["CMD", "cloudflared", "tunnel", "ready"]
+      interval: 10s
+      timeout: 5s
+      start_period: 60s
+      start_interval: 2s
+      retries: 3
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  db:
