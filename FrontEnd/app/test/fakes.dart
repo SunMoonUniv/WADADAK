@@ -110,6 +110,11 @@ class FakeCourseApi implements CourseApiClient {
   ApiException? mapError;
   final mapRequests = <({GeoPoint southWest, GeoPoint northEast})>[];
 
+  /// 지도 범위 · 단위와 상관없이 돌려줄 지역별 코스 수.
+  List<RegionCount> regions = [];
+  ApiException? regionsError;
+  final regionRequests = <({GeoPoint southWest, GeoPoint northEast, RegionLevel level})>[];
+
   @override
   Future<RegistrationQuota> registrationQuota() async => quota;
 
@@ -154,6 +159,17 @@ class FakeCourseApi implements CourseApiClient {
     mapRequests.add((southWest: southWest, northEast: northEast));
     if (mapError != null) throw mapError!;
     return CourseMap(totalCount: onMap.length, courses: onMap);
+  }
+
+  @override
+  Future<RegionCounts> regionCounts({
+    required GeoPoint southWest,
+    required GeoPoint northEast,
+    required RegionLevel level,
+  }) async {
+    regionRequests.add((southWest: southWest, northEast: northEast, level: level));
+    if (regionsError != null) throw regionsError!;
+    return RegionCounts(totalCount: regions.fold(0, (sum, region) => sum + region.count), regions: regions);
   }
 
   static String _nameKey(String name) => name.replaceAll(RegExp(r'\s+'), '').toLowerCase();

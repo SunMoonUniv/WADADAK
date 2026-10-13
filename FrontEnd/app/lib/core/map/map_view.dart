@@ -35,6 +35,7 @@ class MapView extends ConsumerWidget {
     super.key,
     this.initialCenter = seoulCityHall,
     this.initialZoom = 14,
+    this.minZoom = 0,
     this.lines = const [],
     this.markers = const [],
     this.padding = EdgeInsets.zero,
@@ -51,6 +52,9 @@ class MapView extends ConsumerWidget {
 
   final GeoPoint initialCenter;
   final double initialZoom;
+
+  /// 이보다 축소하지 않는다(예: 홈은 축척 막대 50km까지, MAP-02). 지도를 띄운 뒤 바꾸지 않는다.
+  final double minZoom;
   final List<MapLine> lines;
   final List<MapMarker> markers;
 
@@ -116,15 +120,25 @@ enum MyLocationSource {
 /// 멈춘 카메라와 보이는 범위.
 @immutable
 class MapCamera {
-  const MapCamera({required this.center, required this.zoom, required this.southWest, required this.northEast});
+  const MapCamera({
+    required this.center,
+    required this.zoom,
+    required this.southWest,
+    required this.northEast,
+    required this.scaleMeters,
+  });
 
   final GeoPoint center;
   final double zoom;
   final GeoPoint southWest;
   final GeoPoint northEast;
 
+  /// 축척 막대에 보이는 거리(m, 1·2·5 단계). 정책의 "축척 2km"·"축척 500m"가 이 값이다(MAP-02).
+  /// 개발용 지도는 축척 막대가 없어 네이버 지도가 같은 위도·줌에서 보일 값을 준다.
+  final int scaleMeters;
+
   @override
-  String toString() => 'MapCamera($center, zoom: $zoom, $southWest ~ $northEast)';
+  String toString() => 'MapCamera($center, zoom: $zoom, scale: ${scaleMeters}m, $southWest ~ $northEast)';
 }
 
 /// 지도 위 선. 좌표 순서대로 잇는다. 점이 2개보다 적으면 그리지 않는다.
@@ -142,7 +156,7 @@ class MapLine {
 /// 선 모양. 쓰는 곳마다 나눠 두어 한 곳의 색을 바꿔도 다른 곳은 그대로다. 겹치면 뒤에 적힌 모양이 위에 그려진다.
 enum MapLineStyle {
   /// 홈·코스 만들기·코스 상세의 코스 경로. 라임 선 + 잉크 테두리(Figma 코스 썸네일과 같다).
-  course(color: WdColors.lime, outlineColor: WdColors.ink, width: 6, outlineWidth: 2),
+  course(color: WdColors.lime, outlineColor: WdColors.ink, width: 4, outlineWidth: 2),
 
   /// 러닝 화면(어두운 지도)의 코스 경로. 흰 선 + 잉크 테두리. 위에 겹치는 [track]과 구분된다.
   runCourse(color: WdColors.white, outlineColor: WdColors.ink, width: 6, outlineWidth: 2),

@@ -127,6 +127,57 @@ class MapCourse {
   final List<GeoPoint> route;
 }
 
+/// 지역별 코스 수를 어느 단위로 세나(MAP-02).
+enum RegionLevel {
+  /// 특별·광역시는 통째로, 도는 시·군마다(서울 · 수원 · 연천군). 축척 2km보다 넓을 때.
+  city('CITY'),
+
+  /// 시·군·구마다(성북구 · 장안구 · 의정부시). 축척 2km부터 500m 전까지.
+  district('DISTRICT');
+
+  const RegionLevel(this.apiName);
+  final String apiName;
+}
+
+/// 지도 범위 안 코스를 출발점 지역별로 센 것(A4). 지도 범위 안 코스와 같은 조건이다(MAP-07).
+@immutable
+class RegionCounts {
+  const RegionCounts({required this.totalCount, required this.regions});
+
+  factory RegionCounts.fromJson(Map<Object?, Object?> json) => RegionCounts(
+        totalCount: json['totalCount']! as int,
+        regions: [for (final region in json['regions']! as List) RegionCount.fromJson(region as Map)],
+      );
+
+  /// 범위 안 코스 전체 수.
+  final int totalCount;
+
+  /// 코스가 많은 지역부터.
+  final List<RegionCount> regions;
+}
+
+@immutable
+class RegionCount {
+  const RegionCount({required this.code, required this.name, required this.count, required this.center});
+
+  factory RegionCount.fromJson(Map<Object?, Object?> json) => RegionCount(
+        code: json['code']! as String,
+        name: json['name']! as String,
+        count: json['count']! as int,
+        center: GeoPoint.fromJson(json['center']! as Map),
+      );
+
+  /// 지역을 가리는 값. 같은 단위 안에서 겹치지 않는다.
+  final String code;
+
+  /// 지도에 보일 짧은 이름(서울 · 광주 · 의정부 · 연천군 · 성북구).
+  final String name;
+  final int count;
+
+  /// 이 지역의 범위 안 코스 출발점들의 가운데. 개수 배지를 놓는다(A4-01).
+  final GeoPoint center;
+}
+
 /// 오늘(Asia/Seoul) 남은 등록 수. 유형마다 따로 센다.
 @immutable
 class RegistrationQuota {
@@ -207,6 +258,22 @@ class CourseApiClient {
           'neLng': northEast.lng,
         }));
     return CourseMap.fromJson(data! as Map);
+  }
+
+  /// 지도 범위 안 코스를 출발점 지역별로 센다(A4 지도 축소).
+  Future<RegionCounts> regionCounts({
+    required GeoPoint southWest,
+    required GeoPoint northEast,
+    required RegionLevel level,
+  }) async {
+    final data = await callApi(() => _dio.get('$_courses/map/regions', queryParameters: {
+          'swLat': southWest.lat,
+          'swLng': southWest.lng,
+          'neLat': northEast.lat,
+          'neLng': northEast.lng,
+          'level': level.apiName,
+        }));
+    return RegionCounts.fromJson(data! as Map);
   }
 
   /// 오늘 남은 등록 수. 0이면 그 방식의 코스 만들기를 미리 막는다(개발 정책 10.2 course).
