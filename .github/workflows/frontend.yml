@@ -1,0 +1,32 @@
+name: Frontend CI
+
+# 경로 필터를 두지 않는다. 필수 체크로 걸어도 서버만 바꾼 PR이 Pending에 막히지 않게 한다.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.6
+          cache: true
+      # pub get이 example/ 의존성도 받는다. 카탈로그 스모크 테스트는 모든 컴포넌트를 그려 본다.
+      - name: 디자인 시스템 — 분석 · 카탈로그 테스트
+        working-directory: FrontEnd/packages/wadadak_design_system
+        run: |
+          flutter pub get
+          dart analyze
+          cd example && flutter test
+      # 위젯 테스트는 지도를 개발용 엔진으로, API · 소셜 로그인을 가짜로 바꿔 돈다. 키나 서버가 필요 없다.
+      - name: 앱 — 분석 · 위젯 테스트
+        working-directory: FrontEnd/app
+        run: |
+          flutter pub get
+          dart analyze
+          flutter test
