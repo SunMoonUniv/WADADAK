@@ -7,6 +7,10 @@ import 'package:wadadak/features/run/domain/free_run_session.dart';
 import 'package:wadadak/features/run/domain/run_models.dart';
 import 'package:wadadak/features/run/presentation/free_run_screen.dart';
 import 'package:wadadak/main.dart';
+import 'package:wadadak/router.dart';
+import 'package:wadadak/routes.dart';
+import 'package:wadadak/core/api/course_api_client.dart';
+import 'package:wadadak_design_system/wadadak_design_system.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/api/member_api_client.dart';
 
@@ -36,14 +40,14 @@ void main() {
     await tester.pumpWidget(
       ProviderScope(
         overrides: [freeRunControllerProvider.overrideWithValue(controller)],
-        child: const MaterialApp(home: FreeRunScreen()),
+        child: MaterialApp(theme: WdTheme.light(), home: const FreeRunScreen()),
       ),
     );
   }
 
   Future<void> holdStart(WidgetTester tester) async {
     final gesture = await tester.startGesture(
-      tester.getCenter(find.text('1초 눌러 시작')),
+      tester.getCenter(find.text('자유 러닝 시작')),
     );
     await tester.pump(const Duration(seconds: 1));
     await gesture.up();
@@ -54,7 +58,7 @@ void main() {
     tester,
   ) async {
     await mount(tester);
-    await tester.tap(find.text('1초 눌러 시작'));
+    await tester.tap(find.text('자유 러닝 시작'));
     await tester.pump(const Duration(seconds: 1));
     expect(controller.countdown, isNull);
     expect(ids, 0);
@@ -100,8 +104,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('러닝 결과'), findsOneWidget);
     expect(find.text('02:00'), findsOneWidget);
-    expect(find.text('01:40'), findsOneWidget);
-    await tester.tap(find.text('새 러닝 준비'));
+    expect(find.text('달린 시간 01:40'), findsOneWidget);
+    await tester.tap(find.text('확인'));
     await tester.pump();
     expect(controller.snapshot.state, RunState.ready);
     expect(controller.snapshot.inputs, isEmpty);
@@ -117,6 +121,7 @@ void main() {
       ProviderScope(
         overrides: [
           mapEngineProvider.overrideWithValue(MapEngine.dev),
+          courseApiClientProvider.overrideWithValue(FakeCourseApi()),
           freeRunControllerProvider.overrideWithValue(controller),
           tokenStorageProvider.overrideWithValue(
             MemoryTokenStorage(testTokens),
@@ -131,7 +136,11 @@ void main() {
     await tester.pumpAndSettle();
     await holdStart(tester);
     await tester.pump(const Duration(seconds: 3));
-    await tester.tap(find.text('홈'));
+    expect(find.byType(WdBottomNav), findsNothing);
+    // 전체 화면에서도 다른 경로로 이동했다 돌아오면 같은 세션을 유지한다.
+    ProviderScope.containerOf(tester.element(find.byType(FreeRunScreen)))
+        .read(routerProvider)
+        .go(Routes.home);
     await tester.pumpAndSettle();
     tick = const Duration(seconds: 10);
     await tester.pump(const Duration(seconds: 1));
