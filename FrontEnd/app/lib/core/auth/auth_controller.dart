@@ -35,8 +35,12 @@ class AuthController extends AsyncNotifier<AuthState> {
   }
 
   /// 실패하면 [ApiException]을 던지고 상태는 바꾸지 않는다.
-  Future<void> login(SocialProvider provider) async {
+  ///
+  /// [onSocialSignedIn]은 소셜 SDK 로그인이 끝나고 서버 로그인을 시작하기 직전에 부른다. 소셜 로그인은
+  /// 사용자가 창을 버리면 끝나지 않을 수 있지만, 서버 로그인은 요청 시간 제한으로 반드시 끝난다.
+  Future<void> login(SocialProvider provider, {void Function()? onSocialSignedIn}) async {
     final socialToken = await ref.read(socialLoginProvider).signIn(provider);
+    onSocialSignedIn?.call();
     switch (await ref.read(memberApiClientProvider).login(provider, socialToken)) {
       case LoginSignedIn(:final tokens):
         await _signedIn(tokens);
