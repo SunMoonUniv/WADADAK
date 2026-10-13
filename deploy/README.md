@@ -1,6 +1,6 @@
 # 공용 서버 (배포)
 
-실기기에서 실제 소셜 로그인으로 시험하는 팀 공용 서버다. 서버 PC 한 대에서 Docker로 띄우고, 포트포워딩 없이 Cloudflare 터널로 `https://api.<도메인>`에 연다. main에 머지되면 자동으로 배포된다.
+실기기에서 실제 소셜 로그인으로 시험하는 팀 공용 서버다. 서버 PC 한 대에서 Docker로 띄우고, 포트포워딩 없이 Cloudflare 터널로 `https://api.leedohyunn8n.shop`에 연다. main에 머지되면 자동으로 배포된다.
 
 ```
 PR ─► CI (GitHub 서버) ─► 승인 · 머지
@@ -10,9 +10,10 @@ main push ─► backend.yml
                         비밀값은 GitHub 환경 wadadak-server의 Secrets에서 받는다
 
 서버 PC (Docker Desktop) · compose 프로젝트 wadadak-server
-   postgres (포트 안 엶) · backend (포트 안 엶) · cloudflared ──► Cloudflare ◄── 폰 https://api.<도메인>
+   postgres (포트 안 엶) · backend (포트 안 엶) · cloudflared ──► Cloudflare ◄── 폰 https://api.leedohyunn8n.shop
 ```
 
+- 주소: `https://api.leedohyunn8n.shop` · 상태 [`/actuator/health`](https://api.leedohyunn8n.shop/actuator/health) · Swagger [`/swagger-ui.html`](https://api.leedohyunn8n.shop/swagger-ui.html)
 - 비밀값(DB 비밀번호 · JWT 키 · 터널 토큰)은 GitHub Secrets에만 둔다. 서버 PC에는 비밀값 파일이 없다.
 - 기본 프로필로 뜬다. 소셜 로그인은 기본 프로필에서도 실제 검증이다.
   - `prod`는 아직 못 쓴다. 랭킹 스텁(`DistanceRankingStub`)이 항상 떠서 `StubGuard`가 기동을 막는다. F12 실제 구현 후 `compose.yaml`의 backend에 `SPRING_PROFILES_ACTIVE: prod`를 넣는다.
@@ -101,11 +102,11 @@ Actions → Backend CI → Run workflow(main). deploy 작업이 통과하면 서
 3. 설치 안내 명령의 `--token` 뒤 문자열을 Secrets의 `TUNNEL_TOKEN`에 넣는다. 설치 명령은 실행하지 않는다(compose의 cloudflared가 띄운다).
 4. 수동 배포를 돌린다. cloudflared가 Cloudflare에 연결돼야 배포가 통과한다(토큰이 틀리면 실패). 터널 화면에 커넥터가 연결됨으로 보인다.
 5. 터널 → **Routes** 탭 → Add route → **Published application**
-   - Subdomain `api`, Domain `<도메인>`, Service URL `http://backend:8080`
+   - Subdomain `api`, Domain `leedohyunn8n.shop`, Service URL `http://backend:8080`
    - `localhost`가 아니다. cloudflared 컨테이너에서 backend는 compose 서비스 이름으로 보인다.
    - DNS 레코드(`api` CNAME → `<터널 ID>.cfargotunnel.com`, 프록시됨)는 Cloudflare가 자동으로 만든다. 같은 이름의 레코드가 이미 있으면 지우고 다시 추가한다.
-   - 한 단계 하위 도메인으로 둔다. Cloudflare 기본 인증서는 `a.b.<도메인>`을 덮지 않는다.
-6. `https://api.<도메인>/actuator/health`가 `{"status":"UP"}`이면 끝. 오류 1033은 터널이 연결되지 않은 것(cloudflared가 꺼짐), 502는 Service URL이 틀렸거나 backend가 꺼진 것이다.
+   - 한 단계 하위 도메인으로 둔다. Cloudflare 기본 인증서는 `a.b.leedohyunn8n.shop`을 덮지 않는다.
+6. `https://api.leedohyunn8n.shop/actuator/health`가 `{"status":"UP"}`이면 끝. 오류 1033은 터널이 연결되지 않은 것(cloudflared가 꺼짐), 502는 Service URL이 틀렸거나 backend가 꺼진 것이다.
 
 ## 운영
 
@@ -121,7 +122,7 @@ Actions → Backend CI → Run workflow(main). deploy 작업이 통과하면 서
 ## 앱 연결
 
 ```bash
-flutter run --dart-define=API_BASE_URL=https://api.<도메인>
+flutter run --dart-define=API_BASE_URL=https://api.leedohyunn8n.shop
 ```
 
 - 카카오 로그인은 팀 공용 `debug.keystore`로 서명한 빌드에서만 된다([FrontEnd README](../FrontEnd/README.md)).

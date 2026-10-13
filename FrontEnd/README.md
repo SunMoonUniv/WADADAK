@@ -86,7 +86,7 @@ FrontEnd/
 
 ## 앱 실행
 
-앱은 로컬 백엔드(`BackEnd/`)에 붙는다. [백엔드 README](../BackEnd/README.md)의 로컬 실행을 먼저 한다.
+앱은 기본으로 로컬 백엔드(`BackEnd/`)에 붙는다. [백엔드 README](../BackEnd/README.md)의 로컬 실행을 먼저 한다.
 
 ```bash
 cd app
@@ -94,8 +94,11 @@ flutter pub get
 flutter run                                                        # Android 에뮬레이터 → http://10.0.2.2:8080
 flutter run --dart-define=API_BASE_URL=http://localhost:8080       # iOS 시뮬레이터
 flutter run --dart-define=API_BASE_URL=http://<PC의 IP>:8080        # 실기기 (같은 와이파이)
+flutter run --dart-define=API_BASE_URL=https://api.leedohyunn8n.shop # 팀 공용 서버 (실기기, 어디서나)
 flutter test
 ```
+
+- **팀 공용 서버** `https://api.leedohyunn8n.shop`: main의 서버가 자동 배포돼 있어 로컬 서버 없이 실기기로 시험한다. 팀이 회원 · 데이터를 함께 쓴다. 실제 소셜 검증이라 가짜 로그인(`REAL_SOCIAL_LOGIN=false`)으로는 붙지 않는다. 운영 · 상태는 [`deploy/README.md`](../deploy/README.md).
 
 - PR마다 GitHub Actions(`.github/workflows/frontend.yml`, Flutter 3.47.6)가 디자인 시스템과 앱의 `dart analyze` · `flutter test`를 돌린다.
 - 로그인 버튼은 카카오 SDK로 실제 로그인한다. 서버도 기본이 실제 검증이라 따로 설정하지 않는다. 에뮬레이터에는 카카오톡이 없어 카카오계정(웹) 로그인 창이 뜬다.

@@ -24,7 +24,7 @@ DB는 로컬 PostgreSQL과 겹치지 않게 5433 포트를 쓴다. 접속 정보
 
 ## 공용 서버
 
-main에 머지되면 팀 공용 서버 PC에 자동 배포된다(`Dockerfile`, `backend.yml`의 deploy 작업). 서버 PC 준비·운영은 [`deploy/README.md`](../deploy/README.md).
+`https://api.leedohyunn8n.shop` (Swagger: [`/swagger-ui.html`](https://api.leedohyunn8n.shop/swagger-ui.html)). main에 머지되면 팀 공용 서버 PC에 자동 배포된다(`Dockerfile`, `backend.yml`의 deploy 작업). 서버 PC 준비·운영은 [`deploy/README.md`](../deploy/README.md).
 
 ## 테스트
 
