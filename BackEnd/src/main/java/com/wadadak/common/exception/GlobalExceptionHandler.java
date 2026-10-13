@@ -2,6 +2,7 @@ package com.wadadak.common.exception;
 
 import com.wadadak.common.response.ApiResult;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.tomcat.util.http.InvalidParameterException;
 import org.jspecify.annotations.Nullable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpHeaders;
@@ -32,6 +33,13 @@ class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
     public ResponseEntity<ApiResult<Void>> handleConflict(DataIntegrityViolationException e) {
         log.warn("제약 조건 위반: {}", e.getMostSpecificCause().getMessage());
         return ResponseEntity.status(CommonErrorCode.CONFLICT.getStatus()).body(ApiResult.error(CommonErrorCode.CONFLICT));
+    }
+
+    /** 쿼리 · 폼 값이 UTF-8로 풀리지 않는 요청(한글을 CP949 그대로 보낸 경우 등). 서버 오류가 아니다. */
+    @ExceptionHandler(InvalidParameterException.class)
+    public ResponseEntity<ApiResult<Void>> handleInvalidParameter(InvalidParameterException e) {
+        return ResponseEntity.badRequest()
+                .body(ApiResult.error(CommonErrorCode.INVALID_REQUEST, "요청 값을 읽을 수 없습니다. UTF-8로 보내 주세요."));
     }
 
     @ExceptionHandler(Exception.class)
