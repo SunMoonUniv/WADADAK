@@ -2,6 +2,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'api_client.dart';
+import 'region_api_client.dart';
 
 /// 전체 랭킹 기간(Asia/Seoul). 이번 주는 월요일 00:00, 이번 달은 1일 00:00부터다.
 enum RankingPeriod {
@@ -11,31 +12,6 @@ enum RankingPeriod {
 
   const RankingPeriod(this.apiName);
   final String apiName;
-}
-
-/// 시·군·구. 코드가 같으면 같은 지역이다.
-class Region {
-  const Region({required this.code, required this.name, required this.fullName});
-
-  Region.fromJson(Map json)
-      : code = json['code'] as String,
-        name = json['name'] as String,
-        fullName = json['fullName'] as String;
-
-  /// 법정동 코드 10자리.
-  final String code;
-
-  /// 예: 천안시 동남구
-  final String name;
-
-  /// 상위 구역을 붙인 이름. 예: 충청남도 천안시 동남구
-  final String fullName;
-
-  @override
-  bool operator ==(Object other) => other is Region && other.code == code;
-
-  @override
-  int get hashCode => code.hashCode;
 }
 
 /// 순위 한 줄.
@@ -170,12 +146,6 @@ class RankingApiClient {
 
   Future<RankingPage> regionWeeklyEntries(String? regionCode, String cursor) async => _page(await callApi(() => _dio
       .get('$_base/distance/regions/weekly/entries', queryParameters: {'regionCode': ?regionCode, 'cursor': cursor})));
-
-  /// 이름에 [query]가 들어간 시·군·구, 최대 20개.
-  Future<List<Region>> searchRegions(String query) async => [
-        for (final region in await callApi(() => _dio.get('$_base/regions', queryParameters: {'query': query})) as List)
-          Region.fromJson(region as Map),
-      ];
 
   static RankingPage _page(Object? data) {
     data as Map;

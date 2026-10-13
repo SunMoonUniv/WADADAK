@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wadadak/core/api/api_client.dart';
 import 'package:wadadak/core/api/member_api_client.dart';
+import 'package:wadadak/core/api/region_api_client.dart';
 import 'package:wadadak/core/auth/social_login.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/map/map_view.dart';
@@ -29,6 +30,7 @@ void main() {
         socialLoginProvider.overrideWithValue(FakeSocialLogin()),
         runPermissionsProvider.overrideWithValue(permissions),
         mapEngineProvider.overrideWithValue(MapEngine.dev),
+        regionApiClientProvider.overrideWithValue(FakeRegionApi()),
       ],
       child: const WadadakApp(),
     ));
@@ -50,8 +52,13 @@ void main() {
 
   Future<void> fillProfile(WidgetTester tester, String nickname) async {
     await tester.enterText(find.byType(TextField).first, nickname);
+    // 활동 지역은 로그인 전에 시·군·구를 검색해 고른다.
     await tap(tester, find.ancestor(of: find.text('활동 지역을 선택하세요'), matching: find.byType(TextField)));
-    await tap(tester, find.text('충남 아산시'));
+    await tester.enterText(find.byType(TextField), '아산');
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    await tap(tester, find.text('아산시'));
+    expect(find.text('충남 아산시'), findsOneWidget);
     await tap(tester, find.text('6개월+'));
   }
 

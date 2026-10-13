@@ -112,17 +112,6 @@ class DistanceRankingControllerTest {
     }
 
     @Test
-    void searchesSigungu() {
-        MvcTestResult result = get("/api/v1/rankings/regions", "query", "성북");
-
-        assertThat(result).hasStatusOk();
-        assertThat(result).bodyJson().extractingPath("$.data[0].code").isEqualTo("1129000000");
-        assertThat(result).bodyJson().extractingPath("$.data[0].fullName").isEqualTo("서울특별시 성북구");
-        assertThat(get("/api/v1/rankings/regions", "query", " ")).hasStatus(HttpStatus.BAD_REQUEST)
-                .bodyJson().extractingPath("$.code").isEqualTo("COMMON-001");
-    }
-
-    @Test
     void requiresLogin() {
         assertThat(mvc.get().uri("/api/v1/rankings/distance")).hasStatus(HttpStatus.UNAUTHORIZED);
     }
@@ -130,7 +119,7 @@ class DistanceRankingControllerTest {
     @Test
     void servesSwaggerGroup() {
         assertThat(mvc.get().uri("/v3/api-docs/ranking")).hasStatusOk()
-                .bodyText().contains("/api/v1/rankings/distance/regions/weekly", "/api/v1/rankings/regions");
+                .bodyText().contains("/api/v1/rankings/distance/regions/weekly");
     }
 
     private MvcTestResult get(String uri, String... params) {

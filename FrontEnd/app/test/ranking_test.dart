@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wadadak/core/api/api_client.dart';
 import 'package:wadadak/core/api/member_api_client.dart';
 import 'package:wadadak/core/api/ranking_api_client.dart';
+import 'package:wadadak/core/api/region_api_client.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/map/map_view.dart';
 import 'package:wadadak/main.dart';
@@ -96,12 +97,6 @@ class FakeRankingApi implements RankingApiClient {
     _call('region entries $cursor');
     return cursor == '5' ? _page(_runners(6, 25, 66200), '25') : _page(_runners(26, 30, 20000), null);
   }
-
-  @override
-  Future<List<Region>> searchRegions(String query) async {
-    _call('search $query');
-    return [if ('아산시'.contains(query)) Region.fromJson(_asan)];
-  }
 }
 
 void main() {
@@ -123,6 +118,7 @@ void main() {
         tokenStorageProvider.overrideWithValue(MemoryTokenStorage(testTokens)),
         memberApiClientProvider.overrideWithValue(FakeMemberApi()),
         rankingApiClientProvider.overrideWithValue(api),
+        regionApiClientProvider.overrideWithValue(FakeRegionApi()),
         mapEngineProvider.overrideWithValue(MapEngine.dev),
       ],
       child: const WadadakApp(),

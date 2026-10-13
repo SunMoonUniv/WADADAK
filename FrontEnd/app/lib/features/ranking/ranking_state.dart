@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api/ranking_api_client.dart';
+import '../../core/api/region_api_client.dart';
 import '../../core/auth/auth_controller.dart';
 
 /// 실패하면 다시 받지 않고 화면이 "다시 시도"를 보인다.
@@ -114,9 +115,3 @@ class RecentRegions extends Notifier<List<Region>> {
 
   void add(Region region) => state = [region, ...state.where((r) => r != region)].take(5).toList();
 }
-
-/// I6 검색 결과.
-final regionSearchProvider = FutureProvider.autoDispose.family<List<Region>, String>(
-  (ref, query) => ref.watch(rankingApiClientProvider).searchRegions(query),
-  retry: _noRetry,
-);
