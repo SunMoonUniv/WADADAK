@@ -329,7 +329,7 @@ class _HomeHeader extends StatelessWidget {
                 // 검색창 42 + 아래 10 = Figma 검색 52.
                 padding: const EdgeInsets.fromLTRB(WdSpace.s16, 0, WdSpace.s16, WdSpace.s10),
                 child: WdSearchBar(
-                  hintText: greeting ? '지역이나 코스를 검색하세요' : '지역 · 코스 이름 검색',
+                  hintText: '원하는 키워드를 검색하세요',
                   // 검색 화면(G1)이 생기면 연다. 그때까지 키보드가 뜨지 않게 누르기만 받는다.
                   onTap: () {},
                 ),

@@ -222,7 +222,7 @@ void main() {
 
     // 반(A2)은 인사말 배너.
     expect(find.text('나의 다음 코스'), findsOneWidget);
-    expect(find.text('지역이나 코스를 검색하세요'), findsOneWidget);
+    expect(find.text('원하는 키워드를 검색하세요'), findsOneWidget);
 
     // 아래로 내리면 피크(A5). 배너는 고정 제목 `코스`.
     await tester.drag(handle, const Offset(0, 600));
@@ -230,7 +230,7 @@ void main() {
     expect(sheetTitle('↑ 위로 올려 코스 목록 보기'), findsOneWidget);
     expect(find.text('나의 다음 코스'), findsNothing);
     expect(find.text('코스'), findsOneWidget);
-    expect(find.text('지역 · 코스 이름 검색'), findsOneWidget);
+    expect(find.text('원하는 키워드를 검색하세요'), findsOneWidget);
     expect(find.text('성북천 벚꽃길 3K').hitTestable(), findsNothing);
 
     // 제목 줄을 누르면 다시 반(A2).
