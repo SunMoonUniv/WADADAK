@@ -3,6 +3,8 @@ package com.wadadak.member.internal.auth;
 import com.wadadak.common.entity.UuidV7;
 import com.wadadak.common.exception.AppException;
 import com.wadadak.common.region.RegionDirectory;
+import com.wadadak.common.storage.ObjectStorage;
+import com.wadadak.common.storage.UploadForm;
 import com.wadadak.event.member.MemberRegionChangedEvent;
 import com.wadadak.member.MemberErrorCode;
 import com.wadadak.member.internal.account.Agreement;
@@ -24,12 +26,16 @@ import java.util.UUID;
 @RequiredArgsConstructor
 class AuthService {
 
+    /** 프로필 사진 키 앞부분(개발 정책 7장 사진 업로드) */
+    static final String PHOTO_MODULE = "member";
+
     private final MemberRepository memberRepository;
     private final AgreementRepository agreementRepository;
     private final RefreshTokenRepository refreshTokenRepository;
     private final TokenProvider tokenProvider;
     private final SocialTokenVerifier socialTokenVerifier;
     private final RegionDirectory regions;
+    private final ObjectStorage storage;
     private final ApplicationEventPublisher events;
     private final Clock clock;
 
@@ -39,6 +45,12 @@ class AuthService {
         return memberRepository.findBySocialProviderAndSocialId(account.provider(), account.socialId())
                 .map(member -> LoginResponse.signedIn(issueTokens(member.getId())))
                 .orElseGet(() -> LoginResponse.signupRequired(tokenProvider.signupToken(account)));
+    }
+
+    /** 가입 화면에서 프로필 사진을 올릴 폼. 가입 토큰이 만료됐으면 MEMBER-003. */
+    UploadForm photoUploadForm(PhotoUploadRequest request) {
+        tokenProvider.parseSignupToken(request.signupToken());
+        return storage.photoUploadForm(PHOTO_MODULE);
     }
 
     @Transactional
@@ -54,8 +66,13 @@ class AuthService {
         if (regions.findSigungu(request.regionCode()).isEmpty()) {
             throw new AppException(MemberErrorCode.REGION_NOT_FOUND);
         }
+        String photo = request.profileImageKey();
+        // 사진 주소에 키가 보여서 남의 사진 키를 가져다 쓸 수 있다. 이미 누가 쓰는 키면 받지 않는다(DB 유니크가 마지막 방어)
+        if (photo != null && (!storage.isUploadedPhoto(PHOTO_MODULE, photo) || memberRepository.existsByProfileImageKey(photo))) {
+            throw new AppException(MemberErrorCode.PROFILE_PHOTO_NOT_FOUND);
+        }
         Member member = memberRepository.save(Member.join(account, request.nickname(), request.bio(),
-                request.regionCode(), request.affiliation(), request.runningExperience()));
+                request.regionCode(), request.affiliation(), request.runningExperience(), photo));
         agreementRepository.saveAll(Agreement.agreeAll(member.getId()));
         events.publishEvent(new MemberRegionChangedEvent(UuidV7.create(), clock.instant(), member.getId(),
                 member.getRegionCode(), null, member.getVersion()));

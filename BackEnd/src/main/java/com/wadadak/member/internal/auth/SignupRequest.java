@@ -9,9 +9,10 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 /**
- * 소셜 정보 동의 + F2 프로필 초기 설정. 프로필 사진은 업로드 기능과 함께 추가한다.
+ * 소셜 정보 동의 + F2 프로필 초기 설정.
  *
- * @param regionCode 활동 지역(시·군·구) 법정동 코드
+ * @param regionCode      활동 지역(시·군·구) 법정동 코드
+ * @param profileImageKey 가입 사진 업로드 폼으로 올린 키. 선택
  */
 record SignupRequest(
         @NotBlank String signupToken,
@@ -21,7 +22,8 @@ record SignupRequest(
         @Size(max = 50) String bio,
         @NotBlank @Pattern(regexp = "^\\d{10}$", message = "법정동 코드 10자리여야 합니다") String regionCode,
         @Size(max = 30) String affiliation,
-        @NotNull RunningExperience runningExperience) {
+        @NotNull RunningExperience runningExperience,
+        @Size(max = 100) String profileImageKey) {
 
     /** 모두 필수라 true여야 한다. */
     record Agreements(
