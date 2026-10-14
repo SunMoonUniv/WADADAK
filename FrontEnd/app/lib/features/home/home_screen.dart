@@ -55,8 +55,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// 최대 축소. 축척 막대가 50km보다 넓어지지 않는다(MAP-02). 줌 6은 제주(위도 33°)부터 강원 북쪽(38.6°)까지 50km다.
   static const _minZoom = 6.0;
 
+  /// 버튼 줄 여백. 양옆은 검색창 테두리와 같은 16, 아래는 시트까지 12.
+  static const _buttonRowPadding = EdgeInsets.fromLTRB(WdSpace.s16, WdSpace.s16, WdSpace.s16, WdSpace.s12);
+
   // 위아래 여백 + 현재 위치 버튼.
-  static const _buttonRowHeight = WdSpace.s16 * 2 + WdMapLocateButton.size;
+  static const _buttonRowHeight = WdSpace.s16 + WdSpace.s12 + WdMapLocateButton.size;
 
   @override
   void dispose() {
@@ -186,15 +189,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     opacity: stage == SheetStage.full ? 0 : 1,
                     duration: const Duration(milliseconds: 150),
                     child: Padding(
-                      padding: const EdgeInsets.all(WdSpace.s16),
+                      padding: _buttonRowPadding,
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          // Figma A4·A5와 같이 왼쪽 24.
-                          Padding(
-                            padding: const EdgeInsets.only(left: WdSpace.s8),
-                            child: WdMapPillButton.small('＋ 코스 만들기', onPressed: _createCourse),
-                          ),
+                          WdMapPillButton.small('＋ 코스 만들기', onPressed: _createCourse),
                           WdMapLocateButton(onPressed: () => _map?.showMyLocation()),
                         ],
                       ),
