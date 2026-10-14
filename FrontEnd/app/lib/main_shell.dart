@@ -20,14 +20,20 @@ class MainShell extends ConsumerWidget {
       listenable: run,
       builder: (context, _) {
         // C5만 탭을 표시하고 H4/C4/D1-2는 피그마의 전체 화면을 쓴다.
-        final fullScreen = shell.currentIndex == 1 &&
-            (run.countdown != null || run.snapshot.state != RunState.ready);
+        final fullScreen =
+            shell.currentIndex == 1 &&
+            (run.preparing || run.snapshot.state != RunState.ready);
         return Scaffold(
           body: shell,
-          bottomNavigationBar: fullScreen ? null : WdBottomNav(
-            currentIndex: shell.currentIndex,
-            onTap: (index) => shell.goBranch(index, initialLocation: index == shell.currentIndex),
-          ),
+          bottomNavigationBar: fullScreen
+              ? null
+              : WdBottomNav(
+                  currentIndex: shell.currentIndex,
+                  onTap: (index) => shell.goBranch(
+                    index,
+                    initialLocation: index == shell.currentIndex,
+                  ),
+                ),
         );
       },
     );
@@ -43,21 +49,24 @@ class PlaceholderTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: WdAppBar(title: title),
-        body: Padding(
-          padding: const EdgeInsets.all(WdSpace.s24),
-          child: Column(
-            children: [
-              Expanded(
-                child: Center(
-                  child: Text('준비 중인 화면이에요', style: WdText.body13.copyWith(color: WdColors.muted)),
-                ),
+    appBar: WdAppBar(title: title),
+    body: Padding(
+      padding: const EdgeInsets.all(WdSpace.s24),
+      child: Column(
+        children: [
+          Expanded(
+            child: Center(
+              child: Text(
+                '준비 중인 화면이에요',
+                style: WdText.body13.copyWith(color: WdColors.muted),
               ),
-              ?action,
-            ],
+            ),
           ),
-        ),
-      );
+          ?action,
+        ],
+      ),
+    ),
+  );
 }
 
 /// MY 탭 담당(F13)이 실제 화면을 만들 때까지 로그아웃만 둔다.
@@ -66,11 +75,11 @@ class MyPlaceholderTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => PlaceholderTab(
-        title: 'MY',
-        action: WdButton(
-          '로그아웃',
-          variant: WdButtonVariant.secondary,
-          onPressed: () => ref.read(authControllerProvider.notifier).logout(),
-        ),
-      );
+    title: 'MY',
+    action: WdButton(
+      '로그아웃',
+      variant: WdButtonVariant.secondary,
+      onPressed: () => ref.read(authControllerProvider.notifier).logout(),
+    ),
+  );
 }

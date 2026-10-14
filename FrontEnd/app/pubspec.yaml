@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+version: 1.0.2+3
 
 environment:
   sdk: ^3.13.5
@@ -37,6 +37,9 @@ dependencies:
   uuid: ^4.6.0
   flutter_secure_storage: ^11.2.0
   permission_handler: ^13.0.2
+  geolocator: ^14.1.1
+  sqflite: ^2.4.4+1
+  path: ^1.9.1
   kakao_flutter_sdk_user: ^2.0.1
   flutter_naver_map: ^1.4.4
   # 지도 표지에 디자인 시스템 SVG 아이콘을 그림으로 올린다. 디자인 시스템과 같은 버전.
@@ -48,6 +51,7 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  sqflite_common_ffi: ^2.4.3
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is

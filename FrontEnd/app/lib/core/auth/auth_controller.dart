@@ -38,10 +38,15 @@ class AuthController extends AsyncNotifier<AuthState> {
   ///
   /// [onSocialSignedIn]은 소셜 SDK 로그인이 끝나고 서버 로그인을 시작하기 직전에 부른다. 소셜 로그인은
   /// 사용자가 창을 버리면 끝나지 않을 수 있지만, 서버 로그인은 요청 시간 제한으로 반드시 끝난다.
-  Future<void> login(SocialProvider provider, {void Function()? onSocialSignedIn}) async {
+  Future<void> login(
+    SocialProvider provider, {
+    void Function()? onSocialSignedIn,
+  }) async {
     final socialToken = await ref.read(socialLoginProvider).signIn(provider);
     onSocialSignedIn?.call();
-    switch (await ref.read(memberApiClientProvider).login(provider, socialToken)) {
+    switch (await ref
+        .read(memberApiClientProvider)
+        .login(provider, socialToken)) {
       case LoginSignedIn(:final tokens):
         await _signedIn(tokens);
       case LoginSignupRequired(:final signupToken):
@@ -60,7 +65,9 @@ class AuthController extends AsyncNotifier<AuthState> {
   }) async {
     final current = state.value;
     if (current is! SignupRequired) throw StateError('가입 토큰이 없습니다');
-    final tokens = await ref.read(memberApiClientProvider).signup(
+    final tokens = await ref
+        .read(memberApiClientProvider)
+        .signup(
           signupToken: current.signupToken,
           agreements: agreements,
           nickname: nickname,
@@ -98,4 +105,6 @@ class AuthController extends AsyncNotifier<AuthState> {
   }
 }
 
-final authControllerProvider = AsyncNotifierProvider<AuthController, AuthState>(AuthController.new);
+final authControllerProvider = AsyncNotifierProvider<AuthController, AuthState>(
+  AuthController.new,
+);
