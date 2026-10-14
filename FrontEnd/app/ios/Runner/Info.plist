@@ -12,6 +12,10 @@
 	<string>달린 경로를 기록하는 데 위치를 사용해요.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>걸음 센서로 케이던스(분당 걸음 수)를 측정해요.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>리뷰와 프로필에 올릴 사진을 골라요.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>리뷰와 프로필에 올릴 사진을 찍어요.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
