@@ -3,6 +3,7 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../domain/run_models.dart';
 import 'free_run_live_view.dart';
+import 'run_lap_list.dart';
 
 /// Figma 1731:5635 — 자유 러닝 결과. 원본 ms의 두 시간 값을 그대로 표시한다.
 class FreeRunResultView extends StatelessWidget {
@@ -10,9 +11,13 @@ class FreeRunResultView extends StatelessWidget {
     super.key,
     required this.run,
     required this.onConfirm,
+    this.onDelete,
+    this.history = false,
   });
   final RunSnapshot run;
   final VoidCallback onConfirm;
+  final VoidCallback? onDelete;
+  final bool history;
 
   @override
   Widget build(BuildContext context) {
@@ -41,7 +46,7 @@ class FreeRunResultView extends StatelessWidget {
           children: [
             Container(
               width: double.infinity,
-              height: 208,
+              constraints: const BoxConstraints(minHeight: 208),
               color: WdColors.lime,
               padding: const EdgeInsets.all(WdSpace.s24),
               child: Column(
@@ -173,17 +178,30 @@ class FreeRunResultView extends StatelessWidget {
                       ],
                     ),
                   ),
-                  WdStatSummary([
+                  _RunStatSummary([
                     ('평균 속도', speed),
-                    ('케이던스', '—'),
+                    (
+                      '케이던스',
+                      run.averageCadence == null
+                          ? '—'
+                          : '${run.averageCadence!.round()} spm',
+                    ),
                     ('소모 칼로리', '—'),
                   ]),
-                  const WdStatSummary([
+                  if (run.averageCadence != null &&
+                      run.active.inMilliseconds - run.cadenceCoverageMs > 10000)
+                    const WdInfoBanner(
+                      '걸음 센서가 측정되지 않은 구간이 있어요. 평균 케이던스는 측정된 구간만 사용해요.',
+                      tone: WdBannerTone.warning,
+                    ),
+                  if (run.averageCadence == null)
+                    const Text('케이던스 측정 데이터가 없어요.'),
+                  const _RunStatSummary([
                     ('상승 고도', '—'),
                     ('최고 구간', '—'),
                     ('최고 페이스', '—'),
                   ]),
-                  WdStatSummary([
+                  _RunStatSummary([
                     ('이동시간', formatRunTime(run.movingTime)),
                     ('총 페이스', formatRunPace(run.elapsedPaceSecondsPerKm)),
                     ('정지시간', formatRunTime(run.elapsed - run.movingTime)),
@@ -203,34 +221,10 @@ class FreeRunResultView extends StatelessWidget {
                       '측정이 중단되어 마지막 저장 지점까지 기록했어요.',
                       tone: WdBannerTone.warning,
                     ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    spacing: WdSpace.s8,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text('구간 페이스', style: WdText.ko14Bold),
-                          Text(
-                            '1 km 단위',
-                            style: WdText.ko12.copyWith(color: WdColors.muted),
-                          ),
-                        ],
-                      ),
-                      WdSurface(
-                        height: 160,
-                        radius: WdRadius.r12,
-                        child: Center(
-                          child: Text(
-                            '표시할 구간 기록이 없어요.',
-                            style: WdText.ko12.copyWith(color: WdColors.muted),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                  RunLapList(run: run),
                   WdInfoBanner(
-                    run.storageStatus == '기기 저장'
+                    run.storageStatus == '기기 저장' ||
+                            run.storageStatus.startsWith('기기 저장 ·')
                         ? '이 기기에 기록을 저장했어요. 서버 등록을 기다리고 있어요.'
                         : run.storageStatus == '측정 거리 없음'
                         ? '측정된 거리가 없어 개인 기록을 저장하지 않았어요.'
@@ -245,14 +239,16 @@ class FreeRunResultView extends StatelessWidget {
           ],
         ),
       ),
-      bottomNavigationBar: WdBottomBar.dual(
-        secondary: const WdButton(
-          '구간 상세 분석',
-          onPressed: null,
-          variant: WdButtonVariant.secondary,
-        ),
-        primary: WdButton('확인', onPressed: onConfirm),
-      ),
+      bottomNavigationBar: history
+          ? WdBottomBar.dual(
+              secondary: WdButton(
+                '기록 삭제',
+                onPressed: onDelete,
+                variant: WdButtonVariant.secondary,
+              ),
+              primary: WdButton('확인', onPressed: onConfirm),
+            )
+          : WdBottomBar.pinned(primary: WdButton('확인', onPressed: onConfirm)),
     );
   }
 
@@ -277,4 +273,45 @@ class FreeRunResultView extends StatelessWidget {
   );
 
   String _two(int value) => value.toString().padLeft(2, '0');
+}
+
+class _RunStatSummary extends StatelessWidget {
+  const _RunStatSummary(this.items);
+  final List<(String, String)> items;
+  @override
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    spacing: 8,
+    children: [
+      for (final (label, value) in items)
+        Expanded(
+          child: WdSurface(
+            padding: const EdgeInsets.all(12),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              spacing: 6,
+              children: [
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    label,
+                    style: WdText.ko12.copyWith(color: WdColors.muted),
+                  ),
+                ),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    value,
+                    style: WdText.numeric24.copyWith(color: WdColors.ink),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+    ],
+  );
 }

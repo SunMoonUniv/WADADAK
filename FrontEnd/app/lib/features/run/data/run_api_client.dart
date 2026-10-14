@@ -40,6 +40,18 @@ class RunApiClient {
   Future<Map<String, dynamic>> result(String owner, String id) => _map(
     () => dio.get<Object?>('/api/v1/runs/records/$id', options: options(owner)),
   );
+  Future<void> delete(String owner, String id) async {
+    final result = await _map(
+      () => dio.delete<Object?>(
+        '/api/v1/runs/records/$id',
+        options: options(owner),
+      ),
+    );
+    if (result['deleted'] != true || result['id'] != id) {
+      throw const ApiException(ApiException.network, '서버의 삭제 확인을 기다리고 있어요.');
+    }
+  }
+
   Future<Map<String, dynamic>> history(String owner, {String? cursor}) => _map(
     () => dio.get<Object?>(
       '/api/v1/runs/records',

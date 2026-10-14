@@ -1,8 +1,10 @@
 import 'dart:math' as math;
 
+import 'run_lap.dart';
+
 enum RunState { ready, running, paused, finished }
 
-enum RunInputKind { start, gps, pause, resume, gap, end }
+enum RunInputKind { start, gps, pause, resume, gap, end, cadence }
 
 class RunPoint {
   const RunPoint(this.latitude, this.longitude);
@@ -68,6 +70,12 @@ class RunSnapshot {
     this.currentPaceDisplay,
     this.paceDisplayManaged = false,
     this.stationary = false,
+    this.laps = const [],
+    this.averageCadence,
+    this.currentCadence,
+    this.cadenceCoverageMs = 0,
+    this.cadenceStatus = '측정 전',
+    this.voiceNotice,
   }) : inputs = List.unmodifiable(inputs);
 
   final RunState state;
@@ -83,16 +91,23 @@ class RunSnapshot {
   Duration get movingTime => moving ?? active;
   final double? averagePaceDisplay, currentPaceDisplay;
   final bool paceDisplayManaged, stationary;
+  final List<RunLap> laps;
+  final double? averageCadence, currentCadence;
+  final int cadenceCoverageMs;
+  final String cadenceStatus;
+  final String? voiceNotice;
   final List<List<RunPoint>> segments;
-  bool get hasLocation => inputs.any(
-    (p) =>
-        p.kind == RunInputKind.gps &&
-        p.point != null &&
-        p.accuracyM != null &&
-        p.accuracyM!.isFinite &&
-        p.accuracyM! >= 0 &&
-        p.accuracyM! <= 30,
-  );
+  bool get hasLocation =>
+      segments.any((s) => s.isNotEmpty) ||
+      inputs.any(
+        (p) =>
+            p.kind == RunInputKind.gps &&
+            p.point != null &&
+            p.accuracyM != null &&
+            p.accuracyM!.isFinite &&
+            p.accuracyM! >= 0 &&
+            p.accuracyM! <= 30,
+      );
   // Free running uses moving time; elapsed time remains available for rankings.
   double? get paceSecondsPerKm => paceDisplayManaged
       ? averagePaceDisplay

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../domain/run_models.dart';
+import 'run_lap_list.dart';
 import '../../../core/map/map_view.dart';
 
 String runDistance(RunSnapshot run) => run.hasLocation
@@ -64,6 +65,17 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                 style: WdText.ko12.copyWith(color: WdColors.runTextSub),
               ),
             ),
+            if (run.voiceNotice != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 4,
+                ),
+                child: Text(
+                  run.voiceNotice!,
+                  style: WdText.ko12.copyWith(color: WdColors.runTextSub),
+                ),
+              ),
             Expanded(
               child: PageView(
                 controller: _pages,
@@ -81,7 +93,12 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                           ('이동 시간', formatRunTime(run.movingTime)),
                           ('거리', runDistance(run)),
                           ('평균 페이스', formatRunPace(run.paceSecondsPerKm)),
-                          ('케이던스', '—'),
+                          (
+                            '케이던스',
+                            run.currentCadence == null
+                                ? '—'
+                                : '${run.currentCadence!.round()} spm',
+                          ),
                         ])
                           Expanded(
                             child: FittedBox(
@@ -142,22 +159,7 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                           ? '이동하면 자동으로 다시 달려요.'
                           : '편안하게 나만의 속도로 이어가세요.',
                     ),
-                    SizedBox(
-                      height: 140,
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          const WdLapRecords(laps: [], meta: '1 km 자동'),
-                          const SizedBox(height: WdSpace.s24),
-                          Text(
-                            '랩 기록은 준비 중이에요.',
-                            style: WdText.ko13.copyWith(
-                              color: WdColors.runTextSub,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    RunLapList(run: run, dark: true, recentOnly: true),
                     if (paused)
                       Text(
                         '일시정지 ${formatRunTime(run.elapsed - run.active)}',
@@ -176,7 +178,15 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                         ('이동 시간', formatRunTime(run.movingTime)),
                       ],
                       [('심박수', '—'), ('최고 페이스', '—')],
-                      [('케이던스', '—'), ('누적 고도', '—')],
+                      [
+                        (
+                          '케이던스',
+                          run.currentCadence == null
+                              ? '—'
+                              : '${run.currentCadence!.round()} spm',
+                        ),
+                        ('누적 고도', '—'),
+                      ],
                     ])
                       Row(
                         spacing: WdSpace.s16,
@@ -190,6 +200,10 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                             ),
                         ],
                       ),
+                    Text(
+                      '케이던스 · ${run.cadenceStatus}',
+                      style: WdText.ko12.copyWith(color: WdColors.runTextSub),
+                    ),
                     WdSurface(
                       color: WdColors.runSurface,
                       height: 74,
@@ -259,15 +273,18 @@ class RunRouteView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (!run.hasLocation) return RunRouteEmpty(dark: dark);
-    final location = run.inputs.reversed
-        .firstWhere(
-          (p) =>
-              p.kind == RunInputKind.gps &&
-              p.point != null &&
-              p.accuracyM != null &&
-              p.accuracyM! <= 30,
-        )
-        .point!;
+    final location =
+        run.inputs.reversed
+            .where(
+              (p) =>
+                  p.kind == RunInputKind.gps &&
+                  p.point != null &&
+                  p.accuracyM != null &&
+                  p.accuracyM! <= 30,
+            )
+            .firstOrNull
+            ?.point ??
+        run.segments.lastWhere((s) => s.isNotEmpty).last;
     final points = run.segments
         .expand((s) => s)
         .map((p) => GeoPoint(p.latitude, p.longitude))

@@ -143,6 +143,32 @@ class RunRecorder {
     batch.add(point);
     await _commit(batch, phase, ms);
   });
+  Future<void> cadence(int steps, int durationMs, {int? sampleEndClockMs}) =>
+      _serial(() async {
+        if (!active ||
+            current!.phase != RunPhase.running ||
+            durationMs <= 0 ||
+            durationMs > 10000 ||
+            steps < 0 ||
+            steps * 1000 > durationMs * 5) {
+          return;
+        }
+        final ms = await _elapsed();
+        final end = sampleEndClockMs == null
+            ? ms
+            : sampleEndClockMs - _originMs;
+        if (end < durationMs || end > ms) return;
+        final input = RunInput(
+          seq: current!.inputs.length,
+          kind: RunKind.cadence,
+          elapsedMs: ms,
+          measuredAt: current!.startedAt.add(Duration(milliseconds: ms)),
+          steps: steps,
+          durationMs: durationMs,
+          sampleEndMs: end,
+        );
+        await _commit([input], current!.phase, ms);
+      });
   Future<void> pause() => _serial(() async {
     if (!active || current!.phase != RunPhase.running) return;
     final ms = await _elapsed();

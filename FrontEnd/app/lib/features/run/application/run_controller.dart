@@ -11,6 +11,8 @@ import '../../../core/auth/token_storage.dart';
 import '../data/run_api_client.dart';
 import '../data/run_local_store.dart';
 import '../data/run_location.dart';
+import '../data/run_device.dart';
+import '../domain/run_voice.dart';
 import '../domain/recording_models.dart';
 import 'run_recorder.dart';
 import 'run_sync_worker.dart';
@@ -21,6 +23,7 @@ final runControllerProvider = Provider<RunController>((ref) {
     RunLocation(),
     RunApiClient(ref.read(dioProvider)),
     () async => (await ref.read(tokenStorageProvider).read())?.memberId,
+    device: RunDevice(),
   );
   ref.listen(authControllerProvider, (_, next) {
     if (next.value is SignedIn) {
@@ -45,13 +48,23 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     DateTime Function()? utcNow,
     AppLifecycleState? Function()? lifecycleState,
     bool automaticTicks = true,
+    this.device,
   }) : _wait = wait ?? Future<void>.delayed,
        _utcNow = utcNow ?? (() => DateTime.now().toUtc()),
        _lifecycleState =
            lifecycleState ?? (() => WidgetsBinding.instance.lifecycleState) {
+    if (device != null) {
+      device!.onVoiceError = (message) {
+        voiceNotice = message;
+        _notify();
+      };
+    }
     recorder = RunRecorder(store, location.nowMs);
     syncWorker = RunSyncWorker(api, store, owner);
-    _changes = recorder.changes.stream.listen((_) => _notify());
+    _changes = recorder.changes.stream.listen((_) {
+      _notify();
+      unawaited(_refreshExtras());
+    });
     if (automaticTicks) {
       _timer = Timer.periodic(
         const Duration(seconds: 1),
@@ -62,6 +75,16 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   }
   final RunLocalStore store;
   final RunLocation location;
+  final RunDevice? device;
+  RunVoiceSettings voiceSettings = const RunVoiceSettings();
+  final RunVoiceScheduler _voiceScheduler = RunVoiceScheduler();
+  String cadenceStatus = '측정 전';
+  String? voiceNotice;
+  Set<String> deletedIds = {};
+  int pendingDeleteCount = 0;
+  String? _deviceRunId;
+  bool _voiceReady = false;
+  Future<void>? _extrasJob;
   final RunApiClient api;
   final Future<String?> Function() owner;
   late final RunRecorder recorder;
@@ -107,8 +130,13 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         final member = await owner();
         if (member == currentOwner) return;
         cancelStart();
+        currentOwner = null;
+        records = [];
+        remoteRecords = [];
+        _notify();
         if (recorder.active) await recorder.end(reason: 'ACCOUNT_CHANGED');
         await _stopLocation();
+        await _stopExtras();
         recorder.current = null;
         recorder.calculator = RunCalculator();
         recorder.elapsedMs = 0;
@@ -121,7 +149,14 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         records = [];
         remoteRecords = [];
         nextCursor = null;
+        historyNotice = null;
+        deletedIds = {};
+        pendingDeleteCount = 0;
+        voiceSettings = const RunVoiceSettings();
         if (member == null) return;
+        voiceSettings = await store.voiceSettings(member);
+        deletedIds = await store.deletedIds(member);
+        pendingDeleteCount = (await store.pendingDeletions(member)).length;
         records = (await recorder.recover(member))
             .where((r) => RunCalculator.replay(r.inputs).distanceM > 0)
             .toList();
@@ -163,6 +198,15 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     int? locationToken;
     _notify();
     try {
+      await device?.requestPermission();
+      if (generation != _generation || _disposed) return;
+      _voiceReady = voiceSettings.enabled
+          ? (await device?.initializeVoice() ?? false)
+          : false;
+      voiceNotice = voiceSettings.enabled && device != null && !_voiceReady
+          ? '한국어 음성을 사용할 수 없어요. 휴대폰 음성 설정을 확인해 주세요.'
+          : null;
+      if (generation != _generation || _disposed) return;
       final position = await location.ready();
       if (generation != _generation || _disposed) return;
       if (_lifecycleState() != AppLifecycleState.resumed) {
@@ -187,6 +231,15 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       if (_latest == null || !RunLocation.usable(_latest!, _utcNow())) {
         throw const RunSetupException('GPS 신호가 약해요. 다시 시작해 주세요.');
       }
+      if (device != null && !await device!.permissionGranted()) {
+        throw const RunSetupException(
+          '신체 활동 권한을 허용한 뒤 시작해 주세요.',
+          action: RunSetupAction.appSettings,
+        );
+      }
+      if (generation != _generation || _disposed || await owner() != member) {
+        return;
+      }
       _committing = true;
       countdown = null;
       _notify();
@@ -197,6 +250,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         await bindOwner();
         return;
       }
+      await _refreshExtras();
       final latest = _latest!;
       await recorder.gps(
         latest.latitude,
@@ -293,11 +347,12 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       if (token != _locationGeneration || _disposed) return;
       if (permission == LocationPermission.denied ||
           permission == LocationPermission.deniedForever) {
-        await recorder.end(reason: 'PERMISSION_REVOKED');
-        await _stopLocation();
-        await _reloadLocal();
         error = '위치 권한이 해제되어 러닝을 종료했어요. 저장한 기록은 보존되어 있어요.';
         setupAction = RunSetupAction.appSettings;
+        await recorder.end(reason: 'PERMISSION_REVOKED');
+        await _stopLocation();
+        await _stopExtras();
+        await _reloadLocal();
         unawaited(sync());
       } else {
         // Keep the foreground service alive so GPS can recover while the screen is off.
@@ -327,10 +382,12 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
           _startLocation();
         }
       }
+      await _refreshExtras();
       if (_ticks % 15 == 0 &&
           !_syncDisabled &&
           !syncing &&
-          records.any((r) => r.pending && r.syncState != 'blocked')) {
+          (pendingDeleteCount > 0 ||
+              records.any((r) => r.pending && r.syncState != 'blocked'))) {
         unawaited(sync());
       }
     } on Object catch (e) {
@@ -343,7 +400,10 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> pause() async {
     if (storageFault) return;
     try {
+      await _sampleCadence(force: true);
+      await device?.stopVoice();
       await recorder.pause();
+      await _refreshExtras();
     } on Object catch (e) {
       await _operationError(e);
     }
@@ -353,6 +413,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     if (storageFault) return;
     try {
       await recorder.resume();
+      await _refreshExtras();
     } on Object catch (e) {
       await _operationError(e);
     }
@@ -362,6 +423,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     if (storageFault) return;
     try {
       await recorder.end();
+      await _stopExtras();
       await _stopLocation();
       await _reloadLocal();
       if (metrics.distanceM <= 0) {
@@ -383,6 +445,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     if (e is RunStorageFailure || recorder.faulted) {
       storageFault = true;
       await _stopLocation();
+      await _stopExtras();
       error = '기기 저장을 완료하지 못해 측정을 중단했어요. 다시 실행하면 마지막 저장 지점까지 복구돼요.';
       setupAction = null;
     } else {
@@ -406,10 +469,16 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     final member = currentOwner;
     if (member == null) return;
     final loaded = await store.list(member);
+    final removed = await store.deletedIds(member);
+    final deletions = await store.pendingDeletions(member);
     if (currentOwner != member) return;
+    deletedIds = {...deletedIds, ...removed};
+    pendingDeleteCount = deletions.length;
+    remoteRecords.removeWhere((r) => removed.contains(r['id']));
     records = loaded
         .where(
           (r) =>
+              !deletedIds.contains(r.id) &&
               r.phase == RunPhase.ended &&
               RunCalculator.replay(r.inputs).distanceM > 0,
         )
@@ -496,7 +565,14 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       final items = (page['items'] as List)
           .map((r) => (r as Map).cast<String, dynamic>())
           .toList();
-      remoteRecords = more ? [...remoteRecords, ...items] : items;
+      historyNotice = null;
+      final removed = await store.deletedIds(member);
+      if (currentOwner != member || _disposed) return;
+      final merged = more ? [...remoteRecords, ...items] : items;
+      remoteRecords = {
+        for (final r in merged)
+          if (!removed.contains(r['id'])) r['id'] as String: r,
+      }.values.toList();
       nextCursor = page['nextCursor'] as String?;
     } on Object catch (e) {
       if (currentOwner == member && !_disposed) historyNotice = _message(e);
@@ -509,9 +585,184 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   Future<Map<String, dynamic>> detail(String id) async {
     final member = currentOwner;
     if (member == null) throw StateError('로그인 후 조회해 주세요.');
+    if (deletedIds.contains(id)) throw StateError('삭제한 기록이에요.');
     final result = await api.result(member, id);
-    if (currentOwner != member) throw StateError('계정이 변경되었어요.');
+    if (currentOwner != member || await owner() != member) {
+      throw StateError('계정이 변경되었어요.');
+    }
+    if ((await store.deletedIds(member)).contains(id)) {
+      throw StateError('삭제한 기록이에요.');
+    }
     return result;
+  }
+
+  Future<void> deleteRecord(String id) async {
+    final member = currentOwner;
+    if (member == null || await owner() != member) {
+      throw StateError('로그인 후 삭제해 주세요.');
+    }
+    await store.deleteRecord(member, id);
+    if (currentOwner != member) return;
+    deletedIds.add(id);
+    records.removeWhere((r) => r.id == id);
+    remoteRecords.removeWhere((r) => r['id'] == id);
+    pendingDeleteCount = (await store.pendingDeletions(member)).length;
+    if (run?.id == id && !recorder.active) clearResult();
+    _notify();
+    unawaited(sync(manual: true));
+  }
+
+  Future<void> saveVoiceSettings(RunVoiceSettings settings) async {
+    final member = currentOwner;
+    if (member == null) throw StateError('로그인 후 설정해 주세요.');
+    await store.saveVoiceSettings(member, settings);
+    if (currentOwner != member || _disposed) return;
+    voiceSettings = settings;
+    if (!settings.enabled) {
+      await device?.stopVoice();
+    } else if (!_voiceReady) {
+      _voiceReady = await device?.initializeVoice() ?? false;
+    }
+    voiceNotice = settings.enabled && device != null && !_voiceReady
+        ? '한국어 음성을 사용할 수 없어요.'
+        : null;
+    if (run != null) {
+      _voiceScheduler.update(run!.id, run!.phase, metrics, settings);
+    }
+    _notify();
+  }
+
+  Future<void> testVoice() async {
+    final member = currentOwner;
+    if (member == null || run?.phase == RunPhase.paused) return;
+    _voiceReady = await device?.initializeVoice() ?? false;
+    if (_disposed ||
+        currentOwner != member ||
+        await owner() != member ||
+        run?.phase == RunPhase.paused) {
+      return;
+    }
+    final success =
+        _voiceReady &&
+        (await device?.speak('와다닥 음성 안내입니다. 나만의 리듬으로 달려보세요.') ?? false);
+    voiceNotice = success ? null : '한국어 음성을 재생할 수 없어요. 휴대폰 음성 설정과 볼륨을 확인해 주세요.';
+    _notify();
+  }
+
+  Future<void> _sampleCadence({bool force = false}) async {
+    if (device == null ||
+        _deviceRunId == null ||
+        !recorder.active ||
+        run?.phase != RunPhase.running) {
+      return;
+    }
+    final id = run!.id;
+    final sample = await device!.sampleSteps(force: force);
+    if (sample == null ||
+        _disposed ||
+        storageFault ||
+        run?.id != id ||
+        run?.phase != RunPhase.running) {
+      return;
+    }
+    await recorder.cadence(
+      (sample['steps'] as num).toInt(),
+      (sample['durationMs'] as num).toInt(),
+      sampleEndClockMs: (sample['sampleEndClockMs'] as num?)?.toInt(),
+    );
+    cadenceStatus = '측정 중';
+  }
+
+  Future<void> _refreshExtras() {
+    if (device == null || _disposed) return Future.value();
+    return _extrasJob ??= _updateExtras().whenComplete(() => _extrasJob = null);
+  }
+
+  Future<void> _updateExtras() async {
+    try {
+      final current = run;
+      final running = !storageFault && current?.phase == RunPhase.running;
+      if (!running) {
+        if (_deviceRunId != null) await _stopExtras();
+        if (current != null) {
+          _voiceScheduler.update(
+            current.id,
+            current.phase,
+            metrics,
+            voiceSettings,
+          );
+        }
+        return;
+      }
+      if (_deviceRunId != current!.id) {
+        await _stopExtras();
+        _deviceRunId = current.id;
+        cadenceStatus = await device!.startSteps();
+      }
+      if (run?.id != current.id ||
+          run?.phase != RunPhase.running ||
+          _disposed) {
+        await _stopExtras();
+        return;
+      }
+      if (_ticks % 5 == 0 && !await device!.permissionGranted()) {
+        error = '신체 활동 권한이 해제되어 마지막 기록까지 저장했어요.';
+        setupAction = RunSetupAction.appSettings;
+        await recorder.end(reason: 'PERMISSION_REVOKED');
+        await _stopLocation();
+        await _stopExtras();
+        await _reloadLocal();
+        _notify();
+        return;
+      }
+      await _sampleCadence();
+      if (run?.id != current.id ||
+          run?.phase != RunPhase.running ||
+          _disposed) {
+        return;
+      }
+      final text = _voiceScheduler.update(
+        current.id,
+        current.phase,
+        metrics,
+        voiceSettings,
+      );
+      if (text != null && _voiceReady && !await device!.speak(text)) {
+        voiceNotice = '음성 안내를 재생하지 못했어요. 휴대폰 음성 설정과 볼륨을 확인해 주세요.';
+        _notify();
+      }
+    } on Object catch (e) {
+      if (e is RunStorageFailure) {
+        await _operationError(e);
+      } else {
+        cadenceStatus = '센서 연결 실패';
+        _notify();
+      }
+    } finally {
+      if (!_disposed &&
+          _deviceRunId != null &&
+          run?.phase != RunPhase.running) {
+        await _stopExtras();
+      }
+    }
+  }
+
+  Future<void> _stopExtras() async {
+    _deviceRunId = null;
+    if (run?.phase == RunPhase.paused) cadenceStatus = '일시정지';
+    if (run?.phase == RunPhase.ended) {
+      cadenceStatus = metrics.averageCadence == null ? '측정 없음' : '측정 완료';
+    }
+    try {
+      await device?.stopSteps();
+    } on Object {
+      /* Recording remains durable. */
+    }
+    try {
+      await device?.stopVoice();
+    } on Object {
+      /* Missing audio never stops recording. */
+    }
   }
 
   Future<void> _stopLocation({int? expectedToken}) async {
@@ -547,6 +798,9 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     _timer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     await _stopLocation();
+    await _extrasJob;
+    await _stopExtras();
+    await device?.close();
     await _changes.cancel();
     await recorder.close();
     await store.close();

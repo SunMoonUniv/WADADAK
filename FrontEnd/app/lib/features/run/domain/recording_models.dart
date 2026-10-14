@@ -1,10 +1,12 @@
 import 'dart:math' as math;
 
 import 'motion_pace.dart';
+import 'run_lap.dart';
+import 'run_cadence.dart';
 
 enum RunPhase { running, paused, ended }
 
-enum RunKind { start, gps, pause, resume, gap, end }
+enum RunKind { start, gps, pause, resume, gap, end, cadence }
 
 class RunInput {
   const RunInput({
@@ -18,6 +20,9 @@ class RunInput {
     this.reason,
     this.speedMps,
     this.speedAccuracyMps,
+    this.steps,
+    this.durationMs,
+    this.sampleEndMs,
   });
   factory RunInput.fromJson(Map<String, dynamic> j) => RunInput(
     seq: j['seq'] as int,
@@ -30,8 +35,12 @@ class RunInput {
     reason: j['reason'] as String?,
     speedMps: (j['speedMps'] as num?)?.toDouble(),
     speedAccuracyMps: (j['speedAccuracyMps'] as num?)?.toDouble(),
+    steps: (j['steps'] as num?)?.toInt(),
+    durationMs: (j['durationMs'] as num?)?.toInt(),
+    sampleEndMs: (j['sampleEndMs'] as num?)?.toInt(),
   );
   final int seq, elapsedMs;
+  final int? steps, durationMs, sampleEndMs;
   final RunKind kind;
   final DateTime measuredAt;
   final double? lat, lng, accuracyM;
@@ -59,6 +68,9 @@ class RunInput {
     if (reason != null) 'reason': reason,
     if (speedMps != null) 'speedMps': speedMps,
     if (speedAccuracyMps != null) 'speedAccuracyMps': speedAccuracyMps,
+    if (steps != null) 'steps': steps,
+    if (durationMs != null) 'durationMs': durationMs,
+    if (sampleEndMs != null) 'sampleEndMs': sampleEndMs,
   };
   double distanceTo(RunInput other) {
     const radius = 6371008.8;
@@ -107,12 +119,18 @@ class RunMetrics {
     int? movingMs,
     this.currentPaceSecondsPerKm,
     this.stationary = false,
+    this.averageCadence,
+    this.currentCadence,
+    this.cadenceCoverageMs = 0,
+    this.steps = 0,
   }) : movingMs = movingMs ?? activeMs;
   final double distanceM;
   final int elapsedMs, activeMs, gapCount;
   final int movingMs;
   final double? currentPaceSecondsPerKm;
   final bool stationary;
+  final double? averageCadence, currentCadence;
+  final int cadenceCoverageMs, steps;
   double? get paceSecondsPerKm =>
       distanceM > 0 && movingMs > 0 ? movingMs / distanceM : null;
   double? get elapsedPaceSecondsPerKm =>
@@ -125,6 +143,9 @@ class RunMetrics {
     'elapsedPaceSecondsPerKm': elapsedPaceSecondsPerKm,
     'gapCount': gapCount,
     'paceSecondsPerKm': paceSecondsPerKm,
+    'averageCadence': averageCadence,
+    'cadenceCoverageMs': cadenceCoverageMs,
+    'steps': steps,
   };
 }
 
@@ -137,6 +158,65 @@ class RunCalculator {
   int activeMs = 0, lastMs = 0, gapCount = 0;
   bool paused = false, ended = false, _inGap = false;
   RunInput? _previous;
+  final RunCadenceCalculator _cadence = RunCadenceCalculator();
+  final List<RunTimeSpan> _pauses = [];
+  int? _pauseAt;
+  final List<RunTravel> _travels = [];
+  final List<RunLap> _laps = [];
+  int _processedTravels = 0, _lapEndMs = 0, _lapMovingMs = 0;
+  double _lapDistance = 0;
+  int movingAt(int ms) {
+    final stopped = _v2 ? _motion.stoppedBefore(ms) : 0;
+    var pause = _pauses.fold<int>(0, (sum, p) => sum + p.before(ms));
+    if (_pauseAt != null) pause += math.max(0, ms - _pauseAt!);
+    return (ms - pause - stopped).clamp(0, ms);
+  }
+
+  void _updateLaps() {
+    final travels = _v2 ? _motion.travels : _travels;
+    for (; _processedTravels < travels.length; _processedTravels++) {
+      final t = travels[_processedTravels];
+      var boundary = (_laps.length + 1) * 1000.0;
+      while (t.distanceM > 0 &&
+          boundary <= _lapDistance + t.distanceM + .000001) {
+        final fraction = ((boundary - _lapDistance) / t.distanceM).clamp(
+          0.0,
+          1.0,
+        );
+        final ms = (t.startMs + (t.endMs - t.startMs) * fraction).round();
+        final moving = movingAt(ms);
+        _laps.add(
+          RunLap(
+            number: _laps.length + 1,
+            distanceM: 1000,
+            movingMs: math.max(0, moving - _lapMovingMs),
+            elapsedMs: ms - _lapEndMs,
+            complete: true,
+          ),
+        );
+        _lapEndMs = ms;
+        _lapMovingMs = moving;
+        boundary += 1000;
+      }
+      _lapDistance += t.distanceM;
+    }
+  }
+
+  List<RunLap> lapsAt(int ms) {
+    final partial = distanceM - _laps.length * 1000;
+    return List.unmodifiable([
+      ..._laps,
+      if (partial > .000001)
+        RunLap(
+          number: _laps.length + 1,
+          distanceM: partial,
+          movingMs: math.max(0, movingAt(ms) - _lapMovingMs),
+          elapsedMs: math.max(0, ms - _lapEndMs),
+          complete: false,
+        ),
+    ]);
+  }
+
   final List<List<RunInput>> _segments = [];
   List<List<RunInput>> get segments => _v2 ? _motion.segments : _segments;
   List<RunInput>? _segment;
@@ -149,11 +229,30 @@ class RunCalculator {
     switch (input.kind) {
       case RunKind.start:
         break;
+      case RunKind.cadence:
+        if (!paused &&
+            input.steps != null &&
+            input.durationMs != null &&
+            (input.sampleEndMs ?? input.elapsedMs) <= input.elapsedMs &&
+            (input.sampleEndMs ?? input.elapsedMs) - input.durationMs! >=
+                (_pauses.lastOrNull?.end ?? 0)) {
+          _cadence.add(
+            input.sampleEndMs ?? input.elapsedMs,
+            input.steps!,
+            input.durationMs!,
+          );
+        }
+        break;
       case RunKind.pause:
         paused = true;
+        _pauseAt = input.elapsedMs;
         _break();
       case RunKind.resume:
         paused = false;
+        if (_pauseAt != null) {
+          _pauses.add(RunTimeSpan(_pauseAt!, input.elapsedMs));
+        }
+        _pauseAt = null;
         _break();
       case RunKind.gap:
         if (!paused && !_inGap) gapCount++;
@@ -179,6 +278,7 @@ class RunCalculator {
             _gap();
           } else {
             _distanceM += d;
+            _travels.add(RunTravel(previous.elapsedMs, input.elapsedMs, d));
           }
         }
         if (_segment == null) {
@@ -189,6 +289,7 @@ class RunCalculator {
         _previous = input;
         _inGap = false;
     }
+    _updateLaps();
   }
 
   void _gap() {
@@ -212,6 +313,10 @@ class RunCalculator {
       movingMs: _v2 ? _motion.movingMs(ms, active) : active,
       currentPaceSecondsPerKm: _v2 ? _motion.currentPace(ms) : null,
       stationary: _v2 && _motion.stationary,
+      averageCadence: _cadence.average,
+      currentCadence: !paused && !ended ? _cadence.current(ms) : null,
+      cadenceCoverageMs: _cadence.coverageMs,
+      steps: _cadence.steps,
     );
   }
 
