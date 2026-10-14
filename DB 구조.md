@@ -16,11 +16,12 @@
 | --- | --- | --- |
 | `member` | member | `members`, `agreements`, `refresh_tokens` |
 | `course` | course | `courses`, `daily_registration_counts`, `registration_requests` |
-| `ranking` | ranking | `course_ranking_entries`, `course_status_copies`, `member_visibility_copies`, `withdrawn_members` |
+| `ranking` | ranking | `course_ranking_entries`, `distance_run_records`, `course_status_copies`, `member_visibility_copies`, `withdrawn_members` |
 | `review` | review | `reviews`, `review_photos`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
+| `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members` |
 | `common` | common | `region`, `event_publication`, `shedlock`, `flyway_schema_history` |
 
-run, notification 스키마는 아직 없다. 해당 모듈을 구현할 때 이 문서에 추가한다.
+notification 스키마는 아직 없다. 해당 모듈을 구현할 때 이 문서에 추가한다.
 
 ### 공통 규칙 (개발 정책 6장)
 
@@ -37,7 +38,7 @@ run, notification 스키마는 아직 없다. 해당 모듈을 구현할 때 이
 - 실선: 같은 스키마 안의 FK
 - 점선: 다른 모듈(스키마)의 ID를 값으로만 저장한 참조. FK 없음
 - 모든 엔티티 테이블에 있는 `created_at`·`updated_at`은 생략했다. `common`의 인프라 테이블(`event_publication`, `shedlock`, `flyway_schema_history`)은 다른 테이블과 관계가 없어 3.5에서만 설명한다.
-- `course_ranking_entries.run_record_id`, `course_run_records.run_record_id`, `reviews.source_run_record_id`는 run 모듈의 러닝 기록 ID다. run 스키마가 생기면 ERD에 잇는다.
+- `course_ranking_entries.run_record_id`, `course_run_records.run_record_id`, `reviews.source_run_record_id`는 run 모듈의 러닝 기록 ID다. 아래 `run_records`에 점선으로 연결했다. 다른 스키마이므로 FK는 없다.
 - `course_status_copies`·`withdrawn_members`는 ranking과 review에 같은 이름으로 있다. ERD에서는 review 쪽을 `review_` 접두사로 구분했다.
 
 ```mermaid
@@ -197,6 +198,51 @@ erDiagram
         varchar(40) name
         varchar(100) full_name
         geometry boundary "MultiPolygon"
+    }
+    members ||..o{ run_sessions : "member_id"
+    run_sessions ||--o{ run_inputs : "session_id"
+    run_sessions ||--o| run_records : "id"
+    members ||..o{ run_deleted_records : "member_id"
+    members ||..o| run_withdrawn_members : "member_id"
+    run_records ||..o| course_ranking_entries : "run_record_id"
+    run_records ||..o| course_run_records : "run_record_id"
+    run_records ||..o| distance_run_records : "run_record_id"
+    members ||..o{ distance_run_records : "member_id"
+    run_sessions {
+        UUID id PK
+        UUID member_id
+        TIMESTAMPTZ started_at
+        BIGINT final_seq
+        VARCHAR processing
+        VARCHAR failure
+    }
+    run_inputs {
+        UUID session_id PK,FK
+        BIGINT stream_seq PK
+        TEXT payload
+    }
+    run_records {
+        UUID id PK,FK
+        TIMESTAMPTZ registered_at
+        TEXT result_json
+        TEXT summary_json
+        BOOLEAN registration_published
+    }
+    run_deleted_records {
+        UUID id PK
+        UUID member_id
+        TIMESTAMPTZ deleted_at
+    }
+    run_withdrawn_members {
+        UUID member_id PK
+        TIMESTAMPTZ withdrawn_at
+    }
+    distance_run_records {
+        UUID run_record_id PK
+        UUID member_id
+        DOUBLE distance_meters
+        TIMESTAMPTZ registered_at
+        BOOLEAN deleted
     }
 ```
 
@@ -387,6 +433,23 @@ erDiagram
 - `MemberWithdrawnEvent`를 받으면 그 회원의 랭킹 엔트리와 공개 복사본을 바로 지우고 이 행을 남긴다.
 - 탈퇴 뒤에 도착한 그 회원의 완주 기록은 받지 않는다.
 
+#### `ranking.distance_run_records` — 기록별 누적 거리 집계 원천 복사본
+
+`RunSessionEndedEvent`·`RunRecordDeletedEvent`를 받아 자기 스키마에 보관한다. 자유 러닝도 포함한다. 실제 랭킹 조회·자정 스냅샷을 대체하는 구현은 아니며 기존 F12 스텁 화면은 유지한다.
+
+| 컬럼 | 타입 | 설명 |
+| --- | --- | --- |
+| `run_record_id` | UUID PK | 원천 run 기록 ID. 다른 스키마이므로 FK 없음 |
+| `member_id` | UUID | 회원 ID, 인덱스 있음 |
+| `distance_meters` | DOUBLE PRECISION | 서버 확정 거리 원본. 집계 전 임의 정수 반올림하지 않음 |
+| `registered_at` | TIMESTAMPTZ | 원래 기록 등록 시각. 재전송 때 바꾸지 않음 |
+| `deleted` | BOOLEAN | 삭제가 먼저 도착해도 유지하는 삭제 표시 |
+| `created_at`, `updated_at` | TIMESTAMPTZ | 복사본 생성·변경 시각 |
+
+- 기록 ID PK와 `deleted OR EXCLUDED.deleted`로 중복·역순 전달을 처리한다. 증감 UPDATE가 아니라 기록별 삽입 복사본이므로 별도 `processed_event` 증감 원장은 필요하지 않다.
+- 회원 탈퇴 시 이 회원의 행을 실제 삭제한다. 기존 `ranking.withdrawn_members`를 확인해 늦은 이벤트는 받지 않는다. 탈퇴와 기록 이벤트는 같은 회원 잠금으로 직렬화한다.
+- `registered_at`의 미삭제 부분 인덱스를 둔다. F12의 기간·주간·전체 순위 계산은 해당 기능에서 정책대로 구현한다.
+
 ### 3.4 review
 
 평점 요약(전체 평균·분포·항목 평균)은 저장하지 않고 조회할 때 `reviews`에서 계산한다(B8·G2). 코스 목록 정렬·필터용 평점 합계는 course가 리뷰 이벤트로 따로 가진다(개발 정책 5.6).
@@ -497,3 +560,51 @@ Spring Modulith가 관리한다. 이벤트를 발행하면 리스너마다 한 �
 #### `common.flyway_schema_history` — 마이그레이션 이력
 
 Flyway가 관리한다. 모든 모듈의 마이그레이션 이력을 여기 한 곳에 둔다(개발 정책 6.5).
+
+
+### 3.6 run
+
+자유 러닝의 종료 원본 업로드·재계산·기록 조회·삭제를 담당한다. 코스·고스트 테이블은 아직 구현하지 않았다. 아래 테이블은 모두 `created_at`·`updated_at`을 갖는다. 2026-10-14 보완 마이그레이션으로 컬럼을 추가한 기존 행은 마이그레이션 시각을 기본값으로 가지며, 실제 러닝 시각은 `started_at`·결과의 `endedAt`로 구분한다.
+
+#### `run.sessions` — 종료 기록 수집·처리 상태
+
+| 컬럼 | 타입 | 설명 |
+| --- | --- | --- |
+| `id` | UUID PK | 앱이 생성하는 기록/세션 ID. 새 앱은 팀 규칙대로 UUID v7 사용. 기존 ID는 변경하지 않음 |
+| `member_id` | UUID | 소유자 ID. 다른 모듈 FK 없음 |
+| `started_at` | TIMESTAMPTZ | 실제 측정 시작 시각 |
+| `final_seq` | BIGINT nullable | 종료 원본의 마지막 순번 |
+| `processing` | VARCHAR(20) | PREPARED / NEEDS_DATA / PROCESSING / DONE / FAILED |
+| `failure` | VARCHAR(40) nullable | 처리 실패 사유 |
+
+소유자·시작 시각 인덱스와 PROCESSING 부분 인덱스가 있다. 회원별 트랜잭션 잠금 후 기록별 잠금을 얻어 탈퇴·업로드·삭제·처리를 직렬화한다. 같은 ID의 재업로드는 기존 결과와 등록 시각을 유지한다.
+
+#### `run.inputs` — 원본 입력 스트림
+
+PK는 `(session_id, stream_seq)`, `session_id`만 같은 run 스키마 sessions에 FK를 둔다. `payload` TEXT에 START/GPS/PAUSE/RESUME/GAP/END/CADENCE 원본을 저장한다. GPS `measuredAt`은 실제 표본 UTC, `elapsedMs`는 수신 처리의 단조 경과 시각이다. CADENCE의 `sampleEndMs`는 센서 측정 구간의 단조 시각이다. 속도·속도 정확도·걸음 표본을 보존한다.
+
+#### `run.records` — 서버 확정 결과와 목록 요약
+
+| 컬럼 | 타입 | 설명 |
+| --- | --- | --- |
+| `id` | UUID PK/FK | sessions ID와 같은 기록 ID |
+| `registered_at` | TIMESTAMPTZ | 최초 서버 등록 시각. 재전송으로 바꾸지 않음 |
+| `result_json` | TEXT | 상세 경로·랩·시간·거리·케이던스·정책/계산 버전 |
+| `summary_json` | TEXT | 목록용 RecordSummary. 경로·랩 없음 |
+| `registration_published` | BOOLEAN | 등록 이벤트의 동일 트랜잭션 발행 완료 표시 |
+
+목록은 `summary_json`만 읽는다. `(registered_at DESC, id DESC)` 인덱스를 사용하고 공통 Cursorable/CursorSlice 계약을 따른다. summary는 이미 저장된 결과에서 생성하며 거리 계산을 소급 변경하지 않는다. 새 결과의 정책 버전은 사용자 승인 날짜 `2026-10-14`, 계산 버전은 START의 `PACE_V2` 등이다. 과거 저장 결과에 없는 버전은 새 버전으로 소급 표기하지 않는다.
+
+미발행 기록 조회에는 `WHERE NOT registration_published` 부분 인덱스를 사용한다. 등록 결과와 이벤트 발행 표시는 같은 트랜잭션에서 커밋한다. 기존 서버 기록도 미발행 상태로 한 번 발행할 수 있으나 원래 결과·등록 시각을 유지한다. 이벤트 전달/재시도는 공통 Modulith 아웃박스를 사용한다.
+
+#### `run.deleted_records` — 삭제 ID 예약
+
+`id` UUID PK, `member_id` UUID, `deleted_at` TIMESTAMPTZ. 좌표나 결과는 보관하지 않는다. 실제 inputs·records·sessions는 삭제하고 ID 예약만 남겨 늦은 업로드가 기록을 재생성하지 못하게 한다. 소유자 인덱스가 있다.
+
+#### `run.withdrawn_members` — 탈퇴 후 업로드 차단
+
+`member_id` UUID PK, `withdrawn_at` TIMESTAMPTZ. MemberWithdrawnEvent 수신 후 원본·결과를 실제 삭제하고 이후 prepare/upload/처리를 차단한다. 등록된 기록마다 RunRecordDeletedEvent를 발행한다. 이벤트 재수신은 멱등이다.
+
+#### 기기 SQLite와 서버 DB의 구분
+
+앱의 `runs_v1.db`(현재 스키마 v2)는 별개다. 기기에는 `sessions`, `inputs`, 계정별 `run_settings`, 삭제 전송용 `run_deletions`가 있다. 서버의 미종료 세션 관리 DB가 아니라 통신 없이 측정·저장·복구할 원본 저장소이며, 서버 확정 전후 화면은 같은 기록 ID로 합친다.

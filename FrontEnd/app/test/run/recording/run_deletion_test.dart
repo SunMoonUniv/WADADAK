@@ -7,7 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:wadadak/core/api/api_client.dart';
 import 'package:wadadak/features/run/application/run_sync_worker.dart';
-import 'package:wadadak/features/run/data/run_api_client.dart';
+import 'package:wadadak/core/api/run_api_client.dart';
 import 'package:wadadak/features/run/data/run_local_store.dart';
 import 'package:wadadak/features/run/domain/recording_models.dart';
 import 'package:wadadak/features/run/domain/run_voice.dart';
@@ -24,20 +24,23 @@ class DeletionApi extends RunApiClient {
   }
 
   @override
-  Future<Map<String, dynamic>> prepare(LocalRun r) async {
+  Future<Map<String, dynamic>> prepare(RunUpload r) async {
     calls.add('prepare:${r.id}');
     return {'processing': 'PREPARED'};
   }
 
   @override
-  Future<Map<String, dynamic>> upload(LocalRun r, List<RunInput> inputs) async {
+  Future<Map<String, dynamic>> upload(
+    RunUpload r,
+    List<Map<String, dynamic>> inputs,
+  ) async {
     calls.add('upload:${r.id}');
     await uploadGate?.future;
     return {'processing': 'DONE'};
   }
 
   @override
-  Future<Map<String, dynamic>> status(LocalRun r) async {
+  Future<Map<String, dynamic>> status(RunUpload r) async {
     calls.add('status:${r.id}');
     return {'processing': 'DONE'};
   }

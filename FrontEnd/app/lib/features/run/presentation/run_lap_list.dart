@@ -31,7 +31,7 @@ class RunLapList extends StatelessWidget {
             Text('1 km 자동', style: WdText.ko12.copyWith(color: sub)),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: WdSpace.s12),
         Row(
           children: [
             for (final label in ['구간', '이동 시간', '평균 페이스'])
@@ -42,7 +42,7 @@ class RunLapList extends StatelessWidget {
         ),
         for (final lap in laps)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.symmetric(vertical: WdSpace.s8),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -73,7 +73,7 @@ class RunLapList extends StatelessWidget {
           ),
         if (laps.isEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16),
+            padding: const EdgeInsets.symmetric(vertical: WdSpace.s16),
             child: Text(
               run.state == RunState.finished
                   ? '측정된 구간이 없어요.'

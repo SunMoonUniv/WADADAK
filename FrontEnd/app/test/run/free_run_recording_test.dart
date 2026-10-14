@@ -20,6 +20,7 @@ void main() {
       () async => 'alice',
       wait: (_) async {},
       utcNow: () => location.utc,
+      nowMs: location.nowMs,
       lifecycleState: () => AppLifecycleState.resumed,
       automaticTicks: false,
     );

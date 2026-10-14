@@ -10,51 +10,10 @@ import '../../../routes.dart';
 import '../application/free_run_controller.dart';
 import '../application/run_controller.dart';
 import '../domain/recording_models.dart' as recording;
-import '../domain/run_lap.dart';
+import '../application/run_result_mapper.dart';
+export '../application/run_result_mapper.dart' show remoteRunSnapshot;
 import '../domain/run_models.dart';
 import 'free_run_result_view.dart';
-
-RunSnapshot remoteRunSnapshot(Map<String, dynamic> json) {
-  final m = (json['metrics'] as Map).cast<String, dynamic>();
-  int ms(String key) => (m[key] as num?)?.toInt() ?? 0;
-  final distance = (m['distanceM'] as num).toDouble();
-  final route = (json['routeSegments'] as List? ?? [])
-      .map(
-        (segment) => (segment as List)
-            .map(
-              (p) => RunPoint(
-                (p['lat'] as num).toDouble(),
-                (p['lng'] as num).toDouble(),
-              ),
-            )
-            .toList(),
-      )
-      .toList();
-  return RunSnapshot(
-    state: RunState.finished,
-    sessionId: json['id'] as String,
-    startedAt: DateTime.parse(json['startedAt'] as String),
-    elapsed: Duration(milliseconds: ms('elapsedMs')),
-    active: Duration(milliseconds: ms('activeMs')),
-    moving: Duration(
-      milliseconds: m['movingMs'] == null ? ms('activeMs') : ms('movingMs'),
-    ),
-    distanceMeters: distance,
-    inputs: const [],
-    segments: route,
-    paceDisplayManaged: true,
-    averagePaceDisplay: (m['paceSecondsPerKm'] as num?)?.toDouble(),
-    storageStatus: '서버 저장 완료',
-    endReason: json['endReason'] as String?,
-    gapCount: ms('gapCount'),
-    laps: (json['laps'] as List? ?? [])
-        .map((l) => RunLap.fromJson((l as Map).cast<String, dynamic>()))
-        .toList(),
-    averageCadence: (m['averageCadence'] as num?)?.toDouble(),
-    cadenceCoverageMs: ms('cadenceCoverageMs'),
-    cadenceStatus: m['averageCadence'] == null ? '측정 없음' : '측정 완료',
-  );
-}
 
 class RunHistoryScreen extends ConsumerStatefulWidget {
   const RunHistoryScreen({super.key, this.myTab = false});
@@ -87,9 +46,11 @@ class _RunHistoryScreenState extends ConsumerState<RunHistoryScreen> {
                 {
                   'id': r.id,
                   'startedAt': r.startedAt.toIso8601String(),
-                  'metrics': recording.RunCalculator.replay(r.inputs)
-                      .at(r.checkpointMs)
-                      .toJson(),
+                  'metrics':
+                      r.result?['metrics'] ??
+                      recording.RunCalculator.replay(r.inputs)
+                          .at(r.checkpointMs)
+                          .toJson(),
                   'syncState': r.syncState,
                 },
               for (final r in c.remoteRecords)
@@ -118,7 +79,7 @@ class _RunHistoryScreenState extends ConsumerState<RunHistoryScreen> {
               await c.loadHistory();
             },
             child: ListView(
-              padding: const EdgeInsets.all(24),
+              padding: const EdgeInsets.all(WdSpace.s24),
               physics: const AlwaysScrollableScrollPhysics(),
               children: [
                 Row(
@@ -142,7 +103,7 @@ class _RunHistoryScreenState extends ConsumerState<RunHistoryScreen> {
                 ),
                 if (c.pendingDeleteCount > 0)
                   Padding(
-                    padding: const EdgeInsets.only(top: 12),
+                    padding: const EdgeInsets.only(top: WdSpace.s12),
                     child: WdInfoBanner(
                       '삭제한 기록 ${c.pendingDeleteCount}개의 서버 반영을 기다리고 있어요.',
                       tone: WdBannerTone.warning,
@@ -150,7 +111,7 @@ class _RunHistoryScreenState extends ConsumerState<RunHistoryScreen> {
                   ),
                 if (c.historyNotice != null)
                   Padding(
-                    padding: const EdgeInsets.only(top: 12),
+                    padding: const EdgeInsets.only(top: WdSpace.s12),
                     child: Column(
                       children: [
                         WdInfoBanner(
@@ -168,27 +129,27 @@ class _RunHistoryScreenState extends ConsumerState<RunHistoryScreen> {
                   ),
                 if (rows.isEmpty && !c.loadingHistory)
                   const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 56),
+                    padding: EdgeInsets.symmetric(vertical: WdSpace.s56),
                     child: Center(child: Text('아직 러닝 기록이 없어요. 첫 러닝을 시작해 보세요.')),
                   ),
                 if (c.loadingHistory)
                   const Padding(
-                    padding: EdgeInsets.all(16),
+                    padding: EdgeInsets.all(WdSpace.s16),
                     child: Center(child: CircularProgressIndicator()),
                   ),
                 for (final row in rows)
                   Padding(
-                    padding: const EdgeInsets.only(top: 12),
+                    padding: const EdgeInsets.only(top: WdSpace.s12),
                     child: WdSurface(
                       radius: WdRadius.r12,
                       child: ListTile(
-                        contentPadding: const EdgeInsets.all(16),
+                        contentPadding: const EdgeInsets.all(WdSpace.s16),
                         title: Text(
                           '${((row['metrics']['distanceM'] as num) / 1000).toStringAsFixed(2)} km · 자유 러닝',
                           style: WdText.ko16Bold,
                         ),
                         subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 8),
+                          padding: const EdgeInsets.only(top: WdSpace.s8),
                           child: Text(
                             '${_date(DateTime.parse(row['startedAt'] as String).toLocal())}\n'
                             '${formatRunTime(Duration(milliseconds: (row['metrics']['elapsedMs'] as num).toInt()))} · '
@@ -204,7 +165,7 @@ class _RunHistoryScreenState extends ConsumerState<RunHistoryScreen> {
                   ),
                 if (c.nextCursor != null)
                   Padding(
-                    padding: const EdgeInsets.only(top: 16),
+                    padding: const EdgeInsets.only(top: WdSpace.s16),
                     child: WdButton(
                       '이전 기록 더 보기',
                       variant: WdButtonVariant.secondary,
@@ -215,7 +176,7 @@ class _RunHistoryScreenState extends ConsumerState<RunHistoryScreen> {
                   ),
                 if (widget.myTab)
                   Padding(
-                    padding: const EdgeInsets.only(top: 32),
+                    padding: const EdgeInsets.only(top: WdSpace.s32),
                     child: WdButton(
                       '로그아웃',
                       variant: WdButtonVariant.secondary,

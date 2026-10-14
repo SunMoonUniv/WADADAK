@@ -39,7 +39,12 @@ public final class RunContracts {
         }
     }
     public record Result(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt,
-                         String endReason, Metrics metrics, List<List<GeoPoint>> routeSegments, List<Lap> laps) {
+                         String endReason, Metrics metrics, List<List<GeoPoint>> routeSegments, List<Lap> laps,
+                         String policyVersion, String calculationVersion) {
+        public Result(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason,
+                      Metrics metrics, List<List<GeoPoint>> routeSegments, List<Lap> laps) {
+            this(id,startedAt,endedAt,registeredAt,endReason,metrics,routeSegments,laps,null,null);
+        }
         public Result { laps = laps == null ? List.of() : List.copyOf(laps); }
         public Result(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason, Metrics metrics, List<List<GeoPoint>> routeSegments) {
             this(id,startedAt,endedAt,registeredAt,endReason,metrics,routeSegments,List.of());
@@ -53,5 +58,4 @@ public final class RunContracts {
             return new RecordSummary(result.id(),result.startedAt(),result.endedAt(),result.registeredAt(),result.endReason(),result.metrics());
         }
     }
-    public record Page(List<RecordSummary> items, String nextCursor) {}
 }

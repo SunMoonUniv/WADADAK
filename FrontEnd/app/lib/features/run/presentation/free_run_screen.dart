@@ -157,7 +157,12 @@ class _Preparation extends StatelessWidget {
     body: Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+          padding: const EdgeInsets.fromLTRB(
+            WdSpace.s24,
+            WdSpace.s0,
+            WdSpace.s24,
+            WdSpace.s12,
+          ),
           child: WdSegmentedControl(
             items: const ['자유 러닝', '코스 러닝', '고스트 대결'],
             selectedIndex: 0,
@@ -175,7 +180,12 @@ class _Preparation extends StatelessWidget {
                 constraints: BoxConstraints(minHeight: constraints.maxHeight),
                 child: IntrinsicHeight(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+                    padding: const EdgeInsets.fromLTRB(
+                      WdSpace.s24,
+                      WdSpace.s16,
+                      WdSpace.s24,
+                      WdSpace.s24,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
@@ -214,7 +224,7 @@ class _Preparation extends StatelessWidget {
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   crossAxisAlignment: CrossAxisAlignment.start,
-                                  spacing: 3,
+                                  spacing: WdSpace.s3,
                                   children: [
                                     Text(
                                       '정해진 길 없이, 자유롭게',
@@ -257,15 +267,13 @@ class _Preparation extends StatelessWidget {
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
-                                      spacing: 3,
+                                      spacing: WdSpace.s3,
                                       children: [
                                         Text(
                                           '지난 러닝',
-                                          style: WdText.raw(
-                                            11,
-                                            FontWeight.w700,
-                                            16,
-                                          ).copyWith(color: WdColors.grayLight),
+                                          style: WdText.run11W700H16.copyWith(
+                                            color: WdColors.grayLight,
+                                          ),
                                         ),
                                         Text(
                                           '최근 자유 러닝',
@@ -290,7 +298,7 @@ class _Preparation extends StatelessWidget {
                               const Spacer(),
                               const ColoredBox(
                                 color: WdColors.darkLine,
-                                child: SizedBox(height: 1),
+                                child: SizedBox(height: WdSpace.s1),
                               ),
                               const SizedBox(height: WdSpace.s14),
                               Text(
@@ -326,7 +334,7 @@ class _Preparation extends StatelessWidget {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 30),
+                        const SizedBox(height: WdSpace.s30),
                         const Spacer(),
                         Center(
                           child: Text(
@@ -369,7 +377,7 @@ class _Countdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Colors.black,
+    backgroundColor: WdColors.runBackground,
     body: SafeArea(
       child: Column(
         children: [
@@ -381,19 +389,19 @@ class _Countdown extends StatelessWidget {
                   constraints: BoxConstraints(minHeight: constraints.maxHeight),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                      vertical: 16,
-                      horizontal: 24,
+                      vertical: WdSpace.s16,
+                      horizontal: WdSpace.s24,
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      spacing: 28,
+                      spacing: WdSpace.s28,
                       children: [
                         WdSurface(
                           color: WdColors.runSurface,
                           radius: WdRadius.full,
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 6,
+                            horizontal: WdSpace.s8,
+                            vertical: WdSpace.s6,
                           ),
                           child: Text(
                             '자유 러닝',
@@ -420,19 +428,15 @@ class _Countdown extends StatelessWidget {
                         else
                           Text(
                             '$value',
-                            style: WdText.raw(
-                              180,
-                              FontWeight.w800,
-                              207,
-                            ).copyWith(color: WdColors.lime),
+                            style: WdText.run180W800H207.copyWith(
+                              color: WdColors.lime,
+                            ),
                           ),
                         Text(
                           '나의 기록을 넘어서는 한 걸음.',
-                          style: WdText.raw(
-                            14,
-                            FontWeight.w400,
-                            20,
-                          ).copyWith(color: WdColors.runTextSub),
+                          style: WdText.run14W400H20.copyWith(
+                            color: WdColors.runTextSub,
+                          ),
                         ),
                       ],
                     ),
@@ -442,7 +446,12 @@ class _Countdown extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+            padding: const EdgeInsets.fromLTRB(
+              WdSpace.s24,
+              WdSpace.s12,
+              WdSpace.s24,
+              WdSpace.s24,
+            ),
             child: Column(
               spacing: WdSpace.s12,
               children: [

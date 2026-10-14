@@ -85,4 +85,15 @@ class FreeRunCalculatorTest {
         assertThat(result.metrics().activeMs()).isEqualTo(5000);
         assertThat(result.metrics().paceSecondsPerKm()).isNull();
     }
+    @Test void gpsMeasurementTimeCanDifferFromArrivalWithinExistingFreshnessBounds() {
+        List<Input> inputs=List.of(point(0,Kind.START,0,null,0),
+            new Input(1,Kind.GPS,5000,start.plusSeconds(1),new GeoPoint(36,127),3.0,null),
+            point(2,Kind.PAUSE,6000,null,0),point(3,Kind.END,7000,null,0));
+        assertThat(FreeRunCalculator.calculate(start,inputs).metrics().elapsedMs()).isEqualTo(7000);
+        List<Input> stale=List.of(point(0,Kind.START,0,null,0),
+            new Input(1,Kind.GPS,15000,start,new GeoPoint(36,127),3.0,null),
+            point(2,Kind.PAUSE,16000,null,0),point(3,Kind.END,17000,null,0));
+        assertThatThrownBy(()->FreeRunCalculator.calculate(start,stale)).isInstanceOf(AppException.class);
+    }
+
 }

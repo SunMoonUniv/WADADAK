@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -61,7 +60,7 @@ class HistoryApi extends fake.TestApi {
   Future<Map<String, dynamic>> history(String owner, {String? cursor}) async {
     if (fail) throw StateError('offline');
     return {
-      'items': cursor == null
+      'content': cursor == null
           ? [record]
           : [
               record,
@@ -112,6 +111,42 @@ class HistoryStore extends fake.FailingStore {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  for (final missingMs in [0, 1]) {
+    testWidgets(
+      'sensor coverage warning follows every actual missing interval ($missingMs ms)',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 874);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final value = <String, dynamic>{
+          ...record,
+          'metrics': {
+            ...(record['metrics'] as Map),
+            'cadenceCoverageMs': 380000 - missingMs,
+          },
+        };
+        await tester.pumpWidget(
+          ProviderScope(
+            overrides: [mapEngineProvider.overrideWithValue(MapEngine.dev)],
+            child: MaterialApp(
+              theme: WdTheme.light(),
+              home: FreeRunResultView(
+                run: remoteRunSnapshot(value),
+                onConfirm: () {},
+              ),
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(
+          find.textContaining('걸음 센서가 측정되지 않은 구간'),
+          missingMs > 0 ? findsOneWidget : findsNothing,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   for (final width in [320.0, 402.0]) {
     testWidgets(
       'remote route, lap and cadence result render at ${width.toInt()}px without GPS inputs',
@@ -158,6 +193,7 @@ void main() {
         api,
         () async => 'alice',
         automaticTicks: false,
+        nowMs: gps.nowMs,
       );
       final ui = FreeRunController.recording(c);
       await tester.pump();
@@ -241,7 +277,6 @@ void main() {
       expect(store.settings.distanceKm, 5);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
-
     },
   );
 }

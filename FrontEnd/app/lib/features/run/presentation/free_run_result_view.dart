@@ -56,7 +56,7 @@ class FreeRunResultView extends StatelessWidget {
                     color: WdColors.ink,
                     radius: WdRadius.full,
                     height: 30,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: WdSpace.s8),
                     child: Text(
                       '러닝 완료 · ${run.storageStatus}',
                       style: WdText.ko12Medium.copyWith(color: WdColors.lime),
@@ -66,11 +66,7 @@ class FreeRunResultView extends StatelessWidget {
                     fit: BoxFit.scaleDown,
                     child: Text(
                       runDistance(run),
-                      style: WdText.raw(
-                        56,
-                        FontWeight.w800,
-                        74,
-                      ).copyWith(color: WdColors.ink),
+                      style: WdText.run56W800H74.copyWith(color: WdColors.ink),
                     ),
                   ),
                   Text(
@@ -88,7 +84,7 @@ class FreeRunResultView extends StatelessWidget {
                 children: [
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    spacing: 3,
+                    spacing: WdSpace.s3,
                     children: [
                       Text('자유 러닝', style: WdText.ko16Bold),
                       Text(
@@ -100,8 +96,8 @@ class FreeRunResultView extends StatelessWidget {
                   WdSurface(
                     radius: WdRadius.r12,
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
+                      horizontal: WdSpace.s14,
+                      vertical: WdSpace.s12,
                     ),
                     child: Row(
                       spacing: WdSpace.s10,
@@ -110,12 +106,9 @@ class FreeRunResultView extends StatelessWidget {
                         Expanded(
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
-                            spacing: 2,
+                            spacing: WdSpace.s2,
                             children: [
-                              Text(
-                                '코스 등록 준비 중이에요',
-                                style: WdText.raw(13, FontWeight.w700, 16),
-                              ),
+                              Text('코스 등록 준비 중이에요', style: WdText.run13W700H16),
                               Text(
                                 'GPS 경로 수집 후 사용할 수 있어요',
                                 style: WdText.ko12.copyWith(
@@ -189,7 +182,7 @@ class FreeRunResultView extends StatelessWidget {
                     ('소모 칼로리', '—'),
                   ]),
                   if (run.averageCadence != null &&
-                      run.active.inMilliseconds - run.cadenceCoverageMs > 10000)
+                      run.cadenceCoverageMs < run.active.inMilliseconds)
                     const WdInfoBanner(
                       '걸음 센서가 측정되지 않은 구간이 있어요. 평균 케이던스는 측정된 구간만 사용해요.',
                       tone: WdBannerTone.warning,
@@ -262,11 +255,7 @@ class FreeRunResultView extends StatelessWidget {
         alignment: Alignment.centerLeft,
         child: Text(
           value,
-          style: WdText.raw(
-            34,
-            FontWeight.w700,
-            39,
-          ).copyWith(color: WdColors.ink),
+          style: WdText.run34W700H39.copyWith(color: WdColors.ink),
         ),
       ),
     ],
@@ -281,16 +270,16 @@ class _RunStatSummary extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(
     crossAxisAlignment: CrossAxisAlignment.start,
-    spacing: 8,
+    spacing: WdSpace.s8,
     children: [
       for (final (label, value) in items)
         Expanded(
           child: WdSurface(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(WdSpace.s12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
-              spacing: 6,
+              spacing: WdSpace.s6,
               children: [
                 FittedBox(
                   fit: BoxFit.scaleDown,

@@ -23,6 +23,7 @@ void main() {
         () async => 'alice',
         automaticTicks: false,
         utcNow: () => location.utc,
+        nowMs: location.nowMs,
         lifecycleState: () => AppLifecycleState.resumed,
       );
       final ui = FreeRunController.recording(driver);
@@ -90,6 +91,7 @@ void main() {
       fake.TestApi(),
       () async => 'alice',
       automaticTicks: false,
+      nowMs: location.nowMs,
     );
     final ui = FreeRunController.recording(driver);
     try {

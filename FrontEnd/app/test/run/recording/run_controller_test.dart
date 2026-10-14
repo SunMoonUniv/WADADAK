@@ -7,19 +7,24 @@ import 'package:geolocator/geolocator.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:wadadak/features/run/application/run_controller.dart';
 import 'package:wadadak/features/run/application/run_recorder.dart';
-import 'package:wadadak/features/run/data/run_api_client.dart';
+import 'package:wadadak/core/api/run_api_client.dart';
 import 'package:wadadak/features/run/data/run_local_store.dart';
-import 'package:wadadak/features/run/data/run_location.dart';
+import 'package:wadadak/core/location/location_service.dart';
+import 'package:wadadak/core/permissions/device_setup.dart';
 import 'package:wadadak/features/run/domain/recording_models.dart';
 
 final epoch = DateTime.utc(2026, 10, 13);
 
-class TestLocation extends RunLocation {
+class TestLocation extends LocationService {
+  @override
+  bool get supportsBackgroundTracking => true;
+  @override
+  Future<void> ensurePermission({bool precise = false}) async {}
   int clock = 0;
   Object? setupError;
   Completer<Position>? pendingReady;
   LocationPermission allowed = LocationPermission.whileInUse;
-  RunSetupAction? opened;
+  DeviceSettingsAction? opened;
   final streams = <StreamController<Position>>[];
   DateTime get utc => epoch.add(Duration(milliseconds: clock));
   Position point(double lat, {DateTime? timestamp}) => Position(
@@ -34,10 +39,9 @@ class TestLocation extends RunLocation {
     speed: 0,
     speedAccuracy: 0,
   );
-  @override
   Future<int> nowMs() async => clock;
   @override
-  Future<Position> ready() async {
+  Future<Position> currentPosition({LocationSettings? settings}) async {
     if (setupError != null) throw setupError!;
     if (pendingReady != null) return pendingReady!.future;
     return point(36);
@@ -46,9 +50,10 @@ class TestLocation extends RunLocation {
   @override
   Future<LocationPermission> permission() async => allowed;
   @override
-  Future<void> openSettings(RunSetupAction action) async => opened = action;
+  Future<void> openSettings(DeviceSettingsAction action) async =>
+      opened = action;
   @override
-  Stream<Position> positions() {
+  Stream<Position> positions({required LocationSettings settings}) {
     final stream = StreamController<Position>();
     streams.add(stream);
     return stream.stream;
@@ -61,15 +66,15 @@ class TestApi extends RunApiClient {
   @override
   Future<Map<String, dynamic>> history(String owner, {String? cursor}) async {
     historyOwners.add(owner);
-    return {'items': <Object>[], 'nextCursor': null};
+    return {'content': <Object>[], 'nextCursor': null};
   }
 
   @override
-  Future<Map<String, dynamic>> prepare(LocalRun run) async => {
+  Future<Map<String, dynamic>> prepare(RunUpload run) async => {
     'processing': 'PROCESSING',
   };
   @override
-  Future<Map<String, dynamic>> status(LocalRun run) async => {
+  Future<Map<String, dynamic>> status(RunUpload run) async => {
     'processing': 'PROCESSING',
   };
 }
@@ -122,6 +127,7 @@ void main() {
     () async => owner,
     wait: wait ?? (_) async {},
     utcNow: () => location.utc,
+    nowMs: location.nowMs,
     lifecycleState: () => lifecycle,
     automaticTicks: false,
   );
@@ -236,9 +242,9 @@ void main() {
     );
     final saved = (await store.list('alice')).single;
     expect(saved.endReason, 'PERMISSION_REVOKED');
-    expect(controller.setupAction, RunSetupAction.appSettings);
+    expect(controller.setupAction, DeviceSettingsAction.appSettings);
     await controller.openSettings();
-    expect(location.opened, RunSetupAction.appSettings);
+    expect(location.opened, DeviceSettingsAction.appSettings);
     expect(controller.records, isEmpty);
   });
 
@@ -295,15 +301,15 @@ void main() {
   test(
     'GPS setup failure has an actionable setting and creates no session',
     () async {
-      location.setupError = const RunSetupException(
+      location.setupError = const DeviceSetupException(
         '위치 서비스를 켜 주세요.',
-        action: RunSetupAction.locationSettings,
+        action: DeviceSettingsAction.locationSettings,
       );
       await controller.prepareStart();
       expect(controller.preparing, false);
-      expect(controller.setupAction, RunSetupAction.locationSettings);
+      expect(controller.setupAction, DeviceSettingsAction.locationSettings);
       await controller.openSettings();
-      expect(location.opened, RunSetupAction.locationSettings);
+      expect(location.opened, DeviceSettingsAction.locationSettings);
       expect(await store.list('alice'), isEmpty);
     },
   );

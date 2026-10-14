@@ -3,7 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:wadadak/core/api/api_client.dart';
 import 'package:wadadak/features/run/application/run_sync_worker.dart';
-import 'package:wadadak/features/run/data/run_api_client.dart';
+import 'package:wadadak/core/api/run_api_client.dart';
 import 'package:wadadak/features/run/data/run_local_store.dart';
 import 'package:wadadak/features/run/domain/recording_models.dart';
 
@@ -14,7 +14,7 @@ class FakeApi extends RunApiClient {
   bool loseResponse = false, failRecord = false;
   String? Function()? currentOwner;
   @override
-  Future<Map<String, dynamic>> prepare(LocalRun run) async {
+  Future<Map<String, dynamic>> prepare(RunUpload run) async {
     requests.add(run.id);
     return {
       'processing': failRecord && run.id == 'bad'
@@ -28,8 +28,8 @@ class FakeApi extends RunApiClient {
 
   @override
   Future<Map<String, dynamic>> upload(
-    LocalRun run,
-    List<RunInput> inputs,
+    RunUpload run,
+    List<Map<String, dynamic>> inputs,
   ) async {
     uploaded.add(run.id);
     if (loseResponse) {
@@ -40,7 +40,7 @@ class FakeApi extends RunApiClient {
   }
 
   @override
-  Future<Map<String, dynamic>> status(LocalRun run) async => {
+  Future<Map<String, dynamic>> status(RunUpload run) async => {
     'processing': 'DONE',
   };
   @override

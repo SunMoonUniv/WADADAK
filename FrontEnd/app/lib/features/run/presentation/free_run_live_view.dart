@@ -46,7 +46,7 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
     final run = widget.run;
     final paused = run.state == RunState.paused;
     return Scaffold(
-      backgroundColor: Colors.black,
+      backgroundColor: WdColors.runBackground,
       body: SafeArea(
         child: Column(
           children: [
@@ -68,8 +68,8 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
             if (run.voiceNotice != null)
               Padding(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 24,
-                  vertical: 4,
+                  horizontal: WdSpace.s24,
+                  vertical: WdSpace.s4,
                 ),
                 child: Text(
                   run.voiceNotice!,
@@ -108,7 +108,7 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                                 label: label,
                                 value: value,
                                 dark: true,
-                                labelStyle: WdText.raw(13, FontWeight.w500, 17),
+                                labelStyle: WdText.run13W500H17,
                               ),
                             ),
                           ),
@@ -124,7 +124,7 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                     SizedBox(
                       height: 75,
                       child: Row(
-                        spacing: 15,
+                        spacing: WdSpace.s15,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           for (final (label, value) in [
@@ -140,11 +140,7 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                                   label: label,
                                   value: value,
                                   dark: true,
-                                  labelStyle: WdText.raw(
-                                    13,
-                                    FontWeight.w500,
-                                    17,
-                                  ),
+                                  labelStyle: WdText.run13W500H17,
                                 ),
                               ),
                             ),
@@ -220,11 +216,9 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                           ),
                           Text(
                             '연결하지 않은 센서는 —로 표시해요.',
-                            style: WdText.raw(
-                              13,
-                              FontWeight.w400,
-                              17,
-                            ).copyWith(color: WdColors.runTextSub),
+                            style: WdText.run13W400H17.copyWith(
+                              color: WdColors.runTextSub,
+                            ),
                           ),
                         ],
                       ),
@@ -234,7 +228,12 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 4, 24, 12),
+              padding: const EdgeInsets.fromLTRB(
+                WdSpace.s24,
+                WdSpace.s4,
+                WdSpace.s24,
+                WdSpace.s12,
+              ),
               child: Column(
                 spacing: WdSpace.s12,
                 children: [
@@ -256,7 +255,12 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
   }
 
   Widget _scroll(List<Widget> children) => SingleChildScrollView(
-    padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+    padding: const EdgeInsets.fromLTRB(
+      WdSpace.s24,
+      WdSpace.s16,
+      WdSpace.s24,
+      WdSpace.s24,
+    ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       spacing: WdSpace.s20,

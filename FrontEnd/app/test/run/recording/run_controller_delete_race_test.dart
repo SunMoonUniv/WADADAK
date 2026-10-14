@@ -1,3 +1,5 @@
+import 'package:wadadak/core/api/run_api_client.dart';
+
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -25,7 +27,7 @@ class ReloadStore extends fake.FailingStore {
 class ReloadApi extends fake.TestApi {
   VoidCallback? onStatus;
   @override
-  Future<Map<String, dynamic>> status(LocalRun run) async {
+  Future<Map<String, dynamic>> status(RunUpload run) async {
     onStatus?.call();
     return {'processing': 'PROCESSING'};
   }
@@ -47,6 +49,7 @@ void main() {
       api,
       () async => 'alice',
       automaticTicks: false,
+      nowMs: gps.nowMs,
     );
     try {
       await c.bindOwner();

@@ -4,23 +4,11 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
-import 'run_location.dart';
+import '../../../core/permissions/device_setup.dart';
 
 /// Android implementation uses the existing running foreground service and wake lock.
 class RunDevice {
   static const _channel = MethodChannel('com.wadadak.app/run_device');
-  void Function(String)? onVoiceError;
-  bool _listening = false;
-  void _listen() {
-    if (_listening) return;
-    _listening = true;
-    _channel.setMethodCallHandler((call) async {
-      if (call.method == 'voiceError') {
-        onVoiceError?.call('음성 안내를 재생하지 못했어요. 휴대폰 음성 설정과 연결을 확인해 주세요.');
-      }
-    });
-  }
-
   Future<void> requestPermission() async {
     if (!Platform.isAndroid) return;
     var status = await Permission.activityRecognition.status;
@@ -28,11 +16,14 @@ class RunDevice {
       status = await Permission.activityRecognition.request();
     }
     if (!status.isGranted) {
-      throw RunSetupException(
+      throw DeviceSetupException(
         '케이던스 측정을 위해 신체 활동 권한을 허용해 주세요.',
-        action: status.isPermanentlyDenied ? RunSetupAction.appSettings : null,
+        action: status.isPermanentlyDenied
+            ? DeviceSettingsAction.appSettings
+            : null,
       );
     }
+    await Permission.notification.request();
   }
 
   Future<bool> permissionGranted() async =>
@@ -60,34 +51,7 @@ class RunDevice {
     if (Platform.isAndroid) await _channel.invokeMethod<void>('stopSteps');
   }
 
-  Future<bool> initializeVoice() async {
-    if (!Platform.isAndroid) return false;
-    _listen();
-    try {
-      return await _channel
-              .invokeMethod<bool>('initializeVoice')
-              .timeout(const Duration(seconds: 5)) ??
-          false;
-    } on Object {
-      return false;
-    }
-  }
-
-  Future<bool> speak(String text) async {
-    if (!Platform.isAndroid) return false;
-    return await _channel.invokeMethod<bool>('speak', {'text': text}) ?? false;
-  }
-
-  Future<void> stopVoice() async {
-    if (Platform.isAndroid) await _channel.invokeMethod<void>('stopVoice');
-  }
-
   Future<void> close() async {
-    if (Platform.isAndroid) {
-      await _channel.invokeMethod<void>('close');
-      _channel.setMethodCallHandler(null);
-      _listening = false;
-      onVoiceError = null;
-    }
+    if (Platform.isAndroid) await _channel.invokeMethod<void>('close');
   }
 }

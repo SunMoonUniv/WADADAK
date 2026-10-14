@@ -18,5 +18,9 @@ class RunProcessingWorker {
             try { runs.process(id); }
             catch(RuntimeException e) { log.error("Free run processing failed for {}",id,e); }
         }
+        for (var id:runs.unpublished()) {
+            try { runs.publishStored(id); }
+            catch(RuntimeException e) { log.error("Run event publication failed for {}",id,e); }
+        }
     }
 }

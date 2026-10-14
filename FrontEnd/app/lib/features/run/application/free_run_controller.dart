@@ -7,6 +7,7 @@ import '../domain/free_run_session.dart';
 import '../domain/run_models.dart';
 import '../domain/recording_models.dart' as recording;
 import 'run_controller.dart';
+import 'run_result_mapper.dart';
 
 // A regular Provider keeps the session alive when the running tab is hidden.
 final freeRunControllerProvider = Provider<FreeRunController>((ref) {
@@ -80,6 +81,7 @@ class FreeRunController extends ChangeNotifier {
   }
 
   RunSnapshot savedSnapshot(recording.LocalRun run) {
+    if (run.result != null) return remoteRunSnapshot(run.result!);
     final calculator = recording.RunCalculator.replay(run.inputs);
     return _fromRun(
       run,
@@ -125,6 +127,9 @@ class FreeRunController extends ChangeNotifier {
     String? notice,
     bool live = true,
   }) {
+    if (run.phase == recording.RunPhase.ended && run.result != null) {
+      return remoteRunSnapshot(run.result!);
+    }
     if (live) _updatePaces(run, metrics, notice);
     return RunSnapshot(
       state: switch (run.phase) {

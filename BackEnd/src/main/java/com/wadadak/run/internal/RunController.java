@@ -2,6 +2,9 @@ package com.wadadak.run.internal;
 
 import com.wadadak.common.exception.AppException;
 import com.wadadak.common.response.ApiResult;
+import com.wadadak.common.paging.Cursorable;
+import com.wadadak.common.paging.CursorSlice;
+import org.springdoc.core.annotations.ParameterObject;
 import com.wadadak.run.RunContracts.*;
 import com.wadadak.run.RunErrorCode;
 import jakarta.validation.Valid;
@@ -24,8 +27,8 @@ class RunController {
     @GetMapping("/sessions/{id}/status") ApiResult<Status> status(@AuthenticationPrincipal Jwt jwt,@PathVariable UUID id) {
         return ApiResult.success(runs.status(owner(jwt),id));
     }
-    @GetMapping("/records") ApiResult<Page> history(@AuthenticationPrincipal Jwt jwt,@RequestParam(required=false) String cursor) {
-        return ApiResult.success(runs.history(owner(jwt),cursor));
+    @GetMapping("/records") ApiResult<CursorSlice<RecordSummary>> history(@AuthenticationPrincipal Jwt jwt,@ParameterObject @Valid Cursorable page) {
+        return ApiResult.success(runs.history(owner(jwt),page));
     }
     @GetMapping("/records/{id}") ApiResult<Result> result(@AuthenticationPrincipal Jwt jwt,@PathVariable UUID id) {
         return ApiResult.success(runs.result(owner(jwt),id));

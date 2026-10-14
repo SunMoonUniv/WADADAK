@@ -44,7 +44,7 @@ class _RunSettingsScreenState extends ConsumerState<RunSettingsScreen> {
             onBack: () => Navigator.pop(context),
           ),
           body: ListView(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(WdSpace.s24),
             children: [
               Text('음성 안내', style: WdText.ko20Bold),
               SwitchListTile(
@@ -56,7 +56,7 @@ class _RunSettingsScreenState extends ConsumerState<RunSettingsScreen> {
                     ? null
                     : (value) => _save(settings.copyWith(enabled: value)),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: WdSpace.s16),
               WdSegmentedControl(
                 items: const ['거리 기준', '시간 기준'],
                 selectedIndex: settings.unit.index,
@@ -66,11 +66,11 @@ class _RunSettingsScreenState extends ConsumerState<RunSettingsScreen> {
                   }
                 },
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: WdSpace.s16),
               Text('안내 간격', style: WdText.ko14Bold),
-              const SizedBox(height: 8),
+              const SizedBox(height: WdSpace.s8),
               Wrap(
-                spacing: 8,
+                spacing: WdSpace.s8,
                 children: [
                   for (final interval
                       in settings.unit == VoiceUnit.distance
@@ -95,12 +95,12 @@ class _RunSettingsScreenState extends ConsumerState<RunSettingsScreen> {
                     ),
                 ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: WdSpace.s16),
               Text(
                 '시간 안내는 일시정지를 제외한 달린 시간 기준이에요. 거리와 시간 중 하나만 안내해요.',
                 style: WdText.ko12.copyWith(color: WdColors.muted),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: WdSpace.s16),
               WdButton(
                 '음성 들어보기',
                 variant: WdButtonVariant.secondary,
@@ -110,7 +110,7 @@ class _RunSettingsScreenState extends ConsumerState<RunSettingsScreen> {
               ),
               if (controller.voiceNotice != null)
                 Padding(
-                  padding: const EdgeInsets.only(top: 12),
+                  padding: const EdgeInsets.only(top: WdSpace.s12),
                   child: WdInfoBanner(
                     controller.voiceNotice!,
                     tone: WdBannerTone.warning,
@@ -118,17 +118,17 @@ class _RunSettingsScreenState extends ConsumerState<RunSettingsScreen> {
                 ),
               if (_error != null)
                 Padding(
-                  padding: const EdgeInsets.only(top: 12),
+                  padding: const EdgeInsets.only(top: WdSpace.s12),
                   child: WdInfoBanner(_error!, tone: WdBannerTone.warning),
                 ),
-              const SizedBox(height: 32),
+              const SizedBox(height: WdSpace.s32),
               Text('케이던스', style: WdText.ko20Bold),
-              const SizedBox(height: 8),
+              const SizedBox(height: WdSpace.s8),
               Text(
                 '휴대폰을 들고 달리면 걸음 센서로 분당 걸음 수를 측정해요. 센서가 없는 기기에서는 —로 표시해요. 평균은 센서가 측정된 시간의 걸음 수 기준이며 일시정지 중 이동은 제외해요.',
                 style: WdText.ko13.copyWith(color: WdColors.muted),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: WdSpace.s16),
               WdButton(
                 '권한 설정 열기',
                 variant: WdButtonVariant.secondary,

@@ -85,6 +85,7 @@ class RunRecorder {
     double lat,
     double lng,
     double accuracyM, {
+    DateTime? measuredAt,
     double? speedMps,
     double? speedAccuracyMps,
   }) => _serial(() async {
@@ -111,6 +112,7 @@ class RunRecorder {
       lat: lat,
       lng: lng,
       accuracyM: accuracyM,
+      measuredAt: measuredAt,
       speedMps: speedMps != null && speedMps.isFinite && speedMps >= 0
           ? speedMps
           : null,
@@ -249,13 +251,16 @@ class RunRecorder {
     double? lng,
     double? accuracyM,
     String? reason,
+    DateTime? measuredAt,
     double? speedMps,
     double? speedAccuracyMps,
   }) => RunInput(
     seq: current!.inputs.length,
     kind: kind,
     elapsedMs: ms,
-    measuredAt: current!.startedAt.add(Duration(milliseconds: ms)),
+    measuredAt:
+        measuredAt?.toUtc() ??
+        current!.startedAt.add(Duration(milliseconds: ms)),
     lat: lat,
     lng: lng,
     accuracyM: accuracyM,

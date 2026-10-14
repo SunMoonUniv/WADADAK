@@ -6,6 +6,8 @@ import com.wadadak.event.course.CourseStatusChangedEvent;
 import com.wadadak.event.course.CourseStatusReason;
 import com.wadadak.event.member.MemberVisibilityChangedEvent;
 import com.wadadak.event.member.MemberWithdrawnEvent;
+import com.wadadak.event.run.RunSessionEndedEvent;
+import com.wadadak.event.run.RunRecordDeletedEvent;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
@@ -113,4 +115,30 @@ class RankingEventHandlerTest {
     private boolean visible(UUID memberId) {
         return jdbc.queryForObject("SELECT visible FROM ranking.member_visibility_copies WHERE member_id = ?", Boolean.class, memberId);
     }
+    private RunSessionEndedEvent ended(UUID record, UUID member) {
+        Instant at=Instant.now();
+        return new RunSessionEndedEvent(UUID.randomUUID(),at,record,member,null,false,1234.567,0,0,0,0,false,null,at,at,at,"2026-10-14");
+    }
+    @Test void runDistanceCopiesSurviveDuplicateAndReversedDeliveryWithoutResurrection() {
+        UUID member=UUID.randomUUID(),record=UUID.randomUUID();
+        RunSessionEndedEvent ended=ended(record,member);
+        publish(ended); publish(ended);
+        assertThat(jdbc.queryForObject("SELECT sum(distance_meters) FROM ranking.distance_run_records WHERE member_id=? AND NOT deleted",Double.class,member)).isEqualTo(1234.567);
+        RunRecordDeletedEvent deleted=new RunRecordDeletedEvent(UUID.randomUUID(),Instant.now(),record,member,null,false,ended.distanceMeters(),0,ended.startedAt(),ended.endedAt(),ended.registeredAt());
+        publish(deleted); publish(deleted); publish(ended);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ranking.distance_run_records WHERE member_id=? AND NOT deleted",Long.class,member)).isZero();
+        UUID reversed=UUID.randomUUID();
+        publish(new RunRecordDeletedEvent(UUID.randomUUID(),Instant.now(),reversed,member,null,false,10,0,Instant.now(),Instant.now(),Instant.now()));
+        publish(ended(reversed,member));
+        assertThat(jdbc.queryForObject("SELECT deleted FROM ranking.distance_run_records WHERE run_record_id=?",Boolean.class,reversed)).isTrue();
+    }
+    @Test void withdrawalAndDelayedRunEventsCannotRestoreDistanceCopies() {
+        UUID member=UUID.randomUUID(),record=UUID.randomUUID();
+        RunSessionEndedEvent ended=ended(record,member);
+        publish(ended);
+        publish(new MemberWithdrawnEvent(UUID.randomUUID(),Instant.now(),member,Instant.now()));
+        publish(ended); publish(ended(UUID.randomUUID(),member));
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ranking.distance_run_records WHERE member_id=?",Long.class,member)).isZero();
+    }
+
 }

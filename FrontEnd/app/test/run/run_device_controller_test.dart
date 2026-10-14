@@ -3,7 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:wadadak/features/run/application/run_controller.dart';
 import 'package:wadadak/features/run/data/run_device.dart';
-import 'package:wadadak/features/run/data/run_location.dart';
+import 'package:wadadak/features/run/data/run_audio_output.dart';
+import 'package:wadadak/features/run/application/audio_guide.dart';
+import 'package:wadadak/core/permissions/device_setup.dart';
 import 'package:wadadak/features/run/domain/recording_models.dart';
 import 'package:wadadak/features/run/domain/run_voice.dart';
 
@@ -11,15 +13,14 @@ import 'recording/run_controller_test.dart' as fake;
 
 class Device extends RunDevice {
   bool allowed = true, supported = true;
-  int starts = 0, stops = 0, voiceStops = 0;
+  int starts = 0, stops = 0;
   Map<String, dynamic>? next;
-  final speech = <String>[];
   @override
   Future<void> requestPermission() async {
     if (!allowed) {
-      throw const RunSetupException(
+      throw const DeviceSetupException(
         '신체 활동 권한 필요',
-        action: RunSetupAction.appSettings,
+        action: DeviceSettingsAction.appSettings,
       );
     }
   }
@@ -45,7 +46,14 @@ class Device extends RunDevice {
   }
 
   @override
-  Future<bool> initializeVoice() async => true;
+  Future<void> close() async {}
+}
+
+class Output extends RunAudioOutput {
+  int voiceStops = 0;
+  final speech = <String>[];
+  @override
+  Future<bool> initialize() async => true;
   @override
   Future<bool> speak(String text) async {
     speech.add(text);
@@ -53,7 +61,7 @@ class Device extends RunDevice {
   }
 
   @override
-  Future<void> stopVoice() async {
+  Future<void> stop() async {
     voiceStops++;
   }
 
@@ -66,21 +74,25 @@ void main() {
   late fake.FailingStore store;
   late fake.TestLocation gps;
   late Device device;
+  late Output output;
   late RunController c;
   setUp(() {
     sqfliteFfiInit();
     store = fake.FailingStore();
     gps = fake.TestLocation();
     device = Device();
+    output = Output();
     c = RunController(
       store,
       gps,
       fake.TestApi(),
       () async => 'alice',
       device: device,
+      audio: AudioGuide(output),
       automaticTicks: false,
       wait: (_) async {},
       utcNow: () => gps.utc,
+      nowMs: gps.nowMs,
       lifecycleState: () => AppLifecycleState.resumed,
     );
   });
@@ -99,7 +111,7 @@ void main() {
       await c.prepareStart();
       expect(c.run, isNull);
       expect(await store.list('alice'), isEmpty);
-      expect(c.setupAction, RunSetupAction.appSettings);
+      expect(c.setupAction, DeviceSettingsAction.appSettings);
       device.allowed = true;
       await c.prepareStart();
       expect(c.run?.phase, RunPhase.running);
@@ -123,7 +135,7 @@ void main() {
     expect(c.metrics.steps, 18);
     expect(c.metrics.cadenceCoverageMs, 6000);
     expect(c.metrics.currentCadence, isNull);
-    expect(device.voiceStops, greaterThan(0));
+    expect(output.voiceStops, greaterThan(0));
     gps.clock = 12000;
     await c.resume();
     await fake.until(() => device.starts == 2);
@@ -144,29 +156,29 @@ void main() {
     await c.prepareStart();
     gps.clock = 300000;
     await c.refreshMeasurement();
-    expect(device.speech.length, 1);
-    expect(device.speech.single, contains('5분'));
+    expect(output.speech.length, 1);
+    expect(output.speech.single, contains('5분'));
     await c.refreshMeasurement();
-    expect(device.speech.length, 1);
+    expect(output.speech.length, 1);
     await c.pause();
     gps.clock = 600000;
     await c.refreshMeasurement();
     await c.testVoice();
-    expect(device.speech.length, 1);
+    expect(output.speech.length, 1);
     await c.resume();
     await c.refreshMeasurement();
-    expect(device.speech.length, 1);
+    expect(output.speech.length, 1);
     gps.clock = 900000;
     await c.refreshMeasurement();
-    expect(device.speech.length, 2);
+    expect(output.speech.length, 2);
   });
   test('unsupported step sensor does not block GPS recording; revoked required permission ends durably', () async {
     device.supported = false;
     await c.prepareStart();
     expect(c.run?.phase, RunPhase.running);
     expect(c.cadenceStatus, '센서 미지원');
-    device.onVoiceError?.call('음성 생성 실패');
-    expect(c.voiceNotice, '음성 생성 실패');
+    output.onError?.call();
+    expect(c.voiceNotice, isNotNull);
     expect(c.run?.phase, RunPhase.running);
     expect(c.metrics.averageCadence, isNull);
     device.allowed = false;
@@ -176,19 +188,19 @@ void main() {
     }
     expect(c.run?.phase, RunPhase.ended);
     expect(c.run?.endReason, 'PERMISSION_REVOKED');
-    expect(c.setupAction, RunSetupAction.appSettings);
+    expect(c.setupAction, DeviceSettingsAction.appSettings);
   });
   test('idle refresh never cancels a user-requested voice preview', () async {
     await c.bindOwner();
     await fake.until(() => !c.syncing && !c.loadingHistory);
-    final stopped = device.voiceStops;
+    final stopped = output.voiceStops;
     await c.testVoice();
-    expect(device.speech.length, 1);
+    expect(output.speech.length, 1);
     for (var i = 1; i <= 5; i++) {
       gps.clock = i * 1000;
       await c.refreshMeasurement();
     }
-    expect(device.voiceStops, stopped);
-    expect(device.speech.length, 1);
+    expect(output.voiceStops, stopped);
+    expect(output.speech.length, 1);
   });
 }
