@@ -34,6 +34,7 @@ class CourseListSheet extends ConsumerStatefulWidget {
     super.key,
     required this.area,
     required this.totalCount,
+    this.selected,
     required this.stage,
     required this.scrollController,
     required this.now,
@@ -55,6 +56,9 @@ class CourseListSheet extends ConsumerStatefulWidget {
   /// 지도에 보이는 범위 안 코스 수. 제목 `지금 달리기 좋은 코스 N`, 피크 `코스 N`. 아직 모르면 null.
   final int? totalCount;
   final SheetStage stage;
+
+  /// 지도에서 고른 코스(MAP-03). 있으면 목록에 이 코스만 보이고 정렬 칩은 숨긴다.
+  final CourseListItem? selected;
 
   /// 시트를 끄는 스크롤. [DraggableScrollableSheet]가 준다. 제목 줄 · 정렬 칩에만 붙인다.
   final ScrollController scrollController;
@@ -82,8 +86,8 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
   /// 정렬 칩 30 + 아래 12.
   static const _chipRowHeight = 30.0 + WdSpace.s12;
 
-  /// 제목 줄 + 정렬 칩. 시트를 끄는 부분이다.
-  static const _headerExtent = CourseListSheet.peekHeight + _chipRowHeight;
+  /// 제목 줄 + 정렬 칩. 시트를 끄는 부분이다. 고른 코스만 보일 때는 칩이 없다.
+  double get _headerExtent => CourseListSheet.peekHeight + (widget.selected == null ? _chipRowHeight : 0);
 
   /// 목록 스크롤. 시트 크기와 따로 움직인다.
   final _list = ScrollController();
@@ -150,7 +154,7 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
   /// 지금 목록의 다음 쪽을 받아 붙인다.
   Future<void> _loadMore() async {
     final area = _listedArea, cursor = _nextCursor;
-    if (area == null || cursor == null || _loadingMore || _moreFailed) return;
+    if (area == null || cursor == null || _loadingMore || _moreFailed || widget.selected != null) return;
     final request = _request;
     setState(() => _loadingMore = true);
     try {
@@ -183,7 +187,9 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final courses = _courses;
+    final selected = widget.selected;
+    // 고른 코스가 있으면 그 코스 하나만 보인다. 범위 목록은 계속 받아 두었다가 선택을 풀면 보인다.
+    final courses = selected == null ? _courses : [selected];
     final now = widget.now();
     return Container(
       decoration: const BoxDecoration(
@@ -205,10 +211,11 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     _header(),
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(WdSpace.s16, 0, WdSpace.s16, WdSpace.s12),
-                      child: Row(children: [WdFilterChip('최신순', selected: true, onTap: () {})]),
-                    ),
+                    if (selected == null)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(WdSpace.s16, 0, WdSpace.s16, WdSpace.s12),
+                        child: Row(children: [WdFilterChip('최신순', selected: true, onTap: () {})]),
+                      ),
                   ],
                 ),
               ),
@@ -222,7 +229,7 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
                 child: CustomScrollView(
                   controller: _list,
                   slivers: [
-                    if (courses == null && _failed)
+                    if (selected == null && courses == null && _failed)
                       SliverToBoxAdapter(
                         child: _message(CourseListSheet.loadFailedMessage, [
                           WdButton('다시 시도', variant: WdButtonVariant.secondary, onPressed: () => _load(widget.area!)),
@@ -247,7 +254,7 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
                           itemBuilder: (_, index) => CourseListCard(course: courses[index], now: now),
                         ),
                       ),
-                      SliverToBoxAdapter(child: _footer()),
+                      SliverToBoxAdapter(child: selected == null ? _footer() : const SizedBox(height: WdSpace.s24)),
                     ],
                   ],
                 ),
@@ -287,9 +294,11 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
                       // Figma A6 `주변 인기 코스 24`처럼 제목 뒤에 지도에 보이는 범위 안 코스 수.
                       peek
                           ? '↑ 위로 올려 코스 목록 보기'
-                          : total == null
-                              ? '지금 달리기 좋은 코스'
-                              : '지금 달리기 좋은 코스 ${_count(total)}',
+                          : widget.selected != null
+                              ? '선택한 코스'
+                              : total == null
+                                  ? '지금 달리기 좋은 코스'
+                                  : '지금 달리기 좋은 코스 ${_count(total)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: WdText.ko16Bold.copyWith(color: WdColors.ink),
@@ -306,7 +315,7 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
                       onTap: widget.onShowAll,
                       child: Text('전체 보기', style: WdText.raw(12, FontWeight.w400, 18).copyWith(color: WdColors.muted)),
                     )
-                  else if (total != null)
+                  else if (total != null && widget.selected == null)
                     Text('코스 ${_count(total)}', style: WdText.raw(12, FontWeight.w400, 18).copyWith(color: WdColors.muted)),
                 ],
               ),

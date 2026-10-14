@@ -15,6 +15,28 @@ import 'package:wadadak/features/onboarding/permission_screen.dart';
 
 const testTokens = AuthTokens(accessToken: 'access', refreshToken: 'refresh');
 
+/// 지도 · 목록 테스트용 코스(카드 값). 이름 · 경로 말고는 정해 둔 값이다.
+CourseListItem testCourse(
+  String name, {
+  String? courseId,
+  List<GeoPoint> route = const [GeoPoint(37.5666, 126.9784), GeoPoint(37.5700, 126.9800)],
+  int distanceMeters = 1000,
+  Difficulty difficulty = Difficulty.easy,
+  List<CourseTag> tags = const [],
+  CourseType courseType = CourseType.custom,
+  DateTime? expiresAt,
+}) =>
+    CourseListItem(
+      courseId: courseId ?? 'id-$name',
+      name: name,
+      distanceMeters: distanceMeters,
+      difficulty: difficulty,
+      tags: tags,
+      courseType: courseType,
+      expiresAt: expiresAt ?? DateTime.utc(2026, 11, 13, 14, 59, 59),
+      route: route,
+    );
+
 class MemoryTokenStorage implements TokenStorage {
   MemoryTokenStorage([this.tokens]);
 
@@ -142,7 +164,7 @@ class FakeCourseApi implements CourseApiClient {
   final registrations = <FakeRegistration>[];
 
   /// 지도 범위와 상관없이 돌려줄 코스.
-  List<MapCourse> onMap = [];
+  List<CourseListItem> onMap = [];
   ApiException? mapError;
   final mapRequests = <({GeoPoint southWest, GeoPoint northEast})>[];
 

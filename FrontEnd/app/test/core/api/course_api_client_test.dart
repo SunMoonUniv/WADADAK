@@ -75,7 +75,16 @@ void main() {
     final server = _FakeServer({
       'totalCount': 24,
       'courses': [
-        {'courseId': 'c1', 'name': '성북천 벚꽃길 3K', 'route': [start.toJson(), end.toJson()]},
+        {
+          'courseId': 'c1',
+          'name': '성북천 벚꽃길 3K',
+          'distanceMeters': 3412,
+          'difficulty': 'EASY',
+          'tags': ['SHADE', 'RIVERSIDE'],
+          'courseType': 'GPS',
+          'expiresAt': '2026-11-13T14:59:59Z',
+          'route': [start.toJson(), end.toJson()],
+        },
       ],
     });
 
@@ -87,6 +96,13 @@ void main() {
     expect(map.totalCount, 24);
     expect(map.courses.single.name, '성북천 벚꽃길 3K');
     expect(map.courses.single.route, const [start, end]);
+    // 목록 카드와 같은 값(A5 선택 카드).
+    final course = map.courses.single;
+    expect(course.distanceMeters, 3412);
+    expect(course.difficulty, Difficulty.easy);
+    expect(course.tags, [CourseTag.shade, CourseTag.riverside]);
+    expect(course.courseType, CourseType.gps);
+    expect(course.expiresAt, DateTime.utc(2026, 11, 13, 14, 59, 59));
   });
 
   test('counts the courses in the map area by region', () async {

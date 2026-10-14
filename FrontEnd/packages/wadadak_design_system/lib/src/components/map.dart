@@ -152,17 +152,23 @@ class WdMapHint extends StatelessWidget {
 ///
 /// 지도 표지로 올릴 때는 아래 가운데를 코스 출발점에 둔다.
 class WdMapCourseLabel extends StatelessWidget {
-  const WdMapCourseLabel(this.name, {super.key, this.rating});
+  const WdMapCourseLabel(this.name, {super.key, this.rating, this.selected = false});
 
   final String name;
 
   /// 예: "4.8"
   final String? rating;
 
+  /// 지도에서 고른 코스(정책 MAP-03). 배경이 파랑(accent/파랑)이다. Figma에는 아직 이 모양이 없다.
+  final bool selected;
+
   @override
   Widget build(BuildContext context) => Container(
         padding: const EdgeInsets.symmetric(horizontal: WdSpace.s8, vertical: WdSpace.s4),
-        decoration: BoxDecoration(color: WdColors.ink, borderRadius: BorderRadius.circular(WdRadius.full)),
+        decoration: BoxDecoration(
+          color: selected ? WdColors.info : WdColors.ink,
+          borderRadius: BorderRadius.circular(WdRadius.full),
+        ),
         child: Text(rating == null ? name : '$name · ★$rating', style: WdText.ko12Medium.copyWith(color: WdColors.white)),
       );
 }
