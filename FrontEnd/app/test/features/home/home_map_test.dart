@@ -51,8 +51,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// 목록 시트 위쪽 지도를 끈다.
   Future<void> moveMap(WidgetTester tester) async {
-    await tester.drag(find.byType(DevMapView), const Offset(-120, 0));
+    await tester.dragFrom(const Offset(200, 150), const Offset(-120, 0));
     await tester.pumpAndSettle();
   }
 

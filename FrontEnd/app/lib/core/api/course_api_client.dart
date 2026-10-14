@@ -57,6 +57,8 @@ enum Difficulty {
   const Difficulty(this.apiName, this.label);
   final String apiName;
   final String label;
+
+  static Difficulty fromApi(String name) => values.firstWhere((value) => value.apiName == name);
 }
 
 /// 코스 특징(B4-04). 순서는 정책 FIL-04와 같다.
@@ -73,6 +75,24 @@ enum CourseTag {
   const CourseTag(this.apiName, this.label);
   final String apiName;
   final String label;
+
+  /// 앱이 모르는 특징(서버에 새로 생긴 것)은 null.
+  static CourseTag? fromApi(String name) => values.where((value) => value.apiName == name).firstOrNull;
+}
+
+/// 코스 유형(정책 공통 3). 카드 아래 줄에 보인다(Figma A2 · A6).
+enum CourseType {
+  /// 지도에 점을 찍어 만든 코스(B3).
+  custom('CUSTOM', '그려서 만든 코스'),
+
+  /// 러닝 기록으로 만든 코스(B5 · B6).
+  gps('GPS', '달려서 만든 코스');
+
+  const CourseType(this.apiName, this.label);
+  final String apiName;
+  final String label;
+
+  static CourseType fromApi(String name) => values.firstWhere((value) => value.apiName == name);
 }
 
 /// 등록한 코스(B4-07). 성공 팝업 뒤 홈(A2)이 [startPoint]로 새 코스 위치를 보여 준다.
@@ -178,6 +198,72 @@ class RegionCount {
   final GeoPoint center;
 }
 
+/// 코스 목록 정렬(FIL-01). 인기순 · 평점순 · 실시간순은 코스 통계(F11), 가까운순은 현재 위치(`LocationService`)가 생기면 붙인다.
+enum CourseListSort {
+  /// 등록 시각이 늦은 코스부터.
+  latest('LATEST');
+
+  const CourseListSort(this.apiName);
+  final String apiName;
+}
+
+/// 코스 목록 한 쪽(A2 · A6). 다음 쪽은 [nextCursor]로 받는다.
+@immutable
+class CourseListPage {
+  const CourseListPage({required this.courses, required this.nextCursor});
+
+  factory CourseListPage.fromJson(Map<Object?, Object?> json) => CourseListPage(
+        courses: [for (final course in json['content']! as List) CourseListItem.fromJson(course as Map)],
+        nextCursor: json['nextCursor'] as String?,
+      );
+
+  final List<CourseListItem> courses;
+
+  /// 마지막 쪽이면 null.
+  final String? nextCursor;
+}
+
+/// 코스 목록 카드(A2-05 · A6-03). 평점 · 리뷰 수 · 현재 러너는 코스 통계(F11)가 생기면 붙인다.
+@immutable
+class CourseListItem {
+  const CourseListItem({
+    required this.courseId,
+    required this.name,
+    required this.distanceMeters,
+    required this.difficulty,
+    required this.tags,
+    required this.courseType,
+    required this.expiresAt,
+    required this.route,
+  });
+
+  factory CourseListItem.fromJson(Map<Object?, Object?> json) => CourseListItem(
+        courseId: json['courseId']! as String,
+        name: json['name']! as String,
+        distanceMeters: json['distanceMeters']! as int,
+        difficulty: Difficulty.fromApi(json['difficulty']! as String),
+        tags: [for (final tag in json['tags']! as List) ?CourseTag.fromApi(tag as String)],
+        courseType: CourseType.fromApi(json['courseType']! as String),
+        expiresAt: DateTime.parse(json['expiresAt']! as String),
+        route: [for (final point in json['route']! as List) GeoPoint.fromJson(point as Map)],
+      );
+
+  final String courseId;
+  final String name;
+  final int distanceMeters;
+  final Difficulty difficulty;
+
+  /// FIL-04 순서.
+  final List<CourseTag> tags;
+  final CourseType courseType;
+
+  /// 공개 만료 시각(만료일 23:59:59 Asia/Seoul).
+  final DateTime expiresAt;
+
+  /// 카드 썸네일. 첫 점이 출발점이다.
+  final List<GeoPoint> route;
+}
+
 /// 오늘(Asia/Seoul) 남은 등록 수. 유형마다 따로 센다.
 @immutable
 class RegistrationQuota {
@@ -274,6 +360,25 @@ class CourseApiClient {
           'level': level.apiName,
         }));
     return RegionCounts.fromJson(data! as Map);
+  }
+
+  /// 지도 범위 안 코스 목록 한 쪽(A2 · A6). 조건은 [mapCourses]와 같다(MAP-07).
+  /// 다음 쪽은 앞 쪽의 [CourseListPage.nextCursor]를 [cursor]로 보내고, 범위 · 정렬은 첫 쪽과 같게 보낸다.
+  Future<CourseListPage> listCourses({
+    required GeoPoint southWest,
+    required GeoPoint northEast,
+    CourseListSort sort = CourseListSort.latest,
+    String? cursor,
+  }) async {
+    final data = await callApi(() => _dio.get(_courses, queryParameters: {
+          'swLat': southWest.lat,
+          'swLng': southWest.lng,
+          'neLat': northEast.lat,
+          'neLng': northEast.lng,
+          'sort': sort.apiName,
+          'cursor': ?cursor,
+        }));
+    return CourseListPage.fromJson(data! as Map);
   }
 
   /// 오늘 남은 등록 수. 0이면 그 방식의 코스 만들기를 미리 막는다(개발 정책 10.2 course).
