@@ -10,9 +10,12 @@ import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * 리뷰 사진(정책 공통 5: 리뷰당 5장). 파일은 앱이 저장소에 직접 올리고, 여기에는 키만 순서대로 둔다(개발 정책 7장 사진 업로드).
@@ -70,6 +73,28 @@ class ReviewPhotos {
     /** 리뷰를 지울 때 사진 파일도 커밋한 뒤 지운다. 사진 행은 DB가 함께 지운다(ON DELETE CASCADE). */
     void deleteFiles(UUID reviewId) {
         storage.deleteAfterCommit(keys(reviewId));
+    }
+
+    /**
+     * 여러 리뷰의 사진을 한 번에 읽는다(B8·G2 목록). 카드마다 따로 읽으면 리뷰 수만큼 쿼리가 나간다(N+1).
+     * 리뷰마다 보이는 순서대로이고, 사진이 없는 리뷰는 결과에 없다.
+     */
+    Map<UUID, List<ReviewView.Photo>> photosOf(Collection<UUID> reviewIds) {
+        if (reviewIds.isEmpty()) {
+            return Map.of(); // 빈 IN ()은 SQL 문법 오류라 DB까지 가지 않는다
+        }
+        return jdbc.sql("""
+                        SELECT review_id, photo_key FROM review.review_photos
+                        WHERE review_id IN (:reviewIds)
+                        ORDER BY review_id, display_order""")
+                .param("reviewIds", reviewIds)
+                .query((rs, rowNum) -> Map.entry(rs.getObject("review_id", UUID.class), rs.getString("photo_key")))
+                .list()
+                .stream()
+                // 리뷰 ID별로 묶는다. 읽은 순서(display_order)가 그대로 목록 순서가 된다
+                .collect(Collectors.groupingBy(Map.Entry::getKey,
+                        Collectors.mapping(row -> new ReviewView.Photo(row.getValue(), storage.url(row.getValue())),
+                                Collectors.toList())));
     }
 
     private List<String> keys(UUID reviewId) {

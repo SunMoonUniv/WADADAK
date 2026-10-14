@@ -1,9 +1,12 @@
 package com.wadadak.review.internal;
 
+import com.wadadak.review.internal.MyReview.EligibleRecord;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Component;
 
+import java.time.OffsetDateTime;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -38,6 +41,23 @@ class CourseRunRecords {
                 .param("courseId", courseId)
                 .query(Integer.class)
                 .single() > 0;
+    }
+
+    /** 리뷰를 쓸 수 있는 이 회원의 이 코스 기록 중 가장 최근에 끝난 것(B2 진입). 삭제된 기록은 빼고, 없으면 비어 있다. */
+    Optional<EligibleRecord> latestEligibleRecord(UUID memberId, UUID courseId) {
+        return jdbc.sql("""
+                        SELECT run_record_id, course_distance_meters, course_elapsed_seconds, progress_percent, completed, ended_at
+                        FROM review.course_run_records
+                        WHERE member_id = :memberId AND course_id = :courseId AND review_eligible AND NOT deleted
+                        ORDER BY ended_at DESC, run_record_id DESC
+                        LIMIT 1""")
+                .param("memberId", memberId)
+                .param("courseId", courseId)
+                .query((rs, rowNum) -> new EligibleRecord(rs.getObject("run_record_id", UUID.class),
+                        rs.getInt("course_distance_meters"), rs.getInt("course_elapsed_seconds"),
+                        rs.getInt("progress_percent"), rs.getBoolean("completed"),
+                        rs.getObject("ended_at", OffsetDateTime.class).toInstant()))
+                .optional(); // 결과가 없으면 Optional.empty()
     }
 
     /** 이 회원의 이 코스 최고 진행도(%). 남아 있는 기록만 보고, 없으면 0이다. 자격이 없는 기록도 진행도에는 들어간다. */

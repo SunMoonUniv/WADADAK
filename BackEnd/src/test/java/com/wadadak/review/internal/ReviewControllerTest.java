@@ -6,6 +6,7 @@ import com.wadadak.common.storage.UploadForm;
 import com.wadadak.event.review.ReviewCreatedEvent;
 import com.wadadak.event.review.ReviewDeletedEvent;
 import com.wadadak.event.review.ReviewUpdatedEvent;
+import com.wadadak.member.MemberApi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -77,6 +78,10 @@ class ReviewControllerTest {
                 .willAnswer(call -> call.getArgument(0).equals("review") && uploaded.contains(call.<String>getArgument(1)));
         given(storage.url(anyString())).willAnswer(call -> "https://files.test/wadadak/" + call.getArgument(0));
     }
+
+    // review만 띄워서 member 모듈이 없다. 리뷰 목록이 닉네임을 붙이려고 MemberApi를 쓰므로 가짜(Mockito)로 채운다
+    @MockitoBean
+    MemberApi memberApi;
 
     @Test
     void writesReviewWithBestProgress(AssertablePublishedEvents events) throws Exception {
