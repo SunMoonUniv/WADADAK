@@ -1,6 +1,6 @@
 # 공용 서버 (배포)
 
-실기기에서 실제 소셜 로그인으로 시험하는 팀 공용 서버다. 서버 PC 한 대에서 Docker로 띄우고, 포트포워딩 없이 Cloudflare 터널로 `https://api.leedohyunn8n.shop`에 연다. main에 머지되면 자동으로 배포된다.
+실기기에서 실제 소셜 로그인으로 시험하는 팀 공용 서버다. 서버 PC 한 대에서 Docker로 띄우고, 포트포워딩 없이 Cloudflare 터널로 `https://api.leedohyunn8n.shop`(서버)과 `https://files.leedohyunn8n.shop`(사진)에 연다. main에 머지되면 자동으로 배포된다.
 
 ```
 PR ─► CI (GitHub 서버) ─► 승인 · 머지
@@ -10,13 +10,15 @@ main push ─► backend.yml
                         비밀값은 GitHub 환경 wadadak-server의 Secrets에서 받는다
 
 서버 PC (Docker Desktop) · compose 프로젝트 wadadak-server
-   postgres (포트 안 엶) · backend (포트 안 엶) · cloudflared ──► Cloudflare ◄── 폰 https://api.leedohyunn8n.shop
+   postgres · storage(RustFS) · backend · cloudflared ──► Cloudflare ◄── 폰 https://api.leedohyunn8n.shop
+   (포트를 열지 않는다)                                        └──────── 사진 https://files.leedohyunn8n.shop
 ```
 
 - 주소: `https://api.leedohyunn8n.shop` · 상태 [`/actuator/health`](https://api.leedohyunn8n.shop/actuator/health) · Swagger [`/swagger-ui.html`](https://api.leedohyunn8n.shop/swagger-ui.html)
-- 비밀값(DB 비밀번호 · JWT 키 · 터널 토큰)은 GitHub Secrets에만 둔다. 서버 PC에는 비밀값 파일이 없다.
+- 비밀값(DB 비밀번호 · JWT 키 · 사진 저장소 비밀번호 · 터널 토큰)은 GitHub Secrets에만 둔다. 서버 PC에는 비밀값 파일이 없다.
 - 기본 프로필로 뜬다. 소셜 로그인은 기본 프로필에서도 실제 검증이다.
   - `prod`는 아직 못 쓴다. 랭킹 스텁(`DistanceRankingStub`)이 항상 떠서 `StubGuard`가 기동을 막는다. F12 실제 구현 후 `compose.yaml`의 backend에 `SPRING_PROFILES_ACTIVE: prod`를 넣는다.
+- 사진 저장소는 S3 호환 RustFS다(개발 정책 7장 사진 업로드). 앱이 업로드 폼으로 직접 올리고, 사진은 로그인 없이 받는다(객체 받기만 허용, 목록은 막음). 버킷 `wadadak`과 공개 읽기 설정은 첫 업로드 때 서버가 만든다.
 - 서버 DB는 개발용 DB(`BackEnd/compose.yaml`, 5433)와 따로다. 서버 PC에서 개발해도 서로 겹치지 않는다.
 - Swagger(`/swagger-ui.html`)도 인터넷에 열린다. 막으려면 Cloudflare Access로 `/swagger-ui*` · `/v3/api-docs*`에 팀원 이메일 인증을 건다.
 
@@ -75,6 +77,7 @@ mkdir C:\actions-runner-wadadak; cd C:\actions-runner-wadadak
 | `DB_PASSWORD` | 무작위 문자열(`openssl rand -hex 24`). 첫 배포 때 DB가 이 값으로 만들어진다. 나중에 바꾸면 DB와 어긋나므로 DB 초기화(아래 운영 표)와 함께 바꾼다 |
 | `JWT_PRIVATE_KEY` | 개인키 PEM을 base64 한 줄로(아래 명령) |
 | `JWT_PUBLIC_KEY` | 공개키 PEM을 base64 한 줄로(아래 명령) |
+| `STORAGE_SECRET_KEY` | 사진 저장소 비밀번호. 무작위 문자열(`openssl rand -hex 24`). 저장소와 서버가 같이 받는다. 바꾸면 저장소 계정도 바뀐다 |
 | `TUNNEL_TOKEN` | Cloudflare 터널 토큰(5번). 없으면 터널 없이 뜬다 |
 
 JWT 키 만들기(Git Bash). 출력한 두 줄을 Secrets에 넣고 파일은 지운다:
@@ -106,7 +109,8 @@ Actions → Backend CI → Run workflow(main). deploy 작업이 통과하면 서
    - `localhost`가 아니다. cloudflared 컨테이너에서 backend는 compose 서비스 이름으로 보인다.
    - DNS 레코드(`api` CNAME → `<터널 ID>.cfargotunnel.com`, 프록시됨)는 Cloudflare가 자동으로 만든다. 같은 이름의 레코드가 이미 있으면 지우고 다시 추가한다.
    - 한 단계 하위 도메인으로 둔다. Cloudflare 기본 인증서는 `a.b.leedohyunn8n.shop`을 덮지 않는다.
-6. `https://api.leedohyunn8n.shop/actuator/health`가 `{"status":"UP"}`이면 끝. 오류 1033은 터널이 연결되지 않은 것(cloudflared가 꺼짐), 502는 Service URL이 틀렸거나 backend가 꺼진 것이다.
+   - 사진도 같은 방법으로 하나 더 추가한다: Subdomain `files`, Service URL `http://storage:9000`
+6. `https://api.leedohyunn8n.shop/actuator/health`가 `{"status":"UP"}`, `https://files.leedohyunn8n.shop/health`가 `"status":"ok"`이면 끝. 오류 1033은 터널이 연결되지 않은 것(cloudflared가 꺼짐), 502는 Service URL이 틀렸거나 backend가 꺼진 것이다.
 
 ## 운영
 
@@ -119,6 +123,7 @@ Actions → Backend CI → Run workflow(main). deploy 작업이 통과하면 서
 | 요청 로그 | `docker logs -f wadadak-server-backend-1 2>&1 \| grep RequestLogFilter` — 한 줄에 메서드 · 경로 · 상태 · 처리 시간 · IP. `/actuator`는 빠진다 |
 | DB 접속 | `docker exec -it wadadak-server-postgres-1 psql -U wadadak` |
 | DB 초기화 (데이터 전부 삭제) | `docker compose -p wadadak-server down` → `docker volume rm wadadak-server_db` → 수동 배포 |
+| 사진 저장소 로그 | `docker logs -f wadadak-server-storage-1`. 사진 파일은 볼륨 `wadadak-server_photos`에 있다. DB를 초기화하면 사진도 같이 지운다(`docker volume rm wadadak-server_photos`) |
 
 ## 앱 연결
 

@@ -5,7 +5,7 @@ Spring Boot 4.1 · Spring Modulith 2.1 · Java 21 · PostgreSQL 17 + PostGIS 3.5
 
 ## 로컬 실행
 
-1. DB: `docker compose up -d`
+1. DB · 사진 저장소: `docker compose up -d` (PostGIS 5433, RustFS 9000)
 2. JWT 키(최초 1회, Git Bash):
    ```sh
    mkdir -p .local/jwt
@@ -17,6 +17,8 @@ Spring Boot 4.1 · Spring Modulith 2.1 · Java 21 · PostgreSQL 17 + PostGIS 3.5
 4. Swagger: http://localhost:8080/swagger-ui.html
 
 DB는 로컬 PostgreSQL과 겹치지 않게 5433 포트를 쓴다. 접속 정보는 `DB_URL`·`DB_USERNAME`·`DB_PASSWORD`로 바꾼다.
+
+사진 저장소는 S3 호환 RustFS다(`STORAGE_*`로 바꾼다). 서버는 업로드 폼과 사진 주소에 `STORAGE_PUBLIC_URL`(기본 `http://localhost:9000`)을 쓴다. 에뮬레이터 앱으로 로컬 서버에 사진을 올리려면 `STORAGE_PUBLIC_URL=http://10.0.2.2:9000`으로 띄운다.
 
 로그인은 실제 소셜 검증이다. 카카오 앱 ID는 기본값이 들어 있어 따로 넘기지 않아도 된다(`KAKAO_APP_ID`로 바꾼다). 앱 없이 API만 시험하려면 가짜 소셜 검증으로 띄운다: `./gradlew bootRun --args='--app.member.social.fake=true'`. 이때 `POST /api/v1/members/auth/login`에 `{"provider": "KAKAO", "token": "아무문자열"}`을 보내면 그 문자열이 소셜 ID가 된다.
 

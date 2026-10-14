@@ -51,6 +51,7 @@ jobs:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           JWT_PUBLIC_KEY: ${{ secrets.JWT_PUBLIC_KEY }}
           JWT_PRIVATE_KEY: ${{ secrets.JWT_PRIVATE_KEY }}
+          STORAGE_SECRET_KEY: ${{ secrets.STORAGE_SECRET_KEY }}
           TUNNEL_TOKEN: ${{ secrets.TUNNEL_TOKEN }}
           # 터널 토큰을 넣기 전(도메인 준비 전)에는 cloudflared 없이 띄운다.
           COMPOSE_PROFILES: ${{ secrets.TUNNEL_TOKEN != '' && 'tunnel' || '' }}

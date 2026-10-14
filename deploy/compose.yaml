@@ -1,5 +1,5 @@
 # 공용 서버 실행 구성. 절차는 deploy/README.md.
-# 비밀값(DB_PASSWORD · JWT_* · TUNNEL_TOKEN)은 배포 작업(backend.yml deploy)이 GitHub Secrets에서 환경 변수로 넘긴다.
+# 비밀값(DB_PASSWORD · JWT_* · STORAGE_SECRET_KEY · TUNNEL_TOKEN)은 배포 작업(backend.yml deploy)이 GitHub Secrets에서 환경 변수로 넘긴다.
 # 서버 PC에는 비밀값 파일을 두지 않는다.
 name: wadadak-server
 
@@ -17,6 +17,23 @@ services:
       test: ["CMD-SHELL", "pg_isready -U wadadak -d wadadak"]
       interval: 5s
       retries: 12
+    restart: unless-stopped
+
+  # 사진 저장소(S3 호환 RustFS, 개발 정책 7장). 앱은 터널의 files 주소로 직접 올리고 받는다.
+  storage:
+    image: rustfs/rustfs:1.0.1
+    environment:
+      RUSTFS_ACCESS_KEY: wadadak
+      RUSTFS_SECRET_KEY: ${STORAGE_SECRET_KEY:?GitHub Secrets에 STORAGE_SECRET_KEY가 없다}
+    # 포트를 열지 않는다. 밖에서는 cloudflared(files 주소)를 거쳐서만 들어온다.
+    volumes:
+      - photos:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:9000/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
     restart: unless-stopped
 
   backend:
@@ -37,6 +54,10 @@ services:
       SERVER_FORWARD_HEADERS_STRATEGY: native
       # 요청마다 한 줄 로그(RequestLogFilter). 앱이 받은 응답을 서버에서 확인한다.
       APP_COMMON_REQUESTLOG_ENABLED: "true"
+      # 서버는 저장소를 compose 안에서 부르고, 앱에는 터널 주소를 준다.
+      STORAGE_ENDPOINT: http://storage:9000
+      STORAGE_PUBLIC_URL: https://files.leedohyunn8n.shop
+      STORAGE_SECRET_KEY: ${STORAGE_SECRET_KEY}
     # 포트를 열지 않는다. 밖에서는 cloudflared를 거쳐서만 들어온다.
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:8080/actuator/health"]
@@ -72,3 +93,4 @@ services:
 
 volumes:
   db:
+  photos:
