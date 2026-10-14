@@ -120,31 +120,14 @@ class CourseMap {
 
   factory CourseMap.fromJson(Map<Object?, Object?> json) => CourseMap(
         totalCount: json['totalCount']! as int,
-        courses: [for (final course in json['courses']! as List) MapCourse.fromJson(course as Map)],
+        courses: [for (final course in json['courses']! as List) CourseListItem.fromJson(course as Map)],
       );
 
-  /// 범위 안 코스 전체 수(지도의 "코스 N개").
+  /// 범위 안 코스 전체 수(목록 제목 `지금 달리기 좋은 코스 N`).
   final int totalCount;
 
-  /// 그중 최대 100개, 최근 등록순.
-  final List<MapCourse> courses;
-}
-
-@immutable
-class MapCourse {
-  const MapCourse({required this.courseId, required this.name, required this.route});
-
-  factory MapCourse.fromJson(Map<Object?, Object?> json) => MapCourse(
-        courseId: json['courseId']! as String,
-        name: json['name']! as String,
-        route: [for (final point in json['route']! as List) GeoPoint.fromJson(point as Map)],
-      );
-
-  final String courseId;
-  final String name;
-
-  /// 첫 점 출발, 마지막 점 도착(코스 방향).
-  final List<GeoPoint> route;
+  /// 그중 최대 100개, 최근 등록순. 목록 카드와 같은 값이라 지도에서 고른 코스(A5)를 바로 카드로 보인다.
+  final List<CourseListItem> courses;
 }
 
 /// 지역별 코스 수를 어느 단위로 세나(MAP-02).
@@ -223,7 +206,8 @@ class CourseListPage {
   final String? nextCursor;
 }
 
-/// 코스 목록 카드(A2-05 · A6-03). 평점 · 리뷰 수 · 현재 러너는 코스 통계(F11)가 생기면 붙인다.
+/// 코스 목록 카드(A2-05 · A6-03). 지도 범위 안 코스(A5)도 이 값이다.
+/// 평점 · 리뷰 수 · 현재 러너는 코스 통계(F11)가 생기면 붙인다.
 @immutable
 class CourseListItem {
   const CourseListItem({
@@ -260,7 +244,7 @@ class CourseListItem {
   /// 공개 만료 시각(만료일 23:59:59 Asia/Seoul).
   final DateTime expiresAt;
 
-  /// 카드 썸네일. 첫 점이 출발점이다.
+  /// 카드 썸네일 · 지도 코스 선. 첫 점 출발, 마지막 점 도착(코스 방향).
   final List<GeoPoint> route;
 }
 

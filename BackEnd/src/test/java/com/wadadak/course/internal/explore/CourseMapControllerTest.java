@@ -62,6 +62,13 @@ class CourseMapControllerTest {
         // 첫 점이 출발점(코스 방향)
         assertThat(course.get("route").get(0).get("lat").asDouble()).isEqualTo(33.405);
         assertThat(course.get("route").get(1).get("lat").asDouble()).isCloseTo(33.415, within(1e-9));
+
+        // 목록 카드와 같은 값이라 지도에서 고른 코스를 바로 카드로 보인다(A5)
+        assertThat(course.get("distanceMeters").asInt()).isEqualTo(1_000);
+        assertThat(course.get("difficulty").asString()).isEqualTo("EASY");
+        assertThat(course.get("courseType").asString()).isEqualTo("CUSTOM");
+        assertThat(course.get("expiresAt").asString()).isNotBlank();
+        assertThat(course.get("tags").isArray()).isTrue();
     }
 
     @Test

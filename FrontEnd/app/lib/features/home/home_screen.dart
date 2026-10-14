@@ -15,6 +15,7 @@ import 'course_list_sheet.dart';
 /// 홈(A2). 위에 상단 배너(인사말 · 검색창), 아래에 지도, `＋ 코스 만들기`, 현재 위치 버튼, 코스 목록 시트가 있다.
 /// 지도는 축척에 따라 범위 안 코스(경로 · 이름표, A5)나 지역별 코스 수 배지(A4)를 보인다(MAP-02).
 /// 목록 시트는 지도와 같은 범위의 코스이고(MAP-07), 끌어서 피크(A4 · A5) · 반(A2) · 전체(A6, 배너 밑까지)에 멈춘다.
+/// 지도에서 코스 이름표를 누르면 그 코스만 남기고 목록에도 그 코스만 보인다(MAP-03 선택). 지도의 다른 곳을 누르면 풀린다.
 /// 검색 화면(G1) 연결과 필터는 F2 다음 단계에서 붙인다.
 /// 확대·축소 버튼은 두지 않는다(정책 MAP-02, 제스처로 한다).
 class HomeScreen extends ConsumerStatefulWidget {
@@ -36,7 +37,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   MapCamera? _camera;
 
   /// 지금 지도 범위 안 코스. 출발점이 범위 안에 있는 코스다(MAP-04). 축척 500m부터 보인다.
-  List<MapCourse> _courses = const [];
+  List<CourseListItem> _courses = const [];
+
+  /// 지도에서 고른 코스(MAP-03). 고르는 동안 지도 · 목록에 이 코스만 보이고, 지도를 움직이거나 축소해도 그대로다.
+  CourseListItem? _selected;
 
   /// 지금 지도 범위 안 지역별 코스 수. 축척 500m보다 넓을 때 [_courses] 대신 보인다.
   List<RegionCount> _regions = const [];
@@ -92,6 +96,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _load(camera);
   }
 
+  /// 이름표를 눌러 [course]를 고른다(MAP-03). 피크면 목록 시트를 반으로 올리고, 올라온 시트에 출발점이 가리면 지도를 옮겨 보인다.
+  void _select(CourseListItem course) {
+    setState(() => _selected = course);
+    if (_settledStage != SheetStage.peek) return;
+    _moveSheet(_halfSize);
+    final camera = _camera;
+    if (camera != null && !_contains(_visibleArea(camera, SheetStage.half), course.route.first)) {
+      _map?.moveTo(course.route.first);
+    }
+  }
+
+  static bool _contains(MapArea area, GeoPoint point) =>
+      point.lat >= area.southWest.lat &&
+      point.lat <= area.northEast.lat &&
+      point.lng >= area.southWest.lng &&
+      point.lng <= area.northEast.lng;
+
   /// 시트가 피크 · 반 · 전체 중 한 곳에 멈췄다. 보이는 지도 부분이 바뀌었으면 다시 받는다.
   /// 전체 보기(A6)는 지도가 안 보이니 그 전 범위를 그대로 둔다.
   void _onSheetSettled(SheetStage stage) {
@@ -102,10 +123,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (camera != null) _load(camera);
   }
 
-  /// [camera] 범위 중 시트에 가리지 않은 위쪽 부분. 지도는 메르카토르라 위도가 화면 높이에 비례하지 않아 메르카토르 y로 나눈다.
-  /// 버튼 · 코스 수 칩은 작고 그 사이로 지도가 보여 가린 것으로 치지 않는다.
-  MapArea _visibleArea(MapCamera camera) {
-    final covered = switch (_mapStage) {
+  /// [camera] 범위 중 [stage] 시트에 가리지 않은 위쪽 부분. 지도는 메르카토르라 위도가 화면 높이에 비례하지 않아 메르카토르 y로 나눈다.
+  /// 버튼은 작고 그 사이로 지도가 보여 가린 것으로 치지 않는다.
+  MapArea _visibleArea(MapCamera camera, SheetStage stage) {
+    final covered = switch (stage) {
       SheetStage.peek => CourseListSheet.peekHeight,
       _ => _mapHeight * _halfSize,
     };
@@ -131,10 +152,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   Future<void> _load(MapCamera camera) async {
     final request = ++_request;
     final api = ref.read(courseApiClientProvider);
-    final area = _visibleArea(camera);
+    final area = _visibleArea(camera, _mapStage);
     setState(() => _area = area);
     try {
-      var courses = const <MapCourse>[];
+      var courses = const <CourseListItem>[];
       var regions = const <RegionCount>[];
       final int total;
       switch (_regionLevel(camera)) {
@@ -186,6 +207,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           _mapHeight = height;
           final peekSize = CourseListSheet.peekHeight / height;
           final stage = _stage(_sheetSize, peekSize);
+          final selected = _selected;
+          final shown = selected == null ? _courses : [selected];
           return Column(children: [
             _HomeHeader(stage: stage),
             Expanded(child: Stack(
@@ -194,31 +217,40 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 minZoom: _minZoom,
                 // 피크 시트와 아래 버튼 줄만큼 비워 네이버 로고·축척이 가리지 않게 한다.
                 padding: const EdgeInsets.only(bottom: CourseListSheet.peekHeight + _buttonRowHeight),
-                lines: [for (final course in _courses) MapLine(id: 'course-${course.courseId}', points: course.route)],
+                // 고른 코스가 있으면 그 코스만 보인다. 축척이 500m보다 넓어져도 지역별 배지로 바꾸지 않는다(MAP-03).
+                lines: [
+                  for (final course in shown) MapLine(id: 'course-${course.courseId}', points: course.route),
+                ],
                 markers: [
-                  // 이름표 아래 가운데가 출발점에 온다.
-                  for (final course in _courses)
+                  // 이름표 아래 가운데가 출발점에 온다. 고른 코스는 배경이 파랗다.
+                  for (final course in shown)
                     MapMarker(
                       id: 'course-${course.courseId}',
                       position: course.route.first,
-                      child: WdMapCourseLabel(course.name),
-                      imageKey: 'course-label:${course.name}',
+                      child: WdMapCourseLabel(course.name, selected: selected != null),
+                      imageKey: 'course-label:${course.name}${selected != null ? ':selected' : ''}',
                       anchor: MapMarker.bottom,
+                      onTap: () => _select(course),
                     ),
                   // 배지 가운데가 그 지역 코스 출발점들의 가운데에 온다(A4-01).
-                  for (final region in _regions)
-                    MapMarker(
-                      id: 'region-${region.code}',
-                      position: region.center,
-                      child: WdRegionCountBubble(count: _count(region.count), region: region.name),
-                      imageKey: 'region-count:${region.name}:${region.count}',
-                    ),
+                  if (selected == null)
+                    for (final region in _regions)
+                      MapMarker(
+                        id: 'region-${region.code}',
+                        position: region.center,
+                        child: WdRegionCountBubble(count: _count(region.count), region: region.name),
+                        imageKey: 'region-count:${region.name}:${region.count}',
+                      ),
                 ],
                 onCreated: (map) => _map = map,
                 onCameraIdle: _onCameraIdle,
-                // 지도를 누르면 시트를 내려 지도 전체 보기(A2-03).
+                // 고른 코스가 있으면 지도의 다른 곳을 눌러 푼다(MAP-03). 없으면 시트를 내려 지도 전체 보기(A2-03).
                 onTap: (_) {
-                  if (stage != SheetStage.peek) _moveSheet(peekSize);
+                  if (selected != null) {
+                    setState(() => _selected = null);
+                  } else if (stage != SheetStage.peek) {
+                    _moveSheet(peekSize);
+                  }
                 },
               ),
               // 버튼 줄은 시트 바로 위에 붙어 다닌다. 전체 보기(A6)에서는 숨긴다.
@@ -266,6 +298,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   builder: (context, scrollController) => CourseListSheet(
                     area: _area,
                     totalCount: _totalCount,
+                    selected: selected,
                     stage: stage,
                     scrollController: scrollController,
                     now: widget.now,

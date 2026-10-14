@@ -74,7 +74,7 @@ void main() {
 
   testWidgets('lists the latest courses in the map area on the half sheet', (tester) async {
     courses
-      ..onMap = const [MapCourse(courseId: 'm', name: '지도 코스', route: [MapView.seoulCityHall, GeoPoint(37.57, 126.98)])]
+      ..onMap = [testCourse('지도 코스', courseId: 'm', route: const [MapView.seoulCityHall, GeoPoint(37.57, 126.98)])]
       ..listed = [
         course('성북천 벚꽃길 3K', daysLeft: 1),
         course('한강 야경 5K', distanceMeters: 5249, difficulty: Difficulty.medium, tags: const [CourseTag.flat],
