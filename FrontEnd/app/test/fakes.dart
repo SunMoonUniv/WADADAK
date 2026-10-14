@@ -172,6 +172,26 @@ class FakeCourseApi implements CourseApiClient {
     return RegionCounts(totalCount: regions.fold(0, (sum, region) => sum + region.count), regions: regions);
   }
 
+  /// 지도 범위와 상관없이 돌려줄 목록. [listPageSize]개씩 쪽을 나누고, 커서는 다음 쪽 첫 위치다.
+  List<CourseListItem> listed = [];
+  int listPageSize = 20;
+  ApiException? listError;
+  final listRequests = <({GeoPoint southWest, GeoPoint northEast, CourseListSort sort, String? cursor})>[];
+
+  @override
+  Future<CourseListPage> listCourses({
+    required GeoPoint southWest,
+    required GeoPoint northEast,
+    CourseListSort sort = CourseListSort.latest,
+    String? cursor,
+  }) async {
+    listRequests.add((southWest: southWest, northEast: northEast, sort: sort, cursor: cursor));
+    if (listError != null) throw listError!;
+    final from = cursor == null ? 0 : int.parse(cursor);
+    final to = (from + listPageSize).clamp(0, listed.length);
+    return CourseListPage(courses: listed.sublist(from, to), nextCursor: to < listed.length ? '$to' : null);
+  }
+
   static String _nameKey(String name) => name.replaceAll(RegExp(r'\s+'), '').toLowerCase();
 }
 
