@@ -113,7 +113,7 @@ void main() {
 
     expect(find.text('코스를 등록했어요'), findsOneWidget);
     // 서버에 새 코스가 생겼다. 홈 지도는 출발점으로 옮긴 범위에서 다시 받는다.
-    courses.onMap = [MapCourse(courseId: 'course-1', name: name, route: sent.anchorPoints)];
+    courses.onMap = [testCourse(name, courseId: 'course-1', route: sent.anchorPoints)];
     await tap(tester, find.text('확인'));
     expect(find.byType(HomeScreen), findsOneWidget);
     expect(find.byType(CourseInfoScreen), findsNothing);

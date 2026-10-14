@@ -52,7 +52,7 @@ class CourseMapRepository {
     private static final Set<String> GWANGJU_DISTRICTS = Set.of(
             "1221000000", "1224000000", "1227000000", "1230000000", "1233000000");
 
-    /** 목록 카드에 쓰는 열과 최신순 커서용 등록 시각. */
+    /** 목록 카드(지도 범위 안 코스도 같다)에 쓰는 열과 최신순 커서용 등록 시각. */
     private static final String LIST_COLUMNS = """
             c.id, c.name, c.distance_meters, c.difficulty, c.tags, c.course_type, c.expires_at, ST_AsBinary(c.route) AS route,
             c.created_at""";
@@ -63,15 +63,14 @@ class CourseMapRepository {
     CourseMap find(CourseMapRequest request) {
         Filter filter = Filter.of(request);
         List<Row> rows = jdbc.sql("""
-                        SELECT c.id, c.name, ST_AsBinary(c.route) AS route, count(*) OVER () AS total
+                        SELECT %s, count(*) OVER () AS total
                         FROM course.courses c
                         WHERE %s
                         ORDER BY c.created_at DESC, c.id DESC
-                        LIMIT :limit""".formatted(filter.where()))
+                        LIMIT :limit""".formatted(LIST_COLUMNS, filter.where()))
                 .params(filter.params())
                 .param("limit", MAX_COURSES)
-                .query((rs, rowNum) -> new Row(rs.getInt("total"),
-                        new CourseMap.MapCourse(rs.getObject("id", UUID.class), rs.getString("name"), points(rs.getBytes("route")))))
+                .query((rs, rowNum) -> new Row(rs.getInt("total"), item(rs)))
                 .list();
         return new CourseMap(rows.isEmpty() ? 0 : rows.getFirst().total(), rows.stream().map(Row::course).toList());
     }
@@ -162,15 +161,20 @@ class CourseMapRepository {
         return new CursorSlice<>(shown.stream().map(ListRow::item).toList(), shown.getLast().cursor().encode());
     }
 
-    private static ListRow listRow(ResultSet rs, CourseListSort sort) throws SQLException {
-        UUID id = rs.getObject("id", UUID.class);
+    /** [LIST_COLUMNS]로 읽은 줄 → 카드. 특징은 FIL-04 순서. */
+    private static CourseListItem item(ResultSet rs) throws SQLException {
         List<CourseTag> tags = Arrays.stream((String[]) rs.getArray("tags").getArray())
                 .map(CourseTag::valueOf)
                 .sorted()
                 .toList();
-        CourseListItem item = new CourseListItem(id, rs.getString("name"), rs.getInt("distance_meters"),
+        return new CourseListItem(rs.getObject("id", UUID.class), rs.getString("name"), rs.getInt("distance_meters"),
                 Difficulty.valueOf(rs.getString("difficulty")), tags, CourseType.valueOf(rs.getString("course_type")),
                 rs.getObject("expires_at", OffsetDateTime.class).toInstant(), points(rs.getBytes("route")));
+    }
+
+    private static ListRow listRow(ResultSet rs, CourseListSort sort) throws SQLException {
+        CourseListItem item = item(rs);
+        UUID id = item.courseId();
         CourseListCursor cursor = switch (sort) {
             case LATEST -> CourseListCursor.latest(rs.getObject("created_at", OffsetDateTime.class).toInstant(), id);
             case NEAREST -> CourseListCursor.nearest(rs.getDouble("distance"), id);
@@ -243,7 +247,7 @@ class CourseMapRepository {
         }
     }
 
-    private record Row(int total, CourseMap.MapCourse course) {
+    private record Row(int total, CourseListItem course) {
     }
 
     /** @param cursor 이 코스 다음 쪽을 가리키는 커서 */

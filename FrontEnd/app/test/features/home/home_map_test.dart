@@ -17,15 +17,15 @@ import '../../fakes.dart';
 void main() {
   late FakeCourseApi courses;
 
-  const seongbukcheon = MapCourse(
+  final seongbukcheon = testCourse(
+    '성북천 벚꽃길 3K',
     courseId: 'c1',
-    name: '성북천 벚꽃길 3K',
-    route: [GeoPoint(37.5666, 126.9784), GeoPoint(37.5700, 126.9800)],
+    route: const [GeoPoint(37.5666, 126.9784), GeoPoint(37.5700, 126.9800)],
   );
-  const jeongneung = MapCourse(
+  final jeongneung = testCourse(
+    '정릉 오르막 4K',
     courseId: 'c2',
-    name: '정릉 오르막 4K',
-    route: [GeoPoint(37.5680, 126.9760), GeoPoint(37.5720, 126.9750)],
+    route: const [GeoPoint(37.5680, 126.9760), GeoPoint(37.5720, 126.9750)],
   );
   const seongbuk = RegionCount(code: '1129000000', name: '성북구', count: 1240, center: GeoPoint(37.5894, 127.0167));
   const mapo = RegionCount(code: '1144000000', name: '마포구', count: 3, center: GeoPoint(37.5663, 126.9019));
