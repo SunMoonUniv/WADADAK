@@ -8,6 +8,7 @@ import 'package:wadadak/core/api/region_api_client.dart';
 import 'package:wadadak/core/auth/social_login.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/map/map_view.dart';
+import 'package:wadadak/core/upload/photo_uploader.dart';
 import 'package:wadadak/features/home/home_screen.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
 import 'package:wadadak/main.dart';
@@ -18,6 +19,7 @@ void main() {
   late FakeMemberApi api;
   late MemoryTokenStorage storage;
   late FakeRunPermissions permissions;
+  late FakePhotoUploader uploader;
 
   Future<void> startApp(WidgetTester tester) async {
     tester.view
@@ -33,6 +35,7 @@ void main() {
         mapEngineProvider.overrideWithValue(MapEngine.dev),
         courseApiClientProvider.overrideWithValue(FakeCourseApi()),
         regionApiClientProvider.overrideWithValue(FakeRegionApi()),
+        photoUploaderProvider.overrideWithValue(uploader),
       ],
       child: const WadadakApp(),
     ));
@@ -68,6 +71,7 @@ void main() {
     api = FakeMemberApi();
     storage = MemoryTokenStorage();
     permissions = FakeRunPermissions();
+    uploader = FakePhotoUploader();
   });
 
   testWidgets('first login goes through consent, permissions and profile, then home', (tester) async {
@@ -103,8 +107,40 @@ void main() {
       'regionCode': '4420000000',
       'affiliation': null,
       'runningExperience': 'MONTHS_6',
+      'profileImageKey': null,
     });
     expect(storage.tokens?.refreshToken, testTokens.refreshToken);
+    expect(uploader.uploaded, isEmpty);
+  });
+
+  testWidgets('a picked profile photo is uploaded with the signup token and its key goes into the signup', (tester) async {
+    uploader.photo = testPhoto;
+    await startApp(tester);
+    await reachProfile(tester);
+
+    await tap(tester, find.bySemanticsLabel('프로필 사진 고르기'));
+    expect(find.text('사진 빼기'), findsOneWidget);
+    await fillProfile(tester, '사진러너');
+    await tap(tester, find.text('시작하기'));
+
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(uploader.uploaded, [testPhoto]);
+    expect(api.photoFormTokens, ['signup-token']);
+    expect(api.signedUp?['profileImageKey'], 'member/photo.jpg');
+  });
+
+  testWidgets('a removed profile photo is not uploaded', (tester) async {
+    uploader.photo = testPhoto;
+    await startApp(tester);
+    await reachProfile(tester);
+
+    await tap(tester, find.bySemanticsLabel('프로필 사진 고르기'));
+    await tap(tester, find.text('사진 빼기'));
+    await fillProfile(tester, '사진없음');
+    await tap(tester, find.text('시작하기'));
+
+    expect(uploader.uploaded, isEmpty);
+    expect(api.signedUp?['profileImageKey'], isNull);
   });
 
   testWidgets('cannot start until the nickname follows the rules', (tester) async {

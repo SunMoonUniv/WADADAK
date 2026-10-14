@@ -39,6 +39,8 @@ public class Member extends BaseEntity<UUID> {
     private String bio;
     private String regionCode;
     private String affiliation;
+    /** 사진 저장소 키({@code member/...}). 사진이 없으면 {@code null} */
+    private String profileImageKey;
 
     @Enumerated(EnumType.STRING)
     private RunningExperience runningExperience;
@@ -52,7 +54,7 @@ public class Member extends BaseEntity<UUID> {
 
     /** 가입. 약관 동의는 {@link Agreement}에 따로 남긴다. */
     public static Member join(SocialAccount account, String nickname, String bio, String regionCode,
-                              String affiliation, RunningExperience runningExperience) {
+                              String affiliation, RunningExperience runningExperience, String profileImageKey) {
         Member member = new Member();
         member.id = UuidV7.create();
         member.status = Status.ACTIVE;
@@ -63,6 +65,7 @@ public class Member extends BaseEntity<UUID> {
         member.regionCode = regionCode;
         member.affiliation = blankToNull(affiliation);
         member.runningExperience = runningExperience;
+        member.profileImageKey = profileImageKey;
         member.infoPublic = true;
         member.profileSearchable = true;
         return member;

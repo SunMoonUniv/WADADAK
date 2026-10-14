@@ -1,5 +1,8 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../../core/api/api_client.dart';
@@ -8,11 +11,11 @@ import '../../core/api/region_api_client.dart';
 import '../../core/auth/auth_controller.dart';
 import '../../core/error_message.dart';
 import '../../core/region_search.dart';
+import '../../core/upload/photo_uploader.dart';
 import 'consent_screen.dart';
 
 /// F2 · 프로필 초기 설정. "시작하기"를 누르면 동의 내용과 함께 가입한다.
-///
-/// 프로필 사진은 서버에 사진 업로드(ObjectStorage)가 생기면 추가한다.
+/// 프로필 사진은 선택이다. 고른 사진은 가입할 때 올린다.
 class ProfileSetupScreen extends ConsumerStatefulWidget {
   const ProfileSetupScreen({super.key});
 
@@ -30,6 +33,8 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   final _affiliation = TextEditingController();
   Region? _selectedRegion;
   RunningExperience? _experience;
+  XFile? _photo;
+  Uint8List? _photoBytes;
 
   /// 서버가 알려 준 닉네임 오류(중복).
   String? _nicknameError;
@@ -67,6 +72,22 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
     }
   }
 
+  Future<void> _pickPhoto() async {
+    try {
+      final picked = await ref.read(photoUploaderProvider).pick();
+      if (picked.isEmpty) return;
+      final bytes = await picked.single.readAsBytes();
+      if (mounted) {
+        setState(() {
+          _photo = picked.single;
+          _photoBytes = bytes;
+        });
+      }
+    } catch (e) {
+      if (mounted) showError(context, e);
+    }
+  }
+
   Future<void> _submit() async {
     setState(() {
       _submitting = true;
@@ -80,6 +101,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
             regionCode: _selectedRegion!.code,
             affiliation: _blankToNull(_affiliation.text),
             runningExperience: _experience!,
+            photo: _photo,
           );
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -118,6 +140,36 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             spacing: WdSpace.s16,
             children: [
+              // 원을 누르면 고르고(다시 누르면 바꾸고), 고른 뒤에는 아래 글자로 뺀다.
+              Center(
+                child: Semantics(
+                  button: true,
+                  label: '프로필 사진 고르기',
+                  excludeSemantics: true,
+                  child: GestureDetector(
+                    onTap: _submitting ? null : _pickPhoto,
+                    child: ClipOval(
+                      child: SizedBox.square(
+                        dimension: 84,
+                        child: _photoBytes != null
+                            ? Image.memory(_photoBytes!, fit: BoxFit.cover)
+                            : ColoredBox(
+                                color: WdColors.soft,
+                                child: Center(child: Text('＋', style: WdText.raw(28, FontWeight.w300).copyWith(color: WdColors.ink))),
+                              ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Center(
+                child: _photo == null
+                    ? Text('프로필 사진 추가', style: helper.copyWith(color: WdColors.green))
+                    : GestureDetector(
+                        onTap: _submitting ? null : () => setState(() => _photo = _photoBytes = null),
+                        child: Text('사진 빼기', style: helper.copyWith(color: WdColors.green)),
+                      ),
+              ),
               Text('닉네임', style: label),
               WdTextField(
                 soft: true,

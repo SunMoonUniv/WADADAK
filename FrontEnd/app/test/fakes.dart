@@ -1,12 +1,16 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:wadadak/core/api/api_client.dart';
 import 'package:wadadak/core/api/course_api_client.dart';
 import 'package:wadadak/core/api/member_api_client.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:wadadak/core/api/region_api_client.dart';
+import 'package:wadadak/core/api/upload_form.dart';
 import 'package:wadadak/core/auth/social_login.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/map/geo_point.dart';
+import 'package:wadadak/core/upload/photo_uploader.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
 
 const testTokens = AuthTokens(accessToken: 'access', refreshToken: 'refresh');
@@ -32,6 +36,9 @@ class FakeMemberApi implements MemberApiClient {
   Map<String, Object?>? signedUp;
   int logouts = 0;
 
+  /// 프로필 사진 업로드 폼을 받을 때 보낸 가입 토큰
+  final photoFormTokens = <String>[];
+
   @override
   Future<LoginResult> login(SocialProvider provider, String socialToken) async => loginResult;
 
@@ -44,6 +51,7 @@ class FakeMemberApi implements MemberApiClient {
     required String regionCode,
     required String? affiliation,
     required RunningExperience runningExperience,
+    required String? profileImageKey,
   }) async {
     if (signupError != null) throw signupError!;
     signedUp = {
@@ -54,8 +62,15 @@ class FakeMemberApi implements MemberApiClient {
       'regionCode': regionCode,
       'affiliation': affiliation,
       'runningExperience': runningExperience.apiName,
+      'profileImageKey': profileImageKey,
     };
     return testTokens;
+  }
+
+  @override
+  Future<UploadForm> signupPhotoUploadForm(String signupToken) async {
+    photoFormTokens.add(signupToken);
+    return UploadForm.fromJson({'url': 'https://files.test/wadadak', 'key': 'member/photo.jpg', 'fields': <String, String>{}});
   }
 
   @override
@@ -63,6 +78,27 @@ class FakeMemberApi implements MemberApiClient {
 
   @override
   Future<void> logout(String refreshToken) async => logouts++;
+}
+
+/// 1×1 PNG. 미리보기가 그림으로 읽을 수 있는 사진이다.
+final testPhoto = XFile.fromData(
+  base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='),
+  name: 'me.png',
+);
+
+/// 고르면 [photo] 한 장. 올리면 서버 업로드 폼을 받아 그 키를 돌려준다(저장소에는 보내지 않는다).
+class FakePhotoUploader implements PhotoUploader {
+  XFile? photo;
+  final uploaded = <XFile>[];
+
+  @override
+  Future<List<XFile>> pick({int limit = 1}) async => [?photo];
+
+  @override
+  Future<String> upload(XFile photo, Future<UploadForm> Function() requestForm) async {
+    uploaded.add(photo);
+    return (await requestForm()).key;
+  }
 }
 
 class FakeSocialLogin implements SocialLogin {

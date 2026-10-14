@@ -6,33 +6,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../api/api_client.dart';
-
-/// 사진을 어디에 쓰는지. 업로드 폼을 주는 API가 모듈마다 다르다(키 앞부분이 모듈).
-enum PhotoUse {
-  review('/api/v1/reviews/photo-uploads');
-
-  const PhotoUse(this.formPath);
-
-  final String formPath;
-}
-
-/// 서버가 준 업로드 폼(S3 Presigned POST). [fields]를 모두 넣고 파일을 마지막에 붙여 [url]에 POST한다.
-class UploadForm {
-  UploadForm.fromJson(Map<dynamic, dynamic> json)
-      : url = json['url'] as String,
-        key = json['key'] as String,
-        fields = Map<String, String>.from(json['fields'] as Map);
-
-  final String url;
-  final String key;
-  final Map<String, String> fields;
-}
+import '../api/upload_form.dart';
 
 /// 사진 업로드(개발 정책 7장): 고르기 → JPEG 변환(긴 변 2048px · 품질 85 · EXIF 제거) → 업로드 폼 → 저장소에 직접 POST → 키.
-/// 키를 리뷰 · 프로필 저장 요청에 담는다.
+/// 키를 가입 · 리뷰 저장 요청에 담는다.
 class PhotoUploader {
   PhotoUploader({
-    required this._api,
     Dio? storage,
     ImagePicker? picker,
     Future<Uint8List> Function(String path)? toJpeg,
@@ -42,7 +21,6 @@ class PhotoUploader {
 
   static const maxSide = 2048.0;
 
-  final Dio _api;
   final Dio _storage;
   final ImagePicker _picker;
   final Future<Uint8List> Function(String path) _toJpeg;
@@ -53,10 +31,10 @@ class PhotoUploader {
       ? [?await _picker.pickImage(source: ImageSource.gallery, maxWidth: maxSide, maxHeight: maxSide, requestFullMetadata: false)]
       : await _picker.pickMultiImage(maxWidth: maxSide, maxHeight: maxSide, limit: limit, requestFullMetadata: false);
 
-  /// 사진 한 장을 올리고 키를 돌려준다.
-  Future<String> upload(XFile photo, PhotoUse use) async {
+  /// 사진 한 장을 올리고 키를 돌려준다. [requestForm]은 키를 저장할 모듈의 업로드 폼 API다.
+  Future<String> upload(XFile photo, Future<UploadForm> Function() requestForm) async {
     final jpeg = await _toJpeg(photo.path);
-    final form = UploadForm.fromJson(await callApi(() => _api.post(use.formPath)) as Map);
+    final form = await requestForm();
     try {
       await _storage.post<void>(
         form.url,
@@ -86,4 +64,4 @@ class PhotoUploader {
   }
 }
 
-final photoUploaderProvider = Provider<PhotoUploader>((ref) => PhotoUploader(api: ref.watch(dioProvider)));
+final photoUploaderProvider = Provider<PhotoUploader>((ref) => PhotoUploader());

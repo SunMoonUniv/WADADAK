@@ -1,6 +1,7 @@
 package com.wadadak.member.internal.account;
 
 import com.wadadak.common.exception.AppException;
+import com.wadadak.common.storage.ObjectStorage;
 import com.wadadak.member.MemberApi;
 import com.wadadak.member.MemberErrorCode;
 import com.wadadak.member.MemberProfile;
@@ -19,6 +20,7 @@ import java.util.UUID;
 class MemberService implements MemberApi {
 
     private final MemberRepository memberRepository;
+    private final ObjectStorage storage;
 
     @Override
     @Transactional(readOnly = true)
@@ -26,11 +28,11 @@ class MemberService implements MemberApi {
         if (memberIds.size() > MAX_IDS) {
             throw new AppException(MemberErrorCode.TOO_MANY_MEMBER_IDS);
         }
-        // ponytail: 프로필 사진 URL은 업로드(ObjectStorage) 기능과 함께 채운다.
         return memberRepository.findAllById(memberIds).stream()
                 .map(m -> m.isWithdrawn()
                         ? new MemberProfile(m.getId(), MemberProfile.WITHDRAWN_NICKNAME, null, true)
-                        : new MemberProfile(m.getId(), m.getNickname(), null, false))
+                        : new MemberProfile(m.getId(), m.getNickname(),
+                                m.getProfileImageKey() == null ? null : storage.url(m.getProfileImageKey()), false))
                 .toList();
     }
 }

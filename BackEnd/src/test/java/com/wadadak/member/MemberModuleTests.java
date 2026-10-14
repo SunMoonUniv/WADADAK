@@ -3,7 +3,10 @@ package com.wadadak.member;
 import com.nimbusds.jwt.SignedJWT;
 import com.wadadak.TestcontainersConfiguration;
 import com.wadadak.common.exception.AppException;
+import com.wadadak.common.storage.ObjectStorage;
+import com.wadadak.common.storage.UploadForm;
 import com.wadadak.event.member.MemberRegionChangedEvent;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -14,12 +17,15 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.modulith.test.AssertablePublishedEvents;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -27,6 +33,8 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.BDDMockito.given;
 
 /**
  * member 단독 기동(다른 도메인 모듈 없이). 분리 가능성의 직접 증거다(개발 정책 10.6).
@@ -49,6 +57,20 @@ class MemberModuleTests {
 
     @Autowired
     JdbcTemplate jdbcTemplate;
+
+    /** 저장소는 흉내만 낸다. 실제 업로드는 ObjectStorageTest가 확인한다. */
+    @MockitoBean
+    ObjectStorage storage;
+
+    /** 저장소에 올라와 있는 사진 키 */
+    final Set<String> uploaded = new HashSet<>();
+
+    @BeforeEach
+    void storage() {
+        given(storage.isUploadedPhoto(anyString(), anyString()))
+                .willAnswer(call -> call.getArgument(0).equals("member") && uploaded.contains(call.<String>getArgument(1)));
+        given(storage.url(anyString())).willAnswer(call -> "https://files.test/wadadak/" + call.getArgument(0));
+    }
 
     @Test
     void signupThenLoginThenRefresh(AssertablePublishedEvents events) throws Exception {
@@ -134,6 +156,44 @@ class MemberModuleTests {
     }
 
     @Test
+    void signsUpWithProfilePhoto() throws Exception {
+        String signupToken = data(post("/login", login("kakao-photo"))).get("signupToken").asString();
+        given(storage.photoUploadForm("member"))
+                .willReturn(new UploadForm("https://files.test/wadadak", "member/form.jpg", Map.of("policy", "p")));
+
+        // 로그인 전이라 가입 토큰으로 업로드 폼을 받는다
+        assertThat(post("/photo-uploads", "{\"signupToken\": \"%s\"}".formatted(signupToken)))
+                .hasStatusOk().bodyJson().extractingPath("$.data.key").isEqualTo("member/form.jpg");
+        assertThat(post("/photo-uploads", "{\"signupToken\": \"broken\"}"))
+                .hasStatus(HttpStatus.UNAUTHORIZED).bodyJson().extractingPath("$.code").isEqualTo("MEMBER-003");
+
+        String photo = uploadedPhoto();
+        String accessToken = data(post("/signup", signup(signupToken, "사진러너", true, "1129000000", photo)))
+                .get("accessToken").asString();
+        UUID memberId = UUID.fromString(SignedJWT.parse(accessToken).getJWTClaimsSet().getSubject());
+
+        assertThat(memberApi.getProfiles(Set.of(memberId)))
+                .containsExactly(new MemberProfile(memberId, "사진러너", "https://files.test/wadadak/" + photo, false));
+    }
+
+    @Test
+    void rejectsMissingOtherModuleOrTakenProfilePhoto() throws Exception {
+        String taken = uploadedPhoto();
+        data(post("/signup", signup(data(post("/login", login("kakao-photo-owner"))).get("signupToken").asString(),
+                "사진주인", true, "1129000000", taken)));
+        String signupToken = data(post("/login", login("kakao-photo-borrower"))).get("signupToken").asString();
+
+        // 올라오지 않은 키, 리뷰 사진 키, 남이 쓰는 키
+        for (String photo : List.of("member/" + UUID.randomUUID() + ".jpg", "review/" + UUID.randomUUID() + ".jpg", taken)) {
+            assertThat(post("/signup", signup(signupToken, "빌린사진", true, "1129000000", photo)))
+                    .hasStatus(HttpStatus.BAD_REQUEST)
+                    .bodyJson().extractingPath("$.code").isEqualTo("MEMBER-008");
+        }
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM member.members WHERE social_id = 'kakao-photo-borrower'", Integer.class)).isZero();
+    }
+
+    @Test
     void requiresAllMandatoryAgreements() throws Exception {
         String signupToken = data(post("/login", login("kakao-terms"))).get("signupToken").asString();
 
@@ -186,6 +246,10 @@ class MemberModuleTests {
     }
 
     private static String signup(String signupToken, String nickname, boolean agreeAll, String regionCode) {
+        return signup(signupToken, nickname, agreeAll, regionCode, null);
+    }
+
+    private static String signup(String signupToken, String nickname, boolean agreeAll, String regionCode, String photo) {
         return """
                 {
                   "signupToken": "%s",
@@ -194,7 +258,15 @@ class MemberModuleTests {
                   "nickname": "%s",
                   "regionCode": "%s",
                   "affiliation": "선문대학교",
-                  "runningExperience": "MONTHS_6"
-                }""".formatted(signupToken, agreeAll, nickname, regionCode);
+                  "runningExperience": "MONTHS_6",
+                  "profileImageKey": %s
+                }""".formatted(signupToken, agreeAll, nickname, regionCode, photo == null ? "null" : "\"" + photo + "\"");
+    }
+
+    /** 저장소에 올라온 프로필 사진 키 하나 */
+    private String uploadedPhoto() {
+        String key = "member/" + UUID.randomUUID() + ".jpg";
+        uploaded.add(key);
+        return key;
     }
 }

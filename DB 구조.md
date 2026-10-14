@@ -73,6 +73,7 @@ erDiagram
         varchar(50) bio
         varchar(10) region_code "활동 지역(시·군·구)"
         varchar(30) affiliation
+        varchar(100) profile_image_key UK "member/..."
         varchar(20) running_experience
         boolean info_public
         boolean profile_searchable
@@ -217,6 +218,7 @@ erDiagram
 | `bio` | `VARCHAR(50)` | O | 한 줄 소개 |
 | `region_code` | `VARCHAR(10)` | | 활동 지역(시·군·구) 법정동 코드. FK가 없어 가입할 때 `common.region`의 시·군·구인지 확인한다 |
 | `affiliation` | `VARCHAR(30)` | O | 소속(학교·회사·크루) |
+| `profile_image_key` | `VARCHAR(100)` | O | 프로필 사진의 저장소 키. `member/`로 시작한다(개발 정책 7장 사진 업로드). 사진이 없으면 NULL. 탈퇴하면 비우고 파일도 지운다 |
 | `running_experience` | `VARCHAR(20)` | | `BEGINNER`, `MONTHS_6`, `YEAR_1`, `YEAR_3` |
 | `info_public` | `BOOLEAN` | | 정보 공개. 기본 `true` |
 | `profile_searchable` | `BOOLEAN` | | 프로필 검색 허용. 기본 `true` |
@@ -225,6 +227,7 @@ erDiagram
 
 - `members_social_uk`: `UNIQUE (social_provider, social_id)`. 로그인할 때 소셜 계정으로 회원을 찾는다.
 - `members_nickname_uk`: `UNIQUE (lower(nickname))`. 대소문자만 다른 닉네임도 중복으로 본다.
+- `members_profile_image_key_uk`: `UNIQUE (profile_image_key)`. 사진 주소에 키가 보이므로, 남의 키를 가져다 쓰면 그 회원이 사진을 바꾸거나 탈퇴할 때 원래 파일이 지워진다. 그래서 키 하나는 회원 하나만 쓴다(MEMBER-008).
 - 탈퇴 처리와 공개·검색 설정을 바꾸는 기능은 아직 없다. 지금은 가입할 때의 기본값만 들어간다.
 
 #### `member.agreements` — 약관 동의 이력

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/token_storage.dart';
 import 'api_client.dart';
+import 'upload_form.dart';
 
 enum SocialProvider { kakao, google, apple }
 
@@ -101,6 +102,7 @@ class MemberApiClient {
     required String regionCode,
     required String? affiliation,
     required RunningExperience runningExperience,
+    required String? profileImageKey,
   }) async {
     final data = await callApi(() => _publicDio.post('$_auth/signup', data: {
           'signupToken': signupToken,
@@ -110,9 +112,14 @@ class MemberApiClient {
           'regionCode': regionCode,
           'affiliation': affiliation,
           'runningExperience': runningExperience.apiName,
+          'profileImageKey': profileImageKey,
         }));
     return AuthTokens.fromJson(data as Map);
   }
+
+  /// 가입 전 프로필 사진 업로드 폼. 로그인 전이라 가입 토큰으로 받는다(만료 MEMBER-003).
+  Future<UploadForm> signupPhotoUploadForm(String signupToken) async =>
+      UploadForm.fromJson(await callApi(() => _publicDio.post('$_auth/photo-uploads', data: {'signupToken': signupToken})) as Map);
 
   /// 보낸 리프레시 토큰은 폐기되고 새 토큰을 받는다. 같은 토큰을 다시 쓰면 MEMBER-004.
   Future<AuthTokens> refresh(String refreshToken) async {
