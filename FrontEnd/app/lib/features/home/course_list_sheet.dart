@@ -72,6 +72,9 @@ class CourseListSheet extends ConsumerStatefulWidget {
 }
 
 class _CourseListSheetState extends ConsumerState<CourseListSheet> {
+  /// 정렬 칩 30 + 아래 12.
+  static const _chipRowHeight = 30.0 + WdSpace.s12;
+
   /// 남은 스크롤이 이보다 짧으면 다음 쪽을 받는다.
   static const _loadMoreExtent = 400.0;
 
@@ -175,11 +178,24 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
         child: CustomScrollView(
           controller: widget.scrollController,
           slivers: [
-            SliverToBoxAdapter(child: _header()),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(WdSpace.s16, 0, WdSpace.s16, WdSpace.s12),
-                child: Row(children: [WdFilterChip('최신순', selected: true, onTap: () {})]),
+            // 제목 줄 · 정렬 칩은 목록을 내려도 위에 남는다. 카드는 그 밑으로 지나간다.
+            SliverPersistentHeader(
+              pinned: true,
+              delegate: _PinnedHeader(
+                extent: CourseListSheet.peekHeight + _chipRowHeight,
+                child: ColoredBox(
+                  color: WdColors.paper,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      _header(),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(WdSpace.s16, 0, WdSpace.s16, WdSpace.s12),
+                        child: Row(children: [WdFilterChip('최신순', selected: true, onTap: () {})]),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
             if (courses == null && _failed)
@@ -300,4 +316,24 @@ class _Loading extends StatelessWidget {
         padding: EdgeInsets.all(WdSpace.s24),
         child: Center(child: SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2))),
       );
+}
+
+/// 목록을 내려도 위에 남는 머리.
+class _PinnedHeader extends SliverPersistentHeaderDelegate {
+  _PinnedHeader({required this.extent, required this.child});
+
+  final double extent;
+  final Widget child;
+
+  @override
+  double get minExtent => extent;
+
+  @override
+  double get maxExtent => extent;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) => child;
+
+  @override
+  bool shouldRebuild(_PinnedHeader oldDelegate) => true;
 }

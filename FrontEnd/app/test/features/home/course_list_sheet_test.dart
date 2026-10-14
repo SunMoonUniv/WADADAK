@@ -126,6 +126,9 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(courses.listRequests.map((request) => request.cursor), [null, '5']);
+    // 끝까지 내려도 제목 줄 · 정렬 칩은 위에 남는다.
+    expect(sheetTitle('지금 달리기 좋은 코스').hitTestable(), findsOneWidget);
+    expect(find.widgetWithText(WdFilterChip, '최신순').hitTestable(), findsOneWidget);
     final names = [for (final card in tester.widgetList<CourseListCard>(find.byType(CourseListCard))) card.course.name];
     expect(names.last, '코스 8');
     expect(names.toSet(), hasLength(names.length), reason: '같은 코스가 두 번 나오지 않는다');
