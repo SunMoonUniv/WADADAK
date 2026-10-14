@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:image_picker/image_picker.dart';
 
 import '../api/api_client.dart';
 import '../api/member_api_client.dart';
+import '../upload/photo_uploader.dart';
 import 'social_login.dart';
 import 'token_storage.dart';
 
@@ -55,6 +57,7 @@ class AuthController extends AsyncNotifier<AuthState> {
   }
 
   /// 소셜 정보 동의 + 프로필 초기 설정으로 가입한다. 실패하면 [ApiException]을 던진다.
+  /// [photo]가 있으면 가입 토큰으로 먼저 올리고 그 키로 가입한다.
   Future<void> signup({
     required Agreements agreements,
     required String nickname,
@@ -62,20 +65,24 @@ class AuthController extends AsyncNotifier<AuthState> {
     required String regionCode,
     required String? affiliation,
     required RunningExperience runningExperience,
+    XFile? photo,
   }) async {
     final current = state.value;
     if (current is! SignupRequired) throw StateError('가입 토큰이 없습니다');
-    final tokens = await ref
-        .read(memberApiClientProvider)
-        .signup(
-          signupToken: current.signupToken,
-          agreements: agreements,
-          nickname: nickname,
-          bio: bio,
-          regionCode: regionCode,
-          affiliation: affiliation,
-          runningExperience: runningExperience,
-        );
+    final api = ref.read(memberApiClientProvider);
+    final profileImageKey = photo == null
+        ? null
+        : await ref.read(photoUploaderProvider).upload(photo, () => api.signupPhotoUploadForm(current.signupToken));
+    final tokens = await api.signup(
+      signupToken: current.signupToken,
+      agreements: agreements,
+      nickname: nickname,
+      bio: bio,
+      regionCode: regionCode,
+      affiliation: affiliation,
+      runningExperience: runningExperience,
+      profileImageKey: profileImageKey,
+    );
     await _signedIn(tokens);
   }
 
