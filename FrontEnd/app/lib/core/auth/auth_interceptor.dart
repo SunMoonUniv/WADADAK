@@ -26,30 +26,64 @@ class AuthInterceptor extends QueuedInterceptor {
   final void Function() onSessionExpired;
 
   @override
-  Future<void> onRequest(RequestOptions options, RequestInterceptorHandler handler) async {
+  Future<void> onRequest(
+    RequestOptions options,
+    RequestInterceptorHandler handler,
+  ) async {
     final tokens = await storage.read();
+    if (!_sameOwner(options, tokens)) {
+      handler.reject(
+        DioException(
+          requestOptions: options,
+          error: const ApiException(
+            'RUN_ACCOUNT_CHANGED',
+            '원래 계정으로 로그인하면 기록을 전송할 수 있어요.',
+          ),
+        ),
+      );
+      return;
+    }
     if (tokens != null) options.headers['Authorization'] = _bearer(tokens);
     handler.next(options);
   }
 
   @override
-  Future<void> onError(DioException err, ErrorInterceptorHandler handler) async {
+  Future<void> onError(
+    DioException err,
+    ErrorInterceptorHandler handler,
+  ) async {
     final current = await storage.read();
     if (err.response?.statusCode != 401 || current == null) {
       handler.next(err);
       return;
     }
     final options = err.requestOptions;
+    if (!_sameOwner(options, current)) {
+      handler.next(err);
+      return;
+    }
     try {
       var tokens = current;
       if (options.headers['Authorization'] == _bearer(current)) {
         tokens = await refresh(current.refreshToken);
+        if ((await storage.read())?.refreshToken != current.refreshToken) {
+          handler.next(err);
+          return;
+        }
         await storage.write(tokens);
+      }
+      if (!_sameOwner(options, tokens)) {
+        handler.next(err);
+        return;
       }
       options.headers['Authorization'] = _bearer(tokens);
       handler.resolve(await retryDio.fetch(options));
     } on ApiException catch (e) {
       if (e.code == 'MEMBER-004') {
+        if ((await storage.read())?.refreshToken != current.refreshToken) {
+          handler.next(err);
+          return;
+        }
         await storage.clear();
         onSessionExpired();
       }
@@ -60,4 +94,7 @@ class AuthInterceptor extends QueuedInterceptor {
   }
 
   static String _bearer(AuthTokens tokens) => 'Bearer ${tokens.accessToken}';
+  static bool _sameOwner(RequestOptions options, AuthTokens? tokens) =>
+      options.extra['runOwner'] == null ||
+      options.extra['runOwner'] == tokens?.memberId;
 }

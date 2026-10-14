@@ -1,14 +1,32 @@
+import 'dart:convert';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class AuthTokens {
   const AuthTokens({required this.accessToken, required this.refreshToken});
 
-  factory AuthTokens.fromJson(Map json) =>
-      AuthTokens(accessToken: json['accessToken'] as String, refreshToken: json['refreshToken'] as String);
+  factory AuthTokens.fromJson(Map json) => AuthTokens(
+    accessToken: json['accessToken'] as String,
+    refreshToken: json['refreshToken'] as String,
+  );
 
   final String accessToken;
   final String refreshToken;
+
+  /// Local ownership partition only; the server verifies the JWT itself.
+  String? get memberId {
+    try {
+      final payload = jsonDecode(
+        utf8.decode(
+          base64Url.decode(base64Url.normalize(accessToken.split('.')[1])),
+        ),
+      );
+      return payload['sub'] as String?;
+    } on Object {
+      return null;
+    }
+  }
 }
 
 /// 토큰은 기기 보안 저장소(iOS Keychain · Android Keystore)에만 둔다.
@@ -27,7 +45,9 @@ class TokenStorage {
     if (!_loaded) {
       final access = await _storage.read(key: _accessKey);
       final refresh = await _storage.read(key: _refreshKey);
-      _cached = access == null || refresh == null ? null : AuthTokens(accessToken: access, refreshToken: refresh);
+      _cached = access == null || refresh == null
+          ? null
+          : AuthTokens(accessToken: access, refreshToken: refresh);
       _loaded = true;
     }
     return _cached;

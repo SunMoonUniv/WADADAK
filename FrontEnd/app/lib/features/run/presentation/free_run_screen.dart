@@ -23,19 +23,27 @@ class FreeRunScreen extends ConsumerWidget {
       builder: (context, _) {
         final run = controller.snapshot;
         final dark =
-            controller.countdown != null ||
+            controller.preparing ||
             run.state == RunState.running ||
             run.state == RunState.paused;
         return AnnotatedRegion<SystemUiOverlayStyle>(
           value: dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
-          child: controller.countdown != null
+          child: controller.preparing
               ? _Countdown(
-                  value: controller.countdown!,
-                  onCancel: controller.cancelStart,
+                  value: controller.countdown,
+                  gpsStatus: controller.gpsStatus,
+                  onCancel: controller.canCancelStart
+                      ? controller.cancelStart
+                      : null,
                 )
               : switch (run.state) {
                   RunState.ready => _Preparation(
                     onStart: controller.prepareStart,
+                    error: controller.error,
+                    onSettings: controller.hasSettingsAction
+                        ? controller.openSettings
+                        : null,
+                    recent: controller.recent,
                   ),
                   RunState.finished => FreeRunResultView(
                     run: run,
@@ -43,9 +51,13 @@ class FreeRunScreen extends ConsumerWidget {
                   ),
                   _ => FreeRunLiveView(
                     run: run,
-                    onPause: controller.pause,
-                    onResume: controller.resume,
-                    onStop: () => _confirmStop(context, controller),
+                    onPause: controller.storageFault ? null : controller.pause,
+                    onResume: controller.storageFault
+                        ? null
+                        : controller.resume,
+                    onStop: controller.storageFault
+                        ? null
+                        : () => _confirmStop(context, controller),
                   ),
                 },
         );
@@ -57,50 +69,55 @@ class FreeRunScreen extends ConsumerWidget {
     BuildContext context,
     FreeRunController controller,
   ) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => Dialog(
-        backgroundColor: WdColors.paper,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(WdRadius.r20),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.all(WdSpace.s24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text('러닝을 종료할까요?', style: WdText.ko20Bold),
-              const SizedBox(height: WdSpace.s12),
-              Text(
-                '이번 러닝의 결과를 확인할 수 있어요.',
-                style: WdText.ko13.copyWith(color: WdColors.muted),
-              ),
-              const SizedBox(height: WdSpace.s24),
-              Row(
-                spacing: WdSpace.s8,
-                children: [
-                  Expanded(
-                    child: WdButton(
-                      '취소',
-                      variant: WdButtonVariant.secondary,
-                      onPressed: () => Navigator.pop(context, false),
+    controller.setEndConfirmation(true);
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => Dialog(
+          backgroundColor: WdColors.paper,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(WdRadius.r20),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(WdSpace.s24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text('러닝을 종료할까요?', style: WdText.ko20Bold),
+                const SizedBox(height: WdSpace.s12),
+                Text(
+                  '이번 러닝의 결과를 확인할 수 있어요.',
+                  style: WdText.ko13.copyWith(color: WdColors.muted),
+                ),
+                const SizedBox(height: WdSpace.s24),
+                Row(
+                  spacing: WdSpace.s8,
+                  children: [
+                    Expanded(
+                      child: WdButton(
+                        '취소',
+                        variant: WdButtonVariant.secondary,
+                        onPressed: () => Navigator.pop(context, false),
+                      ),
                     ),
-                  ),
-                  Expanded(
-                    child: WdButton(
-                      '종료',
-                      onPressed: () => Navigator.pop(context, true),
+                    Expanded(
+                      child: WdButton(
+                        '종료',
+                        onPressed: () => Navigator.pop(context, true),
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ],
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
-      ),
-    );
-    if (confirmed == true && context.mounted) controller.finish();
+      );
+      if (confirmed == true && context.mounted) await controller.finish();
+    } finally {
+      controller.setEndConfirmation(false);
+    }
   }
 }
 
@@ -111,8 +128,16 @@ void _notReady(BuildContext context, String feature) {
 
 /// Figma 1453:4123 — 준비 화면. 실제 기록 조회 연결 전에는 빈 최근 기록을 표시한다.
 class _Preparation extends StatelessWidget {
-  const _Preparation({required this.onStart});
+  const _Preparation({
+    required this.onStart,
+    this.error,
+    this.onSettings,
+    this.recent,
+  });
   final VoidCallback onStart;
+  final String? error;
+  final VoidCallback? onSettings;
+  final RunSnapshot? recent;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -150,6 +175,12 @@ class _Preparation extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
+                        if (error != null) ...[
+                          WdInfoBanner(error!, tone: WdBannerTone.warning),
+                          if (onSettings != null)
+                            WdButton('위치 설정 열기', onPressed: onSettings),
+                          const SizedBox(height: WdSpace.s12),
+                        ],
                         Text('오늘은, 발길이 닿는 대로.', style: WdText.ko22Bold),
                         const SizedBox(height: WdSpace.s4),
                         Text(
@@ -245,7 +276,9 @@ class _Preparation extends StatelessWidget {
                               ),
                               const SizedBox(height: WdSpace.s14),
                               Text(
-                                '아직 기록이 없어요',
+                                recent == null
+                                    ? '아직 기록이 없어요'
+                                    : '${(recent!.distanceMeters / 1000).toStringAsFixed(2)} km',
                                 style: WdText.ko22Bold.copyWith(
                                   color: WdColors.white,
                                 ),
@@ -257,7 +290,9 @@ class _Preparation extends StatelessWidget {
                               ),
                               const SizedBox(height: WdSpace.s14),
                               Text(
-                                '첫 자유 러닝을 시작해 보세요.',
+                                recent == null
+                                    ? '첫 자유 러닝을 시작해 보세요.'
+                                    : '총 소요 ${formatRunTime(recent!.elapsed)} · 기기 저장 완료',
                                 style: WdText.ko12.copyWith(
                                   color: WdColors.grayLight,
                                 ),
@@ -273,7 +308,7 @@ class _Preparation extends StatelessWidget {
                             const WdIcon(WdIcons.ghostInfo, size: 18),
                             Expanded(
                               child: Text(
-                                '현재 기록은 앱을 종료하면 사라져요.',
+                                '러닝 기록은 이 기기에 자동으로 저장돼요.',
                                 style: WdText.ko12.copyWith(
                                   color: WdColors.muted,
                                 ),
@@ -285,7 +320,7 @@ class _Preparation extends StatelessWidget {
                         const Spacer(),
                         Center(
                           child: Text(
-                            'GPS · 케이던스 미연결',
+                            'GPS 확인 후 측정 · 케이던스 준비 중',
                             style: WdText.ko12.copyWith(color: WdColors.muted),
                           ),
                         ),
@@ -313,9 +348,14 @@ class _Preparation extends StatelessWidget {
 
 /// Figma 1453:4617 — 3초 카운트다운. OS 상태바는 SafeArea로 처리한다.
 class _Countdown extends StatelessWidget {
-  const _Countdown({required this.value, required this.onCancel});
-  final int value;
-  final VoidCallback onCancel;
+  const _Countdown({
+    required this.value,
+    required this.onCancel,
+    required this.gpsStatus,
+  });
+  final int? value;
+  final VoidCallback? onCancel;
+  final String gpsStatus;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -353,19 +393,29 @@ class _Countdown extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          '곧 출발해요',
+                          value == null ? 'GPS 신호를 확인하고 있어요' : '곧 출발해요',
                           style: WdText.ko22Bold.copyWith(
                             color: WdColors.white,
                           ),
                         ),
-                        Text(
-                          '$value',
-                          style: WdText.raw(
-                            180,
-                            FontWeight.w800,
-                            207,
-                          ).copyWith(color: WdColors.lime),
-                        ),
+                        if (value == null)
+                          const SizedBox(
+                            height: 100,
+                            child: Center(
+                              child: CircularProgressIndicator(
+                                color: WdColors.lime,
+                              ),
+                            ),
+                          )
+                        else
+                          Text(
+                            '$value',
+                            style: WdText.raw(
+                              180,
+                              FontWeight.w800,
+                              207,
+                            ).copyWith(color: WdColors.lime),
+                          ),
                         Text(
                           '나의 기록을 넘어서는 한 걸음.',
                           style: WdText.raw(
@@ -386,7 +436,7 @@ class _Countdown extends StatelessWidget {
             child: Column(
               spacing: WdSpace.s12,
               children: [
-                const WdSensorStatus([('GPS 신호', '미연결'), ('케이던스 센서', '미연결')]),
+                WdSensorStatus([('GPS 신호', gpsStatus), ('케이던스 센서', '준비 중')]),
                 WdButton(
                   '시작 취소',
                   onPressed: onCancel,

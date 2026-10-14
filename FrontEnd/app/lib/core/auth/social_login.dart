@@ -29,7 +29,10 @@ class DevSocialLogin implements SocialLogin {
     var id = await _storage.read(key: _key);
     if (id == null) {
       final random = Random.secure();
-      id = List.generate(6, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join();
+      id = List.generate(
+        6,
+        (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0'),
+      ).join();
       await _storage.write(key: _key, value: id);
     }
     return 'dev-${provider.name}-$id';
@@ -45,11 +48,11 @@ class SocialLoginCanceled implements Exception {
 class SdkSocialLogin implements SocialLogin {
   @override
   Future<String> signIn(SocialProvider provider) async => switch (provider) {
-        SocialProvider.kakao => await _kakao(),
-        SocialProvider.google => await _google(),
-        // ponytail: Apple 로그인은 iOS 출시(Apple Developer Program 가입) 때 붙인다(개발 정책 1.2).
-        SocialProvider.apple => throw UnsupportedError('apple 로그인은 아직 연결하지 않았습니다'),
-      };
+    SocialProvider.kakao => await _kakao(),
+    SocialProvider.google => await _google(),
+    // ponytail: Apple 로그인은 iOS 출시(Apple Developer Program 가입) 때 붙인다(개발 정책 1.2).
+    SocialProvider.apple => throw UnsupportedError('apple 로그인은 아직 연결하지 않았습니다'),
+  };
 
   /// GoogleSignIn.initialize는 앱 실행 중 한 번만 호출해야 한다.
   static Future<void>? _googleInit;
@@ -58,7 +61,9 @@ class SdkSocialLogin implements SocialLogin {
   Future<String> _google() async {
     final google = GoogleSignIn.instance;
     await (_googleInit ??= google.initialize(
-      clientId: defaultTargetPlatform == TargetPlatform.iOS ? googleIosClientId : null,
+      clientId: defaultTargetPlatform == TargetPlatform.iOS
+          ? googleIosClientId
+          : null,
       serverClientId: googleServerClientId,
     ));
     try {
@@ -66,7 +71,9 @@ class SdkSocialLogin implements SocialLogin {
       if (idToken == null) throw StateError('Google ID 토큰을 받지 못했습니다');
       return idToken;
     } on GoogleSignInException catch (e) {
-      if (e.code == GoogleSignInExceptionCode.canceled) throw const SocialLoginCanceled();
+      if (e.code == GoogleSignInExceptionCode.canceled) {
+        throw const SocialLoginCanceled();
+      }
       rethrow;
     }
   }
@@ -76,7 +83,8 @@ class SdkSocialLogin implements SocialLogin {
     try {
       if (await kakao.isKakaoTalkInstalled()) {
         try {
-          return (await kakao.UserApi.instance.loginWithKakaoTalk()).accessToken;
+          return (await kakao.UserApi.instance.loginWithKakaoTalk())
+              .accessToken;
         } catch (e) {
           // 취소는 그대로 끝낸다. 그 밖의 실패(카카오톡에 연결된 계정 없음 등)는 카카오계정 로그인으로 넘어간다.
           if (_isCanceled(e)) rethrow;
@@ -89,8 +97,11 @@ class SdkSocialLogin implements SocialLogin {
     }
   }
 
-  static bool _isCanceled(Object e) => e is PlatformException && e.code == 'CANCELED';
+  static bool _isCanceled(Object e) =>
+      e is PlatformException && e.code == 'CANCELED';
 }
 
 /// 서버의 소셜 검증 방식과 짝을 맞춘다(config.dart `realSocialLogin`). 운영 서버는 가짜 토큰을 거부한다(MEMBER-002).
-final socialLoginProvider = Provider<SocialLogin>((ref) => realSocialLogin ? SdkSocialLogin() : DevSocialLogin());
+final socialLoginProvider = Provider<SocialLogin>(
+  (ref) => realSocialLogin ? SdkSocialLogin() : DevSocialLogin(),
+);

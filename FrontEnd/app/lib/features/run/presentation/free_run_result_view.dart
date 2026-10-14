@@ -20,8 +20,8 @@ class FreeRunResultView extends StatelessWidget {
     final startedLabel = start == null
         ? '—'
         : '${start.year}.${_two(start.month)}.${_two(start.day)} · ${_two(start.hour)}:${_two(start.minute)} 시작';
-    final speed = run.hasLocation && run.elapsed.inMilliseconds > 0
-        ? '${(run.distanceMeters * 3600 / run.elapsed.inMilliseconds).toStringAsFixed(1)} km/h'
+    final speed = run.hasLocation && run.movingTime.inMilliseconds > 0
+        ? '${(run.distanceMeters * 3600 / run.movingTime.inMilliseconds).toStringAsFixed(1)} km/h'
         : '—';
     return Scaffold(
       backgroundColor: WdColors.paper,
@@ -53,7 +53,7 @@ class FreeRunResultView extends StatelessWidget {
                     height: 30,
                     padding: const EdgeInsets.symmetric(horizontal: 8),
                     child: Text(
-                      '러닝 완료 · 저장 전',
+                      '러닝 완료 · ${run.storageStatus}',
                       style: WdText.ko12Medium.copyWith(color: WdColors.lime),
                     ),
                   ),
@@ -151,6 +151,12 @@ class FreeRunResultView extends StatelessWidget {
                           spacing: WdSpace.s8,
                           children: [
                             Text(
+                              '이동 시간 ${formatRunTime(run.movingTime)}',
+                              style: WdText.ko11.copyWith(
+                                color: WdColors.muted,
+                              ),
+                            ),
+                            Text(
                               '달린 시간 ${formatRunTime(run.active)}',
                               style: WdText.ko11.copyWith(
                                 color: WdColors.muted,
@@ -177,7 +183,26 @@ class FreeRunResultView extends StatelessWidget {
                     ('최고 구간', '—'),
                     ('최고 페이스', '—'),
                   ]),
-                  const SizedBox(height: 180, child: RunRouteEmpty()),
+                  WdStatSummary([
+                    ('이동시간', formatRunTime(run.movingTime)),
+                    ('총 페이스', formatRunPace(run.elapsedPaceSecondsPerKm)),
+                    ('정지시간', formatRunTime(run.elapsed - run.movingTime)),
+                  ]),
+                  Text(
+                    '평균 페이스는 이동시간, 총 페이스는 정지를 포함한 총 시간 기준이에요.',
+                    style: WdText.ko12.copyWith(color: WdColors.muted),
+                  ),
+                  SizedBox(height: 180, child: RunRouteView(run: run)),
+                  if (run.gapCount > 0)
+                    WdInfoBanner(
+                      'GPS 측정 공백 ${run.gapCount}곳의 확인하지 못한 거리는 포함하지 않았어요.',
+                      tone: WdBannerTone.warning,
+                    ),
+                  if (run.endReason != null && run.endReason != 'USER')
+                    const WdInfoBanner(
+                      '측정이 중단되어 마지막 저장 지점까지 기록했어요.',
+                      tone: WdBannerTone.warning,
+                    ),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     spacing: WdSpace.s8,
@@ -204,8 +229,14 @@ class FreeRunResultView extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const WdInfoBanner(
-                    '현재 기록은 앱을 종료하면 사라져요. 기기 저장은 준비 중이에요.',
+                  WdInfoBanner(
+                    run.storageStatus == '기기 저장'
+                        ? '이 기기에 기록을 저장했어요. 서버 등록을 기다리고 있어요.'
+                        : run.storageStatus == '측정 거리 없음'
+                        ? '측정된 거리가 없어 개인 기록을 저장하지 않았어요.'
+                        : run.storageStatus == '저장 전'
+                        ? '러닝 기록을 확인해 주세요.'
+                        : '기기와 서버에 기록을 저장했어요.',
                     tone: WdBannerTone.warning,
                   ),
                 ],

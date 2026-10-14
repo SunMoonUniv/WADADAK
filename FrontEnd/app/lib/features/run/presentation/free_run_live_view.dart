@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../domain/run_models.dart';
+import '../../../core/map/map_view.dart';
 
 String runDistance(RunSnapshot run) => run.hasLocation
     ? '${(run.distanceMeters / 1000).toStringAsFixed(2)} km'
@@ -17,7 +18,7 @@ class FreeRunLiveView extends StatefulWidget {
     required this.onStop,
   });
   final RunSnapshot run;
-  final VoidCallback onPause, onResume, onStop;
+  final VoidCallback? onPause, onResume, onStop;
 
   @override
   State<FreeRunLiveView> createState() => _FreeRunLiveViewState();
@@ -34,7 +35,8 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
   }
 
   Widget _time() => WdElapsedTime(
-    time: formatRunTime(widget.run.active),
+    label: '이동 시간',
+    time: formatRunTime(widget.run.movingTime),
     caption: '총 소요 ${formatRunTime(widget.run.elapsed)}',
   );
 
@@ -52,21 +54,31 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
               subtitle: '자유 러닝',
               badge: paused ? '일시정지' : '기록 중',
             ),
+            Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: WdSpace.s24,
+                vertical: WdSpace.s4,
+              ),
+              child: Text(
+                run.notice ?? 'GPS · ${run.gpsStatus}',
+                style: WdText.ko12.copyWith(color: WdColors.runTextSub),
+              ),
+            ),
             Expanded(
               child: PageView(
                 controller: _pages,
                 onPageChanged: (page) => setState(() => _page = page),
                 children: [
                   _scroll([
-                    const SizedBox(
+                    SizedBox(
                       height: 434,
-                      child: RunRouteEmpty(dark: true),
+                      child: RunRouteView(run: run, dark: true),
                     ),
                     Row(
                       spacing: WdSpace.s8,
                       children: [
                         for (final (label, value) in [
-                          ('달린 시간', formatRunTime(run.active)),
+                          ('이동 시간', formatRunTime(run.movingTime)),
                           ('거리', runDistance(run)),
                           ('평균 페이스', formatRunPace(run.paceSecondsPerKm)),
                           ('케이던스', '—'),
@@ -86,7 +98,7 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                       ],
                     ),
                     Text(
-                      '자유 러닝 · GPS 연결 전이에요',
+                      '자유 러닝 · ${run.gpsStatus}',
                       style: WdText.ko13.copyWith(color: WdColors.runTextSub),
                     ),
                   ]),
@@ -101,7 +113,7 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                           for (final (label, value) in [
                             ('거리', runDistance(run)),
                             ('평균 페이스', formatRunPace(run.paceSecondsPerKm)),
-                            ('심박수', '—'),
+                            ('현재 페이스', formatRunPace(run.currentPaceDisplay)),
                           ])
                             Expanded(
                               child: FittedBox(
@@ -127,7 +139,7 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                       value: '—',
                       caption: '소모 칼로리',
                       message: paused
-                          ? '준비되면 계속 달리기를 눌러주세요.'
+                          ? '이동하면 자동으로 다시 달려요.'
                           : '편안하게 나만의 속도로 이어가세요.',
                     ),
                     SizedBox(
@@ -138,7 +150,7 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                           const WdLapRecords(laps: [], meta: '1 km 자동'),
                           const SizedBox(height: WdSpace.s24),
                           Text(
-                            'GPS 연결 후 랩 기록을 확인할 수 있어요.',
+                            '랩 기록은 준비 중이에요.',
                             style: WdText.ko13.copyWith(
                               color: WdColors.runTextSub,
                             ),
@@ -158,6 +170,10 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                       [
                         ('거리', runDistance(run)),
                         ('평균 페이스', formatRunPace(run.paceSecondsPerKm)),
+                      ],
+                      [
+                        ('현재 페이스', formatRunPace(run.currentPaceDisplay)),
+                        ('이동 시간', formatRunTime(run.movingTime)),
                       ],
                       [('심박수', '—'), ('최고 페이스', '—')],
                       [('케이던스', '—'), ('누적 고도', '—')],
@@ -236,6 +252,56 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
 }
 
 /// 위치를 수집하기 전에는 시안의 예시 경로를 실제 기록처럼 보여주지 않는다.
+class RunRouteView extends StatelessWidget {
+  const RunRouteView({super.key, required this.run, this.dark = false});
+  final RunSnapshot run;
+  final bool dark;
+  @override
+  Widget build(BuildContext context) {
+    if (!run.hasLocation) return RunRouteEmpty(dark: dark);
+    final location = run.inputs.reversed
+        .firstWhere(
+          (p) =>
+              p.kind == RunInputKind.gps &&
+              p.point != null &&
+              p.accuracyM != null &&
+              p.accuracyM! <= 30,
+        )
+        .point!;
+    final points = run.segments
+        .expand((s) => s)
+        .map((p) => GeoPoint(p.latitude, p.longitude))
+        .toList();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(WdRadius.r12),
+      child: MapView(
+        initialCenter: GeoPoint(location.latitude, location.longitude),
+        initialZoom: 16,
+        dark: dark,
+        myLocationSource: MyLocationSource.app,
+        myLocation: GeoPoint(location.latitude, location.longitude),
+        lines: [
+          for (var index = 0; index < run.segments.length; index++)
+            MapLine(
+              id: 'run-$index',
+              style: MapLineStyle.track,
+              points: run.segments[index]
+                  .map((p) => GeoPoint(p.latitude, p.longitude))
+                  .toList(),
+            ),
+        ],
+        onCreated: (controller) async {
+          if (dark) {
+            controller.showMyLocation();
+          } else if (points.length > 1) {
+            await controller.fitPoints(points);
+          }
+        },
+      ),
+    );
+  }
+}
+
 class RunRouteEmpty extends StatelessWidget {
   const RunRouteEmpty({super.key, this.dark = false});
   final bool dark;

@@ -57,6 +57,17 @@ class RunSnapshot {
     required this.active,
     required this.distanceMeters,
     required List<RunInput> inputs,
+    this.gpsStatus = 'GPS 수집 준비',
+    this.storageStatus = '저장 전',
+    this.notice,
+    this.endReason,
+    this.gapCount = 0,
+    this.segments = const [],
+    this.moving,
+    this.averagePaceDisplay,
+    this.currentPaceDisplay,
+    this.paceDisplayManaged = false,
+    this.stationary = false,
   }) : inputs = List.unmodifiable(inputs);
 
   final RunState state;
@@ -65,9 +76,30 @@ class RunSnapshot {
   final Duration elapsed, active;
   final double distanceMeters;
   final List<RunInput> inputs;
-  bool get hasLocation => inputs.any((p) => p.kind == RunInputKind.gps);
-  // Total elapsed time includes pauses, as required by the running policy.
-  double? get paceSecondsPerKm =>
+  final String gpsStatus, storageStatus;
+  final String? notice, endReason;
+  final int gapCount;
+  final Duration? moving;
+  Duration get movingTime => moving ?? active;
+  final double? averagePaceDisplay, currentPaceDisplay;
+  final bool paceDisplayManaged, stationary;
+  final List<List<RunPoint>> segments;
+  bool get hasLocation => inputs.any(
+    (p) =>
+        p.kind == RunInputKind.gps &&
+        p.point != null &&
+        p.accuracyM != null &&
+        p.accuracyM!.isFinite &&
+        p.accuracyM! >= 0 &&
+        p.accuracyM! <= 30,
+  );
+  // Free running uses moving time; elapsed time remains available for rankings.
+  double? get paceSecondsPerKm => paceDisplayManaged
+      ? averagePaceDisplay
+      : distanceMeters > 0
+      ? movingTime.inMilliseconds / distanceMeters
+      : null;
+  double? get elapsedPaceSecondsPerKm =>
       distanceMeters > 0 ? elapsed.inMilliseconds / distanceMeters : null;
 }
 
