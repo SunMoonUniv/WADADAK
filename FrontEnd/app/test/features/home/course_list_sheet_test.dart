@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -6,6 +8,7 @@ import 'package:wadadak/core/api/course_api_client.dart';
 import 'package:wadadak/core/api/member_api_client.dart';
 import 'package:wadadak/core/auth/social_login.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
+import 'package:wadadak/core/map/dev_map_view.dart';
 import 'package:wadadak/core/map/map_view.dart';
 import 'package:wadadak/features/course/course_format.dart';
 import 'package:wadadak/features/course/course_list_card.dart';
@@ -97,6 +100,37 @@ void main() {
     expect((list.southWest, list.northEast), (map.southWest, map.northEast));
     expect(list.sort, CourseListSort.latest);
     expect(list.cursor, isNull);
+  });
+
+  testWidgets('looks only at the part of the map above the sheet', (tester) async {
+    await openHome(tester);
+    // 반(A2): 지도 영역(874 - 배너 122.5)의 위쪽 절반만 보인다.
+    final half = courses.listRequests.single;
+    expect(courses.mapRequests.single, (southWest: half.southWest, northEast: half.northEast), reason: '지도 · 목록이 같은 범위');
+    final mapHeight = tester.getSize(find.byType(DevMapView)).height;
+    expect(mapHeight, 874 - 122.5);
+
+    // 피크로 내리면 더 넓게 보여 다시 받는다. 위쪽 끝은 같고 아래쪽 끝만 내려간다.
+    await tester.drag(find.text('지금 달리기 좋은 코스'), const Offset(0, 600));
+    await tester.pumpAndSettle();
+    final peek = courses.listRequests.last;
+    expect(courses.listRequests, hasLength(2));
+    expect(peek.northEast, half.northEast);
+    expect(peek.southWest.lng, half.southWest.lng);
+    expect(peek.southWest.lat, lessThan(half.southWest.lat));
+    expect(courses.mapRequests.last, (southWest: peek.southWest, northEast: peek.northEast));
+
+    // 범위의 남쪽 끝이 시트 위쪽 끝과 같은 높이다. 피크 범위(지도 아래 60을 뺀 부분)로 화면 높이를 거꾸로 재 본다(메르카토르).
+    double mercator(double lat) => math.log(math.tan(math.pi / 4 + lat * math.pi / 360));
+    final top = mercator(peek.northEast.lat);
+    final perPixel = (mercator(peek.southWest.lat) - top) / (mapHeight - CourseListSheet.peekHeight);
+    expect((mercator(half.southWest.lat) - top) / perPixel, closeTo(mapHeight / 2, 0.5), reason: '반은 지도 높이의 절반');
+
+    // 전체 보기(A6)는 지도가 안 보여 그 전 범위를 그대로 둔다. 다시 피크로 내려도 같은 범위라 받지 않는다.
+    await tester.drag(find.text('↑ 위로 올려 코스 목록 보기'), const Offset(0, -800));
+    await tester.pumpAndSettle();
+    expect(find.text('＋ 코스 만들기').hitTestable(), findsOneWidget);
+    expect(courses.listRequests, hasLength(2));
   });
 
   testWidgets('lists again for the new area when the map stops moving', (tester) async {

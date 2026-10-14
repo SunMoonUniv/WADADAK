@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -40,14 +42,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   List<RegionCount> _regions = const [];
   var _loaded = false;
 
-  /// 지도가 센 범위 안 코스 수(시트의 `코스 N`). 아직 모르면 null.
+  /// 지도가 센 범위 안 코스 수(지도 위 `코스 N개`). 아직 모르면 null.
   int? _totalCount;
+
+  /// 지금 조회한 범위. 시트에 가리지 않고 보이는 지도 부분이다. 목록도 이 범위다(MAP-07).
+  MapArea? _area;
 
   /// 가장 최근 조회 번호. 늦게 도착한 예전 응답은 버린다.
   var _request = 0;
 
   final _sheet = DraggableScrollableController();
   var _sheetSize = _halfSize;
+
+  /// 시트가 멈춘 단계. 끄는 중에는 바뀌지 않는다.
+  var _settledStage = SheetStage.half;
+
+  /// 지도가 보이는 마지막 단계(피크 · 반). 전체 보기(A6)는 이 단계에서 보이던 범위를 그대로 쓴다.
+  var _mapStage = SheetStage.half;
+
+  /// 시트 아래 지도 영역 높이. 화면을 그릴 때 정한다.
+  var _mapHeight = 0.0;
 
   /// 시트 처음 크기. 지도와 목록이 반씩이다(A2).
   static const _halfSize = 0.5;
@@ -78,6 +92,33 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _load(camera);
   }
 
+  /// 시트가 피크 · 반 · 전체 중 한 곳에 멈췄다. 보이는 지도 부분이 바뀌었으면 다시 받는다.
+  /// 전체 보기(A6)는 지도가 안 보이니 그 전 범위를 그대로 둔다.
+  void _onSheetSettled(SheetStage stage) {
+    _settledStage = stage;
+    if (stage == SheetStage.full || stage == _mapStage) return;
+    _mapStage = stage;
+    final camera = _camera;
+    if (camera != null) _load(camera);
+  }
+
+  /// [camera] 범위 중 시트에 가리지 않은 위쪽 부분. 지도는 메르카토르라 위도가 화면 높이에 비례하지 않아 메르카토르 y로 나눈다.
+  /// 버튼 · 코스 수 칩은 작고 그 사이로 지도가 보여 가린 것으로 치지 않는다.
+  MapArea _visibleArea(MapCamera camera) {
+    final covered = switch (_mapStage) {
+      SheetStage.peek => CourseListSheet.peekHeight,
+      _ => _mapHeight * _halfSize,
+    };
+    final visible = _mapHeight <= 0 ? 1.0 : (1 - covered / _mapHeight).clamp(0.0, 1.0);
+    double mercator(double lat) => math.log(math.tan(math.pi / 4 + lat * math.pi / 360));
+    double latitude(double y) => (2 * math.atan(math.exp(y)) - math.pi / 2) * 180 / math.pi;
+    final top = mercator(camera.northEast.lat), bottom = mercator(camera.southWest.lat);
+    return (
+      southWest: GeoPoint(latitude(top + (bottom - top) * visible), camera.southWest.lng),
+      northEast: camera.northEast,
+    );
+  }
+
   /// 축척으로 정하는 지도 표시(MAP-02). 축척 2km보다 넓으면 시 단위, 2km부터 500m 전까지 구 단위 코스 수,
   /// 500m부터는 개별 코스(null)다.
   static RegionLevel? _regionLevel(MapCamera camera) => switch (camera.scaleMeters) {
@@ -86,20 +127,22 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _ => null,
       };
 
-  /// 지도가 멈출 때마다 범위 안 코스나 지역별 코스 수를 다시 받는다.
+  /// 지도가 멈추거나 시트가 다른 단계에 멈출 때마다 보이는 범위 안 코스나 지역별 코스 수를 다시 받는다.
   Future<void> _load(MapCamera camera) async {
     final request = ++_request;
     final api = ref.read(courseApiClientProvider);
+    final area = _visibleArea(camera);
+    setState(() => _area = area);
     try {
       var courses = const <MapCourse>[];
       var regions = const <RegionCount>[];
       final int total;
       switch (_regionLevel(camera)) {
         case null:
-          final map = await api.mapCourses(southWest: camera.southWest, northEast: camera.northEast);
+          final map = await api.mapCourses(southWest: area.southWest, northEast: area.northEast);
           (courses, total) = (map.courses, map.totalCount);
         case final level:
-          final counts = await api.regionCounts(southWest: camera.southWest, northEast: camera.northEast, level: level);
+          final counts = await api.regionCounts(southWest: area.southWest, northEast: area.northEast, level: level);
           (regions, total) = (counts.regions, counts.totalCount);
       }
       if (!mounted || request != _request) return;
@@ -140,9 +183,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         body: LayoutBuilder(builder: (context, constraints) {
           // 상단 배너 아래 영역 높이. 시트 크기는 이 높이에 대한 비율이다.
           final height = constraints.maxHeight - MediaQuery.paddingOf(context).top - _HomeHeader.height;
+          _mapHeight = height;
           final peekSize = CourseListSheet.peekHeight / height;
           final stage = _stage(_sheetSize, peekSize);
-          final camera = _camera;
           return Column(children: [
             _HomeHeader(stage: stage),
             Expanded(child: Stack(
@@ -206,7 +249,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               ),
               NotificationListener<DraggableScrollableNotification>(
                 onNotification: (notification) {
-                  setState(() => _sheetSize = notification.extent);
+                  final size = notification.extent;
+                  setState(() => _sheetSize = size);
+                  // 멈출 수 있는 크기(피크 · 반 · 전체)에 닿았을 때만 멈춘 것으로 본다.
+                  final settled = [peekSize, _halfSize, notification.maxExtent]
+                      .indexWhere((snap) => (size - snap).abs() < 0.002);
+                  if (settled >= 0 && SheetStage.values[settled] != _settledStage) {
+                    _onSheetSettled(SheetStage.values[settled]);
+                  }
                   return false;
                 },
                 child: DraggableScrollableSheet(
@@ -217,7 +267,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   snap: true,
                   snapSizes: const [_halfSize],
                   builder: (context, scrollController) => CourseListSheet(
-                    area: camera == null ? null : (southWest: camera.southWest, northEast: camera.northEast),
+                    area: _area,
                     totalCount: _totalCount,
                     stage: stage,
                     scrollController: scrollController,
