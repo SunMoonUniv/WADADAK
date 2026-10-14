@@ -35,6 +35,7 @@ class CourseListSheet extends ConsumerStatefulWidget {
     required this.scrollController,
     required this.now,
     this.onExpand,
+    this.onShowAll,
     this.onWidenMap,
     this.onCreateCourse,
   });
@@ -60,6 +61,9 @@ class CourseListSheet extends ConsumerStatefulWidget {
 
   /// 피크일 때 제목 줄을 눌렀다(A2로 올린다).
   final VoidCallback? onExpand;
+
+  /// 반(A2)일 때 `전체 보기`를 눌렀다(A6로 올린다, A2-06).
+  final VoidCallback? onShowAll;
 
   /// 코스가 없을 때 `지도 범위 넓히기`(STA-01).
   final VoidCallback? onWidenMap;
@@ -267,6 +271,11 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
                     GestureDetector(
                       onTap: widget.onCreateCourse,
                       child: Text('＋ 코스 만들기', style: WdText.raw(12, FontWeight.w400, 18).copyWith(color: WdColors.green)),
+                    )
+                  else if (widget.stage == SheetStage.half)
+                    GestureDetector(
+                      onTap: widget.onShowAll,
+                      child: Text('전체 보기', style: WdText.raw(12, FontWeight.w400, 18).copyWith(color: WdColors.muted)),
                     )
                   else if (total != null)
                     Text('코스 ${_count(total)}', style: WdText.raw(12, FontWeight.w400, 18).copyWith(color: WdColors.muted)),

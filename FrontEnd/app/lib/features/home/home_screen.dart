@@ -178,6 +178,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   if (stage != SheetStage.peek) _moveSheet(peekSize);
                 },
               ),
+              // 지도 범위 안 코스 수(Figma A2 `반포동 주변 24개` · A5 `코스 24개`).
+              if (_totalCount case final total?)
+                Positioned(left: WdSpace.s16, top: WdSpace.s16, child: _MapCountChip('코스 ${_count(total)}개')),
               // 버튼 줄은 시트 바로 위에 붙어 다닌다. 전체 보기(A6)에서는 숨긴다.
               Positioned(
                 left: 0,
@@ -220,6 +223,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     scrollController: scrollController,
                     now: widget.now,
                     onExpand: () => _moveSheet(_halfSize),
+                    onShowAll: () => _moveSheet(1),
                     onWidenMap: _widenMap,
                     onCreateCourse: _createCourse,
                   ),
@@ -289,4 +293,18 @@ class _HomeHeader extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 지도 왼쪽 위의 코스 수(Figma A2 · A5). 흰 알약에 12 Medium 글자.
+class _MapCountChip extends StatelessWidget {
+  const _MapCountChip(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: WdSpace.s8, vertical: 7),
+        decoration: BoxDecoration(color: WdColors.white, borderRadius: BorderRadius.circular(WdRadius.full)),
+        child: Text(text, style: WdText.ko12Medium.copyWith(color: WdColors.ink)),
+      );
 }

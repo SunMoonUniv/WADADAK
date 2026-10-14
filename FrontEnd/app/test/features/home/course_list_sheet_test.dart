@@ -76,7 +76,8 @@ void main() {
     await openHome(tester);
 
     expect(sheetTitle('지금 달리기 좋은 코스'), findsOneWidget);
-    expect(sheetTitle('코스 1'), findsOneWidget, reason: '지도가 센 범위 안 코스 수');
+    expect(find.text('코스 1개'), findsOneWidget, reason: '지도 위에 지도가 센 범위 안 코스 수');
+    expect(sheetTitle('전체 보기'), findsOneWidget);
     expect(find.widgetWithText(WdFilterChip, '최신순'), findsOneWidget);
 
     final [first, second] = tester.widgetList<CourseListCard>(find.byType(CourseListCard)).toList();
@@ -196,6 +197,16 @@ void main() {
     await tester.pumpAndSettle();
     expect(sheetTitle('지금 달리기 좋은 코스'), findsOneWidget);
     expect(find.text('＋ 코스 만들기').hitTestable(), findsOneWidget, reason: '지도 위 버튼');
+
+    expect(sheetTitle('코스 1'), findsNothing, reason: '피크만 코스 수');
+
+    // `전체 보기`를 눌러도 전체 보기(A6).
+    await tester.tap(sheetTitle('전체 보기'));
+    await tester.pumpAndSettle();
+    expect(tester.getTopLeft(find.byType(CourseListSheet)).dy, 122.5);
+    await tester.drag(handle, const Offset(0, 300));
+    await tester.pumpAndSettle();
+    expect(sheetTitle('전체 보기'), findsOneWidget, reason: '반으로 내려왔다');
 
     // 위로 올리면 전체 보기(A6). 지도 위 버튼은 숨기고 제목 줄에 코스 만들기가 있다.
     await tester.drag(handle, const Offset(0, -600));
