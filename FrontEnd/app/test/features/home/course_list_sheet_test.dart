@@ -175,10 +175,17 @@ void main() {
     await openHome(tester);
     final handle = sheetTitle('지금 달리기 좋은 코스');
 
-    // 아래로 내리면 피크(A5).
+    // 반(A2)은 인사말 배너.
+    expect(find.text('나의 다음 코스'), findsOneWidget);
+    expect(find.text('지역이나 코스를 검색하세요'), findsOneWidget);
+
+    // 아래로 내리면 피크(A5). 배너는 고정 제목 `코스`.
     await tester.drag(handle, const Offset(0, 600));
     await tester.pumpAndSettle();
     expect(sheetTitle('↑ 위로 올려 코스 목록 보기'), findsOneWidget);
+    expect(find.text('나의 다음 코스'), findsNothing);
+    expect(find.text('코스'), findsOneWidget);
+    expect(find.text('지역 · 코스 이름 검색'), findsOneWidget);
     expect(find.text('성북천 벚꽃길 3K').hitTestable(), findsNothing);
 
     // 제목 줄을 누르면 다시 반(A2).
@@ -192,6 +199,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.widgetWithText(WdMapPillButton, '＋ 코스 만들기').hitTestable(), findsNothing);
     expect(sheetTitle('＋ 코스 만들기'), findsOneWidget);
+    // 전체 보기는 배너 밑까지(Figma A6).
+    expect(tester.getTopLeft(find.byType(CourseListSheet)).dy, 122.5);
+    expect(find.text('코스'), findsOneWidget);
   });
 
   testWidgets('lowers the sheet when the map is tapped', (tester) async {

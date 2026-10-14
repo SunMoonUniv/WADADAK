@@ -10,10 +10,10 @@ import '../../core/map/map_view.dart';
 import '../../routes.dart';
 import 'course_list_sheet.dart';
 
-/// 홈(A2). 지도, `＋ 코스 만들기`, 현재 위치 버튼, 아래 코스 목록 시트가 있다.
+/// 홈(A2). 위에 상단 배너(인사말 · 검색창), 아래에 지도, `＋ 코스 만들기`, 현재 위치 버튼, 코스 목록 시트가 있다.
 /// 지도는 축척에 따라 범위 안 코스(경로 · 이름표, A5)나 지역별 코스 수 배지(A4)를 보인다(MAP-02).
-/// 목록 시트는 지도와 같은 범위의 코스이고(MAP-07), 끌어서 피크(A4 · A5) · 반(A2) · 전체(A6)에 멈춘다.
-/// 인사말·검색·필터는 F2 다음 단계에서 붙인다.
+/// 목록 시트는 지도와 같은 범위의 코스이고(MAP-07), 끌어서 피크(A4 · A5) · 반(A2) · 전체(A6, 배너 밑까지)에 멈춘다.
+/// 검색 화면(G1) 연결과 필터는 F2 다음 단계에서 붙인다.
 /// 확대·축소 버튼은 두지 않는다(정책 MAP-02, 제스처로 한다).
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key, this.now = DateTime.now});
@@ -135,14 +135,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   Widget build(BuildContext context) => Scaffold(
         body: LayoutBuilder(builder: (context, constraints) {
-          final height = constraints.maxHeight;
+          // 상단 배너 아래 영역 높이. 시트 크기는 이 높이에 대한 비율이다.
+          final height = constraints.maxHeight - MediaQuery.paddingOf(context).top - _HomeHeader.height;
           final peekSize = CourseListSheet.peekHeight / height;
-          // 시트가 상태 표시줄 밑으로 들어가면 그만큼 내용을 내린다(전체 보기).
-          final topInset = MediaQuery.paddingOf(context).top;
-          final underStatusBar = (topInset - height * (1 - _sheetSize)).clamp(0.0, topInset);
           final stage = _stage(_sheetSize, peekSize);
           final camera = _camera;
-          return Stack(
+          return Column(children: [
+            _HomeHeader(stage: stage),
+            Expanded(child: Stack(
             children: [
               MapView(
                 minZoom: _minZoom,
@@ -218,7 +218,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     area: camera == null ? null : (southWest: camera.southWest, northEast: camera.northEast),
                     totalCount: _totalCount,
                     stage: stage,
-                    topPadding: underStatusBar,
                     scrollController: scrollController,
                     now: widget.now,
                     onExpand: () => _moveSheet(_halfSize),
@@ -228,7 +227,67 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 ),
               ),
             ],
-          );
+          )),
+          ]);
         }),
       );
+}
+
+/// 상단 배너(A2-01 · A2-02). A2(반)는 인사말, 피크(A4 · A5) · 전체 보기(A6)는 고정 제목 `코스`, 아래는 검색창.
+/// 높이가 같아 바뀌어도 지도 크기가 그대로다.
+///
+/// 검색창은 검색 화면(G1)이 생기면 연결한다(SEA-01). Figma A2의 위치 핀 버튼은 정책에 동작이 없어 두지 않는다.
+class _HomeHeader extends StatelessWidget {
+  const _HomeHeader({required this.stage});
+
+  final SheetStage stage;
+
+  /// Figma A6: 앱 바 70.5 + 검색 52.
+  static const height = 122.5;
+  static const _titleHeight = 70.5;
+
+  @override
+  Widget build(BuildContext context) {
+    final greeting = stage == SheetStage.half;
+    return ColoredBox(
+      color: WdColors.paper,
+      child: SafeArea(
+        bottom: false,
+        child: SizedBox(
+          height: height,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                height: _titleHeight,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: WdSpace.s24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    spacing: 2,
+                    children: greeting
+                        ? [
+                            Text('오늘, 어디까지 달려볼까요?', style: WdText.ko12.copyWith(color: WdColors.muted)),
+                            Text('나의 다음 코스', style: WdText.ko23Bold.copyWith(color: WdColors.ink)),
+                          ]
+                        : [Text('코스', style: WdText.ko20Bold.copyWith(color: WdColors.ink))],
+                  ),
+                ),
+              ),
+              Padding(
+                // 검색창 42 + 아래 10 = Figma 검색 52.
+                padding: const EdgeInsets.fromLTRB(WdSpace.s16, 0, WdSpace.s16, WdSpace.s10),
+                child: WdSearchBar(
+                  hintText: greeting ? '지역이나 코스를 검색하세요' : '지역 · 코스 이름 검색',
+                  // 검색 화면(G1)이 생기면 연다. 그때까지 키보드가 뜨지 않게 누르기만 받는다.
+                  onTap: () {},
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }

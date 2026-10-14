@@ -32,7 +32,6 @@ class CourseListSheet extends ConsumerStatefulWidget {
     required this.area,
     required this.totalCount,
     required this.stage,
-    this.topPadding = 0,
     required this.scrollController,
     required this.now,
     this.onExpand,
@@ -52,9 +51,6 @@ class CourseListSheet extends ConsumerStatefulWidget {
   /// 지도가 센 범위 안 코스 수(`코스 N`). 아직 모르면 null.
   final int? totalCount;
   final SheetStage stage;
-
-  /// 시트 위쪽이 상태 표시줄 밑에 들어간 만큼. 내용을 이만큼 내린다.
-  final double topPadding;
 
   /// 시트를 끄는 스크롤. [DraggableScrollableSheet]가 준다.
   final ScrollController scrollController;
@@ -171,7 +167,6 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
         border: Border(top: BorderSide(color: WdColors.line)),
       ),
-      padding: EdgeInsets.only(top: widget.topPadding),
       child: NotificationListener<ScrollNotification>(
         onNotification: (notification) {
           if (notification.metrics.extentAfter < _loadMoreExtent) _loadMore();
