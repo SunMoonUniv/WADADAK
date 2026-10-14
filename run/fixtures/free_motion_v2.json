@@ -1,0 +1,436 @@
+{
+  "startedAt": "2026-10-14T00:00:00Z",
+  "expected": {
+    "elapsedMs": 30000,
+    "activeMs": 30000,
+    "movingMs": 10000,
+    "distanceM": 30.0,
+    "paceSecondsPerKm": 333.3333333333333,
+    "elapsedPaceSecondsPerKm": 1000.0
+  },
+  "inputs": [
+    {
+      "seq": 0,
+      "kind": "START",
+      "elapsedMs": 0,
+      "measuredAt": "2026-10-14T00:00:00Z",
+      "reason": "PACE_V2"
+    },
+    {
+      "seq": 1,
+      "kind": "GPS",
+      "elapsedMs": 0,
+      "measuredAt": "2026-10-14T00:00:00Z",
+      "location": {
+        "lat": 36.0,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 3.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 2,
+      "kind": "GPS",
+      "elapsedMs": 1000,
+      "measuredAt": "2026-10-14T00:00:01Z",
+      "location": {
+        "lat": 36.000026979610915,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 3.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 3,
+      "kind": "GPS",
+      "elapsedMs": 2000,
+      "measuredAt": "2026-10-14T00:00:02Z",
+      "location": {
+        "lat": 36.00005395922182,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 3.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 4,
+      "kind": "GPS",
+      "elapsedMs": 3000,
+      "measuredAt": "2026-10-14T00:00:03Z",
+      "location": {
+        "lat": 36.00008093883274,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 3.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 5,
+      "kind": "GPS",
+      "elapsedMs": 4000,
+      "measuredAt": "2026-10-14T00:00:04Z",
+      "location": {
+        "lat": 36.000107918443646,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 3.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 6,
+      "kind": "GPS",
+      "elapsedMs": 5000,
+      "measuredAt": "2026-10-14T00:00:05Z",
+      "location": {
+        "lat": 36.00013489805456,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 3.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 7,
+      "kind": "GPS",
+      "elapsedMs": 6000,
+      "measuredAt": "2026-10-14T00:00:06Z",
+      "location": {
+        "lat": 36.00016187766547,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 3.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 8,
+      "kind": "GPS",
+      "elapsedMs": 7000,
+      "measuredAt": "2026-10-14T00:00:07Z",
+      "location": {
+        "lat": 36.000188857276385,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 3.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 9,
+      "kind": "GPS",
+      "elapsedMs": 8000,
+      "measuredAt": "2026-10-14T00:00:08Z",
+      "location": {
+        "lat": 36.00021583688729,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 3.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 10,
+      "kind": "GPS",
+      "elapsedMs": 9000,
+      "measuredAt": "2026-10-14T00:00:09Z",
+      "location": {
+        "lat": 36.00024281649821,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 3.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 11,
+      "kind": "GPS",
+      "elapsedMs": 10000,
+      "measuredAt": "2026-10-14T00:00:10Z",
+      "location": {
+        "lat": 36.000269796109116,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 3.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 12,
+      "kind": "GPS",
+      "elapsedMs": 11000,
+      "measuredAt": "2026-10-14T00:00:11Z",
+      "location": {
+        "lat": 36.000274292710934,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 0.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 13,
+      "kind": "GPS",
+      "elapsedMs": 12000,
+      "measuredAt": "2026-10-14T00:00:12Z",
+      "location": {
+        "lat": 36.000269796109116,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 0.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 14,
+      "kind": "GPS",
+      "elapsedMs": 13000,
+      "measuredAt": "2026-10-14T00:00:13Z",
+      "location": {
+        "lat": 36.000274292710934,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 0.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 15,
+      "kind": "GPS",
+      "elapsedMs": 14000,
+      "measuredAt": "2026-10-14T00:00:14Z",
+      "location": {
+        "lat": 36.000269796109116,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 0.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 16,
+      "kind": "GPS",
+      "elapsedMs": 15000,
+      "measuredAt": "2026-10-14T00:00:15Z",
+      "location": {
+        "lat": 36.000274292710934,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 0.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 17,
+      "kind": "GPS",
+      "elapsedMs": 16000,
+      "measuredAt": "2026-10-14T00:00:16Z",
+      "location": {
+        "lat": 36.000269796109116,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 0.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 18,
+      "kind": "GPS",
+      "elapsedMs": 17000,
+      "measuredAt": "2026-10-14T00:00:17Z",
+      "location": {
+        "lat": 36.000274292710934,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 0.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 19,
+      "kind": "GPS",
+      "elapsedMs": 18000,
+      "measuredAt": "2026-10-14T00:00:18Z",
+      "location": {
+        "lat": 36.000269796109116,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 0.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 20,
+      "kind": "GPS",
+      "elapsedMs": 19000,
+      "measuredAt": "2026-10-14T00:00:19Z",
+      "location": {
+        "lat": 36.000274292710934,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 0.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 21,
+      "kind": "GPS",
+      "elapsedMs": 20000,
+      "measuredAt": "2026-10-14T00:00:20Z",
+      "location": {
+        "lat": 36.000269796109116,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 0.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 22,
+      "kind": "GPS",
+      "elapsedMs": 21000,
+      "measuredAt": "2026-10-14T00:00:21Z",
+      "location": {
+        "lat": 36.000274292710934,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 0.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 23,
+      "kind": "GPS",
+      "elapsedMs": 22000,
+      "measuredAt": "2026-10-14T00:00:22Z",
+      "location": {
+        "lat": 36.000269796109116,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 0.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 24,
+      "kind": "GPS",
+      "elapsedMs": 23000,
+      "measuredAt": "2026-10-14T00:00:23Z",
+      "location": {
+        "lat": 36.000274292710934,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 0.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 25,
+      "kind": "GPS",
+      "elapsedMs": 24000,
+      "measuredAt": "2026-10-14T00:00:24Z",
+      "location": {
+        "lat": 36.000269796109116,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 0.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 26,
+      "kind": "GPS",
+      "elapsedMs": 25000,
+      "measuredAt": "2026-10-14T00:00:25Z",
+      "location": {
+        "lat": 36.000274292710934,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 0.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 27,
+      "kind": "GPS",
+      "elapsedMs": 26000,
+      "measuredAt": "2026-10-14T00:00:26Z",
+      "location": {
+        "lat": 36.000269796109116,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 0.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 28,
+      "kind": "GPS",
+      "elapsedMs": 27000,
+      "measuredAt": "2026-10-14T00:00:27Z",
+      "location": {
+        "lat": 36.000274292710934,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 0.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 29,
+      "kind": "GPS",
+      "elapsedMs": 28000,
+      "measuredAt": "2026-10-14T00:00:28Z",
+      "location": {
+        "lat": 36.000269796109116,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 0.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 30,
+      "kind": "GPS",
+      "elapsedMs": 29000,
+      "measuredAt": "2026-10-14T00:00:29Z",
+      "location": {
+        "lat": 36.000274292710934,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 0.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 31,
+      "kind": "GPS",
+      "elapsedMs": 30000,
+      "measuredAt": "2026-10-14T00:00:30Z",
+      "location": {
+        "lat": 36.000269796109116,
+        "lng": 127
+      },
+      "accuracyM": 3.0,
+      "speedMps": 0.0,
+      "speedAccuracyMps": 0.1
+    },
+    {
+      "seq": 32,
+      "kind": "PAUSE",
+      "elapsedMs": 30000,
+      "measuredAt": "2026-10-14T00:00:30Z"
+    },
+    {
+      "seq": 33,
+      "kind": "END",
+      "elapsedMs": 30000,
+      "measuredAt": "2026-10-14T00:00:30Z",
+      "reason": "USER"
+    }
+  ]
+}
