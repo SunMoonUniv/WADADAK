@@ -10,5 +10,17 @@ services:
     volumes:
       - wadadak-postgres:/var/lib/postgresql/data
 
+  # 사진 저장소(S3 호환 RustFS). 서버의 app.common.storage 기본값과 같은 계정이다.
+  storage:
+    image: rustfs/rustfs:1.0.1
+    environment:
+      RUSTFS_ACCESS_KEY: wadadak
+      RUSTFS_SECRET_KEY: wadadak-local
+    ports:
+      - "9000:9000"
+    volumes:
+      - wadadak-photos:/data
+
 volumes:
   wadadak-postgres:
+  wadadak-photos:

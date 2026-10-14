@@ -47,6 +47,9 @@ dependencies:
   wadadak_design_system:
     path: ../packages/wadadak_design_system
   google_sign_in: ^7.2.0
+  # 사진 업로드(개발 정책 7장): 고르기와 JPEG 변환 · EXIF 제거
+  image_picker: ^1.2.4
+  flutter_image_compress: ^2.5.1
 
 dev_dependencies:
   flutter_test:

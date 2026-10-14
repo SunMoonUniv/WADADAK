@@ -40,6 +40,8 @@ dependencies {
     implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${springdocVersion}"
     implementation "net.javacrumbs.shedlock:shedlock-spring:${shedlockVersion}"
     implementation "net.javacrumbs.shedlock:shedlock-provider-jdbc-template:${shedlockVersion}"
+    // S3 호환 저장소 클라이언트. AWS SDK v2에는 Presigned POST가 없다(개발 정책 7장 사진 업로드).
+    implementation 'io.minio:minio:9.0.3'
     compileOnly 'org.projectlombok:lombok'
     runtimeOnly 'org.flywaydb:flyway-database-postgresql'
     runtimeOnly 'org.postgresql:postgresql'

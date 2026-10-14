@@ -38,6 +38,14 @@ app:
     request-log:
       # true: 요청마다 한 줄 로그(메서드 · 경로 · 상태 · 처리 시간 · IP). 공용 서버(deploy/compose.yaml)에서 켠다.
       enabled: false
+    # 사진 저장소(S3 호환 RustFS). 로컬은 BackEnd/compose.yaml, 공용 서버는 deploy/compose.yaml.
+    storage:
+      endpoint: ${STORAGE_ENDPOINT:http://localhost:9000}
+      # 앱이 사진을 올리고 받는 주소. 에뮬레이터에서 로컬 서버를 쓰면 http://10.0.2.2:9000
+      public-url: ${STORAGE_PUBLIC_URL:http://localhost:9000}
+      bucket: wadadak
+      access-key: ${STORAGE_ACCESS_KEY:wadadak}
+      secret-key: ${STORAGE_SECRET_KEY:wadadak-local}
   stub:
     member: false
     course: false

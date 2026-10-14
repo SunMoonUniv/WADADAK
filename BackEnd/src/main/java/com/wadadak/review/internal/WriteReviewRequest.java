@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -18,6 +19,7 @@ import java.util.UUID;
  * @param rating            전체 별점 1~5. 항목 평가 4개도 모두 1~5 필수
  * @param content           한줄 후기. 선택, 200자까지
  * @param tags              선택. 없으면 빈 목록
+ * @param photoKeys         사진 업로드 폼으로 올린 키. 보낸 순서대로 보인다. 선택, 5장까지(REVIEW-006)
  */
 record WriteReviewRequest(
         @NotNull UUID courseId,
@@ -28,9 +30,10 @@ record WriteReviewRequest(
         @Min(1) @Max(5) int lightingRating,
         @Min(1) @Max(5) int amenityRating,
         @Size(max = ReviewContent.MAX_CONTENT_LENGTH) String content,
-        Set<@NotNull ReviewTag> tags) {
+        Set<@NotNull ReviewTag> tags,
+        List<@NotNull String> photoKeys) {
 
     ReviewContent toContent() {
-        return new ReviewContent(rating, safetyRating, roadRating, lightingRating, amenityRating, content, tags);
+        return new ReviewContent(rating, safetyRating, roadRating, lightingRating, amenityRating, content, tags, photoKeys);
     }
 }
