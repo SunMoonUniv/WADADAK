@@ -137,8 +137,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         body: LayoutBuilder(builder: (context, constraints) {
           final height = constraints.maxHeight;
           final peekSize = CourseListSheet.peekHeight / height;
-          // 전체 보기도 상태 표시줄은 가리지 않는다.
-          final fullSize = 1 - MediaQuery.paddingOf(context).top / height;
+          // 시트가 상태 표시줄 밑으로 들어가면 그만큼 내용을 내린다(전체 보기).
+          final topInset = MediaQuery.paddingOf(context).top;
+          final underStatusBar = (topInset - height * (1 - _sheetSize)).clamp(0.0, topInset);
           final stage = _stage(_sheetSize, peekSize);
           final camera = _camera;
           return Stack(
@@ -210,13 +211,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   controller: _sheet,
                   initialChildSize: _halfSize,
                   minChildSize: peekSize,
-                  maxChildSize: fullSize,
+                  maxChildSize: 1,
                   snap: true,
                   snapSizes: const [_halfSize],
                   builder: (context, scrollController) => CourseListSheet(
                     area: camera == null ? null : (southWest: camera.southWest, northEast: camera.northEast),
                     totalCount: _totalCount,
                     stage: stage,
+                    topPadding: underStatusBar,
                     scrollController: scrollController,
                     now: widget.now,
                     onExpand: () => _moveSheet(_halfSize),
