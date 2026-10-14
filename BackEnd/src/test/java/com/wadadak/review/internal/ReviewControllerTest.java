@@ -1,9 +1,12 @@
 package com.wadadak.review.internal;
 
 import com.wadadak.TestcontainersConfiguration;
+import com.wadadak.common.storage.ObjectStorage;
+import com.wadadak.common.storage.UploadForm;
 import com.wadadak.event.review.ReviewCreatedEvent;
 import com.wadadak.event.review.ReviewDeletedEvent;
 import com.wadadak.event.review.ReviewUpdatedEvent;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -14,6 +17,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.modulith.test.AssertablePublishedEvents;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 import tools.jackson.databind.JsonNode;
@@ -21,9 +25,16 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.verify;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 
 /**
@@ -52,6 +63,20 @@ class ReviewControllerTest {
 
     @Autowired
     JsonMapper jsonMapper;
+
+    /** 저장소는 흉내만 낸다. 실제 업로드는 ObjectStorageTest가 확인한다. */
+    @MockitoBean
+    ObjectStorage storage;
+
+    /** 저장소에 올라와 있는 사진 키 */
+    final Set<String> uploaded = new HashSet<>();
+
+    @BeforeEach
+    void storage() {
+        given(storage.isUploadedPhoto(anyString(), anyString()))
+                .willAnswer(call -> call.getArgument(0).equals("review") && uploaded.contains(call.<String>getArgument(1)));
+        given(storage.url(anyString())).willAnswer(call -> "https://files.test/wadadak/" + call.getArgument(0));
+    }
 
     @Test
     void writesReviewWithBestProgress(AssertablePublishedEvents events) throws Exception {
@@ -179,6 +204,72 @@ class ReviewControllerTest {
     }
 
     @Test
+    void writesAndReplacesPhotosInOrder() throws Exception {
+        UUID member = UUID.randomUUID();
+        UUID course = UUID.randomUUID();
+        String first = photo(), second = photo(), third = photo();
+        JsonNode written = data(write(member, course, runRecord(member, course, true, true, 100),
+                "\"photoKeys\": [\"%s\", \"%s\"]".formatted(second, first)));
+        assertThat(written.get("photos").get(0).get("key").asString()).isEqualTo(second);
+        assertThat(written.get("photos").get(1).get("url").asString()).isEqualTo("https://files.test/wadadak/" + first);
+        UUID reviewId = UUID.fromString(written.get("reviewId").asString());
+
+        // 남길 사진은 키를 다시 보낸다. 빠진 사진은 파일까지 지운다
+        JsonNode edited = data(mvc.put().uri("/api/v1/reviews/{id}", reviewId).with(jwt().jwt(j -> j.subject(member.toString())))
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{" + contentJson(4, null, null) + ", \"photoKeys\": [\"%s\", \"%s\"]}".formatted(first, third))
+                .exchange());
+
+        assertThat(edited.get("photos")).hasSize(2);
+        assertThat(jdbcTemplate.queryForList("SELECT photo_key FROM review.review_photos WHERE review_id = ? ORDER BY display_order",
+                String.class, reviewId)).containsExactly(first, third);
+        verify(storage).deleteAfterCommit(List.of(second));
+    }
+
+    @Test
+    void rejectsTooManyMissingOrBorrowedPhotos() throws Exception {
+        UUID member = UUID.randomUUID();
+        UUID course = UUID.randomUUID();
+        UUID record = runRecord(member, course, true, true, 100);
+        String six = String.join(", ", List.of(q(photo()), q(photo()), q(photo()), q(photo()), q(photo()), q(photo())));
+        String photo = photo();
+
+        assertError(write(member, course, record, "\"photoKeys\": [" + six + "]"), HttpStatus.BAD_REQUEST, "REVIEW-006");
+        assertError(write(member, course, record, "\"photoKeys\": [\"review/not-uploaded.jpg\"]"), HttpStatus.BAD_REQUEST, "REVIEW-007");
+        assertError(write(member, course, record, "\"photoKeys\": [%s, %s]".formatted(q(photo), q(photo))), HttpStatus.BAD_REQUEST, "REVIEW-007");
+        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM review.reviews WHERE member_id = ?", Integer.class, member)).isZero();
+
+        // 남의 리뷰 사진 키를 가져다 붙일 수 없다
+        UUID other = UUID.randomUUID();
+        assertThat(write(other, course, runRecord(other, course, true, true, 100), "\"photoKeys\": [%s]".formatted(q(photo)))).hasStatusOk();
+        assertError(write(member, course, record, "\"photoKeys\": [%s]".formatted(q(photo))), HttpStatus.BAD_REQUEST, "REVIEW-007");
+    }
+
+    @Test
+    void deletingReviewDeletesPhotoFiles() throws Exception {
+        UUID member = UUID.randomUUID();
+        UUID course = UUID.randomUUID();
+        String first = photo(), second = photo();
+        UUID reviewId = UUID.fromString(data(write(member, course, runRecord(member, course, true, true, 100),
+                "\"photoKeys\": [%s, %s]".formatted(q(first), q(second)))).get("reviewId").asString());
+
+        assertThat(delete(member, reviewId)).hasStatusOk();
+
+        verify(storage).deleteAfterCommit(List.of(first, second));
+        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM review.review_photos WHERE review_id = ?", Integer.class, reviewId))
+                .isZero();
+    }
+
+    @Test
+    void givesPhotoUploadForm() {
+        given(storage.photoUploadForm("review"))
+                .willReturn(new UploadForm("https://files.test/wadadak", "review/abc.jpg", Map.of("policy", "p")));
+
+        assertThat(mvc.post().uri("/api/v1/reviews/photo-uploads").with(jwt().jwt(j -> j.subject(UUID.randomUUID().toString()))).exchange())
+                .hasStatusOk().bodyJson().extractingPath("$.data.fields.policy").isEqualTo("p");
+    }
+
+    @Test
     void rejectsInvalidInput() {
         UUID member = UUID.randomUUID();
         UUID course = UUID.randomUUID();
@@ -206,6 +297,25 @@ class ReviewControllerTest {
                 {"courseId": "%s", "sourceRunRecordId": "%s", %s}""".formatted(course, source, contentJson(rating, content, tagsJson));
         return mvc.post().uri("/api/v1/reviews").with(jwt().jwt(j -> j.subject(member.toString())))
                 .contentType(MediaType.APPLICATION_JSON).content(body).exchange();
+    }
+
+    /** 사진을 붙여 작성한다. {@code photosJson}은 {@code "photoKeys": [...]} */
+    private MvcTestResult write(UUID member, UUID course, UUID source, String photosJson) {
+        String body = """
+                {"courseId": "%s", "sourceRunRecordId": "%s", %s, %s}""".formatted(course, source, contentJson(5, null, null), photosJson);
+        return mvc.post().uri("/api/v1/reviews").with(jwt().jwt(j -> j.subject(member.toString())))
+                .contentType(MediaType.APPLICATION_JSON).content(body).exchange();
+    }
+
+    /** 저장소에 올라온 사진 키 하나 */
+    private String photo() {
+        String key = "review/" + UUID.randomUUID() + ".jpg";
+        uploaded.add(key);
+        return key;
+    }
+
+    private static String q(String value) {
+        return "\"" + value + "\"";
     }
 
     private MvcTestResult edit(UUID member, UUID reviewId, int rating, String content, String tagsJson) {

@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -16,7 +17,8 @@ import java.util.Set;
  *
  * @param rating  전체 별점 1~5. 항목 평가 4개도 모두 1~5 필수
  * @param content 한줄 후기. 선택, 200자까지. 앞뒤 공백을 지우고 비어 있으면 없는 것으로 저장한다
- * @param tags    선택. 없으면 빈 목록
+ * @param tags      선택. 없으면 빈 목록
+ * @param photoKeys 사진 업로드 폼으로 올린 키. 보낸 순서대로 보인다. 선택, 5장까지(REVIEW-006). 수정하면 이 목록으로 통째로 바뀐다
  */
 record ReviewContent(
         @Min(1) @Max(5) int rating,
@@ -25,13 +27,15 @@ record ReviewContent(
         @Min(1) @Max(5) int lightingRating,
         @Min(1) @Max(5) int amenityRating,
         @Size(max = MAX_CONTENT_LENGTH) String content,
-        Set<@NotNull ReviewTag> tags) {
+        Set<@NotNull ReviewTag> tags,
+        List<@NotNull String> photoKeys) {
 
     static final int MAX_CONTENT_LENGTH = 200;
 
-    // 콤팩트 생성자: record가 만들어질 때마다 실행된다. 태그를 안 보내면(null) 빈 목록으로 바꿔 이후 코드가 null을 신경 쓰지 않게 한다
+    // 콤팩트 생성자: record가 만들어질 때마다 실행된다. 태그·사진을 안 보내면(null) 빈 목록으로 바꿔 이후 코드가 null을 신경 쓰지 않게 한다
     ReviewContent {
         tags = tags == null ? Set.of() : Set.copyOf(tags);
+        photoKeys = photoKeys == null ? List.of() : List.copyOf(photoKeys);
     }
 
     /** 저장할 후기. 공백만 있으면 후기가 없는 것으로 본다. */

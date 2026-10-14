@@ -1,0 +1,85 @@
+package com.wadadak.review.internal;
+
+import com.wadadak.common.entity.UuidV7;
+import com.wadadak.common.exception.AppException;
+import com.wadadak.common.storage.ObjectStorage;
+import com.wadadak.common.storage.UploadForm;
+import com.wadadak.review.ReviewErrorCode;
+import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DuplicateKeyException;
+import org.springframework.jdbc.core.simple.JdbcClient;
+import org.springframework.stereotype.Component;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * 리뷰 사진(정책 공통 5: 리뷰당 5장). 파일은 앱이 저장소에 직접 올리고, 여기에는 키만 순서대로 둔다(개발 정책 7장 사진 업로드).
+ *
+ * <p>엔티티 없이 {@link JdbcClient}로 다룬다. 수정하면 목록을 통째로 바꾸는데, JPA로 지우고 다시 넣으면
+ * INSERT가 DELETE보다 먼저 나가서 순서 유니크(review_id, display_order)에 걸린다.
+ */
+@Component
+@RequiredArgsConstructor
+class ReviewPhotos {
+
+    static final String MODULE = "review";
+    static final int MAX_PHOTOS = 5;
+
+    private final JdbcClient jdbc;
+    private final ObjectStorage storage;
+
+    /** 사진 한 장을 올릴 폼 */
+    UploadForm uploadForm() {
+        return storage.photoUploadForm(MODULE);
+    }
+
+    /**
+     * 사진을 이 목록(보이는 순서)으로 바꾼다. 빠진 사진 파일은 커밋한 뒤 지운다.
+     * 5장 넘으면 REVIEW-006, 올라오지 않았거나 겹치거나 다른 리뷰의 사진이면 REVIEW-007.
+     */
+    List<ReviewView.Photo> replace(UUID reviewId, List<String> keys) {
+        if (keys.size() > MAX_PHOTOS) {
+            throw new AppException(ReviewErrorCode.TOO_MANY_PHOTOS);
+        }
+        if (new HashSet<>(keys).size() < keys.size() || !keys.stream().allMatch(key -> storage.isUploadedPhoto(MODULE, key))) {
+            throw new AppException(ReviewErrorCode.PHOTO_NOT_FOUND);
+        }
+        List<String> before = keys(reviewId);
+        jdbc.sql("DELETE FROM review.review_photos WHERE review_id = :reviewId").param("reviewId", reviewId).update();
+        try {
+            for (int order = 0; order < keys.size(); order++) {
+                jdbc.sql("""
+                                INSERT INTO review.review_photos (id, review_id, photo_key, display_order, created_at, updated_at)
+                                VALUES (:id, :reviewId, :key, :order, now(), now())""")
+                        .param("id", UuidV7.create())
+                        .param("reviewId", reviewId)
+                        .param("key", keys.get(order))
+                        .param("order", order)
+                        .update();
+            }
+        } catch (DuplicateKeyException e) {
+            // 사진 주소에 키가 보여서 남의 사진을 가져다 붙일 수 있다. 막지 않으면 그 리뷰를 지울 때 원래 리뷰의 사진 파일도 지워진다
+            throw new AppException(ReviewErrorCode.PHOTO_NOT_FOUND);
+        }
+        storage.deleteAfterCommit(before.stream().filter(key -> !keys.contains(key)).toList());
+        return views(keys);
+    }
+
+    /** 리뷰를 지울 때 사진 파일도 커밋한 뒤 지운다. 사진 행은 DB가 함께 지운다(ON DELETE CASCADE). */
+    void deleteFiles(UUID reviewId) {
+        storage.deleteAfterCommit(keys(reviewId));
+    }
+
+    private List<String> keys(UUID reviewId) {
+        return jdbc.sql("SELECT photo_key FROM review.review_photos WHERE review_id = :reviewId ORDER BY display_order")
+                .param("reviewId", reviewId)
+                .query(String.class)
+                .list();
+    }
+
+    private List<ReviewView.Photo> views(List<String> keys) {
+        return keys.stream().map(key -> new ReviewView.Photo(key, storage.url(key))).toList();
+    }
+}

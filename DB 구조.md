@@ -166,7 +166,7 @@ erDiagram
     review_photos {
         uuid id PK
         uuid review_id FK
-        varchar(100) photo_key "review/..."
+        varchar(100) photo_key UK "review/..."
         integer display_order "0~4"
     }
     course_run_records {
@@ -421,7 +421,8 @@ erDiagram
 | `display_order` | `INTEGER` | | 표시 순서 0~4. 리뷰당 5장까지 |
 
 - `review_photos_review_order_uk`: `(review_id, display_order)`. B8·G2 "사진만" 조건도 이 인덱스로 찾는다.
-- 행을 지울 때 S3 파일도 지운다(리뷰 삭제·회원 탈퇴).
+- `review_photos_key_uk`: `UNIQUE (photo_key)`. 사진 주소에 키가 보이므로, 남의 리뷰 사진 키를 가져다 붙이면 그 리뷰를 지울 때 원래 리뷰의 파일까지 지워진다. 그래서 키 하나는 리뷰 하나만 쓴다(REVIEW-007).
+- 리뷰를 수정하면 사진 행을 모두 지우고 보낸 순서대로 다시 넣는다(`ReviewPhotos`). 빠진 사진과 지운 리뷰의 사진 파일은 커밋한 뒤 저장소에서 지운다. 회원 탈퇴 때 지우는 처리는 탈퇴 이벤트를 받을 때 붙인다.
 
 #### `review.course_run_records` — 코스 주행 기록 복사본
 
