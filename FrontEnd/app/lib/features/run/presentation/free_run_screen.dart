@@ -1,5 +1,9 @@
 import 'dart:async';
 
+import 'package:go_router/go_router.dart';
+
+import '../../../routes.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -147,13 +151,18 @@ class _Preparation extends StatelessWidget {
       action: WdAppBarAction.circle(
         WdIcons.settings,
         semanticLabel: '러닝 설정',
-        onTap: () => _notReady(context, '러닝 설정'),
+        onTap: () => context.push(Routes.runSettings),
       ),
     ),
     body: Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+          padding: const EdgeInsets.fromLTRB(
+            WdSpace.s24,
+            WdSpace.s0,
+            WdSpace.s24,
+            WdSpace.s12,
+          ),
           child: WdSegmentedControl(
             items: const ['자유 러닝', '코스 러닝', '고스트 대결'],
             selectedIndex: 0,
@@ -171,14 +180,19 @@ class _Preparation extends StatelessWidget {
                 constraints: BoxConstraints(minHeight: constraints.maxHeight),
                 child: IntrinsicHeight(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 16, 24, 24),
+                    padding: const EdgeInsets.fromLTRB(
+                      WdSpace.s24,
+                      WdSpace.s16,
+                      WdSpace.s24,
+                      WdSpace.s24,
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         if (error != null) ...[
                           WdInfoBanner(error!, tone: WdBannerTone.warning),
                           if (onSettings != null)
-                            WdButton('위치 설정 열기', onPressed: onSettings),
+                            WdButton('권한 설정 열기', onPressed: onSettings),
                           const SizedBox(height: WdSpace.s12),
                         ],
                         Text('오늘은, 발길이 닿는 대로.', style: WdText.ko22Bold),
@@ -210,14 +224,14 @@ class _Preparation extends StatelessWidget {
                                 child: Column(
                                   mainAxisAlignment: MainAxisAlignment.center,
                                   crossAxisAlignment: CrossAxisAlignment.start,
-                                  spacing: 3,
+                                  spacing: WdSpace.s3,
                                   children: [
                                     Text(
                                       '정해진 길 없이, 자유롭게',
                                       style: WdText.ko16Bold,
                                     ),
                                     Text(
-                                      '지금은 달린 시간부터 기록해요',
+                                      '시간과 거리, 페이스를 함께 기록해요',
                                       style: WdText.ko12.copyWith(
                                         color: WdColors.muted,
                                       ),
@@ -253,15 +267,13 @@ class _Preparation extends StatelessWidget {
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
-                                      spacing: 3,
+                                      spacing: WdSpace.s3,
                                       children: [
                                         Text(
                                           '지난 러닝',
-                                          style: WdText.raw(
-                                            11,
-                                            FontWeight.w700,
-                                            16,
-                                          ).copyWith(color: WdColors.grayLight),
+                                          style: WdText.run11W700H16.copyWith(
+                                            color: WdColors.grayLight,
+                                          ),
                                         ),
                                         Text(
                                           '최근 자유 러닝',
@@ -286,7 +298,7 @@ class _Preparation extends StatelessWidget {
                               const Spacer(),
                               const ColoredBox(
                                 color: WdColors.darkLine,
-                                child: SizedBox(height: 1),
+                                child: SizedBox(height: WdSpace.s1),
                               ),
                               const SizedBox(height: WdSpace.s14),
                               Text(
@@ -299,6 +311,12 @@ class _Preparation extends StatelessWidget {
                               ),
                             ],
                           ),
+                        ),
+                        const SizedBox(height: WdSpace.s8),
+                        WdButton(
+                          '내 러닝 기록 보기',
+                          variant: WdButtonVariant.secondary,
+                          onPressed: () => context.push(Routes.runHistory),
                         ),
                         const SizedBox(height: WdSpace.s8),
                         Row(
@@ -316,11 +334,11 @@ class _Preparation extends StatelessWidget {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 30),
+                        const SizedBox(height: WdSpace.s30),
                         const Spacer(),
                         Center(
                           child: Text(
-                            'GPS 확인 후 측정 · 케이던스 준비 중',
+                            'GPS와 걸음 센서로 측정해요',
                             style: WdText.ko12.copyWith(color: WdColors.muted),
                           ),
                         ),
@@ -359,7 +377,7 @@ class _Countdown extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Colors.black,
+    backgroundColor: WdColors.runBackground,
     body: SafeArea(
       child: Column(
         children: [
@@ -371,19 +389,19 @@ class _Countdown extends StatelessWidget {
                   constraints: BoxConstraints(minHeight: constraints.maxHeight),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(
-                      vertical: 16,
-                      horizontal: 24,
+                      vertical: WdSpace.s16,
+                      horizontal: WdSpace.s24,
                     ),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
-                      spacing: 28,
+                      spacing: WdSpace.s28,
                       children: [
                         WdSurface(
                           color: WdColors.runSurface,
                           radius: WdRadius.full,
                           padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 6,
+                            horizontal: WdSpace.s8,
+                            vertical: WdSpace.s6,
                           ),
                           child: Text(
                             '자유 러닝',
@@ -410,19 +428,15 @@ class _Countdown extends StatelessWidget {
                         else
                           Text(
                             '$value',
-                            style: WdText.raw(
-                              180,
-                              FontWeight.w800,
-                              207,
-                            ).copyWith(color: WdColors.lime),
+                            style: WdText.run180W800H207.copyWith(
+                              color: WdColors.lime,
+                            ),
                           ),
                         Text(
                           '나의 기록을 넘어서는 한 걸음.',
-                          style: WdText.raw(
-                            14,
-                            FontWeight.w400,
-                            20,
-                          ).copyWith(color: WdColors.runTextSub),
+                          style: WdText.run14W400H20.copyWith(
+                            color: WdColors.runTextSub,
+                          ),
                         ),
                       ],
                     ),
@@ -432,11 +446,16 @@ class _Countdown extends StatelessWidget {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+            padding: const EdgeInsets.fromLTRB(
+              WdSpace.s24,
+              WdSpace.s12,
+              WdSpace.s24,
+              WdSpace.s24,
+            ),
             child: Column(
               spacing: WdSpace.s12,
               children: [
-                WdSensorStatus([('GPS 신호', gpsStatus), ('케이던스 센서', '준비 중')]),
+                WdSensorStatus([('GPS 신호', gpsStatus), ('케이던스 센서', '시작 후 측정')]),
                 WdButton(
                   '시작 취소',
                   onPressed: onCancel,

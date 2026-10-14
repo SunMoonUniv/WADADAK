@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'recording_models.dart';
+import 'run_lap.dart';
 
 /// PACE_V2. Raw fixes remain durable; only confirmed movement enters the route.
 class MotionPace {
@@ -10,6 +11,8 @@ class MotionPace {
   RunInput? _previous;
   final List<RunInput> _pending = [];
   final List<_Travel> _recent = [];
+  final List<RunTravel> travels = [];
+  final List<RunTimeSpan> stops = [];
   final List<List<RunInput>> segments = [];
   List<RunInput>? _segment;
   bool paused = false, ended = false;
@@ -18,7 +21,7 @@ class MotionPace {
   void add(RunInput p) {
     if (ended) return;
     if (p.kind != RunKind.gps) {
-      if (p.kind == RunKind.start) return;
+      if (p.kind == RunKind.start || p.kind == RunKind.cadence) return;
       // Unknown GPS time must never be subtracted as stationary time.
       _closeStop(p.kind == RunKind.gap ? _previous?.elapsedMs : p.elapsedMs);
       _resetWindow();
@@ -81,6 +84,7 @@ class MotionPace {
         final a = _pending[i - 1], b = _pending[i];
         final d = a.distanceTo(b);
         distanceM += d;
+        travels.add(RunTravel(a.elapsedMs, b.elapsedMs, d));
         _recent.add(_Travel(a.elapsedMs, b.elapsedMs, d));
         _segment!.add(b);
       }
@@ -137,6 +141,9 @@ class MotionPace {
           ? ms
           : math.min(ms, _previous!.elapsedMs + 10000);
       _stoppedMs += math.max(0, knownEnd - _stationarySince!);
+      if (knownEnd > _stationarySince!) {
+        stops.add(RunTimeSpan(_stationarySince!, knownEnd));
+      }
     }
     _stationarySince = null;
   }
@@ -146,6 +153,17 @@ class MotionPace {
     _recent.clear();
     _previous = null;
     _segment = null;
+  }
+
+  int stoppedBefore(int ms) {
+    var result = stops.fold<int>(0, (sum, s) => sum + s.before(ms));
+    if (_stationarySince != null) {
+      final end = _previous == null
+          ? ms
+          : math.min(ms, _previous!.elapsedMs + 10000);
+      result += math.max(0, math.min(ms, end) - _stationarySince!);
+    }
+    return result;
   }
 
   int movingMs(int ms, int activeMs) {

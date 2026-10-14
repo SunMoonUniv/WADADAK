@@ -8,7 +8,7 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../../routes.dart';
 
-/// 러닝 권한을 위치(필수) → 동작 및 피트니스(선택) 순서로 묻는다.
+/// 러닝 권한을 위치(필수) → 동작 및 피트니스(러닝 시작 시 필수) 순서로 묻는다.
 ///
 /// 거부해도 다음 화면으로 간다. 위치 권한이 없으면 홈에 들어갈 때 앱 공통 안내가 다시 묻는다(정책 문서 제2부 5장).
 class RunPermissions {
@@ -86,8 +86,8 @@ class _PermissionScreenState extends ConsumerState<PermissionScreen> {
                         _PermissionRow(
                           icon: WdIcons.run,
                           title: '동작 및 피트니스',
-                          required: false,
-                          description: '걸음 센서로 케이던스(분당 걸음 수)를 측정해요. 허용하지 않아도 달리기는 기록돼요.',
+                          required: true,
+                          description: '걸음 센서로 케이던스(분당 걸음 수)를 측정해요. 러닝 시작 시 필요해요. 거부해도 다른 화면은 이용할 수 있어요.',
                         ),
                       ],
                     ),

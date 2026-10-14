@@ -4,6 +4,7 @@ import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart';
 
 import '../domain/recording_models.dart';
+import '../domain/run_voice.dart';
 
 abstract interface class RunStore {
   Future<void> create(LocalRun run, RunInput start);
@@ -21,7 +22,14 @@ abstract interface class RunStore {
   Future<void> syncStatus(LocalRun run, String state, {String? failure});
 }
 
-class RunLocalStore implements RunStore {
+abstract interface class RunHistoryStore {
+  Future<Set<String>> deletedIds(String owner);
+  Future<List<String>> pendingDeletions(String owner);
+  Future<void> deleteRecord(String owner, String id);
+  Future<void> deletionSynced(String owner, String id);
+}
+
+class RunLocalStore implements RunStore, RunHistoryStore {
   RunLocalStore({this.factory, this.databasePath});
   final DatabaseFactory? factory;
   final String? databasePath;
@@ -33,7 +41,10 @@ class RunLocalStore implements RunStore {
       databasePath ??
           path.join(await dbFactory.getDatabasesPath(), 'runs_v1.db'),
       options: OpenDatabaseOptions(
-        version: 1,
+        version: 2,
+        onUpgrade: (db, old, _) async {
+          if (old < 2) await _createExtras(db);
+        },
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON');
         },
@@ -50,6 +61,7 @@ class RunLocalStore implements RunStore {
           await db.execute(
             'CREATE TABLE inputs (session_id TEXT NOT NULL REFERENCES sessions(id), seq INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(session_id,seq))',
           );
+          await _createExtras(db);
         },
       ),
     );
@@ -126,8 +138,9 @@ class RunLocalStore implements RunStore {
     final db = await database;
     final rows = await db.query(
       'sessions',
-      where: 'owner=?',
-      whereArgs: [owner],
+      where:
+          'owner=? AND id NOT IN (SELECT id FROM run_deletions WHERE owner=?)',
+      whereArgs: [owner, owner],
       orderBy: 'started_at DESC',
     );
     final result = <LocalRun>[];
@@ -198,6 +211,92 @@ class RunLocalStore implements RunStore {
     );
     run.syncState = state;
     run.syncFailure = failure;
+  }
+
+  static Future<void> _createExtras(Database db) async {
+    await db.execute(
+      'CREATE TABLE run_deletions (owner TEXT NOT NULL, id TEXT NOT NULL, pending INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(owner,id))',
+    );
+    await db.execute(
+      'CREATE TABLE run_settings (owner TEXT PRIMARY KEY, payload TEXT NOT NULL)',
+    );
+  }
+
+  @override
+  Future<Set<String>> deletedIds(String owner) async =>
+      (await (await database).query(
+        'run_deletions',
+        columns: ['id'],
+        where: 'owner=?',
+        whereArgs: [owner],
+      )).map((r) => r['id'] as String).toSet();
+  @override
+  Future<List<String>> pendingDeletions(String owner) async =>
+      (await (await database).query(
+        'run_deletions',
+        columns: ['id'],
+        where: 'owner=? AND pending=1',
+        whereArgs: [owner],
+      )).map((r) => r['id'] as String).toList();
+  @override
+  Future<void> deleteRecord(String owner, String id) async {
+    await (await database).transaction((tx) async {
+      final local = await tx.query('sessions', where: 'id=?', whereArgs: [id]);
+      if (local.isNotEmpty &&
+          (local.single['owner'] != owner ||
+              local.single['phase'] != 'ended')) {
+        throw StateError('이 기록은 삭제할 수 없어요.');
+      }
+      await tx.insert('run_deletions', {
+        'owner': owner,
+        'id': id,
+        'pending': 1,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+      await tx.delete(
+        'inputs',
+        where: 'session_id IN (SELECT id FROM sessions WHERE id=? AND owner=?)',
+        whereArgs: [id, owner],
+      );
+      await tx.delete(
+        'sessions',
+        where: 'id=? AND owner=? AND phase=?',
+        whereArgs: [id, owner, 'ended'],
+      );
+    });
+  }
+
+  @override
+  Future<void> deletionSynced(String owner, String id) async {
+    await (await database).update(
+      'run_deletions',
+      {'pending': 0},
+      where: 'owner=? AND id=?',
+      whereArgs: [owner, id],
+    );
+  }
+
+  Future<RunVoiceSettings> voiceSettings(String owner) async {
+    final rows = await (await database).query(
+      'run_settings',
+      where: 'owner=?',
+      whereArgs: [owner],
+    );
+    return rows.isEmpty
+        ? const RunVoiceSettings()
+        : RunVoiceSettings.fromJson(
+            (jsonDecode(rows.single['payload'] as String) as Map)
+                .cast<String, dynamic>(),
+          );
+  }
+
+  Future<void> saveVoiceSettings(
+    String owner,
+    RunVoiceSettings settings,
+  ) async {
+    await (await database).insert('run_settings', {
+      'owner': owner,
+      'payload': jsonEncode(settings.toJson()),
+    }, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<void> close() async {

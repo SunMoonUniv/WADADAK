@@ -60,6 +60,10 @@ class RankingEventHandler {
     /** 탈퇴 회원의 랭킹 기록을 바로 지운다. 탈퇴 표시를 남겨 늦게 온 완주 기록을 받지 않는다. */
     @ApplicationModuleListener
     public void on(MemberWithdrawnEvent event) {
+        jdbc.sql("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))")
+                .param("key", "ranking-member:" + event.memberId()).query((rs,n) -> true).list();
+        jdbc.sql("DELETE FROM ranking.distance_run_records WHERE member_id=:memberId")
+                .param("memberId", event.memberId()).update();
         jdbc.sql("""
                         INSERT INTO ranking.withdrawn_members (member_id, withdrawn_at, created_at, updated_at)
                         VALUES (:memberId, :withdrawnAt, now(), now())

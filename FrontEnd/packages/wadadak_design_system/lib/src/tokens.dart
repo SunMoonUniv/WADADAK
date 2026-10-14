@@ -56,6 +56,7 @@ abstract final class WdColors {
   static const neutralDark = Color(0xFF14141A); // surface/다크
 
   // ── Figma 변수로 등록되지 않은 원시 색상 (디자인에 직접 입력된 값) ──
+  static const runBackground = Color(0xFF000000);
   static const nearBlack = Color(0xFF191919);
   static const runTextSub = Color(0xFFBDBDBD); // 러닝 화면 보조 텍스트
   static const runSurface = Color(0xFF1C1C1C); // 러닝 화면 카드·LIVE 배지
@@ -78,6 +79,8 @@ abstract final class WdColors {
 
 /// 간격 토큰 (--a-space-*).
 abstract final class WdSpace {
+  // Existing running layouts, with their dimensions preserved.
+  static const double s1 = 1, s2 = 2, s3 = 3, s15 = 15, s28 = 28, s30 = 30, s32 = 32, s56 = 56;
   static const double s0 = 0, s4 = 4, s6 = 6, s8 = 8, s10 = 10, s12 = 12;
   static const double s14 = 14, s16 = 16, s18 = 18, s20 = 20, s24 = 24;
 }
@@ -103,6 +106,16 @@ abstract final class WdFonts {
 /// Figma line-height는 `height`로, CSS와 같은 반-행간 분배는 `leadingDistribution.even`으로 맞춘다.
 /// letterSpacing을 0으로 고정해 Material 기본 자간이 섞이지 않게 한다.
 abstract final class WdText {
+  // Existing running screen typography, preserved as named DS styles.
+  static const run11W700H16 = TextStyle(package: _p, fontFamily: _f, fontSize: 11, fontWeight: FontWeight.w700, height: 16 / 11, letterSpacing: 0, leadingDistribution: _e,);
+  static const run13W400H17 = TextStyle(package: _p, fontFamily: _f, fontSize: 13, fontWeight: FontWeight.w400, height: 17 / 13, letterSpacing: 0, leadingDistribution: _e,);
+  static const run13W500H17 = TextStyle(package: _p, fontFamily: _f, fontSize: 13, fontWeight: FontWeight.w500, height: 17 / 13, letterSpacing: 0, leadingDistribution: _e,);
+  static const run13W700H16 = TextStyle(package: _p, fontFamily: _f, fontSize: 13, fontWeight: FontWeight.w700, height: 16 / 13, letterSpacing: 0, leadingDistribution: _e,);
+  static const run14W400H20 = TextStyle(package: _p, fontFamily: _f, fontSize: 14, fontWeight: FontWeight.w400, height: 20 / 14, letterSpacing: 0, leadingDistribution: _e,);
+  static const run180W800H207 = TextStyle(package: _p, fontFamily: _f, fontSize: 180, fontWeight: FontWeight.w800, height: 207 / 180, letterSpacing: 0, leadingDistribution: _e,);
+  static const run34W700H39 = TextStyle(package: _p, fontFamily: _f, fontSize: 34, fontWeight: FontWeight.w700, height: 39 / 34, letterSpacing: 0, leadingDistribution: _e,);
+  static const run56W800H74 = TextStyle(package: _p, fontFamily: _f, fontSize: 56, fontWeight: FontWeight.w800, height: 74 / 56, letterSpacing: 0, leadingDistribution: _e,);
+
   static const _f = WdFonts.pretendard;
   static const _p = wdPackage;
   static const _e = TextLeadingDistribution.even;

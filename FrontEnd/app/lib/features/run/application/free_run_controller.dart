@@ -7,6 +7,7 @@ import '../domain/free_run_session.dart';
 import '../domain/run_models.dart';
 import '../domain/recording_models.dart' as recording;
 import 'run_controller.dart';
+import 'run_result_mapper.dart';
 
 // A regular Provider keeps the session alive when the running tab is hidden.
 final freeRunControllerProvider = Provider<FreeRunController>((ref) {
@@ -53,7 +54,7 @@ class FreeRunController extends ChangeNotifier {
   String get gpsStatus => countdown != null ? '신호 확인 완료' : snapshot.gpsStatus;
   RunSnapshot? get recent => _recording?.records.firstOrNull == null
       ? null
-      : _savedSnapshot(_recording!.records.first);
+      : savedSnapshot(_recording!.records.first);
 
   RunSnapshot get snapshot {
     final controller = _recording;
@@ -79,7 +80,8 @@ class FreeRunController extends ChangeNotifier {
     );
   }
 
-  RunSnapshot _savedSnapshot(recording.LocalRun run) {
+  RunSnapshot savedSnapshot(recording.LocalRun run) {
+    if (run.result != null) return remoteRunSnapshot(run.result!);
     final calculator = recording.RunCalculator.replay(run.inputs);
     return _fromRun(
       run,
@@ -125,6 +127,9 @@ class FreeRunController extends ChangeNotifier {
     String? notice,
     bool live = true,
   }) {
+    if (run.phase == recording.RunPhase.ended && run.result != null) {
+      return remoteRunSnapshot(run.result!);
+    }
     if (live) _updatePaces(run, metrics, notice);
     return RunSnapshot(
       state: switch (run.phase) {
@@ -141,6 +146,16 @@ class FreeRunController extends ChangeNotifier {
       averagePaceDisplay: live ? _averagePace : metrics.paceSecondsPerKm,
       currentPaceDisplay: live ? _currentPace : null,
       stationary: metrics.stationary,
+      laps: calculator.lapsAt(metrics.elapsedMs),
+      voiceNotice: live ? _recording?.voiceNotice : null,
+      averageCadence: metrics.averageCadence,
+      currentCadence: metrics.currentCadence,
+      cadenceCoverageMs: metrics.cadenceCoverageMs,
+      cadenceStatus: live
+          ? (_recording?.cadenceStatus ?? '센서 미연결')
+          : metrics.averageCadence == null
+          ? '측정 없음'
+          : '측정 완료',
       distanceMeters: metrics.distanceM,
       inputs: run.inputs
           .map(
@@ -168,7 +183,12 @@ class FreeRunController extends ChangeNotifier {
           : metrics.distanceM <= 0
           ? '측정 거리 없음'
           : run.pending
-          ? '기기 저장'
+          ? switch (run.syncState) {
+              'blocked' => '기기 저장 · 동기화 확인 필요',
+              'processing' => '기기 저장 · 서버 처리 중',
+              'uploading' => '기기 저장 · 전송 중',
+              _ => '기기 저장',
+            }
           : '서버 저장 완료',
       notice: notice,
       endReason: run.endReason,

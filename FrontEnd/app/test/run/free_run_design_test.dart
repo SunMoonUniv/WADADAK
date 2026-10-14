@@ -178,7 +178,7 @@ void main() {
         expect(find.text('러닝 완료 · 저장 전'), findsOneWidget);
         expect(find.byType(WdBottomNav), findsNothing);
         await capture('result');
-        await tester.ensureVisible(find.text('구간 페이스'));
+        await tester.ensureVisible(find.text('랩 기록'));
         await tester.pumpAndSettle();
         await capture('result-details');
         await tester.tap(find.text('확인'));
