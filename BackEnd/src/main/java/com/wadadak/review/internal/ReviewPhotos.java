@@ -76,6 +76,21 @@ class ReviewPhotos {
     }
 
     /**
+     * 삭제된 코스의 리뷰 사진 파일을 커밋한 뒤 지운다. 사진 행은 리뷰를 지울 때 DB가 함께 지우므로(ON DELETE CASCADE)
+     * 리뷰를 지우기 전에 불러야 키를 읽을 수 있다.
+     */
+    void deleteFilesOfCourse(UUID courseId) {
+        storage.deleteAfterCommit(jdbc.sql("""
+                        SELECT p.photo_key
+                        FROM review.review_photos p
+                        JOIN review.reviews r ON r.id = p.review_id
+                        WHERE r.course_id = :courseId""")
+                .param("courseId", courseId)
+                .query(String.class)
+                .list());
+    }
+
+    /**
      * 여러 리뷰의 사진을 한 번에 읽는다(B8·G2 목록). 카드마다 따로 읽으면 리뷰 수만큼 쿼리가 나간다(N+1).
      * 리뷰마다 보이는 순서대로이고, 사진이 없는 리뷰는 결과에 없다.
      */
