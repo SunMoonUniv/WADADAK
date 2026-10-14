@@ -66,6 +66,10 @@ void main() {
 
   Finder sheetTitle(String title) => find.descendant(of: find.byType(CourseListSheet), matching: find.text(title));
 
+  /// 반 · 전체 보기의 제목 줄(`지금 달리기 좋은 코스 N`). 끌면 시트가 움직인다.
+  Finder listTitle() =>
+      find.descendant(of: find.byType(CourseListSheet), matching: find.textContaining('지금 달리기 좋은 코스'));
+
   setUp(() => courses = FakeCourseApi());
 
   testWidgets('lists the latest courses in the map area on the half sheet', (tester) async {
@@ -78,8 +82,8 @@ void main() {
       ];
     await openHome(tester);
 
-    expect(sheetTitle('지금 달리기 좋은 코스'), findsOneWidget);
-    expect(find.text('코스 1개'), findsOneWidget, reason: '지도 위에 지도가 센 범위 안 코스 수');
+    expect(sheetTitle('지금 달리기 좋은 코스 1'), findsOneWidget, reason: 'Figma A6처럼 제목 뒤에 지도에 보이는 코스 수');
+    expect(find.text('코스 1개'), findsNothing, reason: '지도 왼쪽 위 코스 수는 두지 않는다');
     expect(sheetTitle('전체 보기'), findsOneWidget);
     expect(find.widgetWithText(WdFilterChip, '최신순'), findsOneWidget);
 
@@ -111,7 +115,7 @@ void main() {
     expect(mapHeight, 874 - 122.5);
 
     // 피크로 내리면 더 넓게 보여 다시 받는다. 위쪽 끝은 같고 아래쪽 끝만 내려간다.
-    await tester.drag(find.text('지금 달리기 좋은 코스'), const Offset(0, 600));
+    await tester.drag(listTitle(), const Offset(0, 600));
     await tester.pumpAndSettle();
     final peek = courses.listRequests.last;
     expect(courses.listRequests, hasLength(2));
@@ -154,15 +158,18 @@ void main() {
       ..listed = [for (var i = 1; i <= 8; i++) course('코스 $i')];
     await openHome(tester);
     expect(find.byType(CourseListCard), findsAtLeastNWidgets(1));
+    final sheetTop = tester.getTopLeft(find.byType(CourseListSheet)).dy;
 
+    // 반(A2)에서 목록을 밀면 시트는 그대로 두고 목록만 내려간다.
     await tester.fling(find.byType(CourseListCard).first, const Offset(0, -2000), 3000);
     await tester.pumpAndSettle();
     await tester.drag(find.byType(CourseListCard).last, const Offset(0, -2000));
     await tester.pumpAndSettle();
 
     expect(courses.listRequests.map((request) => request.cursor), [null, '5']);
+    expect(tester.getTopLeft(find.byType(CourseListSheet)).dy, sheetTop, reason: '시트는 반 그대로');
     // 끝까지 내려도 제목 줄 · 정렬 칩은 위에 남는다.
-    expect(sheetTitle('지금 달리기 좋은 코스').hitTestable(), findsOneWidget);
+    expect(listTitle().hitTestable(), findsOneWidget);
     expect(find.widgetWithText(WdFilterChip, '최신순').hitTestable(), findsOneWidget);
     final names = [for (final card in tester.widgetList<CourseListCard>(find.byType(CourseListCard))) card.course.name];
     expect(names.last, '코스 8');
@@ -211,7 +218,7 @@ void main() {
   testWidgets('drags between the peek, half and full sheet', (tester) async {
     courses.listed = [course('성북천 벚꽃길 3K')];
     await openHome(tester);
-    final handle = sheetTitle('지금 달리기 좋은 코스');
+    final handle = listTitle();
 
     // 반(A2)은 인사말 배너.
     expect(find.text('나의 다음 코스'), findsOneWidget);
@@ -229,10 +236,8 @@ void main() {
     // 제목 줄을 누르면 다시 반(A2).
     await tester.tap(sheetTitle('↑ 위로 올려 코스 목록 보기'));
     await tester.pumpAndSettle();
-    expect(sheetTitle('지금 달리기 좋은 코스'), findsOneWidget);
+    expect(listTitle(), findsOneWidget);
     expect(find.text('＋ 코스 만들기').hitTestable(), findsOneWidget, reason: '지도 위 버튼');
-
-    expect(sheetTitle('코스 1'), findsNothing, reason: '피크만 코스 수');
 
     // `전체 보기`를 눌러도 전체 보기(A6).
     await tester.tap(sheetTitle('전체 보기'));

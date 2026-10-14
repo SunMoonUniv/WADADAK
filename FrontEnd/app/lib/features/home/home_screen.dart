@@ -42,7 +42,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   List<RegionCount> _regions = const [];
   var _loaded = false;
 
-  /// 지도가 센 범위 안 코스 수(지도 위 `코스 N개`). 아직 모르면 null.
+  /// 지도가 센 범위 안 코스 수(시트 제목 `지금 달리기 좋은 코스 N`). 아직 모르면 null.
   int? _totalCount;
 
   /// 지금 조회한 범위. 시트에 가리지 않고 보이는 지도 부분이다. 목록도 이 범위다(MAP-07).
@@ -221,9 +221,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   if (stage != SheetStage.peek) _moveSheet(peekSize);
                 },
               ),
-              // 지도 범위 안 코스 수(Figma A2 `반포동 주변 24개` · A5 `코스 24개`).
-              if (_totalCount case final total?)
-                Positioned(left: WdSpace.s16, top: WdSpace.s16, child: _MapCountChip('코스 ${_count(total)}개')),
               // 버튼 줄은 시트 바로 위에 붙어 다닌다. 전체 보기(A6)에서는 숨긴다.
               Positioned(
                 left: 0,
@@ -345,16 +342,3 @@ class _HomeHeader extends StatelessWidget {
   }
 }
 
-/// 지도 왼쪽 위의 코스 수(Figma A2 · A5). 흰 알약에 12 Medium 글자.
-class _MapCountChip extends StatelessWidget {
-  const _MapCountChip(this.text);
-
-  final String text;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: WdSpace.s8, vertical: 7),
-        decoration: BoxDecoration(color: WdColors.white, borderRadius: BorderRadius.circular(WdRadius.full)),
-        child: Text(text, style: WdText.ko12Medium.copyWith(color: WdColors.ink)),
-      );
-}

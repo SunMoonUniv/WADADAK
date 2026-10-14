@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
@@ -23,7 +25,8 @@ enum SheetStage {
 }
 
 /// 홈의 코스 목록 시트(A2 · A5 피크 · A6). 지도와 같은 범위의 코스를 최신순으로 보인다(MAP-07).
-/// 아래로 끝까지 내리면 다음 쪽을 이어 받는다(A6-04).
+/// 시트는 위쪽 제목 줄 · 정렬 칩을 끌어 올리고 내린다. 그 아래 목록은 시트가 반이어도 따로 스크롤되고(A2-06),
+/// 끝까지 내리면 다음 쪽을 이어 받는다(A6-04).
 ///
 /// 정렬은 지금 최신순 하나다. 인기순 · 평점순 · 실시간순은 코스 통계(F11), 가까운순은 현재 위치(`LocationService`)가 생기면 붙인다.
 class CourseListSheet extends ConsumerStatefulWidget {
@@ -49,11 +52,11 @@ class CourseListSheet extends ConsumerStatefulWidget {
   /// 지금 지도 범위. 지도가 처음 멈추기 전이면 null.
   final MapArea? area;
 
-  /// 지도가 센 범위 안 코스 수(`코스 N`). 아직 모르면 null.
+  /// 지도에 보이는 범위 안 코스 수. 제목 `지금 달리기 좋은 코스 N`, 피크 `코스 N`. 아직 모르면 null.
   final int? totalCount;
   final SheetStage stage;
 
-  /// 시트를 끄는 스크롤. [DraggableScrollableSheet]가 준다.
+  /// 시트를 끄는 스크롤. [DraggableScrollableSheet]가 준다. 제목 줄 · 정렬 칩에만 붙인다.
   final ScrollController scrollController;
 
   /// 카드의 만료까지 남은 날을 세는 기준 시각.
@@ -79,6 +82,12 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
   /// 정렬 칩 30 + 아래 12.
   static const _chipRowHeight = 30.0 + WdSpace.s12;
 
+  /// 제목 줄 + 정렬 칩. 시트를 끄는 부분이다.
+  static const _headerExtent = CourseListSheet.peekHeight + _chipRowHeight;
+
+  /// 목록 스크롤. 시트 크기와 따로 움직인다.
+  final _list = ScrollController();
+
   /// 남은 스크롤이 이보다 짧으면 다음 쪽을 받는다.
   static const _loadMoreExtent = 400.0;
 
@@ -103,6 +112,12 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
   }
 
   @override
+  void dispose() {
+    _list.dispose();
+    super.dispose();
+  }
+
+  @override
   void didUpdateWidget(CourseListSheet oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.area != null && widget.area != oldWidget.area) _load(widget.area!);
@@ -117,6 +132,8 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
           .read(courseApiClientProvider)
           .listCourses(southWest: area.southWest, northEast: area.northEast);
       if (!mounted || request != _request) return;
+      // 새 범위의 목록은 맨 위부터 보인다.
+      if (_list.hasClients) _list.jumpTo(0);
       setState(() {
         _courses = page.courses;
         _nextCursor = page.nextCursor;
@@ -174,61 +191,68 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
         border: Border(top: BorderSide(color: WdColors.line)),
       ),
-      child: NotificationListener<ScrollNotification>(
-        onNotification: (notification) {
-          if (notification.metrics.extentAfter < _loadMoreExtent) _loadMore();
-          return false;
-        },
-        child: CustomScrollView(
-          controller: widget.scrollController,
-          slivers: [
-            // 제목 줄 · 정렬 칩은 목록을 내려도 위에 남는다. 카드는 그 밑으로 지나간다.
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: _PinnedHeader(
-                extent: CourseListSheet.peekHeight + _chipRowHeight,
-                child: ColoredBox(
-                  color: WdColors.paper,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      _header(),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(WdSpace.s16, 0, WdSpace.s16, WdSpace.s12),
-                        child: Row(children: [WdFilterChip('최신순', selected: true, onTap: () {})]),
-                      ),
-                    ],
-                  ),
+      child: LayoutBuilder(
+        builder: (context, constraints) => Column(
+          children: [
+            // 제목 줄 · 정렬 칩을 끌면 시트가 움직인다. 피크일 때는 제목 줄만 보인다.
+            SizedBox(
+              height: math.min(_headerExtent, constraints.maxHeight),
+              child: SingleChildScrollView(
+                controller: widget.scrollController,
+                // 내용이 칸에 맞아도 끌기를 받아 시트로 넘긴다.
+                physics: const AlwaysScrollableScrollPhysics(parent: ClampingScrollPhysics()),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _header(),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(WdSpace.s16, 0, WdSpace.s16, WdSpace.s12),
+                      child: Row(children: [WdFilterChip('최신순', selected: true, onTap: () {})]),
+                    ),
+                  ],
                 ),
               ),
             ),
-            if (courses == null && _failed)
-              SliverToBoxAdapter(
-                child: _message(CourseListSheet.loadFailedMessage, [
-                  WdButton('다시 시도', variant: WdButtonVariant.secondary, onPressed: () => _load(widget.area!)),
-                ]),
-              )
-            else if (courses == null)
-              const SliverToBoxAdapter(child: _Loading())
-            else if (courses.isEmpty)
-              SliverToBoxAdapter(
-                child: _message(CourseListSheet.emptyMessage, [
-                  WdButton('지도 범위 넓히기', variant: WdButtonVariant.secondary, onPressed: widget.onWidenMap),
-                  WdButton('코스 만들기', onPressed: widget.onCreateCourse),
-                ]),
-              )
-            else ...[
-              SliverPadding(
-                padding: const EdgeInsets.symmetric(horizontal: WdSpace.s16),
-                sliver: SliverList.separated(
-                  itemCount: courses.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: WdSpace.s12),
-                  // 코스 상세(B1)가 생기면 카드를 눌러 연다(A2-05).
-                  itemBuilder: (_, index) => CourseListCard(course: courses[index], now: now),
+            Expanded(
+              child: NotificationListener<ScrollNotification>(
+                onNotification: (notification) {
+                  if (notification.metrics.extentAfter < _loadMoreExtent) _loadMore();
+                  return false;
+                },
+                child: CustomScrollView(
+                  controller: _list,
+                  slivers: [
+                    if (courses == null && _failed)
+                      SliverToBoxAdapter(
+                        child: _message(CourseListSheet.loadFailedMessage, [
+                          WdButton('다시 시도', variant: WdButtonVariant.secondary, onPressed: () => _load(widget.area!)),
+                        ]),
+                      )
+                    else if (courses == null)
+                      const SliverToBoxAdapter(child: _Loading())
+                    else if (courses.isEmpty)
+                      SliverToBoxAdapter(
+                        child: _message(CourseListSheet.emptyMessage, [
+                          WdButton('지도 범위 넓히기', variant: WdButtonVariant.secondary, onPressed: widget.onWidenMap),
+                          WdButton('코스 만들기', onPressed: widget.onCreateCourse),
+                        ]),
+                      )
+                    else ...[
+                      SliverPadding(
+                        padding: const EdgeInsets.symmetric(horizontal: WdSpace.s16),
+                        sliver: SliverList.separated(
+                          itemCount: courses.length,
+                          separatorBuilder: (_, _) => const SizedBox(height: WdSpace.s12),
+                          // 코스 상세(B1)가 생기면 카드를 눌러 연다(A2-05).
+                          itemBuilder: (_, index) => CourseListCard(course: courses[index], now: now),
+                        ),
+                      ),
+                      SliverToBoxAdapter(child: _footer()),
+                    ],
+                  ],
                 ),
               ),
-              SliverToBoxAdapter(child: _footer()),
-            ],
+            ),
           ],
         ),
       ),
@@ -260,7 +284,12 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
                 children: [
                   Expanded(
                     child: Text(
-                      peek ? '↑ 위로 올려 코스 목록 보기' : '지금 달리기 좋은 코스',
+                      // Figma A6 `주변 인기 코스 24`처럼 제목 뒤에 지도에 보이는 범위 안 코스 수.
+                      peek
+                          ? '↑ 위로 올려 코스 목록 보기'
+                          : total == null
+                              ? '지금 달리기 좋은 코스'
+                              : '지금 달리기 좋은 코스 ${_count(total)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: WdText.ko16Bold.copyWith(color: WdColors.ink),
@@ -325,24 +354,4 @@ class _Loading extends StatelessWidget {
         padding: EdgeInsets.all(WdSpace.s24),
         child: Center(child: SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2))),
       );
-}
-
-/// 목록을 내려도 위에 남는 머리.
-class _PinnedHeader extends SliverPersistentHeaderDelegate {
-  _PinnedHeader({required this.extent, required this.child});
-
-  final double extent;
-  final Widget child;
-
-  @override
-  double get minExtent => extent;
-
-  @override
-  double get maxExtent => extent;
-
-  @override
-  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) => child;
-
-  @override
-  bool shouldRebuild(_PinnedHeader oldDelegate) => true;
 }
