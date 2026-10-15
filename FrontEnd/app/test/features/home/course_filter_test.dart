@@ -75,13 +75,16 @@ void main() {
   Finder chip(String label) => find.widgetWithText(WdFilterChip, label);
   bool selected(WidgetTester tester, Finder chip) => tester.widget<WdFilterChip>(chip).selected;
 
+  /// 목록 칩 줄 끝 슬라이더 아이콘 칩(Figma A2).
+  Finder filterChip() => find.byWidgetPredicate((widget) => widget is WdFilterChip && widget.icon == WdIcons.sliders);
+
   /// A3 아래 `코스 N개 보기`.
   Finder applyButton() => find.descendant(of: find.byType(WdBottomBar), matching: find.byType(WdButton));
   String applyLabel(WidgetTester tester) => tester.widget<WdButton>(applyButton()).label;
 
-  /// 목록 시트의 `필터` 칩을 눌러 A3를 연다.
+  /// 목록 시트 칩 줄 끝 슬라이더 아이콘 칩을 눌러 A3를 연다.
   Future<void> openFilter(WidgetTester tester) async {
-    await tester.tap(chip('필터'));
+    await tester.tap(filterChip());
     await tester.pumpAndSettle();
     expect(find.byType(CourseFilterScreen), findsOneWidget);
   }
@@ -107,7 +110,8 @@ void main() {
 
   testWidgets('shows only the conditions that work now and counts the courses in the visible map area', (tester) async {
     await openHome(tester);
-    expect([for (final label in ['최신순', '가까운순', '필터']) selected(tester, chip(label))], [true, false, false]);
+    expect([selected(tester, chip('최신순')), selected(tester, chip('가까운순')), selected(tester, filterChip())], [true, false, false]);
+    expect(find.widgetWithText(WdFilterChip, '필터'), findsNothing, reason: 'Figma A2처럼 글자 대신 슬라이더 아이콘');
     final home = courses.mapRequests.last;
 
     await openFilter(tester);
@@ -150,7 +154,7 @@ void main() {
     expect(find.text('지금 달리기 좋은 코스 2'), findsOneWidget);
     expect(find.text('한강 25K'), findsNothing);
     expect(find.text('평지 3K'), findsWidgets);
-    expect(selected(tester, chip('필터')), isTrue, reason: '조건이 걸려 있다');
+    expect(selected(tester, filterChip()), isTrue, reason: '조건이 걸려 있다');
   });
 
   testWidgets('drops the changes when going back', (tester) async {
@@ -163,7 +167,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(CourseFilterScreen), findsNothing);
-    expect(selected(tester, chip('필터')), isFalse);
+    expect(selected(tester, filterChip()), isFalse);
     expect(courses.listRequests.last.filter.isNone, isTrue);
     expect(find.text('지금 달리기 좋은 코스 3'), findsOneWidget);
   });
@@ -192,7 +196,7 @@ void main() {
 
     await apply(tester);
     expect(courses.listRequests.last.filter.isNone, isTrue);
-    expect(selected(tester, chip('필터')), isFalse);
+    expect(selected(tester, filterChip()), isFalse);
   });
 
   testWidgets('filters by distance with the slider; the far end is 20km+ with no upper bound', (tester) async {
@@ -347,7 +351,7 @@ void main() {
     expect(courses.listRequests.last.filter.isNone, isTrue);
     expect(courses.mapRequests.last.filter.isNone, isTrue);
     expect(find.text('평지 3K'), findsWidgets);
-    expect(selected(tester, chip('필터')), isFalse);
+    expect(selected(tester, filterChip()), isFalse);
   });
 
   testWidgets('counts the regions with the same filter when zoomed out', (tester) async {

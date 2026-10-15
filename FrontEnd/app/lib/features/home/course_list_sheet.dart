@@ -29,7 +29,7 @@ enum SheetStage {
 /// 시트는 위쪽 제목 줄 · 칩 줄을 끌어 올리고 내린다. 그 아래 목록은 시트가 반이어도 따로 스크롤되고(A2-06),
 /// 끝까지 내리면 다음 쪽을 이어 받는다(A6-04).
 ///
-/// 칩 줄은 `최신순` · `가까운순`(누르면 바로 정렬) · `필터`(A3 열기)다. 인기순 · 평점순 · 실시간순은 코스 통계(F11) 뒤에 붙인다.
+/// 칩 줄은 `최신순` · `가까운순`(누르면 바로 정렬) · 슬라이더 아이콘(A3 열기)이다. 인기순 · 평점순 · 실시간순은 코스 통계(F11) 뒤에 붙인다.
 class CourseListSheet extends ConsumerStatefulWidget {
   const CourseListSheet({
     super.key,
@@ -56,6 +56,9 @@ class CourseListSheet extends ConsumerStatefulWidget {
 
   static const loadFailedMessage = '코스를 불러오지 못했어요. 네트워크를 확인하고 다시 시도해 주세요.';
   static const emptyMessage = '이 지역에 등록된 코스가 없어요';
+
+  /// 칩 줄 끝 슬라이더 아이콘 칩(A3 열기)의 읽어 주는 이름.
+  static const filterLabel = '필터';
 
   /// 필터 결과 0건(STA-04). 코스가 없는 지역(STA-01)과 다르게 보인다.
   static const filteredEmptyMessage = '조건에 맞는 코스가 없어요';
@@ -92,7 +95,7 @@ class CourseListSheet extends ConsumerStatefulWidget {
   /// 정렬 칩을 눌렀다. 가까운순은 현재 위치를 받은 뒤에 바뀐다.
   final ValueChanged<CourseListSort>? onSort;
 
-  /// `필터` 칩을 눌렀다(A3 열기, A2-04 · A6-02).
+  /// 슬라이더 아이콘 칩을 눌렀다(A3 열기, A2-04 · A6-02).
   final VoidCallback? onOpenFilter;
 
   /// 필터 결과 0건에서 `필터 초기화`를 눌렀다(STA-04).
@@ -260,13 +263,19 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
                     if (selected == null)
                       Padding(
                         padding: const EdgeInsets.fromLTRB(WdSpace.s16, 0, WdSpace.s16, WdSpace.s12),
+                        // Figma A2 Course filters: 간격 8, 끝에 슬라이더 아이콘 칩.
                         child: Row(
-                          spacing: WdSpace.s6,
+                          spacing: WdSpace.s8,
                           children: [
                             for (final sort in CourseListSort.values)
                               WdFilterChip(sort.label, selected: widget.sort == sort, onTap: () => widget.onSort?.call(sort)),
-                            // 조건이 걸려 있으면 검정(Figma A3 칩 선택 모양).
-                            WdFilterChip('필터', selected: !widget.filter.isNone, onTap: widget.onOpenFilter),
+                            // 조건이 걸려 있으면 검정(글자 칩 선택 모양).
+                            WdFilterChip.icon(
+                              WdIcons.sliders,
+                              semanticLabel: CourseListSheet.filterLabel,
+                              selected: !widget.filter.isNone,
+                              onTap: widget.onOpenFilter,
+                            ),
                           ],
                         ),
                       ),

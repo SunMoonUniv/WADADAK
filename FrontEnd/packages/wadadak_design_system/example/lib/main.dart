@@ -142,7 +142,13 @@ class _CatalogPageState extends State<CatalogPage> {
           child: Row(spacing: 8, children: [
             for (final (i, f) in const ['인기순', '가까운순', '난이도', '평점', '태그'].indexed)
               WdFilterChip(f, selected: filter == i, onTap: () => setState(() => filter = i)),
-            WdFilterChip.icon(WdIcons.sliders, semanticLabel: '상세 필터', onTap: () {}),
+            // 선택 모양은 필터 조건이 걸려 있을 때(홈).
+            WdFilterChip.icon(
+              WdIcons.sliders,
+              semanticLabel: '상세 필터',
+              selected: filter == 5,
+              onTap: () => setState(() => filter = 5),
+            ),
           ]),
         ),
       ]);

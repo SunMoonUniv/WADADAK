@@ -51,10 +51,15 @@ class WdFilterChip extends StatelessWidget {
       : icon = null,
         semanticLabel = null;
 
-  /// 아이콘만 있는 칩 (예: 상세 필터 슬라이더, w32).
-  const WdFilterChip.icon(WdIcons this.icon, {super.key, required String this.semanticLabel, required this.onTap})
-      : label = null,
-        selected = false,
+  /// 아이콘만 있는 칩 (예: 상세 필터 슬라이더, w32). [selected]면 글자 칩처럼 ink 배경 · 흰 아이콘
+  /// (예: 필터 조건이 걸려 있음).
+  const WdFilterChip.icon(
+    WdIcons this.icon, {
+    super.key,
+    this.selected = false,
+    required String this.semanticLabel,
+    required this.onTap,
+  })  : label = null,
         height = 30;
 
   final String? label;
@@ -79,7 +84,7 @@ class WdFilterChip extends StatelessWidget {
           child: Center(
             widthFactor: 1,
             child: icon != null
-                ? WdIcon(icon!, size: 16)
+                ? WdIcon(icon!, size: 16, color: selected ? WdColors.white : null)
                 : Text(label!, style: WdText.ko12Medium.copyWith(color: selected ? WdColors.white : WdColors.ink)),
           ),
         ),
