@@ -145,12 +145,12 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
 
   /// 기기 위치를 모르므로 [MyLocationSource.app]만 한다.
   @override
-  void showMyLocation() {
+  void showMyLocation({bool follow = true}) {
     if (!_usesAppLocation) return;
-    _setFollowing(true);
+    _setFollowing(follow);
     setState(() => _showingAppLocation = true);
     final location = widget.map.myLocation;
-    if (location != null) _setCamera(location, _zoom);
+    if (follow && location != null) _setCamera(location, _zoom);
   }
 
   @override

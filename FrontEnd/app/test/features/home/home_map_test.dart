@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -8,6 +10,7 @@ import 'package:wadadak/core/auth/social_login.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/map/dev_map_view.dart';
 import 'package:wadadak/core/map/map_view.dart';
+import 'package:wadadak/core/permissions/device_setup.dart';
 import 'package:wadadak/features/home/my_location.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
 import 'package:wadadak/main.dart';
@@ -17,6 +20,7 @@ import '../../fakes.dart';
 
 void main() {
   late FakeCourseApi courses;
+  late FakeMyLocation location;
 
   final seongbukcheon = testCourse(
     '성북천 벚꽃길 3K',
@@ -46,7 +50,7 @@ void main() {
         runPermissionsProvider.overrideWithValue(FakeRunPermissions()),
         mapEngineProvider.overrideWithValue(MapEngine.dev),
         courseApiClientProvider.overrideWithValue(courses),
-        myLocationProvider.overrideWithValue(FakeMyLocation()),
+        myLocationProvider.overrideWithValue(location),
       ],
       child: const WadadakApp(),
     ));
@@ -67,7 +71,10 @@ void main() {
 
   MapView map(WidgetTester tester) => tester.widget<MapView>(find.byType(MapView));
 
-  setUp(() => courses = FakeCourseApi());
+  setUp(() {
+    courses = FakeCourseApi();
+    location = FakeMyLocation();
+  });
 
   testWidgets('draws the courses in the map area with a name label at each start', (tester) async {
     courses.onMap = [seongbukcheon, jeongneung];
@@ -204,5 +211,89 @@ void main() {
     expect(courses.regionRequests, hasLength(2));
     expect(find.widgetWithText(WdRegionCountBubble, '성북구'), findsOneWidget);
     expect(find.text(failedMessage), findsNothing, reason: '갱신 실패는 알리지 않고 전에 받은 것을 둔다(QST-02)');
+  });
+
+  /// 개발용 지도는 웹 메르카토르라 화면 너비(402)가 덮는 경도가 줌으로 정해진다.
+  double lngSpanAt(double zoom) => 402 * 360 / (256 * math.pow(2, zoom));
+
+  double mercator(double lat) => math.log(math.tan(math.pi / 4 + lat * math.pi / 360));
+
+  /// [point]가 시트 위로 보이는 지도 부분(조회 범위 [area])의 한가운데에 있다. 메르카토르라 위도는 메르카토르 y로 잰다.
+  void expectInMiddle(({GeoPoint southWest, GeoPoint northEast}) area, GeoPoint point) {
+    expect((area.southWest.lng + area.northEast.lng) / 2, closeTo(point.lng, 1e-9), reason: '가로 가운데');
+    expect((mercator(area.southWest.lat) + mercator(area.northEast.lat)) / 2, closeTo(mercator(point.lat), 1e-9),
+        reason: '시트 위로 보이는 부분의 세로 가운데');
+  }
+
+  testWidgets('zooms one level in around a region badge when it is tapped', (tester) async {
+    courses
+      ..onMap = [seongbukcheon]
+      ..regions = [seongbuk];
+    await openHome(tester);
+    await zoomTo(tester, 9);
+    expect(courses.regionRequests.last.level, RegionLevel.city);
+
+    // 시 배지 → 축척 2km(구 단위).
+    await tester.tap(find.byType(WdRegionCountBubble));
+    await tester.pumpAndSettle();
+    final district = courses.regionRequests.last;
+    expect(district.level, RegionLevel.district);
+    expect(district.northEast.lng - district.southWest.lng, closeTo(lngSpanAt(11), 1e-9));
+    expectInMiddle((southWest: district.southWest, northEast: district.northEast), seongbuk.center);
+
+    // 구 배지 → 축척 500m(개별 코스).
+    final mapRequests = courses.mapRequests.length;
+    await tester.tap(find.byType(WdRegionCountBubble));
+    await tester.pumpAndSettle();
+    expect(courses.mapRequests, hasLength(mapRequests + 1));
+    final area = courses.mapRequests.last;
+    expect(area.northEast.lng - area.southWest.lng, closeTo(lngSpanAt(13), 1e-9));
+    expectInMiddle((southWest: area.southWest, northEast: area.northEast), seongbuk.center);
+    expect(find.byType(WdRegionCountBubble), findsNothing);
+    expect(find.widgetWithText(WdMapCourseLabel, '성북천 벚꽃길 3K'), findsOneWidget);
+  });
+
+  testWidgets('moves to my location at a 100m scale with the location button', (tester) async {
+    const here = GeoPoint(37.5894, 127.0167);
+    location.location = here;
+    await openHome(tester);
+    expect(location.requests, 0, reason: '권한이 없으면 홈을 열 때는 묻지 않는다');
+
+    await tester.tap(find.byType(WdMapLocateButton));
+    await tester.pumpAndSettle();
+
+    expect(location.requests, 1, reason: '누르면 권한을 묻고 위치를 받는다(A4-05)');
+    final area = courses.mapRequests.last;
+    expect(area.northEast.lng - area.southWest.lng, closeTo(lngSpanAt(15), 1e-9), reason: '줌 15는 축척 100m');
+    expectInMiddle((southWest: area.southWest, northEast: area.northEast), here);
+  });
+
+  testWidgets('puts a tapped badge in the middle of the map above the peek sheet too', (tester) async {
+    courses.regions = [seongbuk];
+    await openHome(tester);
+    await tester.tapAt(const Offset(200, 300));
+    await tester.pumpAndSettle();
+    await zoomTo(tester, 9);
+
+    await tester.tap(find.byType(WdRegionCountBubble));
+    await tester.pumpAndSettle();
+
+    final peek = courses.regionRequests.last;
+    expectInMiddle((southWest: peek.southWest, northEast: peek.northEast), seongbuk.center);
+  });
+
+  testWidgets('tells what to do and stays when my location is not available', (tester) async {
+    location.error = const DeviceSetupException('위치 권한을 허용해 주세요.', action: DeviceSettingsAction.appSettings);
+    await openHome(tester);
+    final requests = courses.mapRequests.length;
+
+    await tester.tap(find.byType(WdMapLocateButton));
+    await tester.pumpAndSettle();
+
+    expect(find.text('위치 권한을 허용해 주세요.'), findsOneWidget);
+    expect(courses.mapRequests, hasLength(requests), reason: '지도를 옮기지 않는다');
+    await tester.tap(find.text('설정 열기'));
+    await tester.pumpAndSettle();
+    expect(location.openedSettings, [DeviceSettingsAction.appSettings]);
   });
 }

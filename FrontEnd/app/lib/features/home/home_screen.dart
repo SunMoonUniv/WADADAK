@@ -49,6 +49,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// 지금 지도 범위 안 지역별 코스 수. 축척 500m보다 넓을 때 [_courses] 대신 보인다.
   List<RegionCount> _regions = const [];
+
+  /// [_regions]를 센 단위(시 · 구). 배지를 누르면 다음 단계로 확대한다.
+  var _regionsLevel = RegionLevel.city;
   var _loaded = false;
 
   /// 지도가 센 범위 안 코스 수(시트 제목 `지금 달리기 좋은 코스 N`). 아직 모르면 null.
@@ -85,11 +88,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// 최대 축소. 축척 막대가 50km보다 넓어지지 않는다(MAP-02). 줌 6은 제주(위도 33°)부터 강원 북쪽(38.6°)까지 50km다.
   static const _minZoom = 6.0;
 
+  /// 내 위치 버튼의 줌. 제주부터 강원 북쪽까지 축척 막대가 100m다(A4-05).
+  static const _myLocationZoom = 15.0;
+
+  /// 시 배지를 누르면 가는 줌. 제주부터 강원 북쪽까지 축척 2km라 구 단위 배지가 보인다(A4-06).
+  static const _districtZoom = 11.0;
+
+  /// 구 배지를 누르면 가는 줌. 제주부터 강원 북쪽까지 축척 500m라 개별 코스가 보인다(A4-06).
+  static const _coursesZoom = 13.0;
+
   /// 버튼 줄 여백. 양옆은 검색창 테두리와 같은 16, 아래는 시트까지 12.
   static const _buttonRowPadding = EdgeInsets.fromLTRB(WdSpace.s16, WdSpace.s16, WdSpace.s16, WdSpace.s12);
 
   // 위아래 여백 + 현재 위치 버튼.
   static const _buttonRowHeight = WdSpace.s16 + WdSpace.s12 + WdMapLocateButton.size;
+
+  /// 지도 아래 여백. 피크 시트와 버튼 줄만큼 비워 네이버 로고·축척이 가리지 않게 한다. 카메라 중심은 이 여백을 뺀 영역의 가운데다.
+  static const _mapPadding = EdgeInsets.only(bottom: CourseListSheet.peekHeight + _buttonRowHeight);
 
   @override
   void initState() {
@@ -109,7 +124,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (location != null && mounted) setState(() => _myLocation = location);
   }
 
-  /// 가까운순에 쓸 현재 위치를 받는다. 권한이 없으면 묻는다. 못 받으면 알리고 null이다.
+  /// 가까운순 · 내 위치 버튼에 쓸 현재 위치를 받는다. 권한이 없으면 묻는다. 못 받으면 알리고 null이다.
   Future<GeoPoint?> _locate() async {
     final myLocation = ref.read(myLocationProvider);
     try {
@@ -131,6 +146,41 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       return null;
     }
   }
+
+  /// 내 위치 버튼(A4-05). 현재 위치를 보이는 지도의 한가운데에 두고 축척 100m로 확대한다. 현재 위치 점을 보이고(점은 위치를 따라 움직인다)
+  /// 지도는 따라가지 않는다. 권한이 없으면 묻고, 거부했거나 위치를 못 받으면 안내만 하고 옮기지 않는다.
+  Future<void> _goToMyLocation() async {
+    final location = await _locate();
+    if (location == null || !mounted) return;
+    await _centerInView(location, zoom: _myLocationZoom);
+    _map?.showMyLocation(follow: false);
+  }
+
+  /// 지역 배지를 눌렀다(A4-06). 그 지역을 보이는 지도의 한가운데에 두고 한 단계 확대한다. 시 → 구 단위, 구 → 개별 코스.
+  void _zoomInto(RegionCount region) =>
+      _centerInView(region.center, zoom: _regionsLevel == RegionLevel.city ? _districtZoom : _coursesZoom);
+
+  /// [point]를 [stage] 시트(기본은 지금 지도가 보이는 단계) 위로 보이는 지도 부분의 한가운데에 두고 [zoom](기본은 지금 줌)으로 옮긴다.
+  /// 지도는 아래 여백([_mapPadding])을 뺀 영역의 가운데에 카메라 중심을 두므로, 그 자리와 보이는 부분의 가운데 차이만큼 카메라를 남북으로 비켜 둔다.
+  Future<void> _centerInView(GeoPoint point, {double? zoom, SheetStage? stage}) async {
+    final camera = _camera;
+    if (camera == null || _mapHeight <= 0) return _map?.moveTo(point, zoom: zoom);
+    final targetZoom = zoom ?? camera.zoom;
+    final visibleBottom = switch (stage ?? _mapStage) {
+      SheetStage.peek => _mapHeight - CourseListSheet.peekHeight,
+      _ => _mapHeight * (1 - _halfSize),
+    };
+    // 카메라 중심이 보이는 부분의 가운데보다 이만큼(dp) 아래에 온다.
+    final below = (_mapHeight - _mapPadding.bottom) / 2 - visibleBottom / 2;
+    // 지금 범위(지도 전체)로 1dp가 메르카토르 y로 얼마인지 재고, 옮길 줌만큼 줄인다.
+    final perDp = (_mercator(camera.northEast.lat) - _mercator(camera.southWest.lat)) /
+        _mapHeight /
+        math.pow(2, targetZoom - camera.zoom);
+    await _map?.moveTo(GeoPoint(_latitude(_mercator(point.lat) - below * perDp), point.lng), zoom: targetZoom);
+  }
+
+  static double _mercator(double lat) => math.log(math.tan(math.pi / 4 + lat * math.pi / 360));
+  static double _latitude(double y) => (2 * math.atan(math.exp(y)) - math.pi / 2) * 180 / math.pi;
 
   /// 목록 정렬을 바꾼다. 가까운순은 현재 위치를 새로 받은 뒤에 바꾸고, 못 받으면 정렬을 그대로 둔다.
   Future<void> _sortBy(CourseListSort sort) async {
@@ -161,6 +211,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   }
 
   /// 코스를 등록하고 돌아오면 지도를 새 코스 출발점으로 옮긴다(B4-07). 줌은 그대로 둔다.
+  /// 카메라 중심이 출발점이라 다음 코스 만들기도 그곳에서 열린다(A2-07).
   Future<void> _createCourse() async {
     final course = await context.push<RegisteredCourse>(Routes.courseCreate, extra: _camera);
     if (course != null) await _map?.moveTo(course.startPoint);
@@ -178,7 +229,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _moveSheet(_halfSize);
     final camera = _camera;
     if (camera != null && !_contains(_visibleArea(camera, SheetStage.half), course.route.first)) {
-      _map?.moveTo(course.route.first);
+      _centerInView(course.route.first, stage: SheetStage.half);
     }
   }
 
@@ -206,11 +257,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       _ => _mapHeight * _halfSize,
     };
     final visible = _mapHeight <= 0 ? 1.0 : (1 - covered / _mapHeight).clamp(0.0, 1.0);
-    double mercator(double lat) => math.log(math.tan(math.pi / 4 + lat * math.pi / 360));
-    double latitude(double y) => (2 * math.atan(math.exp(y)) - math.pi / 2) * 180 / math.pi;
-    final top = mercator(camera.northEast.lat), bottom = mercator(camera.southWest.lat);
+    final top = _mercator(camera.northEast.lat), bottom = _mercator(camera.southWest.lat);
     return (
-      southWest: GeoPoint(latitude(top + (bottom - top) * visible), camera.southWest.lng),
+      southWest: GeoPoint(_latitude(top + (bottom - top) * visible), camera.southWest.lng),
       northEast: camera.northEast,
     );
   }
@@ -233,7 +282,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       var courses = const <CourseListItem>[];
       var regions = const <RegionCount>[];
       final int total;
-      switch (_regionLevel(camera)) {
+      final regionLevel = _regionLevel(camera);
+      switch (regionLevel) {
         case null:
           final map = await api.mapCourses(southWest: area.southWest, northEast: area.northEast, filter: _filter);
           (courses, total) = (map.courses, map.totalCount);
@@ -250,6 +300,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       setState(() {
         _courses = courses;
         _regions = regions;
+        _regionsLevel = regionLevel ?? _regionsLevel;
         _totalCount = total;
         _loaded = true;
       });
@@ -292,8 +343,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             children: [
               MapView(
                 minZoom: _minZoom,
-                // 피크 시트와 아래 버튼 줄만큼 비워 네이버 로고·축척이 가리지 않게 한다.
-                padding: const EdgeInsets.only(bottom: CourseListSheet.peekHeight + _buttonRowHeight),
+                padding: _mapPadding,
                 // 고른 코스가 있으면 그 코스만 보인다. 축척이 500m보다 넓어져도 지역별 배지로 바꾸지 않는다(MAP-03).
                 lines: [
                   for (final course in shown) MapLine(id: 'course-${course.courseId}', points: course.route),
@@ -309,7 +359,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       anchor: MapMarker.bottom,
                       onTap: () => _select(course),
                     ),
-                  // 배지 가운데가 그 지역 코스 출발점들의 가운데에 온다(A4-01).
+                  // 배지 가운데가 그 지역 코스 출발점들의 가운데에 온다(A4-01). 누르면 한 단계 확대한다(A4-06).
                   if (selected == null)
                     for (final region in _regions)
                       MapMarker(
@@ -317,6 +367,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         position: region.center,
                         child: WdRegionCountBubble(count: formatCount(region.count), region: region.name),
                         imageKey: 'region-count:${region.name}:${region.count}',
+                        onTap: () => _zoomInto(region),
                       ),
                 ],
                 onCreated: (map) => _map = map,
@@ -346,7 +397,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           WdMapPillButton.small('＋ 코스 만들기', onPressed: _createCourse),
-                          WdMapLocateButton(onPressed: () => _map?.showMyLocation()),
+                          WdMapLocateButton(onPressed: _goToMyLocation),
                         ],
                       ),
                     ),
