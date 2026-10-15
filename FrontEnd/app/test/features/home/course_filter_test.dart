@@ -141,6 +141,7 @@ void main() {
     await tester.tap(chip('하'));
     await tester.pump(const Duration(milliseconds: 200));
     expect(courses.mapRequests, hasLength(before), reason: '바꾸는 동안은 세지 않는다');
+    expect(applyLabel(tester), CourseFilterScreen.countingLabel, reason: '직전 수는 바뀐 조건의 수가 아니다(A3 Loading)');
     await waitForCount(tester);
     expect(courses.mapRequests, hasLength(before + 1), reason: '마지막 변경 약 300ms 뒤 한 번');
     expect(courses.mapRequests.last.filter, const CourseFilter(difficulties: {Difficulty.hard, Difficulty.easy}));

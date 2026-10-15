@@ -29,6 +29,9 @@ class CourseFilterScreen extends ConsumerStatefulWidget {
 
   static const countFailedMessage = '코스 수를 확인하지 못했어요. 네트워크를 확인하고 다시 시도해 주세요.';
 
+  /// 예상 코스 수를 세는 동안 버튼 글자(A3 Loading).
+  static const countingLabel = '코스 수 확인 중…';
+
   @override
   ConsumerState<CourseFilterScreen> createState() => _CourseFilterScreenState();
 }
@@ -47,6 +50,9 @@ class _CourseFilterScreenState extends ConsumerState<CourseFilterScreen> {
 
   /// 예상 코스 수. 아직 모르거나 세지 못했으면 null.
   int? _count;
+
+  /// 조건을 바꾼 뒤 새 예상 코스 수를 받기 전이다. 직전 수는 지금 조건의 수가 아니라 보이지 않는다.
+  var _counting = true;
   Timer? _countTimer;
 
   /// 가장 최근 세기 번호. 늦게 도착한 예전 응답은 버린다.
@@ -82,7 +88,10 @@ class _CourseFilterScreenState extends ConsumerState<CourseFilterScreen> {
 
   /// 조건을 바꾸고 예상 코스 수를 다시 센다. 정렬은 수가 같아 [setState]만 한다.
   void _edit(VoidCallback change) {
-    setState(change);
+    setState(() {
+      change();
+      _counting = true;
+    });
     _countTimer?.cancel();
     _countTimer = Timer(_countDelay, _countNow);
   }
@@ -90,15 +99,22 @@ class _CourseFilterScreenState extends ConsumerState<CourseFilterScreen> {
   Future<void> _countNow() async {
     final request = ++_countRequest;
     final area = widget.request.area;
+    if (!_counting) setState(() => _counting = true);
     try {
       final map = await ref
           .read(courseApiClientProvider)
           .mapCourses(southWest: area.southWest, northEast: area.northEast, filter: _filter);
       if (!mounted || request != _countRequest) return;
-      setState(() => _count = map.totalCount);
+      setState(() {
+        _count = map.totalCount;
+        _counting = false;
+      });
     } on ApiException catch (e) {
       if (!mounted || request != _countRequest) return;
-      setState(() => _count = null);
+      setState(() {
+        _count = null;
+        _counting = false;
+      });
       showError(context, e, message: CourseFilterScreen.countFailedMessage, onRetry: _countNow);
     }
   }
@@ -197,7 +213,15 @@ class _CourseFilterScreenState extends ConsumerState<CourseFilterScreen> {
         ],
       ),
       bottomNavigationBar: WdBottomBar.pinned(
-        primary: WdButton(count == null ? '코스 보기' : '코스 ${formatCount(count)}개 보기', onPressed: _apply),
+        primary: WdButton(
+          _counting
+              ? CourseFilterScreen.countingLabel
+              : count == null
+                  ? '코스 보기'
+                  : '코스 ${formatCount(count)}개 보기',
+          // 세는 중에도 누르면 지금 조건을 적용한다. 적용에는 수가 필요 없다.
+          onPressed: _apply,
+        ),
       ),
     );
   }
