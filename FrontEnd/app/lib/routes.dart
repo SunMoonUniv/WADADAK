@@ -12,6 +12,9 @@ abstract final class Routes {
 
   /// B4 코스 정보 입력. B3 위에 쌓아 돌아오면 입력점이 그대로다. extra: `GeneratedRoute`.
   static const courseInfo = '/course/new/info';
+
+  /// A3 코스 필터. 하단 탭 위에 쌓고, 확정하면 `CourseFilterChoice`를 돌려준다. extra: `CourseFilterRequest`.
+  static const courseFilter = '/course/filter';
   static const run = '/run';
   static const ranking = '/ranking';
   static const my = '/my';

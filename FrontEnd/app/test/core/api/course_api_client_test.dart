@@ -129,6 +129,76 @@ void main() {
     expect(counts.regions.first.center, start);
   });
 
+  test('sends the filter to the map, the region counts and the list the same way', () async {
+    const filter = CourseFilter(
+      minDistanceMeters: 3000,
+      maxDistanceMeters: 8000,
+      difficulties: {Difficulty.easy, Difficulty.hard},
+      tags: {CourseTag.flat, CourseTag.nightLight},
+      courseType: CourseType.custom,
+    );
+    const area = {'swLat': 37.58, 'swLng': 127.01, 'neLat': 37.60, 'neLng': 127.03};
+    const filterQuery = {
+      'minDistanceMeters': 3000,
+      'maxDistanceMeters': 8000,
+      'difficulties': ['EASY', 'HARD'],
+      'tags': ['FLAT', 'NIGHT_LIGHT'],
+      'courseType': 'CUSTOM',
+    };
+    const southWest = GeoPoint(37.58, 127.01), northEast = GeoPoint(37.60, 127.03);
+
+    final map = _FakeServer({'totalCount': 0, 'courses': <Object>[]});
+    await client(map).mapCourses(southWest: southWest, northEast: northEast, filter: filter);
+    expect(map.request.queryParameters, {...area, ...filterQuery});
+    // 서버(Spring)는 여러 값을 같은 이름으로 여러 번 받는다.
+    expect(map.request.uri.query, contains('difficulties=EASY&difficulties=HARD'));
+
+    final regions = _FakeServer({'totalCount': 0, 'regions': <Object>[]});
+    await client(regions).regionCounts(southWest: southWest, northEast: northEast, level: RegionLevel.city, filter: filter);
+    expect(regions.request.queryParameters, {...area, ...filterQuery, 'level': 'CITY'});
+
+    final list = _FakeServer({'content': <Object>[], 'nextCursor': null});
+    await client(list).listCourses(southWest: southWest, northEast: northEast, filter: filter);
+    expect(list.request.path, '/api/v1/courses');
+    expect(list.request.queryParameters, {...area, ...filterQuery, 'sort': 'LATEST'});
+  });
+
+  test('sends no filter conditions when nothing is chosen', () async {
+    final map = _FakeServer({'totalCount': 0, 'courses': <Object>[]});
+    await client(map).mapCourses(southWest: start, northEast: end, filter: CourseFilter.none);
+    expect(map.request.queryParameters.keys, ['swLat', 'swLng', 'neLat', 'neLng']);
+    expect(CourseFilter.none.isNone, isTrue);
+    expect(const CourseFilter(difficulties: {Difficulty.easy}).isNone, isFalse);
+    expect(const CourseFilter(tags: {CourseTag.flat, CourseTag.shade}),
+        const CourseFilter(tags: {CourseTag.shade, CourseTag.flat}), reason: '고른 순서와 상관없이 같은 조건');
+  });
+
+  test('lists the nearest courses from the current location, page after page', () async {
+    final server = _FakeServer({
+      'content': <Object>[],
+      'nextCursor': null,
+    });
+
+    await client(server).listCourses(
+      southWest: const GeoPoint(37.58, 127.01),
+      northEast: const GeoPoint(37.60, 127.03),
+      sort: CourseListSort.nearest,
+      origin: start,
+      cursor: 'next',
+    );
+
+    expect(server.request.queryParameters, {
+      'swLat': 37.58,
+      'swLng': 127.01,
+      'neLat': 37.60,
+      'neLng': 127.03,
+      'sort': 'NEAREST',
+      'lat': start.lat,
+      'lng': start.lng,
+      'cursor': 'next',
+    });
+  });
+
   test('keeps the anchor points a route was made from', () async {
     final server = _FakeServer({
       'route': [start.toJson(), end.toJson()],

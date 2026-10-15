@@ -10,7 +10,9 @@ import 'package:wadadak/core/api/upload_form.dart';
 import 'package:wadadak/core/auth/social_login.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/map/geo_point.dart';
+import 'package:wadadak/core/permissions/device_setup.dart';
 import 'package:wadadak/core/upload/photo_uploader.dart';
+import 'package:wadadak/features/home/my_location.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
 
 const testTokens = AuthTokens(accessToken: 'access', refreshToken: 'refresh');
@@ -163,15 +165,15 @@ class FakeCourseApi implements CourseApiClient {
   Completer<void>? registerGate;
   final registrations = <FakeRegistration>[];
 
-  /// 지도 범위와 상관없이 돌려줄 코스.
+  /// 지도 범위와 상관없이 돌려줄 코스. 필터는 거리 · 난이도 · 특징 · 유형을 서버처럼 적용한다.
   List<CourseListItem> onMap = [];
   ApiException? mapError;
-  final mapRequests = <({GeoPoint southWest, GeoPoint northEast})>[];
+  final mapRequests = <({GeoPoint southWest, GeoPoint northEast, CourseFilter filter})>[];
 
-  /// 지도 범위 · 단위와 상관없이 돌려줄 지역별 코스 수.
+  /// 지도 범위 · 단위 · 필터와 상관없이 돌려줄 지역별 코스 수.
   List<RegionCount> regions = [];
   ApiException? regionsError;
-  final regionRequests = <({GeoPoint southWest, GeoPoint northEast, RegionLevel level})>[];
+  final regionRequests = <({GeoPoint southWest, GeoPoint northEast, RegionLevel level, CourseFilter filter})>[];
 
   @override
   Future<RegistrationQuota> registrationQuota() async => quota;
@@ -213,44 +215,105 @@ class FakeCourseApi implements CourseApiClient {
   }
 
   @override
-  Future<CourseMap> mapCourses({required GeoPoint southWest, required GeoPoint northEast}) async {
-    mapRequests.add((southWest: southWest, northEast: northEast));
+  Future<CourseMap> mapCourses({
+    required GeoPoint southWest,
+    required GeoPoint northEast,
+    CourseFilter filter = CourseFilter.none,
+  }) async {
+    mapRequests.add((southWest: southWest, northEast: northEast, filter: filter));
     if (mapError != null) throw mapError!;
-    return CourseMap(totalCount: onMap.length, courses: onMap);
+    final courses = [for (final course in onMap) if (matches(course, filter)) course];
+    return CourseMap(totalCount: courses.length, courses: courses);
   }
+
+  /// 서버처럼 [course]가 [filter]에 맞나(FIL-02~05).
+  static bool matches(CourseListItem course, CourseFilter filter) =>
+      course.distanceMeters >= (filter.minDistanceMeters ?? 0) &&
+      course.distanceMeters <= (filter.maxDistanceMeters ?? course.distanceMeters) &&
+      (filter.difficulties.isEmpty || filter.difficulties.contains(course.difficulty)) &&
+      course.tags.toSet().containsAll(filter.tags) &&
+      (filter.courseType == null || filter.courseType == course.courseType);
 
   @override
   Future<RegionCounts> regionCounts({
     required GeoPoint southWest,
     required GeoPoint northEast,
     required RegionLevel level,
+    CourseFilter filter = CourseFilter.none,
   }) async {
-    regionRequests.add((southWest: southWest, northEast: northEast, level: level));
+    regionRequests.add((southWest: southWest, northEast: northEast, level: level, filter: filter));
     if (regionsError != null) throw regionsError!;
     return RegionCounts(totalCount: regions.fold(0, (sum, region) => sum + region.count), regions: regions);
   }
 
-  /// 지도 범위와 상관없이 돌려줄 목록. [listPageSize]개씩 쪽을 나누고, 커서는 다음 쪽 첫 위치다.
+  /// 지도 범위 · 정렬과 상관없이 돌려줄 목록. 필터는 [matches]로 거른다.
+  /// [listPageSize]개씩 쪽을 나누고, 커서는 다음 쪽 첫 위치다.
   List<CourseListItem> listed = [];
   int listPageSize = 20;
   ApiException? listError;
-  final listRequests = <({GeoPoint southWest, GeoPoint northEast, CourseListSort sort, String? cursor})>[];
+  final listRequests = <ListRequest>[];
 
   @override
   Future<CourseListPage> listCourses({
     required GeoPoint southWest,
     required GeoPoint northEast,
+    CourseFilter filter = CourseFilter.none,
     CourseListSort sort = CourseListSort.latest,
+    GeoPoint? origin,
     String? cursor,
   }) async {
-    listRequests.add((southWest: southWest, northEast: northEast, sort: sort, cursor: cursor));
+    listRequests.add((
+      southWest: southWest,
+      northEast: northEast,
+      filter: filter,
+      sort: sort,
+      origin: origin,
+      cursor: cursor,
+    ));
     if (listError != null) throw listError!;
+    final courses = [for (final course in listed) if (matches(course, filter)) course];
     final from = cursor == null ? 0 : int.parse(cursor);
-    final to = (from + listPageSize).clamp(0, listed.length);
-    return CourseListPage(courses: listed.sublist(from, to), nextCursor: to < listed.length ? '$to' : null);
+    final to = (from + listPageSize).clamp(0, courses.length);
+    return CourseListPage(courses: courses.sublist(from, to), nextCursor: to < courses.length ? '$to' : null);
   }
 
   static String _nameKey(String name) => name.replaceAll(RegExp(r'\s+'), '').toLowerCase();
+}
+
+typedef ListRequest = ({
+  GeoPoint southWest,
+  GeoPoint northEast,
+  CourseFilter filter,
+  CourseListSort sort,
+  GeoPoint? origin,
+  String? cursor,
+});
+
+/// 홈의 현재 위치는 [location]이다. [allowed]가 아니면 권한을 물어야 받고, [error]가 있으면 물어도 못 받는다.
+class FakeMyLocation implements MyLocation {
+  FakeMyLocation({this.location, this.allowed = false, this.error});
+
+  GeoPoint? location;
+  bool allowed;
+  DeviceSetupException? error;
+
+  /// 권한을 물어서라도 받은 횟수(가까운순).
+  int requests = 0;
+  final openedSettings = <DeviceSettingsAction>[];
+
+  @override
+  Future<GeoPoint?> ifAllowed() async => allowed ? location : null;
+
+  @override
+  Future<GeoPoint> request() async {
+    requests++;
+    if (error != null) throw error!;
+    allowed = true;
+    return location!;
+  }
+
+  @override
+  Future<void> openSettings(DeviceSettingsAction action) async => openedSettings.add(action);
 }
 
 typedef FakeRegistration = ({

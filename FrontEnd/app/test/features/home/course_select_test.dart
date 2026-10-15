@@ -10,6 +10,7 @@ import 'package:wadadak/core/map/map_view.dart';
 import 'package:wadadak/features/course/course_list_card.dart';
 import 'package:wadadak/features/home/course_list_sheet.dart';
 import 'package:wadadak/features/home/home_screen.dart';
+import 'package:wadadak/features/home/my_location.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
@@ -39,6 +40,7 @@ void main() {
         runPermissionsProvider.overrideWithValue(FakeRunPermissions()),
         mapEngineProvider.overrideWithValue(MapEngine.dev),
         courseApiClientProvider.overrideWithValue(courses),
+        myLocationProvider.overrideWithValue(FakeMyLocation()),
       ],
       child: MaterialApp(theme: WdTheme.light(), home: HomeScreen(now: () => DateTime.utc(2026, 10, 14, 3))),
     ));

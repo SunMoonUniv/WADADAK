@@ -7,6 +7,7 @@ import 'core/auth/auth_controller.dart';
 import 'core/map/map_view.dart';
 import 'features/course/create/course_info_screen.dart';
 import 'features/course/create/route_draw_screen.dart';
+import 'features/home/course_filter_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/onboarding/consent_screen.dart';
 import 'features/onboarding/login_screen.dart';
@@ -51,6 +52,10 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: Routes.profile, builder: (_, _) => const ProfileSetupScreen()),
       GoRoute(path: Routes.courseCreate, builder: (_, state) => RouteDrawScreen(camera: state.extra as MapCamera?)),
       GoRoute(path: Routes.courseInfo, builder: (_, state) => CourseInfoScreen(route: state.extra! as GeneratedRoute)),
+      GoRoute(
+        path: Routes.courseFilter,
+        builder: (_, state) => CourseFilterScreen(request: state.extra! as CourseFilterRequest),
+      ),
       StatefulShellRoute.indexedStack(
         builder: (_, _, shell) => MainShell(shell: shell),
         branches: [
