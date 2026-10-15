@@ -344,11 +344,13 @@ class WdReviewCard extends StatelessWidget {
     required this.author,
     required this.meta,
     required this.rating,
-    required this.body,
+    this.body,
     this.badge,
+    this.badgeTone = WdTone.success,
     this.avatar,
     this.photos = const [],
     this.tags = const [],
+    this.onTapPhoto,
   });
 
   final String author;
@@ -358,13 +360,21 @@ class WdReviewCard extends StatelessWidget {
 
   /// 0–5
   final int rating;
-  final String body;
 
-  /// 이름 옆 글자 태그 (예: 완주 100%).
+  /// 후기. 없으면 줄을 비우지 않고 뺀다.
+  final String? body;
+
+  /// 이름 옆 글자 태그 (예: 완주 100% · 62% 주행).
   final String? badge;
+
+  /// 완주는 success(초록), 미완주 진행도는 neutral(회색) — Figma G2.
+  final WdTone badgeTone;
   final ImageProvider? avatar;
   final List<ImageProvider> photos;
   final List<String> tags;
+
+  /// 사진을 누르면 그 순서(0부터)를 넘긴다. 크게 보기 등.
+  final ValueChanged<int>? onTapPhoto;
 
   @override
   Widget build(BuildContext context) {
@@ -394,7 +404,7 @@ class WdReviewCard extends StatelessWidget {
                               overflow: TextOverflow.ellipsis,
                               style: WdText.ko16Bold.copyWith(color: WdColors.ink)),
                         ),
-                        if (badge != null) WdTag(badge!, tone: WdTone.success, filled: false),
+                        if (badge != null) WdTag(badge!, tone: badgeTone, filled: false),
                       ],
                     ),
                     Text(meta, style: WdText.label12.copyWith(color: WdColors.muted)),
@@ -408,18 +418,19 @@ class WdReviewCard extends StatelessWidget {
               ),
             ],
           ),
-          Text(body, style: small),
+          if (body != null) Text(body!, style: small),
           if (photos.isNotEmpty)
             Row(
               spacing: WdSpace.s6,
               children: [
-                for (final p in photos)
+                for (var i = 0; i < photos.length; i++)
                   WdSurface(
                     color: WdColors.photoPlaceholder,
                     radius: 10,
                     width: 76,
                     height: 76,
-                    child: Image(image: p, fit: BoxFit.cover),
+                    onTap: onTapPhoto == null ? null : () => onTapPhoto!(i),
+                    child: Image(image: photos[i], fit: BoxFit.cover),
                   ),
               ],
             ),

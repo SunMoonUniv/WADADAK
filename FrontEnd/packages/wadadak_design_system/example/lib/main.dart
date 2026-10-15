@@ -258,6 +258,14 @@ class _CatalogPageState extends State<CatalogPage> {
           body: '야간 조명이 밝아서 혼자 뛰어도 안전합니다. 다리 구간 바람이 좀 셉니다.',
           tags: ['야경 좋음', '신호 적음'],
         )),
+        _pad(const WdReviewCard(
+          author: '달리는곰',
+          badge: '62% 주행',
+          badgeTone: WdTone.neutral,
+          meta: '2026.08.28',
+          rating: 3,
+          tags: ['붐빔'],
+        )),
         _pad(WdSelectedCourseCard(
           title: '한강 야경 5K',
           meta: '5.2 km · 난이도 중 · 평지',

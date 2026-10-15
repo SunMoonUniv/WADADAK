@@ -77,12 +77,13 @@ class ReviewQueryService {
         ReviewCard review = queries.mine(memberId, courseId)
                 .map(card -> complete(List.of(card)).getFirst())
                 .orElse(null);
+        MyReview.CourseRun sourceRecord = review == null ? null : runRecords.sourceRecordOfReview(memberId, courseId).orElse(null);
         boolean sourceRecordDeleted = review != null && queries.isSourceRecordDeleted(memberId, courseId);
         // 숨김·삭제된 코스에는 새로 쓸 수 없으니(REVIEW-005) 작성 근거 기록도 주지 않는다
-        MyReview.EligibleRecord eligibleRecord = runRecords.isCourseActive(courseId)
+        MyReview.CourseRun eligibleRecord = runRecords.isCourseActive(courseId)
                 ? runRecords.latestEligibleRecord(memberId, courseId).orElse(null)
                 : null;
-        return new MyReview(review, sourceRecordDeleted, eligibleRecord);
+        return new MyReview(review, sourceRecord, sourceRecordDeleted, eligibleRecord);
     }
 
     /**

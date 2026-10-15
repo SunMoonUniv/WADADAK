@@ -64,7 +64,8 @@ class ReviewController {
     }
 
     @Operation(summary = "이 코스의 내 리뷰 (G2 내 리뷰·B2/B10 진입)",
-            description = "review가 있으면 수정(B10), sourceRecordDeleted=true면 B10-1 안내. 수정 화면은 review 값으로 채우고, "
+            description = "review가 있으면 수정(B10), sourceRecordDeleted=true면 B10-1 안내. 수정 화면은 review 값으로 채우고 "
+                    + "상단에 sourceRecord(근거 기록, 삭제됐으면 null)를 보인다. "
                     + "남길 사진은 review.photos[].key를 수정 요청의 photoKeys로 다시 보낸다. "
                     + "review가 없고 eligibleRecord가 있으면 작성(B2): eligibleRecord.runRecordId를 작성 요청의 sourceRunRecordId로 보낸다. "
                     + "둘 다 없으면 아직 리뷰 자격이 없다. eligibleRecord는 리뷰 자격이 있는 내 기록 중 가장 최근 것이고, "

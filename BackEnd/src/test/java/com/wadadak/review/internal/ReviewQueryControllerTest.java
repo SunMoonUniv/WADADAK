@@ -194,6 +194,7 @@ class ReviewQueryControllerTest {
         JsonNode data = data(get("/api/v1/reviews/me?courseId=" + course));
 
         assertThat(data.get("review").isNull()).isTrue();
+        assertThat(data.get("sourceRecord").isNull()).isTrue();
         assertThat(data.get("sourceRecordDeleted").asBoolean()).isFalse();
         JsonNode record = data.get("eligibleRecord");
         assertThat(record.get("runRecordId").asString()).isEqualTo(latest.toString());
@@ -216,6 +217,7 @@ class ReviewQueryControllerTest {
         assertThat(data.get("review").get("safetyRating").asInt()).isEqualTo(4);
         assertThat(data.get("review").get("photos")).isEmpty();
         assertThat(data.get("sourceRecordDeleted").asBoolean()).isTrue();
+        assertThat(data.get("sourceRecord").isNull()).isTrue();
         assertThat(data.get("eligibleRecord").isNull()).isTrue(); // 남은 자격 기록이 없다
     }
 
@@ -229,6 +231,10 @@ class ReviewQueryControllerTest {
 
         assertThat(data.get("review").isNull()).isFalse(); // 지울 수 있게 내 리뷰는 보인다
         assertThat(data.get("eligibleRecord").isNull()).isTrue();
+        // B10 상단에 보일 근거 기록
+        assertThat(data.get("sourceRecord").get("runRecordId").asString()).isEqualTo(source.toString());
+        assertThat(data.get("sourceRecord").get("courseElapsedSeconds").asInt()).isEqualTo(1634);
+        assertThat(data.get("sourceRecordDeleted").asBoolean()).isFalse();
     }
 
     @Test
