@@ -8,6 +8,7 @@ import 'package:wadadak/core/auth/social_login.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/map/map_view.dart';
 import 'package:wadadak/features/home/home_screen.dart';
+import 'package:wadadak/features/home/my_location.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
 import 'package:wadadak/main.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
@@ -34,6 +35,7 @@ void main() {
         runPermissionsProvider.overrideWithValue(FakeRunPermissions()),
         mapEngineProvider.overrideWithValue(MapEngine.dev),
         courseApiClientProvider.overrideWithValue(courses),
+        myLocationProvider.overrideWithValue(FakeMyLocation()),
       ],
       child: const WadadakApp(),
     ));

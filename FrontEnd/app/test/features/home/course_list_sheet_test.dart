@@ -14,6 +14,7 @@ import 'package:wadadak/features/course/course_format.dart';
 import 'package:wadadak/features/course/course_list_card.dart';
 import 'package:wadadak/features/home/course_list_sheet.dart';
 import 'package:wadadak/features/home/home_screen.dart';
+import 'package:wadadak/features/home/my_location.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
@@ -58,6 +59,7 @@ void main() {
         runPermissionsProvider.overrideWithValue(FakeRunPermissions()),
         mapEngineProvider.overrideWithValue(MapEngine.dev),
         courseApiClientProvider.overrideWithValue(courses),
+        myLocationProvider.overrideWithValue(FakeMyLocation()),
       ],
       child: MaterialApp(theme: WdTheme.light(), home: HomeScreen(now: () => now)),
     ));
@@ -110,7 +112,8 @@ void main() {
     await openHome(tester);
     // 반(A2): 지도 영역(874 - 배너 122.5)의 위쪽 절반만 보인다.
     final half = courses.listRequests.single;
-    expect(courses.mapRequests.single, (southWest: half.southWest, northEast: half.northEast), reason: '지도 · 목록이 같은 범위');
+    final map = courses.mapRequests.single;
+    expect((map.southWest, map.northEast), (half.southWest, half.northEast), reason: '지도 · 목록이 같은 범위');
     final mapHeight = tester.getSize(find.byType(DevMapView)).height;
     expect(mapHeight, 874 - 122.5);
 
@@ -122,7 +125,8 @@ void main() {
     expect(peek.northEast, half.northEast);
     expect(peek.southWest.lng, half.southWest.lng);
     expect(peek.southWest.lat, lessThan(half.southWest.lat));
-    expect(courses.mapRequests.last, (southWest: peek.southWest, northEast: peek.northEast));
+    final peekMap = courses.mapRequests.last;
+    expect((peekMap.southWest, peekMap.northEast), (peek.southWest, peek.northEast));
 
     // 범위의 남쪽 끝이 시트 위쪽 끝과 같은 높이다. 피크 범위(지도 아래 60을 뺀 부분)로 화면 높이를 거꾸로 재 본다(메르카토르).
     double mercator(double lat) => math.log(math.tan(math.pi / 4 + lat * math.pi / 360));

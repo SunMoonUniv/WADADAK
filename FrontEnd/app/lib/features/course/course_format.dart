@@ -3,6 +3,12 @@
 /// 버림이라 등록 최소 거리(1km)에 못 미치면 `1.0km`로 보이지 않는다.
 String formatKm(int meters) => '${(meters ~/ 100 / 10).toStringAsFixed(1)}km';
 
+/// 코스 수 표시. 1240 → `1,240`(Figma A4).
+String formatCount(int count) => count.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+$)'), (_) => ',');
+
+/// 현재 위치에서 코스 출발점까지 거리(Figma A2 카드 `0.8 km 거리`). 100m 안은 `0.1km 거리`로 보인다.
+String formatAway(int meters) => '${formatKm(meters < 100 ? 100 : meters)} 거리';
+
 /// 오늘 사용자 지정 코스를 이미 등록했을 때 B3 · B4에 보이는 안내.
 const customQuotaUsedUpMessage = '오늘은 그려서 만든 코스를 이미 등록했어요. 내일 다시 만들 수 있어요.';
 

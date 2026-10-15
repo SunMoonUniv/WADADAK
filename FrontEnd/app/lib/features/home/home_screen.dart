@@ -9,14 +9,19 @@ import '../../core/api/api_client.dart';
 import '../../core/api/course_api_client.dart';
 import '../../core/error_message.dart';
 import '../../core/map/map_view.dart';
+import '../../core/permissions/device_setup.dart';
 import '../../routes.dart';
+import '../course/course_format.dart';
+import 'course_filter_screen.dart';
 import 'course_list_sheet.dart';
+import 'my_location.dart';
 
 /// 홈(A2). 위에 상단 배너(인사말 · 검색창), 아래에 지도, `＋ 코스 만들기`, 현재 위치 버튼, 코스 목록 시트가 있다.
 /// 지도는 축척에 따라 범위 안 코스(경로 · 이름표, A5)나 지역별 코스 수 배지(A4)를 보인다(MAP-02).
 /// 목록 시트는 지도와 같은 범위의 코스이고(MAP-07), 끌어서 피크(A4 · A5) · 반(A2) · 전체(A6, 배너 밑까지)에 멈춘다.
 /// 지도에서 코스 이름표를 누르면 그 코스만 남기고 목록에도 그 코스만 보인다(MAP-03 선택). 지도의 다른 곳을 누르면 풀린다.
-/// 검색 화면(G1) 연결과 필터는 F2 다음 단계에서 붙인다.
+/// 필터(A3)를 걸면 지도 · 지역별 코스 수 · 목록이 모두 그 조건의 코스만 보인다(A2-04).
+/// 검색 화면(G1) 연결은 F2 다음 단계에서 붙인다.
 /// 확대·축소 버튼은 두지 않는다(정책 MAP-02, 제스처로 한다).
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key, this.now = DateTime.now});
@@ -52,6 +57,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// 지금 조회한 범위. 시트에 가리지 않고 보이는 지도 부분이다. 목록도 이 범위다(MAP-07).
   MapArea? _area;
 
+  /// 지금 걸린 필터 · 정렬(A3 · 목록 칩). 지도 · 목록이 같은 필터를 쓴다.
+  var _filter = CourseFilter.none;
+  var _sort = CourseListSort.latest;
+
+  /// 현재 위치. 가까운순의 기준점이고 카드의 `0.8km 거리`에 쓴다. 위치 권한이 이미 있으면 홈을 열 때 받는다.
+  GeoPoint? _myLocation;
+
   /// 가장 최근 조회 번호. 늦게 도착한 예전 응답은 버린다.
   var _request = 0;
 
@@ -80,9 +92,72 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   static const _buttonRowHeight = WdSpace.s16 + WdSpace.s12 + WdMapLocateButton.size;
 
   @override
+  void initState() {
+    super.initState();
+    _locateIfAllowed();
+  }
+
+  @override
   void dispose() {
     _sheet.dispose();
     super.dispose();
+  }
+
+  /// 위치 권한이 이미 있으면 현재 위치를 받아 카드에 거리를 보인다. 권한은 묻지 않는다.
+  Future<void> _locateIfAllowed() async {
+    final location = await ref.read(myLocationProvider).ifAllowed();
+    if (location != null && mounted) setState(() => _myLocation = location);
+  }
+
+  /// 가까운순에 쓸 현재 위치를 받는다. 권한이 없으면 묻는다. 못 받으면 알리고 null이다.
+  Future<GeoPoint?> _locate() async {
+    final myLocation = ref.read(myLocationProvider);
+    try {
+      final location = await myLocation.request();
+      if (mounted) setState(() => _myLocation = location);
+      return location;
+    } on DeviceSetupException catch (e) {
+      if (mounted) {
+        final action = e.action;
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(
+            content: Text(e.message),
+            action: action == null
+                ? null
+                : SnackBarAction(label: '설정 열기', onPressed: () => myLocation.openSettings(action).ignore()),
+          ));
+      }
+      return null;
+    }
+  }
+
+  /// 목록 정렬을 바꾼다. 가까운순은 현재 위치를 새로 받은 뒤에 바꾸고, 못 받으면 정렬을 그대로 둔다.
+  Future<void> _sortBy(CourseListSort sort) async {
+    if (sort == _sort) return;
+    if (sort == CourseListSort.nearest && await _locate() == null) return;
+    if (mounted) setState(() => _sort = sort);
+  }
+
+  /// A3를 연다(A2-04 · A6-02). `코스 N개 보기`로 돌아오면 지도 · 목록에 적용한다.
+  Future<void> _openFilter() async {
+    final area = _area;
+    if (area == null) return;
+    final choice = await context.push<CourseFilterChoice>(
+      Routes.courseFilter,
+      extra: (filter: _filter, sort: _sort, area: area),
+    );
+    if (choice == null || !mounted) return;
+    _applyFilter(choice.filter);
+    await _sortBy(choice.sort);
+  }
+
+  /// [filter]를 지도 · 지역별 코스 수 · 목록에 적용한다.
+  void _applyFilter(CourseFilter filter) {
+    if (filter == _filter) return;
+    setState(() => _filter = filter);
+    final camera = _camera;
+    if (camera != null) _load(camera);
   }
 
   /// 코스를 등록하고 돌아오면 지도를 새 코스 출발점으로 옮긴다(B4-07). 줌은 그대로 둔다.
@@ -160,10 +235,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final int total;
       switch (_regionLevel(camera)) {
         case null:
-          final map = await api.mapCourses(southWest: area.southWest, northEast: area.northEast);
+          final map = await api.mapCourses(southWest: area.southWest, northEast: area.northEast, filter: _filter);
           (courses, total) = (map.courses, map.totalCount);
         case final level:
-          final counts = await api.regionCounts(southWest: area.southWest, northEast: area.northEast, level: level);
+          final counts = await api.regionCounts(
+            southWest: area.southWest,
+            northEast: area.northEast,
+            level: level,
+            filter: _filter,
+          );
           (regions, total) = (counts.regions, counts.totalCount);
       }
       if (!mounted || request != _request) return;
@@ -195,9 +275,6 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (size <= _halfSize + 0.01) return SheetStage.half;
     return SheetStage.full;
   }
-
-  /// 1240 → "1,240"(Figma A4).
-  static String _count(int count) => count.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+$)'), (_) => ',');
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -238,7 +315,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       MapMarker(
                         id: 'region-${region.code}',
                         position: region.center,
-                        child: WdRegionCountBubble(count: _count(region.count), region: region.name),
+                        child: WdRegionCountBubble(count: formatCount(region.count), region: region.name),
                         imageKey: 'region-count:${region.name}:${region.count}',
                       ),
                 ],
@@ -298,12 +375,18 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   builder: (context, scrollController) => CourseListSheet(
                     area: _area,
                     totalCount: _totalCount,
+                    filter: _filter,
+                    sort: _sort,
+                    myLocation: _myLocation,
                     selected: selected,
                     stage: stage,
                     scrollController: scrollController,
                     now: widget.now,
                     onExpand: () => _moveSheet(_halfSize),
                     onShowAll: () => _moveSheet(1),
+                    onSort: _sortBy,
+                    onOpenFilter: _openFilter,
+                    onResetFilter: () => _applyFilter(CourseFilter.none),
                     onWidenMap: _widenMap,
                     onCreateCourse: _createCourse,
                   ),

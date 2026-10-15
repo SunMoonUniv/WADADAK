@@ -181,13 +181,76 @@ class RegionCount {
   final GeoPoint center;
 }
 
-/// 코스 목록 정렬(FIL-01). 인기순 · 평점순 · 실시간순은 코스 통계(F11), 가까운순은 현재 위치(`LocationService`)가 생기면 붙인다.
+/// 코스 목록 정렬(FIL-01). 인기순 · 평점순 · 실시간순은 코스 통계(F11)를 만든 뒤 붙인다.
 enum CourseListSort {
   /// 등록 시각이 늦은 코스부터.
-  latest('LATEST');
+  latest('LATEST', '최신순'),
 
-  const CourseListSort(this.apiName);
+  /// 현재 위치에서 출발점까지 직선 거리가 가까운 코스부터. 현재 위치가 필요하다.
+  nearest('NEAREST', '가까운순');
+
+  const CourseListSort(this.apiName, this.label);
   final String apiName;
+  final String label;
+}
+
+/// 코스 필터(FIL-02~05). 지도 · 지역별 코스 수 · 목록이 같은 조건을 쓴다(A2-04 · A4-01).
+/// 값이 없는 조건은 걸지 않는다.
+@immutable
+class CourseFilter {
+  const CourseFilter({
+    this.minDistanceMeters,
+    this.maxDistanceMeters,
+    this.difficulties = const {},
+    this.tags = const {},
+    this.courseType,
+  });
+
+  /// 조건 없음. A3를 처음 열거나 `초기화`한 상태다.
+  static const none = CourseFilter();
+
+  /// 거리 하한(m, 포함, FIL-02). null이면 1km부터다. 코스는 모두 1km 이상이라 조건이 없는 것과 같다.
+  final int? minDistanceMeters;
+
+  /// 거리 상한(m, 포함). null이면 `20km+`(상한 없음)다.
+  final int? maxDistanceMeters;
+
+  /// 난이도(FIL-03). 그중 하나면 된다. 비면 전체.
+  final Set<Difficulty> difficulties;
+
+  /// 특징(FIL-04). 모두 가진 코스만 남는다. 비면 조건이 없다.
+  final Set<CourseTag> tags;
+
+  /// 코스 유형(FIL-05). null이면 전체.
+  final CourseType? courseType;
+
+  bool get isNone => this == none;
+
+  Map<String, Object> _query() => {
+        'minDistanceMeters': ?minDistanceMeters,
+        'maxDistanceMeters': ?maxDistanceMeters,
+        if (difficulties.isNotEmpty) 'difficulties': [for (final difficulty in difficulties) difficulty.apiName],
+        if (tags.isNotEmpty) 'tags': [for (final tag in tags) tag.apiName],
+        'courseType': ?courseType?.apiName,
+      };
+
+  @override
+  bool operator ==(Object other) =>
+      other is CourseFilter &&
+      other.minDistanceMeters == minDistanceMeters &&
+      other.maxDistanceMeters == maxDistanceMeters &&
+      setEquals(other.difficulties, difficulties) &&
+      setEquals(other.tags, tags) &&
+      other.courseType == courseType;
+
+  @override
+  int get hashCode => Object.hash(
+        minDistanceMeters,
+        maxDistanceMeters,
+        Object.hashAllUnordered(difficulties),
+        Object.hashAllUnordered(tags),
+        courseType,
+      );
 }
 
 /// 코스 목록 한 쪽(A2 · A6). 다음 쪽은 [nextCursor]로 받는다.
@@ -319,51 +382,58 @@ class CourseApiClient {
     return RegisteredCourse.fromJson(data! as Map);
   }
 
-  /// 지도 범위(남서쪽·북동쪽 끝) 안 코스(A2·A5).
-  Future<CourseMap> mapCourses({required GeoPoint southWest, required GeoPoint northEast}) async {
+  /// 지도 범위(남서쪽·북동쪽 끝) 안 [filter]에 맞는 코스(A2·A5). A3의 예상 코스 수도 이것으로 센다.
+  Future<CourseMap> mapCourses({
+    required GeoPoint southWest,
+    required GeoPoint northEast,
+    CourseFilter filter = CourseFilter.none,
+  }) async {
     final data = await callApi(() => _dio.get('$_courses/map', queryParameters: {
-          'swLat': southWest.lat,
-          'swLng': southWest.lng,
-          'neLat': northEast.lat,
-          'neLng': northEast.lng,
+          ..._area(southWest, northEast),
+          ...filter._query(),
         }));
     return CourseMap.fromJson(data! as Map);
   }
 
-  /// 지도 범위 안 코스를 출발점 지역별로 센다(A4 지도 축소).
+  /// 지도 범위 안 [filter]에 맞는 코스를 출발점 지역별로 센다(A4 지도 축소).
   Future<RegionCounts> regionCounts({
     required GeoPoint southWest,
     required GeoPoint northEast,
     required RegionLevel level,
+    CourseFilter filter = CourseFilter.none,
   }) async {
     final data = await callApi(() => _dio.get('$_courses/map/regions', queryParameters: {
-          'swLat': southWest.lat,
-          'swLng': southWest.lng,
-          'neLat': northEast.lat,
-          'neLng': northEast.lng,
+          ..._area(southWest, northEast),
+          ...filter._query(),
           'level': level.apiName,
         }));
     return RegionCounts.fromJson(data! as Map);
   }
 
-  /// 지도 범위 안 코스 목록 한 쪽(A2 · A6). 조건은 [mapCourses]와 같다(MAP-07).
-  /// 다음 쪽은 앞 쪽의 [CourseListPage.nextCursor]를 [cursor]로 보내고, 범위 · 정렬은 첫 쪽과 같게 보낸다.
+  /// 지도 범위 안 코스 목록 한 쪽(A2 · A6). 범위 · 필터는 [mapCourses]와 같다(MAP-07).
+  /// 가까운순은 현재 위치 [origin]이 필요하다.
+  /// 다음 쪽은 앞 쪽의 [CourseListPage.nextCursor]를 [cursor]로 보내고, 범위 · 필터 · 정렬 · 현재 위치는 첫 쪽과 같게 보낸다.
   Future<CourseListPage> listCourses({
     required GeoPoint southWest,
     required GeoPoint northEast,
+    CourseFilter filter = CourseFilter.none,
     CourseListSort sort = CourseListSort.latest,
+    GeoPoint? origin,
     String? cursor,
   }) async {
     final data = await callApi(() => _dio.get(_courses, queryParameters: {
-          'swLat': southWest.lat,
-          'swLng': southWest.lng,
-          'neLat': northEast.lat,
-          'neLng': northEast.lng,
+          ..._area(southWest, northEast),
+          ...filter._query(),
           'sort': sort.apiName,
+          'lat': ?origin?.lat,
+          'lng': ?origin?.lng,
           'cursor': ?cursor,
         }));
     return CourseListPage.fromJson(data! as Map);
   }
+
+  static Map<String, Object> _area(GeoPoint southWest, GeoPoint northEast) =>
+      {'swLat': southWest.lat, 'swLng': southWest.lng, 'neLat': northEast.lat, 'neLng': northEast.lng};
 
   /// 오늘 남은 등록 수. 0이면 그 방식의 코스 만들기를 미리 막는다(개발 정책 10.2 course).
   Future<RegistrationQuota> registrationQuota() async {
