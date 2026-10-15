@@ -118,7 +118,7 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
   }
 
   @override
-  Future<void> moveTo(GeoPoint center, {double? zoom}) async {
+  Future<void> moveTo(GeoPoint center, {double? zoom, bool animate = true}) async {
     _setFollowing(false);
     _setCamera(center, zoom ?? _zoom);
   }

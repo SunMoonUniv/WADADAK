@@ -94,7 +94,8 @@ class MapView extends ConsumerWidget {
 /// 카메라 조작.
 abstract interface class MapController {
   /// [center]로 옮긴다. [zoom]이 없으면 지금 줌을 유지한다.
-  Future<void> moveTo(GeoPoint center, {double? zoom});
+  /// [animate]가 false면 미끄러지지 않고 바로 옮긴다(홈을 열 때 첫 자리 맞추기). 개발용 지도는 늘 바로 옮긴다.
+  Future<void> moveTo(GeoPoint center, {double? zoom, bool animate = true});
 
   /// [points]가 모두 보이게 옮긴다(코스 전체 보기).
   Future<void> fitPoints(List<GeoPoint> points);

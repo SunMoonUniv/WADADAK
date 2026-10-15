@@ -4,10 +4,12 @@ import 'package:go_router/go_router.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import 'core/auth/auth_controller.dart';
+import 'features/home/home_tab_exits.dart';
 import 'features/run/application/free_run_controller.dart';
 import 'features/run/domain/run_models.dart';
 
 /// 하단 탭 4개(홈 · 달리기 · 랭킹 · MY). 탭마다 자기 화면 기록을 유지한다.
+/// 홈은 다른 탭에 갔다 오면 탐색 상태를 처음으로 되돌린다(FIL-08, [HomeTabExits]).
 class MainShell extends ConsumerWidget {
   const MainShell({super.key, required this.shell});
 
@@ -24,7 +26,7 @@ class MainShell extends ConsumerWidget {
             shell.currentIndex == 1 &&
             (run.preparing || run.snapshot.state != RunState.ready);
         return Scaffold(
-          body: shell,
+          body: HomeTabExits(atHome: shell.currentIndex == 0, child: shell),
           bottomNavigationBar: fullScreen
               ? null
               : WdBottomNav(

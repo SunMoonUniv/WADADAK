@@ -72,6 +72,10 @@ class LocationService {
     }
   }
 
+  /// Last position the device already has, without a new fix. Fast but may be stale; null when there is none.
+  Future<Position?> lastKnownPosition() =>
+      Geolocator.getLastKnownPosition(forceAndroidLocationManager: forceLocationManager);
+
   Stream<Position> positions({required LocationSettings settings}) =>
       Geolocator.getPositionStream(locationSettings: settings);
 }
