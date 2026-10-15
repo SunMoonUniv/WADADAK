@@ -301,8 +301,20 @@ class FakeMyLocation implements MyLocation {
   int requests = 0;
   final openedSettings = <DeviceSettingsAction>[];
 
+  /// 기기에 남은 마지막 위치. 권한이 있을 때만 준다.
+  GeoPoint? last;
+
+  /// 있으면 [ifAllowed]가 이것이 끝날 때까지 기다린다(지금 위치를 받는 데 걸리는 시간).
+  Completer<void>? fix;
+
   @override
-  Future<GeoPoint?> ifAllowed() async => allowed ? location : null;
+  Future<GeoPoint?> ifAllowed() async {
+    await fix?.future;
+    return allowed ? location : null;
+  }
+
+  @override
+  Future<GeoPoint?> lastIfAllowed() async => allowed ? last : null;
 
   @override
   Future<GeoPoint> request() async {

@@ -14,6 +14,7 @@ import '../../routes.dart';
 import '../course/course_format.dart';
 import 'course_filter_screen.dart';
 import 'course_list_sheet.dart';
+import 'home_tab_exits.dart';
 import 'my_location.dart';
 
 /// 홈(A2). 위에 상단 배너(인사말 · 검색창), 아래에 지도, `＋ 코스 만들기`, 현재 위치 버튼, 코스 목록 시트가 있다.
@@ -23,6 +24,7 @@ import 'my_location.dart';
 /// 필터(A3)를 걸면 지도 · 지역별 코스 수 · 목록이 모두 그 조건의 코스만 보인다(A2-04).
 /// 검색 화면(G1) 연결은 F2 다음 단계에서 붙인다.
 /// 확대·축소 버튼은 두지 않는다(정책 MAP-02, 제스처로 한다).
+/// 다른 하단 탭으로 떠나면 탐색 상태를 처음으로 되돌려 둔다(FIL-08, [HomeTabExits]).
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key, this.now = DateTime.now});
 
@@ -67,8 +69,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// 현재 위치. 가까운순의 기준점이고 카드의 `0.8km 거리`에 쓴다. 위치 권한이 이미 있으면 홈을 열 때 받는다.
   GeoPoint? _myLocation;
 
+  /// 지도가 준비되면(처음 멈추면) 옮길 현재 위치. 지도보다 위치가 먼저 오면 여기 두었다가 바로 맞춘다.
+  GeoPoint? _pendingMine;
+
+  /// 홈을 열 때 · 다른 하단 탭에서 돌아올 때 카메라 중심을 둔 자리. 카메라가 여기 그대로면 그 사이 지도를 움직이지 않았다.
+  GeoPoint? _placedCenter = _startCenter;
+
   /// 가장 최근 조회 번호. 늦게 도착한 예전 응답은 버린다.
   var _request = 0;
+
+  /// 다른 하단 탭으로 떠난 횟수([HomeTabExits]). 바뀌면 탐색 상태를 처음으로 되돌린다.
+  int? _exits;
+
+  /// 목록 시트를 새로 만든 횟수. 바꾸면 목록이 맨 위 첫 쪽부터 다시 시작한다.
+  var _listGeneration = 0;
 
   final _sheet = DraggableScrollableController();
   var _sheetSize = _halfSize;
@@ -84,6 +98,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// 시트 처음 크기. 지도와 목록이 반씩이다(A2).
   static const _halfSize = 0.5;
+
+  /// 위치 권한이 없거나 기기에 남은 위치가 없을 때 홈을 여는 자리, 그리고 홈을 여는 줌(축척 200m).
+  static const _startCenter = MapView.seoulCityHall;
+  static const _startZoom = 14.0;
 
   /// 최대 축소. 축척 막대가 50km보다 넓어지지 않는다(MAP-02). 줌 6은 제주(위도 33°)부터 강원 북쪽(38.6°)까지 50km다.
   static const _minZoom = 6.0;
@@ -109,7 +127,19 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _locateIfAllowed();
+    _open();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final exits = HomeTabExits.of(context);
+    if (_exits != null && exits != _exits) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _startOver();
+      });
+    }
+    _exits = exits;
   }
 
   @override
@@ -118,11 +148,84 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.dispose();
   }
 
-  /// 위치 권한이 이미 있으면 현재 위치를 받아 카드에 거리를 보인다. 권한은 묻지 않는다.
-  Future<void> _locateIfAllowed() async {
-    final location = await ref.read(myLocationProvider).ifAllowed();
-    if (location != null && mounted) setState(() => _myLocation = location);
+  /// 다른 하단 탭으로 떠났다(FIL-08). 필터 · 정렬 · 고른 코스 · 시트 · 목록 스크롤을 처음으로 되돌리고 지도를 홈을 여는 자리로 옮겨 둔다.
+  /// 홈이 가려져 있는 동안 하므로 지도가 움직이는 모습은 보이지 않는다.
+  void _startOver() {
+    setState(() {
+      _filter = CourseFilter.none;
+      _sort = CourseListSort.latest;
+      _selected = null;
+      _sheetSize = _halfSize;
+      _settledStage = SheetStage.half;
+      _mapStage = SheetStage.half;
+      _listGeneration++;
+    });
+    // 가려진 동안에는 애니메이션이 멈춰 있어 바로 옮긴다.
+    if (_sheet.isAttached) _sheet.jumpTo(_halfSize);
+    _goToStart();
   }
+
+  /// 홈을 연다. 지도는 서울시청에서 열고, 위치 권한이 있으면 기기에 남은 마지막 위치로 바로 맞춘다(보통 지도가 준비되기 전에 와서
+  /// 서울시청은 보이지 않는다). 이어서 지금 위치를 받는다([_refineStart]). 권한은 묻지 않는다.
+  Future<void> _open() async {
+    final last = await ref.read(myLocationProvider).lastIfAllowed();
+    if (last != null && mounted) _moveToMine(last, animate: false);
+    await _refineStart();
+  }
+
+  /// 다른 하단 탭에서 돌아올 때 볼 자리로 지도를 옮겨 둔다. 홈을 열 때와 같다.
+  Future<void> _goToStart() async {
+    final last = await ref.read(myLocationProvider).lastIfAllowed();
+    if (!mounted) return;
+    _placeStart(last, animate: false);
+    await _refineStart();
+  }
+
+  /// 지금 위치를 받아 카드 거리에 쓰고 지도도 그 위치로 맞춘다([_moveToMine]).
+  Future<void> _refineStart() async {
+    final location = await ref.read(myLocationProvider).ifAllowed();
+    if (location == null || !mounted) return;
+    setState(() => _myLocation = location);
+    _moveToMine(location);
+  }
+
+  /// 홈을 여는 자리를 현재 위치 [location]으로 맞춘다. 지도가 아직 준비 전이면 처음 멈출 때 맞춘다.
+  /// 그 사이 지도를 움직이거나 코스를 골랐으면 옮기지 않는다.
+  void _moveToMine(GeoPoint location, {bool animate = true}) {
+    if (_camera == null) {
+      _pendingMine = location;
+    } else if (_untouched) {
+      _placeStart(location, animate: animate);
+    }
+  }
+
+  /// 홈을 여는 자리에 지도를 둔다. [mine](현재 위치)이 있으면 그 위치를 보이는 지도의 한가운데에 두고 현재 위치 점을 켠다(따라가지 않음).
+  /// 없으면 서울시청에 두고 점을 끈다. 줌은 [_startZoom]이다.
+  void _placeStart(GeoPoint? mine, {bool animate = true}) {
+    final center = mine == null ? _startCenter : _viewCenter(mine, zoom: _startZoom);
+    _placedCenter = center;
+    final camera = _camera;
+    if (camera != null && _isAt(camera, center)) {
+      // 이미 그 자리라 지도가 멈춤을 알리지 않을 수 있어 바로 다시 받는다.
+      _load(camera);
+    } else {
+      _map?.moveTo(center, zoom: _startZoom, animate: animate);
+    }
+    if (mine == null) {
+      _map?.hideMyLocation();
+    } else {
+      _map?.showMyLocation(follow: false);
+    }
+  }
+
+  /// 홈을 연 뒤 지도를 움직이거나 코스를 고르지 않았다.
+  bool get _untouched {
+    final camera = _camera, placed = _placedCenter;
+    return camera != null && placed != null && _selected == null && _isAt(camera, placed);
+  }
+
+  static bool _isAt(MapCamera camera, GeoPoint center) =>
+      (camera.zoom - _startZoom).abs() < 0.01 && camera.center.distanceTo(center) < 1;
 
   /// 가까운순 · 내 위치 버튼에 쓸 현재 위치를 받는다. 권한이 없으면 묻는다. 못 받으면 알리고 null이다.
   Future<GeoPoint?> _locate() async {
@@ -163,8 +266,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// [point]를 [stage] 시트(기본은 지금 지도가 보이는 단계) 위로 보이는 지도 부분의 한가운데에 두고 [zoom](기본은 지금 줌)으로 옮긴다.
   /// 지도는 아래 여백([_mapPadding])을 뺀 영역의 가운데에 카메라 중심을 두므로, 그 자리와 보이는 부분의 가운데 차이만큼 카메라를 남북으로 비켜 둔다.
   Future<void> _centerInView(GeoPoint point, {double? zoom, SheetStage? stage}) async {
+    final targetZoom = zoom ?? _camera?.zoom;
+    await _map?.moveTo(_viewCenter(point, zoom: targetZoom, stage: stage), zoom: targetZoom);
+  }
+
+  /// [_centerInView]의 카메라 중심. 지도 범위를 아직 모르면 [point]다.
+  GeoPoint _viewCenter(GeoPoint point, {double? zoom, SheetStage? stage}) {
     final camera = _camera;
-    if (camera == null || _mapHeight <= 0) return _map?.moveTo(point, zoom: zoom);
+    if (camera == null || _mapHeight <= 0) return point;
     final targetZoom = zoom ?? camera.zoom;
     final visibleBottom = switch (stage ?? _mapStage) {
       SheetStage.peek => _mapHeight - CourseListSheet.peekHeight,
@@ -176,7 +285,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final perDp = (_mercator(camera.northEast.lat) - _mercator(camera.southWest.lat)) /
         _mapHeight /
         math.pow(2, targetZoom - camera.zoom);
-    await _map?.moveTo(GeoPoint(_latitude(_mercator(point.lat) - below * perDp), point.lng), zoom: targetZoom);
+    return GeoPoint(_latitude(_mercator(point.lat) - below * perDp), point.lng);
   }
 
   static double _mercator(double lat) => math.log(math.tan(math.pi / 4 + lat * math.pi / 360));
@@ -219,6 +328,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   void _onCameraIdle(MapCamera camera) {
     setState(() => _camera = camera);
+    final mine = _pendingMine;
+    if (mine != null) {
+      // 지도가 처음 멈췄다. 범위를 알았으니 현재 위치를 보이는 지도의 한가운데로 바로 맞추고, 맞춘 뒤 받는다.
+      _pendingMine = null;
+      _placeStart(mine, animate: false);
+      return;
+    }
     _load(camera);
   }
 
@@ -342,6 +458,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             Expanded(child: Stack(
             children: [
               MapView(
+                initialCenter: _startCenter,
+                initialZoom: _startZoom,
                 minZoom: _minZoom,
                 padding: _mapPadding,
                 // 고른 코스가 있으면 그 코스만 보인다. 축척이 500m보다 넓어져도 지역별 배지로 바꾸지 않는다(MAP-03).
@@ -424,6 +542,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   snap: true,
                   snapSizes: const [_halfSize],
                   builder: (context, scrollController) => CourseListSheet(
+                    key: ValueKey(_listGeneration),
                     area: _area,
                     totalCount: _totalCount,
                     filter: _filter,

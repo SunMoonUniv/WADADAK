@@ -221,8 +221,10 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
   }
 
   @override
-  Future<void> moveTo(GeoPoint center, {double? zoom}) async {
-    await _controller?.updateCamera(NCameraUpdate.scrollAndZoomTo(target: _latLng(center), zoom: zoom));
+  Future<void> moveTo(GeoPoint center, {double? zoom, bool animate = true}) async {
+    final update = NCameraUpdate.scrollAndZoomTo(target: _latLng(center), zoom: zoom);
+    if (!animate) update.setAnimation(animation: NCameraAnimation.none, duration: Duration.zero);
+    await _controller?.updateCamera(update);
   }
 
   @override
