@@ -13,8 +13,20 @@ class ReloadStore extends fake.FailingStore {
   bool hold = false;
   final captured = Completer<void>(), release = Completer<void>();
   @override
-  Future<List<LocalRun>> list(String owner) async {
-    final rows = await super.list(owner);
+  Future<List<LocalRun>> list(
+    String owner, {
+    bool summaryOnly = false,
+    bool pendingOnly = false,
+    bool unfinishedOnly = false,
+    String? id,
+  }) async {
+    final rows = await super.list(
+      owner,
+      summaryOnly: summaryOnly,
+      pendingOnly: pendingOnly,
+      unfinishedOnly: unfinishedOnly,
+      id: id,
+    );
     if (hold) {
       hold = false;
       captured.complete();

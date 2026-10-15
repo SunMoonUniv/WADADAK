@@ -47,6 +47,7 @@ class _RunHistoryScreenState extends ConsumerState<RunHistoryScreen> {
                   'id': r.id,
                   'startedAt': r.startedAt.toIso8601String(),
                   'metrics':
+                      r.summary?['metrics'] ??
                       r.result?['metrics'] ??
                       recording.RunCalculator.replay(r.inputs)
                           .at(r.checkpointMs)
@@ -212,7 +213,7 @@ class RunRecordScreen extends ConsumerStatefulWidget {
 
 class _RunRecordScreenState extends ConsumerState<RunRecordScreen> {
   RunSnapshot? _remote;
-  String? _remoteOwner;
+  String? _remoteOwner, _loadedState;
   String? _error;
   bool _loading = true, _deleting = false;
   @override
@@ -231,11 +232,24 @@ class _RunRecordScreenState extends ConsumerState<RunRecordScreen> {
     try {
       final c = ref.read(runControllerProvider);
       await c.bindOwner();
-      if (!c.records.any((r) => r.id == widget.id)) {
-        final result = await c.detail(widget.id);
+      final expectedOwner = c.currentOwner;
+      _loadedState = c.records
+          .where((r) => r.id == widget.id)
+          .firstOrNull
+          ?.syncState;
+      final local = await c.localRecord(widget.id);
+      if (c.currentOwner != expectedOwner) return;
+      if (local != null) {
         if (mounted) {
+          _remote = ref.read(freeRunControllerProvider).savedSnapshot(local);
+          _remoteOwner = expectedOwner;
+          _loadedState = local.syncState;
+        }
+      } else {
+        final result = await c.detail(widget.id);
+        if (mounted && c.currentOwner == expectedOwner) {
           _remote = remoteRunSnapshot(result);
-          _remoteOwner = c.currentOwner;
+          _remoteOwner = expectedOwner;
         }
       }
     } on Object {
@@ -289,9 +303,18 @@ class _RunRecordScreenState extends ConsumerState<RunRecordScreen> {
       listenable: c,
       builder: (context, _) {
         final local = c.records.where((r) => r.id == widget.id).firstOrNull;
-        final snapshot = local == null
-            ? (_remoteOwner == c.currentOwner ? _remote : null)
-            : ref.read(freeRunControllerProvider).savedSnapshot(local);
+        if (local != null &&
+            !local.inputsLoaded &&
+            _loadedState != local.syncState &&
+            !_loading) {
+          _loading = true;
+          Future.microtask(_load);
+        }
+        final snapshot = c.deletedIds.contains(widget.id)
+            ? null
+            : local != null && local.inputsLoaded
+            ? ref.read(freeRunControllerProvider).savedSnapshot(local)
+            : (_remoteOwner == c.currentOwner ? _remote : null);
         if (snapshot != null) {
           return FreeRunResultView(
             run: snapshot,

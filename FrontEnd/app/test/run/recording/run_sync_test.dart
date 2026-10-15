@@ -96,6 +96,15 @@ void main() {
   });
   tearDown(() async => store.close());
   test(
+    'simultaneous sync calls reserve the worker before checking the owner',
+    () async {
+      await addRun('one');
+      await Future.wait([worker.sync('alice'), worker.sync('alice')]);
+      expect(api.requests, ['one']);
+      expect((await store.list('alice')).single.syncState, 'synced');
+    },
+  );
+  test(
     'lost response retries same record and keeps source until confirmed',
     () async {
       await addRun('one');
