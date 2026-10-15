@@ -499,17 +499,18 @@ run이 확정한 코스 주행 기록 1건이 1행이다(`RunSessionEndedEvent`,
 | `run_record_id` | `UUID` | | PK. run 모듈의 러닝 기록 ID. 같은 이벤트가 다시 와도 한 번만 저장된다 |
 | `course_id` | `UUID` | | 코스 ID(course 모듈) |
 | `member_id` | `UUID` | | 회원 ID(member 모듈) |
-| `review_eligible` | `BOOLEAN` | | 리뷰 자격(정책 5.1: 한 세션 인정 거리 ≥ max(1km, 전체 × 20%)) |
+| `review_eligible` | `BOOLEAN` | ✓ | 리뷰 자격(정책 5.1: 한 세션 인정 거리 ≥ max(1km, 전체 × 20%)). run이 판정한 값을 그대로 저장한다 |
 | `completed` | `BOOLEAN` | | 서버 완주 판정. 리뷰 자격과 따로 저장한다. 완주해도 자격이 없을 수 있다(1km 코스를 0.95km 인정으로 완주 등) |
-| `progress_percent` | `INTEGER` | | 코스 진행도(%) 0~100 |
-| `course_distance_meters` · `course_elapsed_seconds` · `ended_at` | | | B2 상단 근거 기록 표시("5.2km · 2026.09.08 완주 100% · 27:14") |
+| `progress_percent` | `INTEGER` | ✓ | 코스 진행도(%) 0~100. 이벤트의 `progress`(인정 거리 ÷ 전체 × 100)를 내림한다 |
+| `course_distance_meters` · `course_elapsed_seconds` · `ended_at` | | `course_distance_meters`만 ✓ | B2 상단 근거 기록 표시("5.2km · 2026.09.08 완주 100% · 27:14") |
 | `deleted` | `BOOLEAN` | | 기록이 삭제됐다. 기본 `false` |
 
 - `course_run_records_member_course_idx`: `(member_id, course_id)`, 삭제되지 않은 행만. 리뷰 자격·최고 진행도·완주 횟수
 - `course_run_records_course_id_idx`: `(course_id)`. 코스 삭제 때 정리
 - 기록을 지우면 행을 지우지 않고 `deleted`만 켠다. 그 기록으로 얻은 자격은 사라지고 다른 기록의 자격은 남는다. 이미 쓴 리뷰는 그대로다(정책 제4부 4.1 D-09).
 - 완주 횟수는 `completed`이고 삭제되지 않은 행 수다. 0이면 리뷰 카드에 표시하지 않는다.
-- 행을 쌓는 run 이벤트 처리는 아직 없다(run 이벤트 계약 대기).
+- `RunSessionEndedEvent`로 행을 넣는다. 자유 러닝, 숨김·삭제된 코스, 탈퇴 회원의 기록은 받지 않는다. 이미 쓴 리뷰의 `best_progress_percent`는 여기서 올리지 않고 리뷰를 수정할 때 올린다(정책 제4부 4.1 D-09).
+- `RunRecordDeletedEvent`로 `deleted`를 켠다. 삭제가 주행 기록보다 먼저 처리되면 삭제 표시 행을 먼저 만든다. 삭제 이벤트에는 리뷰 자격·진행도·코스 거리가 없어 그 칸은 비어 있고(NULL, `V20261015_1000`), 주행 기록이 늦게 오면 채운다. 읽는 쪽은 모두 삭제되지 않은 행만 본다.
 
 #### `review.course_status_copies` — 코스 상태 복사본
 
