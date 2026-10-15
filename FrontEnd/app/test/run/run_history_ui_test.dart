@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -85,7 +87,13 @@ class HistoryStore extends fake.FailingStore {
   final removed = <String>{}, pending = <String>{};
   RunVoiceSettings settings = const RunVoiceSettings();
   @override
-  Future<List<recording.LocalRun>> list(String owner) async => [];
+  Future<List<recording.LocalRun>> list(
+    String owner, {
+    bool summaryOnly = false,
+    bool pendingOnly = false,
+    bool unfinishedOnly = false,
+    String? id,
+  }) async => [];
   @override
   Future<Set<String>> deletedIds(String owner) async => {...removed};
   @override
@@ -109,8 +117,150 @@ class HistoryStore extends fake.FailingStore {
   }
 }
 
+class LocalHistoryStore extends HistoryStore {
+  int detailReads = 0;
+  bool confirmed = false;
+  Completer<void>? detailGate;
+  @override
+  Future<List<recording.LocalRun>> list(
+    String owner, {
+    bool summaryOnly = false,
+    bool pendingOnly = false,
+    bool unfinishedOnly = false,
+    String? id,
+  }) async {
+    if (owner != 'alice' || unfinishedOnly || pendingOnly) return [];
+    if (id != null) {
+      detailReads++;
+      await detailGate?.future;
+    }
+    return [
+      recording.LocalRun(
+        id: 'remote',
+        owner: owner,
+        startedAt: DateTime.parse(record['startedAt'] as String),
+        phase: recording.RunPhase.ended,
+        pending: !confirmed,
+        syncState: confirmed ? 'synced' : 'processing',
+        checkpointMs: 400000,
+        inputsLoaded: !summaryOnly,
+        summary: {
+          for (final k in ['id', 'startedAt', 'metrics']) k: record[k],
+        },
+        result: summaryOnly
+            ? null
+            : {
+                ...record,
+                'metrics': {
+                  ...(record['metrics'] as Map),
+                  'distanceM': confirmed ? 2000.0 : 1234.0,
+                },
+              },
+      ),
+    ];
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  testWidgets(
+    'a delayed local detail cannot become visible to another signed-in account',
+    (tester) async {
+      final store = LocalHistoryStore()..detailGate = Completer<void>();
+      final gps = fake.TestLocation();
+      String owner = 'alice';
+      final c = RunController(
+        store,
+        gps,
+        HistoryApi(),
+        () async => owner,
+        automaticTicks: false,
+        nowMs: gps.nowMs,
+      );
+      final ui = FreeRunController.recording(c);
+      addTearDown(() {
+        if (!store.detailGate!.isCompleted) store.detailGate!.complete();
+        ui.dispose();
+        c.dispose();
+      });
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            runControllerProvider.overrideWithValue(c),
+            freeRunControllerProvider.overrideWithValue(ui),
+            mapEngineProvider.overrideWithValue(MapEngine.dev),
+          ],
+          child: MaterialApp(
+            theme: WdTheme.light(),
+            home: const RunRecordScreen(id: 'remote'),
+          ),
+        ),
+      );
+      for (var i = 0; i < 20 && store.detailReads == 0; i++) {
+        await tester.pump();
+      }
+      expect(store.detailReads, 1);
+      owner = 'bob';
+      await c.accountChanged();
+      store.detailGate!.complete();
+      await tester.pumpAndSettle();
+      expect(c.currentOwner, 'bob');
+      expect(find.byType(FreeRunResultView), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+  testWidgets(
+    'summary-backed local detail loads route and refreshes after server confirmation',
+    (tester) async {
+      final store = LocalHistoryStore();
+      final gps = fake.TestLocation();
+      final c = RunController(
+        store,
+        gps,
+        HistoryApi(),
+        () async => 'alice',
+        automaticTicks: false,
+        nowMs: gps.nowMs,
+      );
+      final ui = FreeRunController.recording(c);
+      addTearDown(() {
+        ui.dispose();
+        c.dispose();
+      });
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            runControllerProvider.overrideWithValue(c),
+            freeRunControllerProvider.overrideWithValue(ui),
+            mapEngineProvider.overrideWithValue(MapEngine.dev),
+          ],
+          child: MaterialApp(
+            theme: WdTheme.light(),
+            home: const RunRecordScreen(id: 'remote'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(c.records.single.inputsLoaded, false);
+      expect(store.detailReads, 1);
+      var result = tester.widget<FreeRunResultView>(
+        find.byType(FreeRunResultView),
+      );
+      expect(result.run.segments.single.length, 2);
+      expect(result.run.laps.length, 2);
+      expect(result.run.distanceMeters, 1234.0);
+      store.confirmed = true;
+      c.records.single.syncState = 'synced';
+      c.notifyListeners();
+      await tester.pumpAndSettle();
+      result = tester.widget<FreeRunResultView>(find.byType(FreeRunResultView));
+      expect(result.run.distanceMeters, 2000.0);
+      expect(store.detailReads, 2);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
   for (final missingMs in [0, 1]) {
     testWidgets(
       'sensor coverage warning follows every actual missing interval ($missingMs ms)',

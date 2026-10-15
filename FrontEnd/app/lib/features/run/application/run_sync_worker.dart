@@ -27,11 +27,12 @@ class RunSyncWorker {
   }
 
   Future<void> sync(String expectedOwner, {bool retryBlocked = false}) async {
-    if (_busy || !await _allowed(expectedOwner)) return;
+    if (_busy) return;
     _busy = true;
     try {
+      if (!await _allowed(expectedOwner)) return;
       await _deletions(expectedOwner);
-      for (final run in await store.list(expectedOwner)) {
+      for (final run in await store.list(expectedOwner, pendingOnly: true)) {
         if (!await _allowed(expectedOwner)) return;
         final upload = RunUpload(
           id: run.id,

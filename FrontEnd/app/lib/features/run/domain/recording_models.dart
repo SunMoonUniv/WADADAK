@@ -93,6 +93,8 @@ class LocalRun {
     this.pending = false,
     this.endReason,
     this.result,
+    this.summary,
+    this.inputsLoaded = true,
     this.syncState = 'pending',
     this.syncFailure,
     List<RunInput>? inputs,
@@ -105,7 +107,8 @@ class LocalRun {
   String? endReason;
   String syncState;
   String? syncFailure;
-  Map<String, dynamic>? result;
+  Map<String, dynamic>? result, summary;
+  final bool inputsLoaded;
   final List<RunInput> inputs;
   DateTime get endedAt => startedAt.add(Duration(milliseconds: checkpointMs));
 }

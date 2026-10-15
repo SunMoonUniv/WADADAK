@@ -212,38 +212,39 @@ class RunRecorder {
     );
     confirmingEnd = false;
   });
-  Future<List<LocalRun>> recover(String owner) => _serial(() async {
-    late List<LocalRun> runs;
-    await _persist(() async {
-      runs = await store.list(owner);
-    });
-    for (final run in runs.where((r) => r.phase != RunPhase.ended)) {
-      final ms = run.checkpointMs;
-      final calc = RunCalculator.replay(run.inputs);
-      final end = RunInput(
-        seq: run.inputs.length,
-        kind: RunKind.end,
-        elapsedMs: ms,
-        measuredAt: run.startedAt.add(Duration(milliseconds: ms)),
-        reason: 'INTERRUPTED',
-      );
-      await _persist(
-        () => store.append(
-          run,
-          [end],
-          RunPhase.ended,
-          ms,
-          pending: calc.distanceM > 0,
-          endReason: 'INTERRUPTED',
-        ),
-      );
-      run.inputs.add(end);
-      run.phase = RunPhase.ended;
-      run.endReason = 'INTERRUPTED';
-      run.pending = calc.distanceM > 0;
-    }
-    return runs;
-  });
+  Future<List<LocalRun>> recover(String owner, {bool summaryOnly = false}) =>
+      _serial(() async {
+        late List<LocalRun> runs;
+        await _persist(() async {
+          runs = await store.list(owner, unfinishedOnly: summaryOnly);
+        });
+        for (final run in runs.where((r) => r.phase != RunPhase.ended)) {
+          final ms = run.checkpointMs;
+          final calc = RunCalculator.replay(run.inputs);
+          final end = RunInput(
+            seq: run.inputs.length,
+            kind: RunKind.end,
+            elapsedMs: ms,
+            measuredAt: run.startedAt.add(Duration(milliseconds: ms)),
+            reason: 'INTERRUPTED',
+          );
+          await _persist(
+            () => store.append(
+              run,
+              [end],
+              RunPhase.ended,
+              ms,
+              pending: calc.distanceM > 0,
+              endReason: 'INTERRUPTED',
+            ),
+          );
+          run.inputs.add(end);
+          run.phase = RunPhase.ended;
+          run.endReason = 'INTERRUPTED';
+          run.pending = calc.distanceM > 0;
+        }
+        return summaryOnly ? store.list(owner, summaryOnly: true) : runs;
+      });
   RunInput _input(
     RunKind kind,
     int ms, {

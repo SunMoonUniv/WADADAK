@@ -82,6 +82,14 @@ class FreeRunController extends ChangeNotifier {
 
   RunSnapshot savedSnapshot(recording.LocalRun run) {
     if (run.result != null) return remoteRunSnapshot(run.result!);
+    if (!run.inputsLoaded && run.summary != null) {
+      return remoteRunSnapshot(
+        run.summary!,
+        storageStatus: run.syncState == 'synced'
+            ? '서버 저장 완료'
+            : '기기에 저장됨 · 동기화 대기',
+      );
+    }
     final calculator = recording.RunCalculator.replay(run.inputs);
     return _fromRun(
       run,

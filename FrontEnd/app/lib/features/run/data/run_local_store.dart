@@ -17,7 +17,13 @@ abstract interface class RunStore {
     String? endReason,
   });
   Future<void> checkpoint(LocalRun run, int elapsedMs);
-  Future<List<LocalRun>> list(String owner);
+  Future<List<LocalRun>> list(
+    String owner, {
+    bool summaryOnly = false,
+    bool pendingOnly = false,
+    bool unfinishedOnly = false,
+    String? id,
+  });
   Future<void> synced(LocalRun run, Map<String, dynamic> result);
   Future<void> syncStatus(LocalRun run, String state, {String? failure});
 }
@@ -41,9 +47,12 @@ class RunLocalStore implements RunStore, RunHistoryStore {
       databasePath ??
           path.join(await dbFactory.getDatabasesPath(), 'runs_v1.db'),
       options: OpenDatabaseOptions(
-        version: 2,
+        version: 3,
         onUpgrade: (db, old, _) async {
           if (old < 2) await _createExtras(db);
+          if (old < 3) {
+            await db.execute('ALTER TABLE sessions ADD COLUMN summary TEXT');
+          }
         },
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON');
@@ -56,12 +65,13 @@ class RunLocalStore implements RunStore, RunHistoryStore {
             'CREATE INDEX sessions_owner ON sessions(owner, started_at)',
           );
           await db.execute(
-            'CREATE UNIQUE INDEX one_active_run ON sessions(owner) WHERE phase <> \'ended\'',
+            "CREATE UNIQUE INDEX one_active_run ON sessions(owner) WHERE phase <> 'ended'",
           );
           await db.execute(
             'CREATE TABLE inputs (session_id TEXT NOT NULL REFERENCES sessions(id), seq INTEGER NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(session_id,seq))',
           );
           await _createExtras(db);
+          await db.execute('ALTER TABLE sessions ADD COLUMN summary TEXT');
         },
       ),
     );
@@ -71,6 +81,14 @@ class RunLocalStore implements RunStore, RunHistoryStore {
   Future<void> create(LocalRun run, RunInput start) async {
     final db = await database;
     await db.transaction((tx) async {
+      if ((await tx.query(
+        'run_deletions',
+        columns: ['id'],
+        where: 'id=?',
+        whereArgs: [run.id],
+      )).isNotEmpty) {
+        throw StateError('삭제한 기록 ID는 다시 사용할 수 없어요.');
+      }
       await tx.insert('sessions', {
         'id': run.id,
         'owner': run.owner,
@@ -119,6 +137,25 @@ class RunLocalStore implements RunStore, RunHistoryStore {
       if (updated != 1) {
         throw StateError('종료된 기록에는 입력을 추가할 수 없어요.');
       }
+      if (phase == RunPhase.ended) {
+        final row = (await tx.query(
+          'sessions',
+          where: 'id=? AND owner=?',
+          whereArgs: [run.id, run.owner],
+        )).single;
+        final raw = await tx.query(
+          'inputs',
+          where: 'session_id=?',
+          whereArgs: [run.id],
+          orderBy: 'seq',
+        );
+        await tx.update(
+          'sessions',
+          {'summary': jsonEncode(_summary(row, _inputs(raw)))},
+          where: 'id=? AND owner=?',
+          whereArgs: [run.id, run.owner],
+        );
+      }
     });
   }
 
@@ -134,23 +171,69 @@ class RunLocalStore implements RunStore, RunHistoryStore {
   }
 
   @override
-  Future<List<LocalRun>> list(String owner) async {
+  Future<List<LocalRun>> list(
+    String owner, {
+    bool summaryOnly = false,
+    bool pendingOnly = false,
+    bool unfinishedOnly = false,
+    String? id,
+  }) async {
     final db = await database;
     final rows = await db.query(
       'sessions',
+      columns: summaryOnly
+          ? [
+              'id',
+              'owner',
+              'started_at',
+              'phase',
+              'checkpoint_ms',
+              'pending',
+              'end_reason',
+              'sync_state',
+              'sync_failure',
+              'summary',
+            ]
+          : null,
       where:
-          'owner=? AND id NOT IN (SELECT id FROM run_deletions WHERE owner=?)',
-      whereArgs: [owner, owner],
+          'owner=? AND id NOT IN (SELECT id FROM run_deletions WHERE owner=?)'
+          '${summaryOnly ? " AND phase='ended'" : ""}'
+          '${pendingOnly ? " AND pending=1 AND phase='ended'" : ""}'
+          '${unfinishedOnly ? " AND phase<>'ended'" : ""}'
+          '${id == null ? "" : " AND id=?"}',
+      whereArgs: [owner, owner, ?id],
       orderBy: 'started_at DESC',
     );
     final result = <LocalRun>[];
     for (final row in rows) {
-      final raw = await db.query(
-        'inputs',
-        where: 'session_id=?',
-        whereArgs: [row['id']],
-        orderBy: 'seq',
-      );
+      final raw = summaryOnly && row['summary'] != null
+          ? <Map<String, Object?>>[]
+          : await db.query(
+              'inputs',
+              where: 'session_id=?',
+              whereArgs: [row['id']],
+              orderBy: 'seq',
+            );
+      Map<String, dynamic>? summary = row['summary'] == null
+          ? null
+          : (jsonDecode(row['summary'] as String) as Map)
+                .cast<String, dynamic>();
+      if (summaryOnly && summary == null) {
+        // Backfill old rows once, preserving the original calculation version.
+        final full = (await db.query(
+          'sessions',
+          where: 'id=? AND owner=?',
+          whereArgs: [row['id'], owner],
+        )).firstOrNull;
+        if (full == null) continue;
+        summary = _summary(full, _inputs(raw));
+        await db.update(
+          'sessions',
+          {'summary': jsonEncode(summary)},
+          where: 'id=? AND owner=? AND summary IS NULL',
+          whereArgs: [row['id'], owner],
+        );
+      }
       result.add(
         LocalRun(
           id: row['id'] as String,
@@ -162,11 +245,13 @@ class RunLocalStore implements RunStore, RunHistoryStore {
           endReason: row['end_reason'] as String?,
           syncState: row['sync_state'] as String,
           syncFailure: row['sync_failure'] as String?,
+          summary: summary,
+          inputsLoaded: !summaryOnly,
           result: row['result'] == null
               ? null
               : (jsonDecode(row['result'] as String) as Map)
                     .cast<String, dynamic>(),
-          inputs: raw
+          inputs: (summaryOnly ? <Map<String, Object?>>[] : raw)
               .map(
                 (r) => RunInput.fromJson(
                   (jsonDecode(r['payload'] as String) as Map)
@@ -183,10 +268,13 @@ class RunLocalStore implements RunStore, RunHistoryStore {
   @override
   Future<void> synced(LocalRun run, Map<String, dynamic> result) async {
     final db = await database;
-    await db.update(
+    if (result['id'] != run.id) throw StateError('다른 러닝 기록의 결과는 저장할 수 없어요.');
+    final summary = _resultSummary(result);
+    final updated = await db.update(
       'sessions',
       {
         'pending': 0,
+        'summary': jsonEncode(summary),
         'result': jsonEncode(result),
         'sync_state': 'synced',
         'sync_failure': null,
@@ -194,10 +282,58 @@ class RunLocalStore implements RunStore, RunHistoryStore {
       where: 'id=? AND owner=? AND phase=?',
       whereArgs: [run.id, run.owner, 'ended'],
     );
+    if (updated != 1) return;
+    run.summary = summary;
     run.pending = false;
     run.result = result;
     run.syncState = 'synced';
     run.syncFailure = null;
+  }
+
+  static List<RunInput> _inputs(List<Map<String, Object?>> raw) => raw
+      .map(
+        (r) => RunInput.fromJson(
+          (jsonDecode(r['payload'] as String) as Map).cast<String, dynamic>(),
+        ),
+      )
+      .toList();
+
+  static Map<String, dynamic> _resultSummary(Map<String, dynamic> result) => {
+    for (final key in [
+      'id',
+      'startedAt',
+      'endedAt',
+      'registeredAt',
+      'endReason',
+      'metrics',
+      'policyVersion',
+      'calculationVersion',
+    ])
+      if (result.containsKey(key)) key: result[key],
+  };
+
+  static Map<String, dynamic> _summary(
+    Map<String, Object?> row,
+    List<RunInput> inputs,
+  ) {
+    if (row['result'] != null) {
+      return _resultSummary(
+        (jsonDecode(row['result'] as String) as Map).cast<String, dynamic>(),
+      );
+    }
+    final startedAt = DateTime.parse(row['started_at'] as String);
+    final ms = row['checkpoint_ms'] as int;
+    return {
+      'id': row['id'],
+      'startedAt': startedAt.toUtc().toIso8601String(),
+      'endedAt': startedAt
+          .add(Duration(milliseconds: ms))
+          .toUtc()
+          .toIso8601String(),
+      'endReason': row['end_reason'],
+      'metrics': RunCalculator.replay(inputs).at(ms).toJson(),
+      'calculationVersion': inputs.firstOrNull?.reason,
+    };
   }
 
   @override

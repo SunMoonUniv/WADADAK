@@ -166,8 +166,13 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         audioGuide.restoreSettings(voiceSettings);
         deletedIds = await store.deletedIds(member);
         pendingDeleteCount = (await store.pendingDeletions(member)).length;
-        records = (await recorder.recover(member))
-            .where((r) => RunCalculator.replay(r.inputs).distanceM > 0)
+        records = (await recorder.recover(member, summaryOnly: true))
+            .where(
+              (r) =>
+                  (r.summary?['metrics']?['distanceM'] as num? ??
+                      RunCalculator.replay(r.inputs).distanceM) >
+                  0,
+            )
             .toList();
         if (await owner() != member) {
           records = [];
@@ -502,7 +507,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _reloadLocal() async {
     final member = currentOwner;
     if (member == null) return;
-    final loaded = await store.list(member);
+    final loaded = await store.list(member, summaryOnly: true);
     final removed = await store.deletedIds(member);
     final deletions = await store.pendingDeletions(member);
     if (currentOwner != member) return;
@@ -514,14 +519,17 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
           (r) =>
               !deletedIds.contains(r.id) &&
               r.phase == RunPhase.ended &&
-              RunCalculator.replay(r.inputs).distanceM > 0,
+              (r.summary?['metrics']?['distanceM'] as num? ??
+                      RunCalculator.replay(r.inputs).distanceM) >
+                  0,
         )
         .toList();
     final active = run;
     if (active?.phase == RunPhase.ended) {
-      final refreshed = records.where((r) => r.id == active!.id).firstOrNull;
+      final refreshed = (await store.list(member, id: active!.id)).firstOrNull;
+      if (currentOwner != member || deletedIds.contains(active.id)) return;
       if (refreshed != null) {
-        active!.result = refreshed.result;
+        active.result = refreshed.result;
         active.pending = refreshed.pending;
         active.syncState = refreshed.syncState;
         active.syncFailure = refreshed.syncFailure;
@@ -625,6 +633,21 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       loadingHistory = false;
       _notify();
     }
+  }
+
+  Future<LocalRun?> localRecord(String id) async {
+    final member = currentOwner;
+    if (member == null || await owner() != member) {
+      throw StateError('로그인 후 조회해 주세요.');
+    }
+    final record = (await store.list(member, id: id)).firstOrNull;
+    if (currentOwner != member || await owner() != member) {
+      throw StateError('계정이 변경되었어요.');
+    }
+    if ((await store.deletedIds(member)).contains(id)) {
+      throw StateError('삭제한 기록이에요.');
+    }
+    return record;
   }
 
   Future<Map<String, dynamic>> detail(String id) async {
