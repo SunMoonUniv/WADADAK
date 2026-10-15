@@ -23,6 +23,8 @@ class RunInput {
     this.steps,
     this.durationMs,
     this.sampleEndMs,
+    this.altitudeM,
+    this.altitudeAccuracyM,
   });
   factory RunInput.fromJson(Map<String, dynamic> j) => RunInput(
     seq: j['seq'] as int,
@@ -38,6 +40,8 @@ class RunInput {
     steps: (j['steps'] as num?)?.toInt(),
     durationMs: (j['durationMs'] as num?)?.toInt(),
     sampleEndMs: (j['sampleEndMs'] as num?)?.toInt(),
+    altitudeM: (j['altitudeM'] as num?)?.toDouble(),
+    altitudeAccuracyM: (j['altitudeAccuracyM'] as num?)?.toDouble(),
   );
   final int seq, elapsedMs;
   final int? steps, durationMs, sampleEndMs;
@@ -46,6 +50,9 @@ class RunInput {
   final double? lat, lng, accuracyM;
   final String? reason;
   final double? speedMps, speedAccuracyMps;
+
+  /// Optional raw vertical measurements in metres; never used for horizontal pace.
+  final double? altitudeM, altitudeAccuracyM;
   bool get good =>
       kind == RunKind.gps &&
       lat != null &&
@@ -71,6 +78,8 @@ class RunInput {
     if (steps != null) 'steps': steps,
     if (durationMs != null) 'durationMs': durationMs,
     if (sampleEndMs != null) 'sampleEndMs': sampleEndMs,
+    if (altitudeM != null) 'altitudeM': altitudeM,
+    if (altitudeAccuracyM != null) 'altitudeAccuracyM': altitudeAccuracyM,
   };
   double distanceTo(RunInput other) {
     const radius = 6371008.8;

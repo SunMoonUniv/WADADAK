@@ -13,7 +13,12 @@ public final class RunContracts {
     public record Prepare(@NotNull Instant startedAt, @Pattern(regexp="FREE") String mode) {}
     public record Input(@Min(0) long seq, @NotNull Kind kind, @Min(0) long elapsedMs,
                         @NotNull Instant measuredAt, GeoPoint location, Double accuracyM,
-                        @Size(max=40) String reason, Double speedMps, Double speedAccuracyMps, Integer steps, Long durationMs, Long sampleEndMs) {
+                        @Size(max=40) String reason, Double speedMps, Double speedAccuracyMps, Integer steps, Long durationMs, Long sampleEndMs,
+                        Double altitudeM, Double altitudeAccuracyM) {
+        // Existing sources and stored GPS payloads remain valid without altitude.
+        public Input(long seq, Kind kind, long elapsedMs, Instant measuredAt, GeoPoint location, Double accuracyM, String reason, Double speedMps, Double speedAccuracyMps, Integer steps, Long durationMs, Long sampleEndMs) {
+            this(seq,kind,elapsedMs,measuredAt,location,accuracyM,reason,speedMps,speedAccuracyMps,steps,durationMs,sampleEndMs,null,null);
+        }
         public Input(long seq, Kind kind, long elapsedMs, Instant measuredAt, GeoPoint location, Double accuracyM, String reason, Double speedMps, Double speedAccuracyMps) {
             this(seq,kind,elapsedMs,measuredAt,location,accuracyM,reason,speedMps,speedAccuracyMps,null,null,null);
         }

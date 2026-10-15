@@ -101,7 +101,9 @@ class RunService {
         for(Input p:request.inputs()) {
             if(p.seq()>request.finalSeq() || p.elapsedMs()>7L*86400000 ||
                 (p.kind()==Kind.GPS && (p.location()==null || p.accuracyM()==null)) ||
-                (p.accuracyM()!=null && (!Double.isFinite(p.accuracyM()) || p.accuracyM()<0))) invalid();
+                (p.accuracyM()!=null && (!Double.isFinite(p.accuracyM()) || p.accuracyM()<0)) ||
+                (p.altitudeM()!=null && (!Double.isFinite(p.altitudeM()) || p.kind()!=Kind.GPS)) ||
+                (p.altitudeAccuracyM()!=null && (!Double.isFinite(p.altitudeAccuracyM()) || p.altitudeAccuracyM()<0 || p.altitudeM()==null))) invalid();
             String encoded=json.writeValueAsString(p);
             List<String> existing=db.query("SELECT payload FROM run.inputs WHERE session_id=? AND stream_seq=?",(rs,n)->rs.getString(1),id,p.seq());
             if(!existing.isEmpty()) {

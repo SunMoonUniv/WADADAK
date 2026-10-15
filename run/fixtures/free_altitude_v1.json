@@ -1,0 +1,104 @@
+{
+  "startedAt": "2026-10-12T00:00:00Z",
+  "expected": {
+    "elapsedMs": 120000,
+    "activeMs": 100000,
+    "distanceM": 22.239016
+  },
+  "inputs": [
+    {
+      "seq": 0,
+      "kind": "START",
+      "elapsedMs": 0,
+      "measuredAt": "2026-10-12T00:00:00Z"
+    },
+    {
+      "seq": 1,
+      "kind": "GPS",
+      "elapsedMs": 0,
+      "measuredAt": "2026-10-12T00:00:00Z",
+      "location": {
+        "lat": 36.0,
+        "lng": 127.0
+      },
+      "accuracyM": 5.0,
+      "altitudeM": 0.0,
+      "altitudeAccuracyM": 0.0
+    },
+    {
+      "seq": 2,
+      "kind": "GPS",
+      "elapsedMs": 10000,
+      "measuredAt": "2026-10-12T00:00:10Z",
+      "location": {
+        "lat": 36.0001,
+        "lng": 127.0
+      },
+      "accuracyM": 5.0,
+      "altitudeM": -3.25,
+      "altitudeAccuracyM": 1.5
+    },
+    {
+      "seq": 3,
+      "kind": "PAUSE",
+      "elapsedMs": 40000,
+      "measuredAt": "2026-10-12T00:00:40Z"
+    },
+    {
+      "seq": 4,
+      "kind": "GPS",
+      "elapsedMs": 50000,
+      "measuredAt": "2026-10-12T00:00:50Z",
+      "location": {
+        "lat": 36.1,
+        "lng": 127.0
+      },
+      "accuracyM": 5.0,
+      "altitudeM": 21.5,
+      "altitudeAccuracyM": 2.0
+    },
+    {
+      "seq": 5,
+      "kind": "RESUME",
+      "elapsedMs": 60000,
+      "measuredAt": "2026-10-12T00:01:00Z",
+      "reason": "MANUAL"
+    },
+    {
+      "seq": 6,
+      "kind": "GPS",
+      "elapsedMs": 60000,
+      "measuredAt": "2026-10-12T00:01:00Z",
+      "location": {
+        "lat": 36.1,
+        "lng": 127.0
+      },
+      "accuracyM": 5.0,
+      "altitudeM": 25.75
+    },
+    {
+      "seq": 7,
+      "kind": "GPS",
+      "elapsedMs": 70000,
+      "measuredAt": "2026-10-12T00:01:10Z",
+      "location": {
+        "lat": 36.1001,
+        "lng": 127.0
+      },
+      "accuracyM": 5.0
+    },
+    {
+      "seq": 8,
+      "kind": "PAUSE",
+      "elapsedMs": 120000,
+      "measuredAt": "2026-10-12T00:02:00Z"
+    },
+    {
+      "seq": 9,
+      "kind": "END",
+      "elapsedMs": 120000,
+      "measuredAt": "2026-10-12T00:02:00Z",
+      "reason": "USER"
+    }
+  ]
+}

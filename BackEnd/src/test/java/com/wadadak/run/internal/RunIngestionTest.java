@@ -225,4 +225,45 @@ class RunIngestionTest {
             .andExpect(status().isBadRequest());
     }
 
+    @Test void altitudeFixturePersistsRawAndRetriesWithoutChangingRegistrationOrMetrics() throws Exception {
+        var fixture=json.readTree(Files.readString(Path.of("../run/fixtures/free_altitude_v1.json")));
+        List<Input> elevated=new ArrayList<>();
+        for(var node:fixture.get("inputs")) elevated.add(json.treeToValue(node,Input.class));
+        var expected=FreeRunCalculator.calculate(start,inputs);
+        runs.upload(owner,id,new Upload(9,elevated));
+        List<Input> stored=db.query("SELECT payload FROM run.inputs WHERE session_id=? ORDER BY stream_seq",
+            (rs,n)->json.readValue(rs.getString(1),Input.class),id);
+        assertThat(stored).containsExactlyElementsOf(elevated);
+        assertThat(stored.get(1).altitudeM()).isZero();
+        assertThat(stored.get(1).altitudeAccuracyM()).isZero();
+        assertThat(stored.get(2).altitudeM()).isEqualTo(-3.25);
+        assertThat(stored.get(6).altitudeAccuracyM()).isNull();
+        assertThat(stored.get(7).altitudeM()).isNull();
+        runs.process(id);
+        Result first=runs.result(owner,id);
+        assertThat(first.metrics()).isEqualTo(expected.metrics());
+        assertThat(first.laps()).isEqualTo(expected.laps());
+        runs.upload(owner,id,new Upload(9,elevated)); runs.process(id);
+        assertThat(runs.result(owner,id)).isEqualTo(first);
+        Input p=elevated.get(2);
+        var changed=new Input(p.seq(),p.kind(),p.elapsedMs(),p.measuredAt(),p.location(),p.accuracyM(),
+            p.reason(),p.speedMps(),p.speedAccuracyMps(),p.steps(),p.durationMs(),p.sampleEndMs(),99.0,p.altitudeAccuracyM());
+        assertThatThrownBy(()->runs.upload(owner,id,new Upload(9,List.of(changed)))).isInstanceOf(AppException.class);
+        assertThat(db.queryForObject("SELECT count(*) FROM run.records WHERE id=?",Long.class,id)).isEqualTo(1);
+        assertThat(runs.result(owner,id).registeredAt()).isEqualTo(first.registeredAt());
+    }
+
+    @Test void invalidVerticalFieldsNeverPoisonDurableInputs() {
+        Input p=inputs.get(1);
+        for(Double[] pair:new Double[][]{{Double.NaN,1.0},{Double.POSITIVE_INFINITY,null},{10.0,-1.0},{null,1.0},{10.0,Double.NaN}}) {
+            var invalid=new Input(p.seq(),p.kind(),p.elapsedMs(),p.measuredAt(),p.location(),p.accuracyM(),
+                p.reason(),p.speedMps(),p.speedAccuracyMps(),null,null,null,pair[0],pair[1]);
+            assertThatThrownBy(()->runs.upload(owner,id,new Upload(9,List.of(invalid)))).isInstanceOf(AppException.class);
+        }
+        var nonGps=new Input(0,Kind.START,0,start,null,null,null,null,null,null,null,null,10.0,1.0);
+        assertThatThrownBy(()->runs.upload(owner,id,new Upload(9,List.of(nonGps)))).isInstanceOf(AppException.class);
+        assertThat(db.queryForObject("SELECT count(*) FROM run.inputs WHERE session_id=?",Long.class,id)).isZero();
+        assertThat(runs.status(owner,id).processing()).isEqualTo("PREPARED");
+    }
+
 }
