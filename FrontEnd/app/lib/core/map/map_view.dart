@@ -130,6 +130,8 @@ class MapCamera {
 
   final GeoPoint center;
   final double zoom;
+
+  /// 지도 위젯 전체의 남서쪽 · 북동쪽 끝. [MapView.padding]으로 비운 부분도 들어간다.
   final GeoPoint southWest;
   final GeoPoint northEast;
 

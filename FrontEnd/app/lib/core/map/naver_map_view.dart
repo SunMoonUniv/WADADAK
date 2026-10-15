@@ -149,7 +149,9 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
     final onCameraIdle = widget.map.onCameraIdle;
     if (controller == null || onCameraIdle == null) return;
     final position = await controller.getCameraPosition();
-    final bounds = await controller.getContentBounds();
+    // 여백(padding)까지 포함한 지도 전체 범위(SDK coveringBounds). 개발용 지도와 같다.
+    // 빼고 받으면 화면 아래 여백 부분이 범위에서 빠진다.
+    final bounds = await controller.getContentBounds(withPadding: true);
     if (!mounted) return;
     onCameraIdle(MapCamera(
       center: _geoPoint(position.target),
