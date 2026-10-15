@@ -96,4 +96,22 @@ class FreeRunCalculatorTest {
         assertThatThrownBy(()->FreeRunCalculator.calculate(start,stale)).isInstanceOf(AppException.class);
     }
 
+    @Test void optionalRawAltitudePreservesLegacyAndV2Calculations() throws Exception {
+        var mapper=JsonMapper.builder().findAndAddModules().build();
+        for(String name:List.of("free_pause_v1", "free_motion_v2")) {
+            var fixture=mapper.readTree(Files.readString(Path.of("../run/fixtures/"+name+".json")));
+            List<Input> original=new ArrayList<>(), elevated=new ArrayList<>();
+            for(var node:fixture.get("inputs")) {
+                Input p=mapper.treeToValue(node,Input.class);
+                original.add(p);
+                elevated.add(p.kind()==Kind.GPS ? new Input(p.seq(),p.kind(),p.elapsedMs(),p.measuredAt(),
+                    p.location(),p.accuracyM(),p.reason(),p.speedMps(),p.speedAccuracyMps(),
+                    p.steps(),p.durationMs(),p.sampleEndMs(),p.seq()%2==0?-3.25:0.0,0.0) : p);
+            }
+            Instant started=Instant.parse(fixture.get("startedAt").asString());
+            assertThat(FreeRunCalculator.calculate(started,elevated)).isEqualTo(FreeRunCalculator.calculate(started,original));
+            assertThat(original.stream().allMatch(p->p.altitudeM()==null)).isTrue();
+        }
+    }
+
 }

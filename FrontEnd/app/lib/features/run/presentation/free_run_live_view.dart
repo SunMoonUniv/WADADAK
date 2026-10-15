@@ -3,6 +3,7 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../domain/run_models.dart';
 import 'run_lap_list.dart';
+import 'run_metric.dart';
 import '../../../core/map/map_view.dart';
 
 String runDistance(RunSnapshot run) => run.hasLocation
@@ -28,6 +29,38 @@ class FreeRunLiveView extends StatefulWidget {
 class _FreeRunLiveViewState extends State<FreeRunLiveView> {
   final _pages = PageController(initialPage: 1);
   int _page = 1;
+  final List<RunMetric> _metrics = [
+    RunMetric.moving,
+    RunMetric.distance,
+    RunMetric.averagePace,
+    RunMetric.currentPace,
+  ];
+
+  @override
+  void didUpdateWidget(covariant FreeRunLiveView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.run.sessionId != widget.run.sessionId) {
+      _metrics.setAll(0, [
+        RunMetric.moving,
+        RunMetric.distance,
+        RunMetric.averagePace,
+        RunMetric.currentPace,
+      ]);
+    }
+  }
+
+  void _cycle(int slot) => setState(() => _metrics[slot] = _metrics[slot].next);
+
+  Widget _metricButton(int slot, Widget child) => Semantics(
+    key: ValueKey('run-metric-$slot'),
+    button: true,
+    label: '${_metrics[slot].label}, ${_metrics[slot].value(widget.run)}',
+    hint: '터치하면 ${_metrics[slot].next.label} 표시',
+    onTap: () => _cycle(slot),
+    child: ExcludeSemantics(
+      child: InkWell(onTap: () => _cycle(slot), child: child),
+    ),
+  );
 
   @override
   void dispose() {
@@ -35,11 +68,17 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
     super.dispose();
   }
 
-  Widget _time() => WdElapsedTime(
-    label: '이동 시간',
-    time: formatRunTime(widget.run.movingTime),
-    caption: '총 소요 ${formatRunTime(widget.run.elapsed)}',
-  );
+  Widget _time({bool editable = false}) {
+    final metric = editable ? _metrics.first : RunMetric.moving;
+    final content = WdElapsedTime(
+      label: metric.label,
+      time: metric.value(widget.run),
+      caption: metric == RunMetric.elapsed
+          ? '달린시간 ${formatRunTime(widget.run.active)}'
+          : '총 소요 ${formatRunTime(widget.run.elapsed)}',
+    );
+    return editable ? _metricButton(0, content) : content;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -120,32 +159,38 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                     ),
                   ]),
                   _scroll([
-                    _time(),
+                    _time(editable: true),
                     SizedBox(
                       height: 75,
                       child: Row(
                         spacing: WdSpace.s15,
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          for (final (label, value) in [
-                            ('거리', runDistance(run)),
-                            ('평균 페이스', formatRunPace(run.paceSecondsPerKm)),
-                            ('현재 페이스', formatRunPace(run.currentPaceDisplay)),
-                          ])
+                          for (var slot = 1; slot <= 3; slot++)
                             Expanded(
-                              child: FittedBox(
-                                fit: BoxFit.scaleDown,
-                                alignment: Alignment.topLeft,
-                                child: WdMetric(
-                                  label: label,
-                                  value: value,
-                                  dark: true,
-                                  labelStyle: WdText.run13W500H17,
+                              child: _metricButton(
+                                slot,
+                                Align(
+                                  alignment: Alignment.topLeft,
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.topLeft,
+                                    child: WdMetric(
+                                      label: _metrics[slot].label,
+                                      value: _metrics[slot].value(run),
+                                      dark: true,
+                                      labelStyle: WdText.run13W500H17,
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
                         ],
                       ),
+                    ),
+                    Text(
+                      '지표를 터치하면 다른 정보를 볼 수 있어요.',
+                      style: WdText.ko12.copyWith(color: WdColors.runTextSub),
                     ),
                     WdGhostLeadCard(
                       title: paused ? '잠시 쉬어가는 중이에요' : '나만의 리듬으로 달리는 중',
@@ -311,6 +356,26 @@ class RunRouteView extends StatelessWidget {
                   .toList(),
             ),
         ],
+        // Endpoints use the accepted route only, including server-only history.
+        // No markers or lines are interpolated across GPS/pause gaps.
+        markers: [
+          if (points.isNotEmpty)
+            MapMarker(
+              id: 'run-start',
+              position: points.first,
+              anchor: const Offset(1, 1),
+              imageKey: 'run-start',
+              child: _endpoint('출발'),
+            ),
+          if (points.isNotEmpty && run.state == RunState.finished)
+            MapMarker(
+              id: 'run-finish',
+              position: points.last,
+              anchor: const Offset(0, 1),
+              imageKey: 'run-finish',
+              child: _endpoint('종료'),
+            ),
+        ],
         onCreated: (controller) async {
           if (dark) {
             controller.showMyLocation();
@@ -321,6 +386,16 @@ class RunRouteView extends StatelessWidget {
       ),
     );
   }
+
+  Widget _endpoint(String label) => WdSurface(
+    color: WdColors.ink,
+    radius: WdRadius.full,
+    padding: const EdgeInsets.symmetric(
+      horizontal: WdSpace.s8,
+      vertical: WdSpace.s4,
+    ),
+    child: Text(label, style: WdText.ko11.copyWith(color: WdColors.lime)),
+  );
 }
 
 class RunRouteEmpty extends StatelessWidget {

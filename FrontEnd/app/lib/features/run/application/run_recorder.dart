@@ -88,6 +88,8 @@ class RunRecorder {
     DateTime? measuredAt,
     double? speedMps,
     double? speedAccuracyMps,
+    double? altitudeM,
+    double? altitudeAccuracyM,
   }) => _serial(() async {
     if (!active) return;
     if (!lat.isFinite ||
@@ -105,6 +107,15 @@ class RunRecorder {
       _autoResume.reset();
       return;
     }
+    // An absent or invalid vertical measurement must not discard usable GPS.
+    final height = altitudeM != null && altitudeM.isFinite ? altitudeM : null;
+    final heightAccuracy =
+        height != null &&
+            altitudeAccuracyM != null &&
+            altitudeAccuracyM.isFinite &&
+            altitudeAccuracyM >= 0
+        ? altitudeAccuracyM
+        : null;
     final ms = await _elapsed();
     var point = _input(
       RunKind.gps,
@@ -113,6 +124,8 @@ class RunRecorder {
       lng: lng,
       accuracyM: accuracyM,
       measuredAt: measuredAt,
+      altitudeM: height,
+      altitudeAccuracyM: heightAccuracy,
       speedMps: speedMps != null && speedMps.isFinite && speedMps >= 0
           ? speedMps
           : null,
@@ -140,6 +153,8 @@ class RunRecorder {
         accuracyM: accuracyM,
         speedMps: point.speedMps,
         speedAccuracyMps: point.speedAccuracyMps,
+        altitudeM: point.altitudeM,
+        altitudeAccuracyM: point.altitudeAccuracyM,
       );
     }
     batch.add(point);
@@ -255,6 +270,8 @@ class RunRecorder {
     DateTime? measuredAt,
     double? speedMps,
     double? speedAccuracyMps,
+    double? altitudeM,
+    double? altitudeAccuracyM,
   }) => RunInput(
     seq: current!.inputs.length,
     kind: kind,
@@ -268,6 +285,8 @@ class RunRecorder {
     reason: reason,
     speedMps: speedMps,
     speedAccuracyMps: speedAccuracyMps,
+    altitudeM: altitudeM,
+    altitudeAccuracyM: altitudeAccuracyM,
   );
   Future<void> _commit(
     List<RunInput> batch,

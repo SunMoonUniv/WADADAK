@@ -274,6 +274,10 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         measuredAt: latest.timestamp,
         speedMps: latest.speed,
         speedAccuracyMps: latest.speedAccuracy,
+        altitudeM: latest.hasAltitude ? latest.altitude : null,
+        altitudeAccuracyM: latest.hasAltitudeAccuracy
+            ? latest.altitudeAccuracy
+            : null,
       );
     } on Object catch (e) {
       if (generation == _generation) await _operationError(e);
@@ -361,6 +365,10 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
               measuredAt: p.timestamp,
               speedMps: p.speed,
               speedAccuracyMps: p.speedAccuracy,
+              altitudeM: p.hasAltitude ? p.altitude : null,
+              altitudeAccuracyM: p.hasAltitudeAccuracy
+                  ? p.altitudeAccuracy
+                  : null,
             )
             .catchError((Object e) => _operationError(e)),
       );
