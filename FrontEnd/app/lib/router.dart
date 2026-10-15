@@ -16,6 +16,8 @@ import 'features/onboarding/profile_setup_screen.dart';
 import 'features/ranking/ranking_screen.dart';
 import 'features/ranking/region_ranking_screen.dart';
 import 'features/ranking/region_select_screen.dart';
+import 'features/review/review_form_screen.dart';
+import 'features/review/review_list_screen.dart';
 import 'features/run/presentation/free_run_screen.dart';
 import 'features/run/presentation/run_history_screen.dart';
 import 'features/run/presentation/run_settings_screen.dart';
@@ -71,6 +73,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       // 하단 탭을 덮는 화면
       GoRoute(path: Routes.rankingRegion, builder: (_, _) => const RegionRankingScreen()),
       GoRoute(path: Routes.rankingRegionSelect, builder: (_, _) => const RegionSelectScreen()),
+      GoRoute(
+        path: '/course/:courseId/reviews',
+        builder: (_, state) =>
+            ReviewListScreen(courseId: state.pathParameters['courseId']!, courseName: state.extra as String? ?? ''),
+      ),
+      GoRoute(path: Routes.reviewForm, builder: (_, state) => ReviewFormScreen(args: state.extra! as ReviewFormArgs)),
     ],
   );
   ref.onDispose(router.dispose);
