@@ -213,5 +213,16 @@ void main() {
     map.hideMyLocation();
     await tester.pump();
     expect(dot, findsNothing);
+
+    // 따라가지 않고 점만 보일 수도 있다(홈 현재 위치 버튼).
+    final camera = cameras.last.center;
+    map.showMyLocation(follow: false);
+    await tester.pump();
+    expect(dot, findsOneWidget);
+    expect(following, [true, false, true, false], reason: '따라가기는 꺼진 채');
+    location.value = const GeoPoint(37.553, 126.993);
+    await tester.pump();
+    expect(cameras.last.center, camera, reason: '카메라는 그대로');
+    expect(dot, findsOneWidget);
   });
 }

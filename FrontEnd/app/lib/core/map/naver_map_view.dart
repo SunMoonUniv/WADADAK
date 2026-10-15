@@ -236,13 +236,13 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
   }
 
   @override
-  void showMyLocation() {
+  void showMyLocation({bool follow = true}) {
     final controller = _controller;
     if (controller == null) return;
-    _setFollowing(true);
+    _setFollowing(follow);
     switch (widget.map.myLocationSource) {
       case MyLocationSource.map:
-        controller.setLocationTrackingMode(NLocationTrackingMode.follow);
+        controller.setLocationTrackingMode(follow ? NLocationTrackingMode.follow : NLocationTrackingMode.noFollow);
       case MyLocationSource.app:
         _showingAppLocation = true;
         _placeAppLocation();

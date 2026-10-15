@@ -100,9 +100,10 @@ abstract interface class MapController {
   Future<void> fitPoints(List<GeoPoint> points);
 
   /// 현재 위치 점을 보이고 따라간다. 지도를 끌면 따라가기만 멈춘다([MapView.onFollowingChanged]).
+  /// [follow]가 false면 점만 보이고(점은 위치를 따라 움직인다) 카메라는 그대로 둔다(홈 현재 위치 버튼).
   /// [MyLocationSource.map]은 위치 권한이 없으면 묻는다. 개발용 지도는 기기 위치를 모르므로 이때 아무것도 하지 않는다.
   /// [MyLocationSource.app]은 [MapView.myLocation]으로 간다. 아직 없으면 생길 때 간다.
-  void showMyLocation();
+  void showMyLocation({bool follow = true});
 
   /// 현재 위치 점을 숨기고 따라가기를 끝낸다. [MyLocationSource.map]은 위치 받기도 멈춘다.
   void hideMyLocation();
