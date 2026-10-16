@@ -4,10 +4,12 @@ import com.wadadak.TestcontainersConfiguration;
 import com.wadadak.event.course.CourseStatus;
 import com.wadadak.event.course.CourseStatusChangedEvent;
 import com.wadadak.event.course.CourseStatusReason;
+import com.wadadak.event.member.MemberRegionChangedEvent;
 import com.wadadak.event.member.MemberVisibilityChangedEvent;
 import com.wadadak.event.member.MemberWithdrawnEvent;
 import com.wadadak.event.run.RunSessionEndedEvent;
 import com.wadadak.event.run.RunRecordDeletedEvent;
+import com.wadadak.member.MemberApi;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
@@ -15,6 +17,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Duration;
@@ -38,6 +41,10 @@ class RankingEventHandlerTest {
 
     @Autowired
     JdbcTemplate jdbc;
+
+    /** ranking만 띄워서 member 모듈이 없다. 랭킹 실제 구현이 닉네임에 MemberApi를 쓴다 */
+    @MockitoBean
+    MemberApi memberApi;
 
     @Test
     void keepsNewestCourseStatusAndDropsEntriesOfDeletedCourse() {
@@ -81,6 +88,36 @@ class RankingEventHandlerTest {
         assertThat(entryCount(course)).isOne();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM ranking.withdrawn_members WHERE member_id = ?", Long.class, member))
                 .isOne();
+    }
+
+    @Test
+    void signupRegionCountsFromSignupWeekAndChangedRegionFromNextWeek() {
+        UUID member = UUID.randomUUID();
+        Instant wednesday = Instant.parse("2026-10-14T03:00:00Z");   // 10-14(수) 12:00 Asia/Seoul
+        MemberRegionChangedEvent signup = new MemberRegionChangedEvent(UUID.randomUUID(), wednesday, member,
+                "1129000000", null, 0);
+
+        publish(new MemberRegionChangedEvent(UUID.randomUUID(), wednesday.plus(Duration.ofDays(1)), member,
+                "1111000000", "1129000000", 1));
+        publish(signup);   // 가입 이벤트가 늦게 와도 된다
+        publish(signup);   // 중복
+
+        assertThat(jdbc.queryForList("""
+                SELECT region_code || ' ' || to_char(effective_from AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD HH24:MI')
+                FROM ranking.member_region_history WHERE member_id = ? ORDER BY source_version""", String.class, member))
+                .containsExactly("1129000000 2026-10-12 00:00", "1111000000 2026-10-19 00:00");
+    }
+
+    @Test
+    void withdrawnMemberLosesRegionHistoryAndIgnoresLaterChanges() {
+        UUID member = UUID.randomUUID();
+
+        publish(new MemberRegionChangedEvent(UUID.randomUUID(), Instant.now(), member, "1129000000", null, 0));
+        publish(new MemberWithdrawnEvent(UUID.randomUUID(), Instant.now(), member, Instant.now()));
+        publish(new MemberRegionChangedEvent(UUID.randomUUID(), Instant.now(), member, "1111000000", "1129000000", 1));
+
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ranking.member_region_history WHERE member_id = ?",
+                Long.class, member)).isZero();
     }
 
     private void publish(Object event) {

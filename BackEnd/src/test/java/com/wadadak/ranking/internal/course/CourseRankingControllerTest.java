@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
@@ -16,11 +17,12 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 
-/** 스텁 데이터로 응답 형식을 확인한다. 스텁 기록은 {@link RankingApiStub} 참고. */
+/** 스텁({@code app.stub.ranking=true}) 데이터로 응답 형식을 확인한다. 스텁 기록은 {@link RankingApiStub} 참고. */
 @ApplicationModuleTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Import(TestcontainersConfiguration.class)
+@TestPropertySource(properties = "app.stub.ranking=true")
 class CourseRankingControllerTest {
 
     private static final UUID ME = UUID.randomUUID();

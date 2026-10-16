@@ -8,6 +8,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.http.HttpStatus;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.context.bean.override.convention.TestBean;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
@@ -21,13 +22,14 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 
 /**
- * 스텁 데이터로 응답 형식을 확인한다. 스텁 기록은 {@link DistanceRankingStub} 참고.
- * 지금은 2026-10-14(수) 12:00 Asia/Seoul로 고정한다.
+ * 스텁({@code app.stub.ranking=true}) 데이터로 응답 형식을 확인한다. 스텁 기록은 {@link DistanceRankingStub} 참고.
+ * 실제 구현은 {@link DistanceRankingServiceTest}. 지금은 2026-10-14(수) 12:00 Asia/Seoul로 고정한다.
  */
 @ApplicationModuleTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Import(TestcontainersConfiguration.class)
+@TestPropertySource(properties = "app.stub.ranking=true")
 class DistanceRankingControllerTest {
 
     private static final UUID ME = UUID.randomUUID();

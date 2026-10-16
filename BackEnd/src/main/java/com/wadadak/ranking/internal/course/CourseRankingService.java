@@ -8,8 +8,8 @@ import com.wadadak.member.MemberProfile;
 import com.wadadak.ranking.GhostCandidate;
 import com.wadadak.ranking.RankingApi;
 import com.wadadak.ranking.RankingPeriod;
+import com.wadadak.ranking.internal.MemberProfiles;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -23,14 +23,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * 코스 랭킹(F8). 기록은 run의 완주 이벤트로 쌓이고, 순위는 조회할 때 계산한다(정책 공통 6).
  * 숨김·삭제된 코스는 기록이 없는 코스와 같게 돌려준다.
  */
-@Slf4j
 @Service
 @ConditionalOnProperty(name = "app.stub.ranking", havingValue = "false", matchIfMissing = true)
 @RequiredArgsConstructor
@@ -77,17 +74,7 @@ class CourseRankingService implements RankingApi, CourseRankingReader {
         };
     }
 
-    /** 표시용이라 실패해도 랭킹은 보여준다. 닉네임·사진만 비운다(개발 정책 4.4). */
     private Map<UUID, MemberProfile> profiles(Set<UUID> memberIds) {
-        if (memberIds.isEmpty()) {
-            return Map.of();
-        }
-        try {
-            return memberApi.getProfiles(memberIds).stream()
-                    .collect(Collectors.toMap(MemberProfile::memberId, Function.identity()));
-        } catch (RuntimeException e) {
-            log.warn("회원 프로필 조회 실패. 닉네임 없이 랭킹을 돌려준다", e);
-            return Map.of();
-        }
+        return MemberProfiles.find(memberApi, memberIds);
     }
 }
