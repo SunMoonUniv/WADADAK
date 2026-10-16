@@ -10,7 +10,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 final class FreeRunCalculator {
-    record Calculation(Metrics metrics, List<List<GeoPoint>> segments, Instant endedAt, String endReason, List<Lap> laps) {}
+    record Calculation(Metrics metrics, List<List<GeoPoint>> segments, Instant endedAt, String endReason, List<Lap> laps, ResultStats stats) {}
     record Travel(long start, long end, double distance) {}
     record Span(long start, long end) { long before(long ms) { return Math.clamp(ms-start,0,end-start); } }
     private static long movingAt(long ms, List<Span> pauses, MotionPace motion, boolean v2) {
@@ -55,6 +55,8 @@ final class FreeRunCalculator {
         Input previous = null;
         List<List<GeoPoint>> segments = new ArrayList<>();
         List<GeoPoint> segment = null;
+        List<List<Input>> samples = new ArrayList<>();
+        List<Input> sampleSegment = null;
         for (int i = 0; i < inputs.size(); i++) {
             Input p = inputs.get(i);
             if (p.seq() != i || p.elapsedMs() < lastMs || p.elapsedMs() > 7L*86400000 ||
@@ -95,18 +97,24 @@ final class FreeRunCalculator {
                             segment = null;
                         } else { distanceM += d; travels.add(new Travel(previous.elapsedMs(),p.elapsedMs(),d)); }
                     }
-                    if (segment == null) { segment = new ArrayList<>(); segments.add(segment); }
+                    if (segment == null) {
+                        segment = new ArrayList<>(); segments.add(segment);
+                        sampleSegment = new ArrayList<>(); samples.add(sampleSegment);
+                    }
                     segment.add(p.location()); previous = p; inGap = false;
+                    sampleSegment.add(p);
                 }
             }
         }
         Input end = inputs.getLast();
         if (v2) { distanceM = motion.distanceM; segments = motion.segments; }
         long movingMs = v2 ? motion.movingMs(lastMs, activeMs) : activeMs;
+        List<Lap> laps = laps(v2?motion.travels:travels,distanceM,lastMs,pauses,motion,v2);
         return new Calculation(new Metrics(distanceM, lastMs, activeMs, gaps,
             distanceM > 0 && movingMs > 0 ? movingMs/distanceM : null, movingMs,
             distanceM > 0 ? lastMs/distanceM : null, coverage>0?steps*60000.0/coverage:null, coverage, steps),
-            segments, end.measuredAt(), end.reason(), laps(v2?motion.travels:travels,distanceM,lastMs,pauses,motion,v2));
+            segments, end.measuredAt(), end.reason(), laps,
+            RunResultStatsCalculator.calculate(inputs,v2?motion.samples:samples,laps));
     }
     private static boolean freshFix(Instant start, Input p) {
         long age=Duration.between(p.measuredAt(),start.plusMillis(p.elapsedMs())).toMillis();

@@ -75,6 +75,39 @@ class RunIngestionTest {
         assertThat(runs.result(owner,id).registeredAt()).isEqualTo(record.registeredAt());
         assertThat(db.queryForObject("SELECT count(*) FROM run.records",Long.class)).isEqualTo(1);
     }
+    @Test void resultStatsSurviveUploadStorageHistoryAndLegacyDetailEnrichment() throws Exception {
+        var fixture=json.readTree(Files.readString(Path.of("../run/fixtures/free_result_stats_v1.json")));
+        var source=fixture.get("cases").get(0);
+        var raw=new ArrayList<Input>();
+        for(var node:source.get("inputs")) {
+            Input p=json.treeToValue(node,Input.class);
+            raw.add(new Input(p.seq(),p.kind(),p.elapsedMs(),start.plusMillis(p.elapsedMs()),p.location(),p.accuracyM(),
+                p.reason(),p.speedMps(),p.speedAccuracyMps(),p.steps(),p.durationMs(),p.sampleEndMs(),p.altitudeM(),p.altitudeAccuracyM()));
+        }
+        for(int from=0;from<raw.size();from+=400)
+            runs.upload(owner,id,new Upload(raw.size()-1,raw.subList(from,Math.min(from+400,raw.size()))));
+        runs.process(id);
+        Result stored=runs.result(owner,id);
+        assertThat(stored.stats().elevationGainM()).isCloseTo(40,within(.000001));
+        assertThat(stored.stats().bestLapNumber()).isEqualTo(2);
+        assertThat(stored.stats().bestPaceSecondsPerKm()).isCloseTo(200,within(.000001));
+        assertThat(runs.history(owner,new Cursorable(null,null)).content().getFirst().stats()).isEqualTo(stored.stats());
+        mvc.perform(get("/api/v1/runs/records/"+id).with(jwt().jwt(j->j.subject(owner.toString()))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.stats.version").value("RESULT_V1"));
+
+        // Simulate a record saved before stats existed. Only enrich the read:
+        // registered time, original metrics, laps and ranking publication survive.
+        var legacy=json.readTree(json.writeValueAsString(stored)).deepCopy();
+        ((tools.jackson.databind.node.ObjectNode)legacy).remove("stats");
+        db.update("UPDATE run.records SET result_json=? WHERE id=?",json.writeValueAsString(legacy),id);
+        Result enriched=runs.result(owner,id);
+        assertThat(enriched.stats()).isEqualTo(stored.stats());
+        assertThat(enriched.metrics()).isEqualTo(stored.metrics());
+        assertThat(enriched.laps()).isEqualTo(stored.laps());
+        assertThat(enriched.registeredAt()).isEqualTo(stored.registeredAt());
+        assertThat(db.queryForObject("SELECT registration_published FROM run.records WHERE id=?",Boolean.class,id)).isTrue();
+        assertThatThrownBy(()->runs.result(UUID.randomUUID(),id)).isInstanceOf(AppException.class);
+    }
     @Test void conflictingBatchRollsBackAndAnotherOwnerCannotAccess() {
         runs.upload(owner,id,new Upload(9,List.of(inputs.getFirst())));
         var changed=new Input(0,Kind.START,100,start.plusMillis(100),null,null,null);

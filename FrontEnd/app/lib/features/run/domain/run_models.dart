@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import 'run_lap.dart';
+import 'run_result_stats.dart';
 
 enum RunState { ready, running, paused, finished }
 
@@ -76,6 +77,7 @@ class RunSnapshot {
     this.cadenceCoverageMs = 0,
     this.cadenceStatus = '측정 전',
     this.voiceNotice,
+    this.resultStats,
   }) : inputs = List.unmodifiable(inputs);
 
   final RunState state;
@@ -96,6 +98,7 @@ class RunSnapshot {
   final int cadenceCoverageMs;
   final String cadenceStatus;
   final String? voiceNotice;
+  final RunResultStats? resultStats;
   final List<List<RunPoint>> segments;
   bool get hasLocation =>
       segments.any((s) => s.isNotEmpty) ||

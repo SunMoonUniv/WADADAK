@@ -15,6 +15,8 @@ final class MotionPace {
     private Input previous;
     private final List<Input> pending = new ArrayList<>();
     final List<List<GeoPoint>> segments = new ArrayList<>();
+    final List<List<Input>> samples = new ArrayList<>();
+    private List<Input> sampleSegment;
     private List<GeoPoint> segment;
     private boolean paused, ended;
 
@@ -55,10 +57,14 @@ final class MotionPace {
             !speedSaysStopped && (speedEvidence ? path + .001 >= threshold :
                 displacement + .001 >= threshold && path > 0 && displacement / path >= .7)) {
             closeStop(anchor.elapsedMs());
-            if (segment == null) { segment = new ArrayList<>(); segment.add(anchor.location()); segments.add(segment); }
+            if (segment == null) {
+                segment = new ArrayList<>(); segment.add(anchor.location()); segments.add(segment);
+                sampleSegment = new ArrayList<>(); sampleSegment.add(anchor); samples.add(sampleSegment);
+            }
             for (int i = 1; i < pending.size(); i++) {
                 double d = distance(pending.get(i - 1), pending.get(i));
                 distanceM += d; segment.add(pending.get(i).location());
+                sampleSegment.add(pending.get(i));
                 travels.add(new FreeRunCalculator.Travel(pending.get(i-1).elapsedMs(),pending.get(i).elapsedMs(),d));
             }
             pending.clear(); pending.add(p); return;

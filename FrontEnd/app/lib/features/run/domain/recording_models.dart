@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'motion_pace.dart';
 import 'run_lap.dart';
 import 'run_cadence.dart';
+import 'run_result_stats.dart';
 
 enum RunPhase { running, paused, ended }
 
@@ -163,6 +164,14 @@ class RunMetrics {
 
 /// Incremental calculation shared by live display, recovery and fixture replay.
 class RunCalculator {
+  RunResultStats? _resultStats;
+  RunResultStats resultStats(List<RunInput> inputs) => ended
+      ? (_resultStats ??= RunResultStats.calculate(
+          inputs,
+          segments,
+          lapsAt(lastMs),
+        ))
+      : RunResultStats.calculate(inputs, segments, lapsAt(lastMs));
   double _distanceM = 0;
   final MotionPace _motion = MotionPace();
   bool _v2 = false;

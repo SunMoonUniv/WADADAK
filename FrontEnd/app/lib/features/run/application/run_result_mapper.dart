@@ -1,5 +1,6 @@
 import '../domain/run_lap.dart';
 import '../domain/run_models.dart';
+import '../domain/run_result_stats.dart';
 
 RunSnapshot remoteRunSnapshot(
   Map<String, dynamic> json, {
@@ -22,6 +23,11 @@ RunSnapshot remoteRunSnapshot(
       .toList();
   return RunSnapshot(
     state: RunState.finished,
+    resultStats: json['stats'] is Map
+        ? RunResultStats.fromJson(
+            (json['stats'] as Map).cast<String, dynamic>(),
+          )
+        : null,
     sessionId: json['id'] as String,
     startedAt: DateTime.parse(json['startedAt'] as String),
     elapsed: Duration(milliseconds: ms('elapsedMs')),

@@ -81,7 +81,7 @@ class FreeRunController extends ChangeNotifier {
   }
 
   RunSnapshot savedSnapshot(recording.LocalRun run) {
-    if (run.result != null) return remoteRunSnapshot(run.result!);
+    if (run.result != null) return remoteRunSnapshot(_withLocalStats(run));
     if (!run.inputsLoaded && run.summary != null) {
       return remoteRunSnapshot(
         run.summary!,
@@ -98,6 +98,19 @@ class FreeRunController extends ChangeNotifier {
       live: false,
     );
   }
+
+  Map<String, dynamic> _withLocalStats(
+    recording.LocalRun run, [
+    recording.RunCalculator? calculator,
+  ]) => {
+    ...run.result!,
+    if (run.result!['stats'] == null &&
+        run.inputsLoaded &&
+        run.inputs.isNotEmpty)
+      'stats': (calculator ?? recording.RunCalculator.replay(run.inputs))
+          .resultStats(run.inputs)
+          .toJson(),
+  };
 
   void _updatePaces(
     recording.LocalRun run,
@@ -136,7 +149,7 @@ class FreeRunController extends ChangeNotifier {
     bool live = true,
   }) {
     if (run.phase == recording.RunPhase.ended && run.result != null) {
-      return remoteRunSnapshot(run.result!);
+      return remoteRunSnapshot(_withLocalStats(run, calculator));
     }
     if (live) _updatePaces(run, metrics, notice);
     return RunSnapshot(
@@ -155,6 +168,9 @@ class FreeRunController extends ChangeNotifier {
       currentPaceDisplay: live ? _currentPace : null,
       stationary: metrics.stationary,
       laps: calculator.lapsAt(metrics.elapsedMs),
+      resultStats: run.phase == recording.RunPhase.ended
+          ? calculator.resultStats(run.inputs)
+          : null,
       voiceNotice: live ? _recording?.voiceNotice : null,
       averageCadence: metrics.averageCadence,
       currentCadence: metrics.currentCadence,

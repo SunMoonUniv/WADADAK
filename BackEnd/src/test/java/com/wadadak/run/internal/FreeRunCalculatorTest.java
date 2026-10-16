@@ -109,7 +109,13 @@ class FreeRunCalculatorTest {
                     p.steps(),p.durationMs(),p.sampleEndMs(),p.seq()%2==0?-3.25:0.0,0.0) : p);
             }
             Instant started=Instant.parse(fixture.get("startedAt").asString());
-            assertThat(FreeRunCalculator.calculate(started,elevated)).isEqualTo(FreeRunCalculator.calculate(started,original));
+            var withAltitude = FreeRunCalculator.calculate(started,elevated);
+            var withoutAltitude = FreeRunCalculator.calculate(started,original);
+            assertThat(withAltitude.metrics()).isEqualTo(withoutAltitude.metrics());
+            assertThat(withAltitude.segments()).isEqualTo(withoutAltitude.segments());
+            assertThat(withAltitude.laps()).isEqualTo(withoutAltitude.laps());
+            assertThat(withAltitude.endedAt()).isEqualTo(withoutAltitude.endedAt());
+            assertThat(withAltitude.endReason()).isEqualTo(withoutAltitude.endReason());
             assertThat(original.stream().allMatch(p->p.altitudeM()==null)).isTrue();
         }
     }
