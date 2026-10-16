@@ -5,12 +5,14 @@ import com.wadadak.common.exception.AppException;
 import com.wadadak.course.CourseApi;
 import com.wadadak.course.CourseErrorCode;
 import com.wadadak.course.CourseRouteSnapshot;
+import com.wadadak.member.MemberApi;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.util.UUID;
 
@@ -25,6 +27,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @Import(TestcontainersConfiguration.class)
 @TestPropertySource(properties = "app.stub.course=true")
 class CourseApiStubTest {
+
+    // course만 띄워서 member 모듈이 없다. 코스 상세가 등록자 닉네임에 MemberApi를 쓰므로 가짜로 채운다
+    @MockitoBean
+    MemberApi memberApi;
 
     @Autowired
     CourseApi courseApi;

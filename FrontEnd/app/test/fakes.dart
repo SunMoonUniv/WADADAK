@@ -4,8 +4,10 @@ import 'dart:convert';
 import 'package:wadadak/core/api/api_client.dart';
 import 'package:wadadak/core/api/course_api_client.dart';
 import 'package:wadadak/core/api/member_api_client.dart';
+import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:wadadak/core/api/region_api_client.dart';
+import 'package:wadadak/core/api/review_api_client.dart';
 import 'package:wadadak/core/api/upload_form.dart';
 import 'package:wadadak/core/auth/social_login.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
@@ -178,6 +180,19 @@ class FakeCourseApi implements CourseApiClient {
   @override
   Future<RegistrationQuota> registrationQuota() async => quota;
 
+  /// 코스 상세(B1). 없는 ID는 서버처럼 COURSE-001이다. [detailError]가 있으면 그 오류다.
+  Map<String, CourseDetail> details = {};
+  ApiException? detailError;
+  final detailRequests = <String>[];
+
+  @override
+  Future<CourseDetail> courseDetail(String courseId) async {
+    detailRequests.add(courseId);
+    if (detailError != null) throw detailError!;
+    return details[courseId] ??
+        (throw const ApiException(CourseApiClient.courseNotFoundCode, '코스를 찾을 수 없습니다.', status: 404));
+  }
+
   /// 서버처럼 입력점을 그대로 잇고, 끝점에 1km 표지 하나를 둔다.
   @override
   Future<GeneratedRoute> generateRoute(List<GeoPoint> anchorPoints) async {
@@ -335,3 +350,33 @@ typedef FakeRegistration = ({
   Difficulty difficulty,
   Set<CourseTag> tags,
 });
+
+/// 코스 평점 요약만 주는 리뷰 API(B1). [summary]가 없거나 [error]가 있으면 실패한다.
+class FakeReviewSummaryApi extends Fake implements ReviewApiClient {
+  FakeReviewSummaryApi([this.result]);
+
+  ReviewSummary? result;
+  ApiException? error;
+  int requests = 0;
+
+  @override
+  Future<ReviewSummary> summary(String courseId) async {
+    requests++;
+    if (error != null) throw error!;
+    return result ?? reviewSummary();
+  }
+}
+
+/// 리뷰 요약 값. 리뷰가 없으면 평균은 모두 null이다(서버와 같다).
+ReviewSummary reviewSummary({int count = 0, double? average, (double, double, double, double)? items}) =>
+    ReviewSummary.fromJson({
+      'reviewCount': count,
+      'averageRating': average,
+      'ratingCounts': {'five': count, 'four': 0, 'three': 0, 'two': 0, 'one': 0},
+      'itemAverages': {
+        'safety': items?.$1,
+        'road': items?.$2,
+        'lighting': items?.$3,
+        'amenity': items?.$4,
+      },
+    });

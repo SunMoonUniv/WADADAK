@@ -9,6 +9,7 @@ import '../../../core/error_message.dart';
 import '../../../core/map/map_view.dart';
 import '../../../routes.dart';
 import '../course_format.dart';
+import '../course_public_period_sheet.dart';
 import 'route_draft.dart';
 
 /// B3 코스 만들기 — 경로 그리기. 지도를 탭해 입력점을 찍으면 서버가 순서대로 직선으로 이어 최종 경로를 만든다.
@@ -197,6 +198,7 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
   }
 
   /// 서버에 최종 경로를 만들어 B4로 간다. 실패하면 B3에 머물러 점을 그대로 두고 다시 시도할 수 있게 한다(B3-06).
+  /// 경로를 만들면 B4로 가기 전에 공개 기간(B11)을 매번 알린다. `확인`을 눌러야 넘어가고 닫으면 B3에 머문다(4.1 B11).
   Future<void> _next() async {
     setState(() => _generating = true);
     final GeneratedRoute route;
@@ -209,6 +211,8 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
       if (mounted) setState(() => _generating = false);
     }
     if (!mounted) return;
+    final confirmed = await showCoursePublicPeriodSheet(context);
+    if (!confirmed || !mounted) return;
     // B4를 이 화면 위에 쌓는다. 돌아오면 입력점이 그대로 있어 고칠 수 있다(정책 공통 3).
     final course = await context.push<RegisteredCourse>(Routes.courseInfo, extra: route);
     // 등록했으면 홈으로 돌아가 새 코스 위치를 보여 준다(B4-07).

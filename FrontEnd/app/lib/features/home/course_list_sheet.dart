@@ -49,6 +49,7 @@ class CourseListSheet extends ConsumerStatefulWidget {
     this.onResetFilter,
     this.onWidenMap,
     this.onCreateCourse,
+    this.onOpenCourse,
   });
 
   /// 제목 줄 높이. 피크일 때 이만큼만 보인다.
@@ -106,6 +107,9 @@ class CourseListSheet extends ConsumerStatefulWidget {
 
   /// 코스가 없을 때 · 전체 보기의 `코스 만들기`(STA-01 · A6-06).
   final VoidCallback? onCreateCourse;
+
+  /// 코스 카드를 눌렀다. 코스 상세(B1)를 연다(A2-05 · A6-03).
+  final ValueChanged<CourseListItem>? onOpenCourse;
 
   @override
   ConsumerState<CourseListSheet> createState() => _CourseListSheetState();
@@ -320,9 +324,12 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
                         sliver: SliverList.separated(
                           itemCount: courses.length,
                           separatorBuilder: (_, _) => const SizedBox(height: WdSpace.s12),
-                          // 코스 상세(B1)가 생기면 카드를 눌러 연다(A2-05).
-                          itemBuilder: (_, index) =>
-                              CourseListCard(course: courses[index], now: now, myLocation: widget.myLocation),
+                          itemBuilder: (_, index) => CourseListCard(
+                            course: courses[index],
+                            now: now,
+                            myLocation: widget.myLocation,
+                            onTap: () => widget.onOpenCourse?.call(courses[index]),
+                          ),
                         ),
                       ),
                       SliverToBoxAdapter(child: selected == null ? _footer() : const SizedBox(height: WdSpace.s24)),

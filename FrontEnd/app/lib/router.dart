@@ -7,6 +7,7 @@ import 'core/auth/auth_controller.dart';
 import 'core/map/map_view.dart';
 import 'features/course/create/course_info_screen.dart';
 import 'features/course/create/route_draw_screen.dart';
+import 'features/course/detail/course_detail_screen.dart';
 import 'features/home/course_filter_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/onboarding/consent_screen.dart';
@@ -57,6 +58,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: Routes.courseFilter,
         builder: (_, state) => CourseFilterScreen(request: state.extra! as CourseFilterRequest),
+      ),
+      // `/course/new` · `/course/filter`보다 뒤에 두어야 그 경로를 코스 ID로 잡지 않는다.
+      GoRoute(
+        path: '/course/:courseId',
+        builder: (_, state) => CourseDetailScreen(courseId: state.pathParameters['courseId']!),
       ),
       StatefulShellRoute.indexedStack(
         builder: (_, _, shell) => MainShell(shell: shell),

@@ -74,7 +74,7 @@ Figma는 아직 Noto Sans KR · Inter다. 디자이너 PC에 Pretendard를 설�
 
 | Figma | Flutter |
 |---|---|
-| App bar / * (9종) | `WdAppBar` + `WdAppBarAction` (클래스 주석에 변형별 사용법) |
+| App bar / * (9종) | `WdAppBar` + `WdAppBarAction` (클래스 주석에 변형별 사용법). 제목 아래 작은 글씨 `subtitle`은 B1 등록자용으로 더했다(Figma에 없음) |
 | Tab item | `WdTabBar` (Material `TabBar` 기반) |
 | A DS / Bottom navigation | `WdBottomNav` |
 | Run / Mode segment · Builder segment | `WdSegmentedControl(style: dark / light)` |
@@ -104,6 +104,7 @@ Figma는 아직 Noto Sans KR · Inter다. 디자이너 PC에 Pretendard를 설�
 | Map button / Locate · Km marker · Route point | `WdMapLocateButton` · `WdKmMarker` · `WdRoutePoint` |
 | Map / Region count bubble · Sheet peek · Thumbnail | `WdRegionCountBubble` · `WdSheetPeek` · `WdRouteThumbnail` |
 | (컴포넌트 아님) B3 지도 안내 · 되돌리기·전체 지우기·홈 `＋ 코스 만들기` · 출발·도착 · 범례 | `WdMapHint` · `WdMapPillButton`(`.small`) · `WdRouteEndpoint.start/.end` · `WdRouteLegend` — B3·A4 화면에 그려진 값을 옮겼다 |
+| (컴포넌트 아님) B1 코스 지도 출발점 | `WdCourseStartDot` — B1 화면에 그려진 값을 옮겼다(16, 출발 표지의 점을 이름표 없이) |
 | (컴포넌트 아님) A5 지도 위 코스 이름표 | `WdMapCourseLabel` — A5 화면에 그려진 값을 옮겼다. `selected`(고른 코스, 배경 파랑)는 정책 MAP-03에 따라 더했다(Figma에 없음) |
 | Analysis / Segment chart · Segment table | `WdSegmentChart` · `WdSegmentTable` |
 | A 확장 / Avatar | `WdAvatar` |

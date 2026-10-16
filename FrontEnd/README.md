@@ -18,7 +18,7 @@
 | 컴포넌트 카탈로그 앱 + 스모크 테스트 | ✅ 완료 |
 | Figma 디자인 시스템 페이지 (변수 · 스타일 · 컴포넌트 82개 / 29세트) | ✅ 완료 |
 | 앱 프로젝트 (`app/`) — Riverpod · go_router · dio, 하단 탭 4개 | ✅ 뼈대 |
-| 화면 | 🟡 14 / 72 (온보딩: A1 · 소셜 정보 동의 · 권한 안내 · F2, 코스: B3 경로 그리기 · B5 코스 정보 입력, 랭킹: E1 · I2 · I5 · I6, 리뷰: G2 · B2 · B10 · B10-1) |
+| 화면 | 🟡 16 / 72 (온보딩: A1 · 소셜 정보 동의 · 권한 안내 · F2, 코스: B1 코스 상세 정보 · B3 경로 그리기 · B5 코스 정보 입력 · B11 공개 기간 안내, 랭킹: E1 · I2 · I5 · I6, 리뷰: G2 · B2 · B10 · B10-1) |
 | 로그인 · 토큰 저장 · 자동 갱신 | 🟡 서버 연동 · 카카오 SDK 완료, Google · Apple SDK는 아직 |
 | 지도 — `core/map` (네이버 지도 SDK 래퍼 · 키 없이 도는 개발용 지도) | 🟡 홈 탭에 연결, 축척에 따라 지도 범위 안 코스 경로 · 이름표 / 지역별 코스 수 배지 |
 | API · 위치 추적 연동 | 🟡 코스 API(경로 생성 · 오늘 남은 등록 수 · 이름 확인 · 등록 · 지도 범위 안 코스 · 지역별 코스 수 · 코스 목록) · 랭킹 API(서버 거리 집계는 아직 스텁) · 리뷰 API(요약 · 목록 · 내 리뷰 · 작성 · 수정 · 삭제 · 지도 평점) · 지역 검색 API · 사진 업로드(`core/upload`, 리뷰 업로드 폼), 위치 추적은 시작 전 |
@@ -39,7 +39,7 @@
 | 카드 | `WdSummaryTile(s)` `WdMetric` `WdStatSummary` `WdAvatar` `WdRouteThumbnail` `WdCourseCard` `WdRunRecordCard` `WdReviewCard` |
 | 랭킹 | `WdRankRow` `WdRankList` `WdMyRankCard` |
 | 러닝 | `WdRunHeader` `WdElapsedTime` `WdRunMetricTile` `WdLapRecords` `WdGhostLeadCard` `WdCourseProgress` `WdPageIndicator` `WdRunPauseButton` `WdRunPausedButtons` `WdSensorStatus` `WdSelectedCourseCard` `WdRecordCard` |
-| 지도 위 요소 | `WdMapLocateButton` `WdKmMarker` `WdRoutePoint` `WdRegionCountBubble` `WdSheetPeek` `WdMapHint` `WdMapPillButton` `WdRouteEndpoint` `WdRouteLegend` `WdMapCourseLabel` |
+| 지도 위 요소 | `WdMapLocateButton` `WdKmMarker` `WdRoutePoint` `WdRegionCountBubble` `WdSheetPeek` `WdMapHint` `WdMapPillButton` `WdRouteEndpoint` `WdCourseStartDot` `WdRouteLegend` `WdMapCourseLabel` |
 | 분석 | `WdSegmentChart` `WdSegmentTable` |
 
 Figma 컴포넌트와의 1:1 대응표, 토큰 사용법은 [디자인 시스템 README](packages/wadadak_design_system/README.md)에 있다.
@@ -144,7 +144,7 @@ flutter test
 - [x] `flutter create app` 후 디자인 시스템 연결
 - [x] `MaterialApp.router(theme: WdTheme.light())`, 라우팅, 하단 탭 4개 (홈 · 달리기 · 랭킹 · MY — `WdBottomNav` 기본값)
 
-### 4. 화면 구현 (14 / 72)
+### 4. 화면 구현 (16 / 72)
 
 Figma `디자인 · 전체 화면 (와이어프레임 기준)` 페이지의 섹션 순서 그대로다.
 처음에는 가짜 데이터로 화면만 만들고, API는 나중에 붙인다. 화면 코드에는 색 · 간격 · 글꼴 값을 직접 쓰지 않고 디자인 시스템 토큰과 위젯만 쓴다.
@@ -177,9 +177,9 @@ Figma `디자인 · 전체 화면 (와이어프레임 기준)` 페이지의 섹�
 </details>
 
 <details>
-<summary>📍 코스 상세 · 만들기 (2 / 9)</summary>
+<summary>📍 코스 상세 · 만들기 (4 / 9)</summary>
 
-- [ ] B1 · 코스 상세 — 정보
+- [x] B1 · 코스 상세 — 정보 — 서버 `GET /api/v1/courses/{id}`(등록자 닉네임 · 1km 표지), 평점 · 리뷰 수 · 러너 평가는 리뷰 API. 리뷰가 없으면 Figma B1-1 안내. 평균 페이스는 `—`(F11), 현재 러너(F6 · F11) · 고도 프로필(F7)은 아직 없음. 리뷰 · 랭킹 탭과 달리기 버튼은 누르면 준비 중 안내, 공유는 링크를 정할 때까지 없음. 비공개 · 삭제된 코스는 `볼 수 없는 코스예요`
 - [ ] B8 · 코스 상세 — 리뷰
 - [ ] B9 · 코스 상세 — 랭킹
 - [ ] G3 · 코스 전체 순위
@@ -187,7 +187,7 @@ Figma `디자인 · 전체 화면 (와이어프레임 기준)` 페이지의 섹�
 - [ ] B4 · 코스 만들기 — 내가 달려서 등록
 - [x] B5 · 코스 정보 입력 & 등록 — 정책 문서 ID는 B4. 등록하면 홈 지도가 새 코스 출발점으로 옮겨 간다(지도에 코스를 그리는 건 홈 · 코스 탐색에서)
 - [ ] B6 · 내 기록에서 코스 등록
-- [ ] B11 · 코스 공개 기간 안내 (시트)
+- [x] B11 · 코스 공개 기간 안내 (시트) — B3 `다음`으로 경로를 만든 뒤 매번 띄우고 `확인`이면 B5로 간다. B6에서 기록을 고른 뒤 띄우는 건 B6을 만들 때
 </details>
 
 <details>
@@ -279,12 +279,13 @@ Figma `디자인 · 전체 화면 (와이어프레임 기준)` 페이지의 섹�
 - [x] 토큰 보안 저장 · 401 자동 갱신(갱신은 한 번에 하나) · 로그아웃
 - [x] 위치 · 동작 및 피트니스 권한 요청 (권한 안내 화면 순서대로)
 - [ ] API 연결 (가짜 데이터 → 실제 데이터)
-  - [x] 코스: 경로 생성 · 오늘 남은 등록 수 · 이름 확인 · 등록 · 지도 범위 안 코스 · 지역별 코스 수 · 코스 목록 (`core/api/course_api_client.dart`)
+  - [x] 코스: 경로 생성 · 오늘 남은 등록 수 · 이름 확인 · 등록 · 지도 범위 안 코스 · 지역별 코스 수 · 코스 목록 · 코스 상세 (`core/api/course_api_client.dart`)
   - [x] 랭킹: 누적 거리 · 지역 주간 랭킹 (`core/api/ranking_api_client.dart`)
   - [x] 지역: 시·군·구 검색, 로그인 없이 (`core/api/region_api_client.dart`) — 가입 활동 지역 · I6가 같은 검색 화면(`core/region_search.dart`)을 쓴다
 - [x] 지도 SDK 연결 — `core/map` `MapView`(선 · 표지 · 누른 위치 · 카메라 범위 · 축척 · 현재 위치 · 러닝 좌표 따라가기), 홈 탭에 표시
 - [ ] 지도 위 코스 경로 · km 표지 · 지역별 개수 표시 (각 화면에서)
   - [x] 홈: 지도 범위 안 코스 경로 · 이름표 — 지도가 멈출 때마다 다시 받는다
+  - [x] 코스 상세(B1): 코스 경로 · 1km 표지 · 출발점, 위쪽 안내 문구 아래로 경로를 맞춘다
   - [x] 홈: 지역별 코스 수 배지(A4) — 축척 500m보다 넓으면 구 단위, 2km보다 넓으면 시 단위(MAP-02). 배지를 누르면 그 지역을 시트 위로 보이는 지도의 한가운데로 옮기며 한 단계 확대(시 → 축척 2km, 구 → 500m, A4-06)
   - [x] 홈: 처음 지도 자리 — 위치 권한이 있으면 기기에 남은 마지막 위치(`LocationService.lastKnownPosition`)를 시트 위로 보이는 지도의 한가운데에 두고 줌 14로 열며 현재 위치 점을 켠다. 지금 위치를 받으면 지도를 움직이지 않았을 때만 다시 맞춘다. 권한이 없거나 남은 위치가 없으면 서울시청(권한은 묻지 않음). 다른 하단 탭에서 돌아올 때도 같다
   - [x] 홈: 현재 위치 버튼(A4-05 · A5-05) — 현재 위치를 시트 위로 보이는 지도의 한가운데로 옮기며 축척 100m로 확대하고, 현재 위치 점만 보인다(지도는 따라가지 않음). 권한이 없으면 묻고, 거부 · 위치 실패면 안내(가까운순과 같은 `LocationService`)
@@ -295,9 +296,10 @@ Figma `디자인 · 전체 화면 (와이어프레임 기준)` 페이지의 섹�
   - [x] 필터(A3) — 정렬 · 거리 · 난이도 · 코스 태그 · 코스 유형. 바꾸면 약 300ms 뒤 예상 코스 수, `코스 N개 보기`로 지도 · 지역별 코스 수 · 목록에 같이 적용(A2-04). 0건이면 `조건에 맞는 코스가 없어요` + `필터 초기화`(STA-04)
   - [ ] 최소 평점 · 기간 슬라이더 — 코스 통계(F11)가 생기면
   - [x] 다른 하단 탭에 갔다 오면 탐색 상태 초기화(FIL-08) — 필터 · 정렬 · 지도 위치 · 고른 코스 · 시트 · 목록 스크롤을 앱을 처음 켰을 때로. 홈을 떠날 때(`features/home/home_tab_exits.dart`) 가려진 채로 되돌리고 카메라만 홈을 여는 자리로 옮겨 두어, 돌아오면 지도를 다시 만들지 않고 바로 보인다. 홈 위 화면(A3 · B3 · B4)에 갔다 오거나 홈 탭을 다시 누르면 그대로
-  - [ ] FIL-08 나머지 — 코스 상세(B1)에서 돌아오면 검색어 · 필터 · 지도 위치 · 목록 스크롤 복원, G6 → A6은 검색어 · 지역만 두고 필터 초기화. B1 · G1이 생기면
+  - [x] 코스 상세(B1)에서 돌아오면 필터 · 지도 위치 · 목록 스크롤이 그대로(FIL-08) — B1을 하단 탭 위에 쌓는다. 검색어는 G1이 생기면
+  - [ ] FIL-08 나머지 — G6 → A6은 검색어 · 지역만 두고 필터 초기화. G1이 생기면
   - [ ] 인기순 · 평점순 · 실시간순 · 카드의 평점 · 리뷰 수 · 현재 러너 — 코스 통계(F11)가 생기면
-  - [ ] 카드를 누르면 코스 상세(B1) — B1이 생기면
+  - [x] 카드를 누르면 코스 상세(B1, A2-05 · A6-03) — A5에서 고른 코스의 카드도 같다
 - [x] 자유 러닝 — Android GPS·백그라운드 추적, 이동시간 평균/현재 페이스, 자동 랩, 기기 저장·복구·서버 동기화, 개인 기록 조회·삭제
 - [x] 홈 지도 코스 선택(A5, MAP-03) — 이름표를 누르면 그 코스만 지도 · 목록에 남고 이름표 배경이 파랑(`WdMapCourseLabel.selected`). 지도를 움직이거나 축소해도 유지, 지도의 다른 곳을 누르면 풀린다
 - [ ] 코스 경로 이탈 판정·코스/고스트 러닝 (별도 범위)

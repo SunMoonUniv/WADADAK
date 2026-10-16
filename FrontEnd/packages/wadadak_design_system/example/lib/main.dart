@@ -122,6 +122,7 @@ class _CatalogPageState extends State<CatalogPage> {
         WdAppBar(title: '필터', onBack: () {}, action: WdAppBarAction.text('초기화', onTap: () {})),
         WdAppBar(title: '서비스 이용 동의', onBack: () {}, action: WdAppBarAction.circle(WdIcons.sliders, semanticLabel: '설정', onTap: () {})),
         WdAppBar(title: '한강 야경 5K', onBack: () {}, action: WdAppBarAction.icon(WdIcons.share, semanticLabel: '공유', onTap: () {})),
+        WdAppBar(title: '한강 야경 5K', subtitle: '등록자 러닝왕김', onBack: () {}),
         WdAppBar(title: '필터', onBack: () {}, action: WdAppBarAction.button('저장', primary: true, onTap: () {})),
         WdAppBar(title: 'MY', large: true, action: WdAppBarAction.circle(WdIcons.sliders, semanticLabel: '설정', onTap: () {})),
         const WdTabBar(tabs: ['코스 정보', '리뷰']),
@@ -356,6 +357,7 @@ class _CatalogPageState extends State<CatalogPage> {
             const Row(spacing: 16, crossAxisAlignment: CrossAxisAlignment.start, children: [
               WdRouteEndpoint.start(),
               WdRouteEndpoint.end(),
+              WdCourseStartDot(),
               WdRouteLegend(),
             ]),
           ]),

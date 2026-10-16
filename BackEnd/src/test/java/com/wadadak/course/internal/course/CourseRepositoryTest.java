@@ -2,6 +2,7 @@ package com.wadadak.course.internal.course;
 
 import com.wadadak.TestcontainersConfiguration;
 import com.wadadak.event.course.CourseStatus;
+import com.wadadak.member.MemberApi;
 import org.junit.jupiter.api.Test;
 import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
@@ -13,6 +14,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.time.Instant;
 import java.util.Set;
@@ -25,6 +27,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @ActiveProfiles("test")
 @Import(TestcontainersConfiguration.class)
 class CourseRepositoryTest {
+
+    // course만 띄워서 member 모듈이 없다. 코스 상세가 등록자 닉네임에 MemberApi를 쓰므로 가짜로 채운다
+    @MockitoBean
+    MemberApi memberApi;
 
     private static final GeometryFactory GEOMETRY = new GeometryFactory(new PrecisionModel(), 4326);
 

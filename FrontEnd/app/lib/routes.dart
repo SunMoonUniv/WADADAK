@@ -16,6 +16,9 @@ abstract final class Routes {
   /// A3 코스 필터. 하단 탭 위에 쌓고, 확정하면 `CourseFilterChoice`를 돌려준다. extra: `CourseFilterRequest`.
   static const courseFilter = '/course/filter';
 
+  /// B1 코스 상세. 하단 탭 위에 쌓아 돌아오면 홈의 탐색 상태(필터 · 지도 위치 · 목록 스크롤)가 그대로다(FIL-08).
+  static String courseDetail(String courseId) => '/course/${Uri.encodeComponent(courseId)}';
+
   /// G2 코스 리뷰 전체. B8 "모두 보기"에서 연다. extra: 코스 이름(String).
   static String courseReviews(String courseId) => '/course/${Uri.encodeComponent(courseId)}/reviews';
 
