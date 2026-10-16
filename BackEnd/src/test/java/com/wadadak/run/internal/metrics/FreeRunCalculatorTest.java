@@ -42,6 +42,28 @@ class FreeRunCalculatorTest {
         assertThat(result.paceSecondsPerKm()).isCloseTo(1000.0/3,within(.01));
         assertThat(result.elapsedPaceSecondsPerKm()).isCloseTo(1000,within(.01));
     }
+    @Test void segmentEndDoesNotChangeFreeRunResult() throws Exception {
+        // 코스 구간 종료 입력은 자유 러닝 거리·시간·랩·통계에 영향이 없다(코스 판정 경계 전용)
+        var mapper=JsonMapper.builder().findAndAddModules().build();
+        var fixture=mapper.readTree(Files.readString(Path.of("../run/fixtures/free_motion_v2.json")));
+        List<Input> inputs=new ArrayList<>();
+        for(var node:fixture.get("inputs")) inputs.add(mapper.treeToValue(node,Input.class));
+        Instant started=Instant.parse("2026-10-14T00:00:00Z");
+        var base=FreeRunCalculator.calculate(started,inputs);
+        int at=inputs.size()/2;
+        long ms=inputs.get(at-1).elapsedMs();
+        List<Input> marked=new ArrayList<>();
+        for(int i=0;i<inputs.size();i++) {
+            if(i==at) marked.add(new Input(marked.size(),Kind.SEGMENT_END,ms,started.plusMillis(ms),null,null,"COURSE_ONLY"));
+            Input p=inputs.get(i);
+            marked.add(new Input(marked.size(),p.kind(),p.elapsedMs(),p.measuredAt(),p.location(),p.accuracyM(),p.reason(),
+                p.speedMps(),p.speedAccuracyMps(),p.steps(),p.durationMs(),p.sampleEndMs(),p.altitudeM(),p.altitudeAccuracyM()));
+        }
+        var result=FreeRunCalculator.calculate(started,marked);
+        assertThat(result.metrics()).isEqualTo(base.metrics());
+        assertThat(result.laps()).isEqualTo(base.laps());
+        assertThat(result.stats()).isEqualTo(base.stats());
+    }
     @Test void v2ReliableStationarySpeedDoesNotTurnGpsDriftIntoDistance() {
         MotionPace motion = new MotionPace();
         motion.add(new Input(0,Kind.START,0,start,null,null,"PACE_V2"));
