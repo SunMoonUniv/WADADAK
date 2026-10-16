@@ -1,6 +1,7 @@
 package com.wadadak.run.internal.metrics;
 
 import com.wadadak.common.geo.GeoPoint;
+import com.wadadak.run.internal.GpsQuality;
 import com.wadadak.run.internal.RunContracts.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -32,12 +33,12 @@ final class MotionPace {
             return;
         }
         if (paused) return;
-        if (!FreeRunCalculator.good(p) || p.accuracyM() > 15) {
+        if (!GpsQuality.good(p) || p.accuracyM() > 15) {
             closeStop(previous == null ? null : previous.elapsedMs()); resetWindow(); return;
         }
         if (previous != null) {
             long dt = p.elapsedMs() - previous.elapsedMs();
-            if (dt <= 0 || dt > 10000 || distance(previous, p) / (dt / 1000.0) > 12) {
+            if (dt <= 0 || dt > GpsQuality.MAX_INTERVAL_MS || distance(previous, p) / (dt / 1000.0) > GpsQuality.MAX_SPEED_MPS) {
                 closeStop(previous.elapsedMs()); resetWindow();
             }
         }
