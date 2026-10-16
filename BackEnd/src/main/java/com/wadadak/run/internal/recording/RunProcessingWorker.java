@@ -1,4 +1,4 @@
-package com.wadadak.run.internal;
+package com.wadadak.run.internal.recording;
 
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
 import org.slf4j.Logger;

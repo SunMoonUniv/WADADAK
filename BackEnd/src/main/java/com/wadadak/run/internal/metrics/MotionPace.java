@@ -1,7 +1,7 @@
-package com.wadadak.run.internal;
+package com.wadadak.run.internal.metrics;
 
 import com.wadadak.common.geo.GeoPoint;
-import com.wadadak.run.RunContracts.*;
+import com.wadadak.run.internal.RunContracts.*;
 import java.util.ArrayList;
 import java.util.List;
 

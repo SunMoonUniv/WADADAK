@@ -1,13 +1,13 @@
-package com.wadadak.run.internal;
+package com.wadadak.run.internal.metrics;
 
-import com.wadadak.run.RunContracts.*;
+import com.wadadak.run.internal.RunContracts.*;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
 /** RESULT_V2. Keep thresholds, interpolation and tie handling identical to Dart. */
-final class RunResultStatsCalculator {
-    static final String VERSION = "RESULT_V2";
+public final class RunResultStatsCalculator {
+    public static final String VERSION = "RESULT_V2";
     static ResultStats calculate(List<Input> inputs, List<List<Input>> segments, List<Lap> laps) {
         if (inputs.isEmpty() || !"PACE_V2".equals(inputs.getFirst().reason())) {
             MotionPace motion = new MotionPace();

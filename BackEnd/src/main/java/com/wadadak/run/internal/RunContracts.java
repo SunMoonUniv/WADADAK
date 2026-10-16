@@ -1,4 +1,4 @@
-package com.wadadak.run;
+package com.wadadak.run.internal;
 
 import com.wadadak.common.geo.GeoPoint;
 import jakarta.validation.Valid;

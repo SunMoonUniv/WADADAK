@@ -1,16 +1,16 @@
-package com.wadadak.run.internal;
+package com.wadadak.run.internal.metrics;
 
 import com.wadadak.common.exception.AppException;
 import com.wadadak.common.geo.GeoPoint;
-import com.wadadak.run.RunContracts.*;
+import com.wadadak.run.internal.RunContracts.*;
 import com.wadadak.run.RunErrorCode;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-final class FreeRunCalculator {
-    record Calculation(Metrics metrics, List<List<GeoPoint>> segments, Instant endedAt, String endReason, List<Lap> laps, ResultStats stats) {}
+public final class FreeRunCalculator {
+    public record Calculation(Metrics metrics, List<List<GeoPoint>> segments, Instant endedAt, String endReason, List<Lap> laps, ResultStats stats) {}
     record Travel(long start, long end, double distance) {}
     record Span(long start, long end) { long before(long ms) { return Math.clamp(ms-start,0,end-start); } }
     private static long movingAt(long ms, List<Span> pauses, MotionPace motion, boolean v2) {
@@ -39,7 +39,7 @@ final class FreeRunCalculator {
         }
         return List.copyOf(laps);
     }
-    static Calculation calculate(Instant startedAt, List<Input> inputs) {
+    public static Calculation calculate(Instant startedAt, List<Input> inputs) {
         if (inputs.size() < 2 || inputs.getFirst().kind() != Kind.START ||
             inputs.getFirst().elapsedMs() != 0 || inputs.getLast().kind() != Kind.END) invalid();
         long lastMs = 0, activeMs = 0;

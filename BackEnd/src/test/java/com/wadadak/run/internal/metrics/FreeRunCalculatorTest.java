@@ -1,8 +1,8 @@
-package com.wadadak.run.internal;
+package com.wadadak.run.internal.metrics;
 
 import com.wadadak.common.exception.AppException;
 import com.wadadak.common.geo.GeoPoint;
-import com.wadadak.run.RunContracts.*;
+import com.wadadak.run.internal.RunContracts.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;

@@ -1,8 +1,9 @@
-package com.wadadak.run.internal;
+package com.wadadak.run.internal.recording;
 
 import com.wadadak.TestcontainersConfiguration;
 import com.wadadak.common.exception.AppException;
-import com.wadadak.run.RunContracts.*;
+import com.wadadak.run.internal.RunContracts.*;
+import com.wadadak.run.internal.metrics.FreeRunCalculator;
 import com.wadadak.common.paging.CursorSlice;
 import com.wadadak.common.paging.Cursorable;
 import com.wadadak.event.member.MemberWithdrawnEvent;
