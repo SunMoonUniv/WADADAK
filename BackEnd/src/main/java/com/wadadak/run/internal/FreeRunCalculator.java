@@ -116,9 +116,7 @@ final class FreeRunCalculator {
         return p.location()!=null && p.accuracyM()!=null && Double.isFinite(p.accuracyM()) && p.accuracyM()>=0 && p.accuracyM()<=30;
     }
     static double distance(GeoPoint a, GeoPoint b) {
-        double x=Math.toRadians(a.lat()), y=Math.toRadians(b.lat());
-        double h=Math.pow(Math.sin((y-x)/2),2)+Math.cos(x)*Math.cos(y)*Math.pow(Math.sin(Math.toRadians(b.lng()-a.lng())/2),2);
-        return 2*6371008.8*Math.asin(Math.sqrt(Math.clamp(h,0,1)));
+        return a.distanceMeters(b);
     }
     static void invalid() { throw new AppException(RunErrorCode.INVALID); }
 }

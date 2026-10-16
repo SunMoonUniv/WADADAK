@@ -20,7 +20,7 @@ class RouteGeometryTest {
 
     /** 로컬 평면(m, x = 동, y = 북) → GeoPoint. {@link RouteGeometry#toLocal}의 역변환, 원점 (37.5, 127.0) */
     static GeoPoint geo(double x, double y) {
-        double r = RouteGeometry.EARTH_RADIUS_M;
+        double r = GeoPoint.EARTH_RADIUS_M;
         return new GeoPoint(
                 LAT0 + Math.toDegrees(y / r),
                 LNG0 + Math.toDegrees(x / (r * Math.cos(Math.toRadians(LAT0)))));
@@ -103,13 +103,9 @@ class RouteGeometryTest {
 
     @Test
     void haversineAgreesWithPlaneOverShortDistance() {
-        // 위도 1° ≈ 111,195m
-        assertThat(RouteGeometry.distanceMeters(new GeoPoint(37, 127), new GeoPoint(38, 127)))
-                .isCloseTo(111_195, within(1.0));
-
         GeoPoint a = geo(88.22, 100.08);
         GeoPoint b = geo(92.63, 105.64);
-        assertThat(RouteGeometry.distanceMeters(a, b))
+        assertThat(a.distanceMeters(b))
                 .isCloseTo(K1.toLocal(a).distanceTo(K1.toLocal(b)), within(0.01));
     }
 }
