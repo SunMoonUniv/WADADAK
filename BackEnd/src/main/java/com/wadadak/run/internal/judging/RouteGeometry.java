@@ -13,9 +13,6 @@ import java.util.List;
  */
 final class RouteGeometry {
 
-    /** 지구 평균 반지름(m). 앱({@code recording_models.dart})과 같은 값 */
-    static final double EARTH_RADIUS_M = 6_371_008.8;
-
     private final double lat0;
     private final double lng0;
     private final double cosLat0;
@@ -45,8 +42,8 @@ final class RouteGeometry {
     /** 위도·경도 → 평면(m). x = Δ경도·cos(출발 위도)·R, y = Δ위도·R (각도는 라디안) */
     Point toLocal(GeoPoint p) {
         return new Point(
-                Math.toRadians(p.lng() - lng0) * cosLat0 * EARTH_RADIUS_M,
-                Math.toRadians(p.lat() - lat0) * EARTH_RADIUS_M);
+                Math.toRadians(p.lng() - lng0) * cosLat0 * GeoPoint.EARTH_RADIUS_M,
+                Math.toRadians(p.lat() - lat0) * GeoPoint.EARTH_RADIUS_M);
     }
 
     /**
@@ -86,19 +83,6 @@ final class RouteGeometry {
             }
         }
         return distinct;
-    }
-
-    /**
-     * 두 GPS 표본 사이 거리(m), 하버사인. 앱({@code recording_models.dart})과 같은 공식이다.
-     * ponytail: 판정 엔진만 쓴다. 1번 서버 거리 계산(F5 5단계)이 생기면 common/geo로 옮겨 함께 쓴다.
-     */
-    static double distanceMeters(GeoPoint a, GeoPoint b) {
-        double dLat = Math.toRadians(b.lat() - a.lat());
-        double dLng = Math.toRadians(b.lng() - a.lng());
-        double h = Math.pow(Math.sin(dLat / 2), 2)
-                + Math.cos(Math.toRadians(a.lat())) * Math.cos(Math.toRadians(b.lat())) * Math.pow(Math.sin(dLng / 2), 2);
-        // 부동소수 오차로 h가 1을 살짝 넘으면 asin이 NaN이 된다
-        return 2 * EARTH_RADIUS_M * Math.asin(Math.sqrt(Math.clamp(h, 0, 1)));
     }
 
     /** 판정용 평면 좌표(m) */
