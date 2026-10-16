@@ -1,4 +1,4 @@
-package com.wadadak.run;
+package com.wadadak.run.internal;
 
 import com.wadadak.common.geo.GeoPoint;
 import jakarta.validation.Valid;
@@ -9,7 +9,7 @@ import java.util.UUID;
 
 public final class RunContracts {
     private RunContracts() {}
-    public enum Kind { START, GPS, PAUSE, RESUME, GAP, END, CADENCE }
+    public enum Kind { START, GPS, PAUSE, RESUME, GAP, SEGMENT_END, END, CADENCE }
     public record Prepare(@NotNull Instant startedAt, @Pattern(regexp="FREE") String mode) {}
     public record Input(@Min(0) long seq, @NotNull Kind kind, @Min(0) long elapsedMs,
                         @NotNull Instant measuredAt, GeoPoint location, Double accuracyM,

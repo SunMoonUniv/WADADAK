@@ -1,4 +1,4 @@
-package com.wadadak.run.internal;
+package com.wadadak.run.internal.recording;
 
 import com.wadadak.event.member.MemberWithdrawnEvent;
 import org.springframework.modulith.events.ApplicationModuleListener;

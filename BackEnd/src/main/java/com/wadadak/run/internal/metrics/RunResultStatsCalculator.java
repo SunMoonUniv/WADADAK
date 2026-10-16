@@ -1,13 +1,14 @@
-package com.wadadak.run.internal;
+package com.wadadak.run.internal.metrics;
 
-import com.wadadak.run.RunContracts.*;
+import com.wadadak.run.internal.GpsQuality;
+import com.wadadak.run.internal.RunContracts.*;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
 /** RESULT_V2. Keep thresholds, interpolation and tie handling identical to Dart. */
-final class RunResultStatsCalculator {
-    static final String VERSION = "RESULT_V2";
+public final class RunResultStatsCalculator {
+    public static final String VERSION = "RESULT_V2";
     static ResultStats calculate(List<Input> inputs, List<List<Input>> segments, List<Lap> laps) {
         if (inputs.isEmpty() || !"PACE_V2".equals(inputs.getFirst().reason())) {
             MotionPace motion = new MotionPace();
@@ -98,12 +99,12 @@ final class RunResultStatsCalculator {
             if (p.kind() == Kind.RESUME) { paused = false; previous = null; }
             if (p.kind() == Kind.GAP) { if (!paused) result.add(p.elapsedMs()); previous = null; }
             if (p.kind() != Kind.GPS || paused) continue;
-            if (!FreeRunCalculator.good(p) || (v2 && p.accuracyM() > 15)) {
+            if (!GpsQuality.good(p) || (v2 && p.accuracyM() > 15)) {
                 result.add(p.elapsedMs()); previous = null; continue;
             }
             if (previous != null) {
                 long dt = p.elapsedMs() - previous.elapsedMs();
-                if (dt <= 0 || dt > 10000 || FreeRunCalculator.distance(previous.location(), p.location()) * 1000 / dt > 12) {
+                if (dt <= 0 || dt > GpsQuality.MAX_INTERVAL_MS || FreeRunCalculator.distance(previous.location(), p.location()) * 1000 / dt > GpsQuality.MAX_SPEED_MPS) {
                     result.add(previous.elapsedMs() + 1); result.add(p.elapsedMs());
                 }
             }

@@ -5,7 +5,7 @@ import com.wadadak.course.CourseRouteSnapshot;
 import com.wadadak.run.internal.judging.CourseJudge.Judgement;
 import com.wadadak.run.internal.judging.CourseJudge.Reason;
 import com.wadadak.run.internal.judging.CourseTrackerTest.Run;
-import com.wadadak.run.internal.judging.RunInput.Kind;
+import com.wadadak.run.internal.RunContracts.Kind;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;

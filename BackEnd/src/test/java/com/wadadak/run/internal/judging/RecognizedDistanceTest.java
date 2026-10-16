@@ -4,7 +4,7 @@ import com.wadadak.run.internal.judging.CourseTracker.Point;
 import com.wadadak.run.internal.judging.CourseTrackerTest.Run;
 import com.wadadak.run.internal.judging.RecognizedDistance.Progress;
 import com.wadadak.run.internal.judging.RecognizedDistance.Range;
-import com.wadadak.run.internal.judging.RunInput.Kind;
+import com.wadadak.run.internal.RunContracts.Kind;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;

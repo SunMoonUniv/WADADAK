@@ -1,7 +1,8 @@
 package com.wadadak.run.internal.judging;
 
 import com.wadadak.run.internal.judging.CourseTracker.Point;
-import com.wadadak.run.internal.judging.RunInput.Kind;
+import com.wadadak.run.internal.RunContracts.Input;
+import com.wadadak.run.internal.RunContracts.Kind;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
@@ -26,7 +27,7 @@ class CourseTrackerTest {
     static final class Run {
         static final Instant T0 = Instant.parse("2026-10-15T00:00:00Z");
 
-        final List<RunInput> inputs = new ArrayList<>();
+        final List<Input> inputs = new ArrayList<>();
         long ms;
         double x;
         double y;
@@ -71,7 +72,7 @@ class CourseTrackerTest {
         }
 
         Run gps(double accuracyM) {
-            inputs.add(new RunInput(inputs.size(), Kind.GPS, ms, T0.plusMillis(ms), geo(x, y), accuracyM));
+            inputs.add(new Input(inputs.size(), Kind.GPS, ms, T0.plusMillis(ms), geo(x, y), accuracyM, null));
             return this;
         }
 
@@ -80,7 +81,7 @@ class CourseTrackerTest {
         }
 
         private Run add(Kind kind, Double accuracyM) {
-            inputs.add(new RunInput(inputs.size(), kind, ms, T0.plusMillis(ms), null, accuracyM));
+            inputs.add(new Input(inputs.size(), kind, ms, T0.plusMillis(ms), null, accuracyM, null));
             return this;
         }
     }

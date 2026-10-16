@@ -1,16 +1,17 @@
-package com.wadadak.run.internal;
+package com.wadadak.run.internal.metrics;
 
 import com.wadadak.common.exception.AppException;
 import com.wadadak.common.geo.GeoPoint;
-import com.wadadak.run.RunContracts.*;
+import com.wadadak.run.internal.GpsQuality;
+import com.wadadak.run.internal.RunContracts.*;
 import com.wadadak.run.RunErrorCode;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 
-final class FreeRunCalculator {
-    record Calculation(Metrics metrics, List<List<GeoPoint>> segments, Instant endedAt, String endReason, List<Lap> laps, ResultStats stats) {}
+public final class FreeRunCalculator {
+    public record Calculation(Metrics metrics, List<List<GeoPoint>> segments, Instant endedAt, String endReason, List<Lap> laps, ResultStats stats) {}
     record Travel(long start, long end, double distance) {}
     record Span(long start, long end) { long before(long ms) { return Math.clamp(ms-start,0,end-start); } }
     private static long movingAt(long ms, List<Span> pauses, MotionPace motion, boolean v2) {
@@ -39,7 +40,7 @@ final class FreeRunCalculator {
         }
         return List.copyOf(laps);
     }
-    static Calculation calculate(Instant startedAt, List<Input> inputs) {
+    public static Calculation calculate(Instant startedAt, List<Input> inputs) {
         if (inputs.size() < 2 || inputs.getFirst().kind() != Kind.START ||
             inputs.getFirst().elapsedMs() != 0 || inputs.getLast().kind() != Kind.END) invalid();
         long lastMs = 0, activeMs = 0;
@@ -85,14 +86,14 @@ final class FreeRunCalculator {
                 }
                 case GPS -> {
                     if (paused) { previous = null; segment = null; continue; }
-                    if (!good(p)) {
+                    if (!GpsQuality.good(p)) {
                         if (!inGap) gaps++;
                         inGap = true; previous = null; segment = null; continue;
                     }
                     if (previous != null) {
                         long dt = p.elapsedMs()-previous.elapsedMs();
                         double d = distance(previous.location(), p.location());
-                        if (dt <= 0 || dt > 10000 || d/(dt/1000.0) > 12) {
+                        if (dt <= 0 || dt > GpsQuality.MAX_INTERVAL_MS || d/(dt/1000.0) > GpsQuality.MAX_SPEED_MPS) {
                             if (!inGap) gaps++;
                             segment = null;
                         } else { distanceM += d; travels.add(new Travel(previous.elapsedMs(),p.elapsedMs(),d)); }
@@ -119,9 +120,6 @@ final class FreeRunCalculator {
     private static boolean freshFix(Instant start, Input p) {
         long age=Duration.between(p.measuredAt(),start.plusMillis(p.elapsedMs())).toMillis();
         return age>=-5000 && age<=10000;
-    }
-    static boolean good(Input p) {
-        return p.location()!=null && p.accuracyM()!=null && Double.isFinite(p.accuracyM()) && p.accuracyM()>=0 && p.accuracyM()<=30;
     }
     static double distance(GeoPoint a, GeoPoint b) {
         return a.distanceMeters(b);

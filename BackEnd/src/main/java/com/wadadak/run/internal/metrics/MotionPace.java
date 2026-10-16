@@ -1,7 +1,8 @@
-package com.wadadak.run.internal;
+package com.wadadak.run.internal.metrics;
 
 import com.wadadak.common.geo.GeoPoint;
-import com.wadadak.run.RunContracts.*;
+import com.wadadak.run.internal.GpsQuality;
+import com.wadadak.run.internal.RunContracts.*;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -23,7 +24,8 @@ final class MotionPace {
     void add(Input p) {
         if (ended) return;
         if (p.kind() != Kind.GPS) {
-            if (p.kind() == Kind.START || p.kind() == Kind.CADENCE) return;
+            // 코스 구간 종료(SEGMENT_END)는 코스 판정 경계일 뿐 자유 러닝 이동·정지와 무관하다
+            if (p.kind() == Kind.START || p.kind() == Kind.CADENCE || p.kind() == Kind.SEGMENT_END) return;
             closeStop(p.kind() == Kind.GAP ? previous == null ? null : previous.elapsedMs() : p.elapsedMs());
             resetWindow();
             if (p.kind() == Kind.PAUSE) paused = true;
@@ -32,12 +34,12 @@ final class MotionPace {
             return;
         }
         if (paused) return;
-        if (!FreeRunCalculator.good(p) || p.accuracyM() > 15) {
+        if (!GpsQuality.good(p) || p.accuracyM() > 15) {
             closeStop(previous == null ? null : previous.elapsedMs()); resetWindow(); return;
         }
         if (previous != null) {
             long dt = p.elapsedMs() - previous.elapsedMs();
-            if (dt <= 0 || dt > 10000 || distance(previous, p) / (dt / 1000.0) > 12) {
+            if (dt <= 0 || dt > GpsQuality.MAX_INTERVAL_MS || distance(previous, p) / (dt / 1000.0) > GpsQuality.MAX_SPEED_MPS) {
                 closeStop(previous.elapsedMs()); resetWindow();
             }
         }

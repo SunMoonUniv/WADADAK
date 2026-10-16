@@ -1,11 +1,11 @@
-package com.wadadak.run.internal;
+package com.wadadak.run.internal.recording;
 
 import com.wadadak.common.exception.AppException;
 import com.wadadak.common.response.ApiResult;
 import com.wadadak.common.paging.Cursorable;
 import com.wadadak.common.paging.CursorSlice;
 import org.springdoc.core.annotations.ParameterObject;
-import com.wadadak.run.RunContracts.*;
+import com.wadadak.run.internal.RunContracts.*;
 import com.wadadak.run.RunErrorCode;
 import jakarta.validation.Valid;
 import java.util.UUID;
