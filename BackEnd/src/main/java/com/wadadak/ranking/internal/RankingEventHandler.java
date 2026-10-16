@@ -1,7 +1,9 @@
 package com.wadadak.ranking.internal;
 
+import com.wadadak.common.config.TimeConfig;
 import com.wadadak.event.course.CourseStatus;
 import com.wadadak.event.course.CourseStatusChangedEvent;
+import com.wadadak.event.member.MemberRegionChangedEvent;
 import com.wadadak.event.member.MemberVisibilityChangedEvent;
 import com.wadadak.event.member.MemberWithdrawnEvent;
 import lombok.RequiredArgsConstructor;
@@ -9,8 +11,12 @@ import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Component;
 
+import java.time.DayOfWeek;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.time.temporal.TemporalAdjusters;
+import java.util.UUID;
 
 /**
  * 다른 모듈 이벤트를 ranking 복사본에 반영한다. 중복·순서 역전에도 결과가 같다(개발 정책 5.4).
@@ -57,11 +63,36 @@ class RankingEventHandler {
                 .update();
     }
 
-    /** 탈퇴 회원의 랭킹 기록을 바로 지운다. 탈퇴 표시를 남겨 늦게 온 완주 기록을 받지 않는다. */
+    /**
+     * 회원 지역 이력. 가입 때 지역은 가입한 주부터, 바꾼 지역은 바꾼 다음 주 월요일부터 지역 주간 랭킹에 들어간다(정책 공통 6).
+     * 이벤트 하나가 한 행이라 순서가 바뀌어 와도 주마다 고르는 지역이 같다. 탈퇴 뒤에 온 이벤트는 받지 않는다.
+     */
+    @ApplicationModuleListener
+    public void on(MemberRegionChangedEvent event) {
+        lockMember(event.memberId());
+        if (jdbc.sql("SELECT EXISTS (SELECT 1 FROM ranking.withdrawn_members WHERE member_id = :memberId)")
+                .param("memberId", event.memberId()).query(Boolean.class).single()) {
+            return;
+        }
+        LocalDate week = LocalDate.ofInstant(event.occurredAt(), TimeConfig.SEOUL)
+                .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
+        LocalDate from = event.previousRegionCode() == null ? week : week.plusWeeks(1);
+        jdbc.sql("""
+                        INSERT INTO ranking.member_region_history (member_id, source_version, region_code, effective_from,
+                            created_at, updated_at)
+                        VALUES (:memberId, :version, :regionCode, :effectiveFrom, now(), now())
+                        ON CONFLICT (member_id, source_version) DO NOTHING""")
+                .param("memberId", event.memberId())
+                .param("version", event.version())
+                .param("regionCode", event.regionCode())
+                .param("effectiveFrom", from.atStartOfDay(TimeConfig.SEOUL).toOffsetDateTime())
+                .update();
+    }
+
+    /** 탈퇴 회원의 랭킹 기록·지역 이력을 바로 지운다. 탈퇴 표시를 남겨 늦게 온 기록·지역 이벤트를 받지 않는다. */
     @ApplicationModuleListener
     public void on(MemberWithdrawnEvent event) {
-        jdbc.sql("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))")
-                .param("key", "ranking-member:" + event.memberId()).query((rs,n) -> true).list();
+        lockMember(event.memberId());
         jdbc.sql("DELETE FROM ranking.distance_run_records WHERE member_id=:memberId")
                 .param("memberId", event.memberId()).update();
         jdbc.sql("""
@@ -77,5 +108,14 @@ class RankingEventHandler {
         jdbc.sql("DELETE FROM ranking.member_visibility_copies WHERE member_id = :memberId")
                 .param("memberId", event.memberId())
                 .update();
+        jdbc.sql("DELETE FROM ranking.member_region_history WHERE member_id = :memberId")
+                .param("memberId", event.memberId())
+                .update();
+    }
+
+    /** 탈퇴와 그 회원의 다른 이벤트를 차례로 처리한다. {@link RunDistanceEventHandler}와 같은 키다. */
+    private void lockMember(UUID memberId) {
+        jdbc.sql("SELECT pg_advisory_xact_lock(hashtextextended(:key,0))")
+                .param("key", "ranking-member:" + memberId).query((rs,n) -> true).list();
     }
 }

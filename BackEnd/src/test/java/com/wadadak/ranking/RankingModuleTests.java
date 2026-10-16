@@ -7,6 +7,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.TestPropertySource;
 
 import java.util.List;
 import java.util.UUID;
@@ -16,11 +17,12 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * ranking 단독 기동(다른 도메인 모듈 없이). 분리 가능성의 직접 증거다(개발 정책 10.6).
- * 실제 구현 전이라 {@code app.stub.ranking: true}로 스텁이 뜬다.
+ * 스텁({@code app.stub.ranking=true})으로 띄운다. 실제 구현은 {@code CourseRankingServiceTest}·{@code DistanceRankingServiceTest}.
  */
 @ApplicationModuleTest
 @ActiveProfiles("test")
 @Import(TestcontainersConfiguration.class)
+@TestPropertySource(properties = "app.stub.ranking=true")
 class RankingModuleTests {
 
     private static final UUID COURSE_ID = UUID.randomUUID();

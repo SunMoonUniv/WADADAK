@@ -35,7 +35,8 @@ class DistanceRankingController {
 
     @Operation(summary = "누적 거리 랭킹 (E1 전체 랭킹 탭)",
             description = "참여 러너 수·내 순위·시상대 1~3위. 4위부터는 nextCursor로 목록 API를 부른다. "
-                    + "매일 자정(Asia/Seoul)에 계산한 값이고 내 순위·거리도 같은 시점 기준이다(calculatedAt). "
+                    + "오늘 자정(Asia/Seoul) 전에 등록된 기록으로 계산하고 내 순위·거리도 같은 기준이다(calculatedAt). "
+                    + "자정 뒤에 지운 기록·탈퇴·내 정보 비공개는 바로 빠진다. "
                     + "자유 러닝·미완주·코스 밖의 정상 측정 거리도 포함하고, 내 정보 비공개 회원은 빠진다. "
                     + "me.status: RANKED / NO_RECORD 그 기간 기록 없음 / PRIVATE 내 정보 비공개(순위 대신 `비공개 중`). "
                     + "me.thisWeekDistanceMeters는 \"이번 주 +n km\", topPercent는 순위 ÷ 참여 수 × 100 올림. 거리는 m 단위 정수.")
@@ -59,10 +60,11 @@ class DistanceRankingController {
 
     @Operation(summary = "지역 주간 랭킹 (E1 지역 탭, I5)",
             description = "회원 활동 지역(시·군·구)이 같은 회원끼리 이번 주 거리로 순위를 매긴다. 매일 자정에 계산하고 월요일 00:00에 새로 시작한다. "
-                    + "활동 지역을 바꾼 회원은 다음 주부터 새 지역에 들어간다. 상위 5줄을 주고 6위부터는 nextCursor로 목록 API를 부른다. "
-                    + "me.status: RANKED(lastWeekRank는 \"지난주 n위\") / NO_RECORD / PRIVATE / OTHER_REGION 내 활동 지역이 아닌 지역. "
-                    + "없는 지역이거나 시·군·구가 아닌 코드는 RANKING-002(404). "
-                    + "스텁: 요청자의 활동 지역은 서울 성북구(1129000000)로 둔다.")
+                    + "가입 때 지역은 바로, 바꾼 지역은 다음 주부터 들어간다(이번 주는 바꾸기 전 지역). "
+                    + "상위 5줄을 주고 6위부터는 nextCursor로 목록 API를 부른다. "
+                    + "me.status: RANKED(lastWeekRank는 \"지난주 n위\", 지난주 이 지역 마지막 순위) / NO_RECORD / PRIVATE / "
+                    + "OTHER_REGION 내 활동 지역이 아닌 지역. "
+                    + "없는 지역이거나 시·군·구가 아닌 코드는 RANKING-002(404). regionCode를 비웠는데 내 활동 지역을 아직 받지 못했어도(가입 직후 잠깐) 같다.")
     @GetMapping("/distance/regions/weekly")
     ApiResult<RegionWeeklyRanking> regionWeekly(
             @AuthenticationPrincipal Jwt jwt,
