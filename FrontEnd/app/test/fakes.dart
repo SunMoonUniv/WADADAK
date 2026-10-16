@@ -351,13 +351,21 @@ typedef FakeRegistration = ({
   Set<CourseTag> tags,
 });
 
-/// 코스 평점 요약만 주는 리뷰 API(B1). [summary]가 없거나 [error]가 있으면 실패한다.
-class FakeReviewSummaryApi extends Fake implements ReviewApiClient {
-  FakeReviewSummaryApi([this.result]);
+/// 코스 리뷰를 읽기만 하는 리뷰 API(B1 · B8, B8에서 여는 G2). 오류를 넣으면 그 요청이 실패한다.
+class FakeCourseReviewApi extends Fake implements ReviewApiClient {
+  FakeCourseReviewApi([this.result]);
 
+  /// 요약. 없으면 리뷰 0개다.
   ReviewSummary? result;
   ApiException? error;
   int requests = 0;
+
+  /// 목록이 돌려줄 카드. 사진 조건이면 사진 있는 카드만 준다. 정렬은 [listRequests]로 확인한다.
+  List<ReviewCard> cards = [];
+  ApiException? listError;
+  /// 있으면 목록 응답이 이것이 끝날 때까지 늦는다.
+  Completer<void>? listGate;
+  final listRequests = <({ReviewSort sort, bool photoOnly, bool excludeMine})>[];
 
   @override
   Future<ReviewSummary> summary(String courseId) async {
@@ -365,14 +373,72 @@ class FakeReviewSummaryApi extends Fake implements ReviewApiClient {
     if (error != null) throw error!;
     return result ?? reviewSummary();
   }
+
+  @override
+  Future<ReviewPage> list(
+    String courseId, {
+    ReviewSort sort = ReviewSort.latest,
+    bool photoOnly = false,
+    bool excludeMine = false,
+    String? cursor,
+  }) async {
+    listRequests.add((sort: sort, photoOnly: photoOnly, excludeMine: excludeMine));
+    await listGate?.future;
+    if (listError != null) throw listError!;
+    return (
+      cards: [
+        for (final card in cards)
+          if ((!excludeMine || !card.mine) && (!photoOnly || card.photos.isNotEmpty)) card,
+      ],
+      nextCursor: null,
+    );
+  }
+
+  /// 내 리뷰도, 쓸 수 있는 기록도 없다.
+  @override
+  Future<MyReview> mine(String courseId) async =>
+      MyReview.fromJson({'review': null, 'sourceRecord': null, 'sourceRecordDeleted': false, 'eligibleRecord': null});
 }
 
+/// 리뷰 카드 값. 2026-09-06 작성, 완주 100% · 4회 주행.
+ReviewCard reviewCard(String nickname, {int rating = 5, bool mine = false, String content = '야간 조명이 밝아요.'}) =>
+    ReviewCard.fromJson({
+      'reviewId': 'review-$nickname',
+      'memberId': 'member-$nickname',
+      'nickname': nickname,
+      'profileImageUrl': null,
+      'mine': mine,
+      'rating': rating,
+      'safetyRating': rating,
+      'roadRating': rating,
+      'lightingRating': rating,
+      'amenityRating': rating,
+      'content': content,
+      'tags': ['NIGHT_VIEW'],
+      'photos': [],
+      'bestProgressPercent': 100,
+      'completedCount': 4,
+      'createdAt': '2026-09-06T03:00:00Z',
+    });
+
 /// 리뷰 요약 값. 리뷰가 없으면 평균은 모두 null이다(서버와 같다).
-ReviewSummary reviewSummary({int count = 0, double? average, (double, double, double, double)? items}) =>
+/// [counts]는 5점부터 1점까지의 개수다. 없으면 모두 5점이다.
+ReviewSummary reviewSummary({
+  int count = 0,
+  double? average,
+  (double, double, double, double)? items,
+  (int, int, int, int, int)? counts,
+}) =>
     ReviewSummary.fromJson({
       'reviewCount': count,
       'averageRating': average,
-      'ratingCounts': {'five': count, 'four': 0, 'three': 0, 'two': 0, 'one': 0},
+      'ratingCounts': {
+        'five': counts?.$1 ?? count,
+        'four': counts?.$2 ?? 0,
+        'three': counts?.$3 ?? 0,
+        'two': counts?.$4 ?? 0,
+        'one': counts?.$5 ?? 0,
+      },
       'itemAverages': {
         'safety': items?.$1,
         'road': items?.$2,
