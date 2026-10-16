@@ -32,7 +32,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// 홈 → B3에서 점 두 개 → 다음 → B4.
+  /// 홈 → B3에서 점 두 개 → 다음 → B11 확인 → B4.
   Future<void> openCourseInfo(WidgetTester tester) async {
     tester.view
       ..physicalSize = const Size(402, 874)
@@ -57,6 +57,8 @@ void main() {
       await tester.pumpAndSettle();
     }
     await tap(tester, find.text('다음 · 코스 정보 입력'));
+    // 공개 기간 안내(B11)를 확인해야 B4로 간다.
+    await tap(tester, find.text('확인'));
   }
 
   /// 이름을 넣고 서버 이름 확인까지 기다린다.

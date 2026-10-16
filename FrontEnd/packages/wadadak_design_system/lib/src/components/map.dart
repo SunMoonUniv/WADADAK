@@ -292,6 +292,29 @@ class WdRouteEndpoint extends StatelessWidget {
   }
 }
 
+/// 코스 지도 출발점 — B1 코스 상세 지도의 경로 첫 점(16). 출발 표지의 점을 이름표 없이 작게 그린다.
+/// 지도 표지로 올릴 때는 가운데를 출발점에 둔다.
+class WdCourseStartDot extends StatelessWidget {
+  const WdCourseStartDot({super.key});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 16,
+        height: 16,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: WdColors.ink,
+          shape: BoxShape.circle,
+          border: Border.all(color: WdColors.white, width: 2),
+        ),
+        child: Container(
+          width: 6,
+          height: 6,
+          decoration: const BoxDecoration(color: WdColors.lime, shape: BoxShape.circle),
+        ),
+      );
+}
+
 /// 경로 그리기 범례 — 출발 · 도착 · 찍은 점. 색은 출발·도착 이름표와 같다.
 class WdRouteLegend extends StatelessWidget {
   const WdRouteLegend({super.key});

@@ -7,6 +7,7 @@ import 'package:wadadak/core/api/member_api_client.dart';
 import 'package:wadadak/core/auth/social_login.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/map/map_view.dart';
+import 'package:wadadak/features/course/course_public_period_sheet.dart';
 import 'package:wadadak/features/home/home_screen.dart';
 import 'package:wadadak/features/home/my_location.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
@@ -82,6 +83,13 @@ void main() {
 
     await tap(tester, find.text('다음 · 코스 정보 입력'));
     expect(courses.sentPoints, hasLength(2));
+    // 경로를 만들면 B4로 가기 전에 공개 기간(B11)을 알린다(4.1 B11).
+    expect(find.text(CoursePublicPeriodSheet.title), findsOneWidget);
+    for (final rule in CoursePublicPeriodSheet.rules) {
+      expect(find.text(rule), findsOneWidget);
+    }
+    expect(find.text('코스 정보'), findsNothing);
+    await tap(tester, find.text('확인'));
     // B4에는 최종 경로와 1km 표지만 있고 입력점은 없다.
     expect(find.text('코스 정보'), findsOneWidget);
     expect(find.byType(WdRouteEndpoint), findsNothing);
@@ -90,6 +98,31 @@ void main() {
     await tap(tester, find.bySemanticsLabel('뒤로 가기'));
     expect(find.text('경로 그리기'), findsOneWidget);
     expect(summary(tester, '찍은 점'), '2');
+  });
+
+  testWidgets('closing the public period sheet stays drawing, and it shows again every time', (tester) async {
+    await openCourseCreate(tester);
+    await tapMap(tester, first);
+    await tapMap(tester, second);
+
+    await tap(tester, find.text('다음 · 코스 정보 입력'));
+    await tap(tester, find.byTooltip('닫기'));
+    expect(find.text(CoursePublicPeriodSheet.title), findsNothing);
+    expect(find.text('코스 정보'), findsNothing, reason: 'X는 B3에 머문다');
+    expect(summary(tester, '찍은 점'), '2');
+
+    await tap(tester, find.text('다음 · 코스 정보 입력'));
+    expect(find.text(CoursePublicPeriodSheet.title), findsOneWidget, reason: '한 번 봤어도 매번 띄운다');
+    // 휴대폰 뒤로 가기도 시트만 닫는다.
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text(CoursePublicPeriodSheet.title), findsNothing);
+    expect(find.text('경로 그리기'), findsOneWidget);
+    expect(courses.sentPoints, hasLength(2));
+
+    await tap(tester, find.text('다음 · 코스 정보 입력'));
+    await tap(tester, find.text('확인'));
+    expect(find.text('코스 정보'), findsOneWidget);
   });
 
   testWidgets('undo and clear all, which asks first and can be undone', (tester) async {
@@ -155,11 +188,13 @@ void main() {
 
     await tap(tester, find.text('다음 · 코스 정보 입력'));
     expect(find.text('코스 거리는 1km 이상이어야 합니다.'), findsOneWidget);
+    expect(find.text(CoursePublicPeriodSheet.title), findsNothing, reason: '경로를 못 만들면 공개 기간을 알리지 않는다');
     expect(find.text('경로 그리기'), findsOneWidget);
     expect(summary(tester, '찍은 점'), '2');
 
     courses.routeError = null;
     await tap(tester, find.text('다시 시도'));
+    await tap(tester, find.text('확인'));
     expect(find.text('코스 정보'), findsOneWidget);
   });
 

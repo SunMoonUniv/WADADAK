@@ -311,6 +311,61 @@ class CourseListItem {
   final List<GeoPoint> route;
 }
 
+/// 코스 상세(B1 공통 헤더 · 정보 탭). 평점 · 리뷰 수 · 항목 평가는 리뷰 API에서 받는다.
+/// 평균 페이스 · 현재 러너는 코스 통계(F11)가 생기면 붙인다.
+@immutable
+class CourseDetail {
+  const CourseDetail({
+    required this.courseId,
+    required this.name,
+    required this.courseType,
+    required this.difficulty,
+    required this.tags,
+    required this.distanceMeters,
+    required this.route,
+    required this.distanceMarkers,
+    required this.expiresAt,
+    this.creatorNickname,
+  });
+
+  factory CourseDetail.fromJson(Map<Object?, Object?> json) => CourseDetail(
+        courseId: json['courseId']! as String,
+        name: json['name']! as String,
+        courseType: CourseType.fromApi(json['courseType']! as String),
+        difficulty: Difficulty.fromApi(json['difficulty']! as String),
+        tags: [for (final tag in json['tags']! as List) ?CourseTag.fromApi(tag as String)],
+        distanceMeters: json['distanceMeters']! as int,
+        route: [for (final point in json['route']! as List) GeoPoint.fromJson(point as Map)],
+        distanceMarkers: [
+          for (final marker in json['distanceMarkers']! as List)
+            DistanceMarker((marker as Map)['km']! as int, GeoPoint.fromJson(marker['point']! as Map)),
+        ],
+        expiresAt: DateTime.parse(json['expiresAt']! as String),
+        creatorNickname: json['creatorNickname'] as String?,
+      );
+
+  final String courseId;
+  final String name;
+  final CourseType courseType;
+  final Difficulty difficulty;
+
+  /// FIL-04 순서.
+  final List<CourseTag> tags;
+  final int distanceMeters;
+
+  /// 첫 점 출발, 마지막 점 도착(코스 방향).
+  final List<GeoPoint> route;
+
+  /// 출발점부터 1km마다의 지점(B1-02). 표시용이다.
+  final List<DistanceMarker> distanceMarkers;
+
+  /// 공개 만료 시각(만료일 23:59:59 Asia/Seoul). 완주로 연장되면 바뀐다(B1-04).
+  final DateTime expiresAt;
+
+  /// 등록자 닉네임. 탈퇴했으면 `탈퇴한 사용자`. 서버가 회원 정보를 받지 못하면 null이다.
+  final String? creatorNickname;
+}
+
 /// 오늘(Asia/Seoul) 남은 등록 수. 유형마다 따로 센다.
 @immutable
 class RegistrationQuota {
@@ -436,6 +491,18 @@ class CourseApiClient {
       {'swLat': southWest.lat, 'swLng': southWest.lng, 'neLat': northEast.lat, 'neLng': northEast.lng};
 
   /// 오늘 남은 등록 수. 0이면 그 방식의 코스 만들기를 미리 막는다(개발 정책 10.2 course).
+  /// 코스 상세(B1). 없는 코스는 [courseNotFoundCode], 비공개 · 삭제된 코스는 [courseNotAvailableCode] 오류다.
+  Future<CourseDetail> courseDetail(String courseId) async {
+    final data = await callApi(() => _dio.get('$_courses/${Uri.encodeComponent(courseId)}'));
+    return CourseDetail.fromJson(data! as Map);
+  }
+
+  /// 없는 코스.
+  static const courseNotFoundCode = 'COURSE-001';
+
+  /// 비공개 · 삭제된 코스(B1-04 신규 상세 진입 차단).
+  static const courseNotAvailableCode = 'COURSE-002';
+
   Future<RegistrationQuota> registrationQuota() async {
     final data = await callApi(() => _dio.get('$_courses/registration-quota'));
     return RegistrationQuota.fromJson(data! as Map);

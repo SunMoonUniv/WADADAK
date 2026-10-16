@@ -559,6 +559,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     onResetFilter: () => _applyFilter(CourseFilter.none),
                     onWidenMap: _widenMap,
                     onCreateCourse: _createCourse,
+                    onOpenCourse: (course) => context.push(Routes.courseDetail(course.courseId)),
                   ),
                 ),
               ),

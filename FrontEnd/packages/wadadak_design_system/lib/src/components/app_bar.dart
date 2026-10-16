@@ -90,10 +90,14 @@ class WdAppBarAction {
 /// | Back + Title + Action(settings·share) | `onBack`, `action: WdAppBarAction.circle(..)` — 제목 가운데 |
 /// | Title + Action(settings) | `action: WdAppBarAction.circle(WdIcons.settings, ..)` |
 /// | Title + Action(settings) · Large | 위 + `large: true` |
+/// | (Figma에 없음) 제목 아래 작은 글씨 | `subtitle: ..` — B1 등록자 |
 class WdAppBar extends StatelessWidget implements PreferredSizeWidget {
-  const WdAppBar({super.key, required this.title, this.onBack, this.action, this.large = false});
+  const WdAppBar({super.key, required this.title, this.subtitle, this.onBack, this.action, this.large = false});
 
   final String title;
+
+  /// 제목 아래 회색 작은 글씨. 높이는 그대로이고 제목과 함께 세로 가운데에 놓인다.
+  final String? subtitle;
 
   /// null이 아니면 뒤로 가기 아이콘을 보인다.
   final VoidCallback? onBack;
@@ -110,12 +114,27 @@ class WdAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Widget build(BuildContext context) {
-    final titleText = Text(
+    final heading = Text(
       title,
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
       style: WdText.ko20Bold.copyWith(color: WdColors.ink),
     );
+    final titleText = subtitle == null
+        ? heading
+        : Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              heading,
+              Text(
+                subtitle!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: WdText.ko12.copyWith(color: WdColors.muted),
+              ),
+            ],
+          );
     return SafeArea(
       bottom: false,
       child: SizedBox(

@@ -46,6 +46,13 @@ public class RouteService {
         return new GeneratedRoute(route, distanceMeters, markers(line, length));
     }
 
+    /** 저장된 코스 경로의 1km 표지(B1-02). 등록할 때(B4-01)와 같은 계산이다. */
+    public List<GeneratedRoute.DistanceMarker> distanceMarkers(List<GeoPoint> route) {
+        String line = toWkt(route);
+        double length = jdbcTemplate.queryForObject("SELECT ST_Length(ST_GeogFromText(?))", Double.class, line);
+        return markers(line, length);
+    }
+
     private List<GeneratedRoute.DistanceMarker> markers(String line, double length) {
         int count = (int) (length / MARKER_INTERVAL_METERS);
         // k km 지점 = 경로 길이 비율 k * 1000 / length 위치

@@ -7,12 +7,14 @@ import com.wadadak.course.internal.course.Course;
 import com.wadadak.course.internal.course.CourseGeometry;
 import com.wadadak.course.internal.course.CourseRepository;
 import com.wadadak.course.internal.course.Difficulty;
+import com.wadadak.member.MemberApi;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import java.time.Instant;
 import java.util.List;
@@ -30,6 +32,10 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 @ActiveProfiles("test")
 @Import(TestcontainersConfiguration.class)
 class CourseModuleTests {
+
+    // course만 띄워서 member 모듈이 없다. 코스 상세가 등록자 닉네임에 MemberApi를 쓰므로 가짜로 채운다
+    @MockitoBean
+    MemberApi memberApi;
 
     // 출발 → 북쪽 → 동쪽. 좌표 순서가 코스 방향이다
     private static final List<GeoPoint> ROUTE = List.of(

@@ -1,6 +1,7 @@
 package com.wadadak.course.internal.route;
 
 import com.wadadak.TestcontainersConfiguration;
+import com.wadadak.member.MemberApi;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -9,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
@@ -23,6 +25,10 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 @ActiveProfiles("test")
 @Import(TestcontainersConfiguration.class)
 class RouteControllerTest {
+
+    // course만 띄워서 member 모듈이 없다. 코스 상세가 등록자 닉네임에 MemberApi를 쓰므로 가짜로 채운다
+    @MockitoBean
+    MemberApi memberApi;
 
     // 선문대 앞에서 북쪽으로 위도 0.0045도 ≈ 약 500m씩
     private static final String NORTH_1500M = """
