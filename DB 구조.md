@@ -14,9 +14,9 @@
 
 | 스키마 | 모듈 | 테이블 |
 | --- | --- | --- |
-| `member` | member | `members`, `agreements`, `refresh_tokens` |
+| `member` | member | `members`, `agreements`, `refresh_tokens`, `region_event_backfill` |
 | `course` | course | `courses`, `daily_registration_counts`, `registration_requests` |
-| `ranking` | ranking | `course_ranking_entries`, `distance_run_records`, `course_status_copies`, `member_visibility_copies`, `withdrawn_members` |
+| `ranking` | ranking | `course_ranking_entries`, `distance_run_records`, `course_status_copies`, `member_visibility_copies`, `member_region_history`, `withdrawn_members` |
 | `review` | review | `reviews`, `review_photos`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
 | `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members` |
 | `common` | common | `region`, `event_publication`, `shedlock`, `flyway_schema_history` |
@@ -45,6 +45,7 @@ notification 스키마는 아직 없다. 해당 모듈을 구현할 때 이 문�
 erDiagram
     members ||--o{ agreements : "member_id"
     members ||--o{ refresh_tokens : "member_id"
+    members ||--o| region_event_backfill : "member_id"
     courses ||--o{ registration_requests : "course_id"
     members ||..o{ courses : "creator_id"
     members ||..o{ daily_registration_counts : "member_id"
@@ -55,6 +56,8 @@ erDiagram
     members ||..o{ course_ranking_entries : "member_id"
     courses ||..o| course_status_copies : "course_id"
     members ||..o| member_visibility_copies : "member_id"
+    members ||..o{ member_region_history : "member_id"
+    region ||..o{ member_region_history : "region_code"
     members ||..o| withdrawn_members : "member_id"
     reviews ||--o{ review_photos : "review_id"
     courses ||..o{ reviews : "course_id"
@@ -93,6 +96,9 @@ erDiagram
         varchar(64) token_hash UK "SHA-256"
         uuid member_id FK
         timestamptz expires_at
+    }
+    region_event_backfill {
+        uuid member_id PK,FK
     }
     courses {
         uuid id PK
@@ -146,6 +152,12 @@ erDiagram
         uuid member_id PK "member ID"
         boolean visible
         bigint source_version
+    }
+    member_region_history {
+        uuid member_id PK "member ID"
+        bigint source_version PK
+        varchar(10) region_code "활동 지역(시·군·구)"
+        timestamptz effective_from "들어가는 첫 주 월요일"
     }
     withdrawn_members {
         uuid member_id PK "member ID"
@@ -306,6 +318,15 @@ erDiagram
 - 토큰은 한 번만 쓴다. 갱신하면 그 행을 지우고 새 행을 만들고, 로그아웃하면 지운다.
 - 만료된 행을 지우는 배치는 아직 없다.
 
+#### `member.region_event_backfill` — 활동 지역 이벤트 다시 보내기
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `member_id` | `UUID` | | PK, FK → `members.id` |
+
+- ranking이 회원 지역 이력(`ranking.member_region_history`)을 받기 전에 가입한 회원이다. 이 표를 만든 마이그레이션이 그때의 활동 회원을 모두 넣었다.
+- 서버가 뜰 때 회원마다 가입 때 지역으로 `MemberRegionChangedEvent`를 보내고(이전 지역 없음, 시각은 가입 시각) 행을 지운다(`RegionEventBackfill`). 새로 가입하는 회원은 가입할 때 이벤트를 보내므로 여기에 들어가지 않는다.
+
 ### 3.2 course
 
 #### `course.courses` — 코스
@@ -378,7 +399,10 @@ erDiagram
 
 ### 3.3 ranking
 
-순위는 저장하지 않고 조회할 때 계산한다. 기간·공개 여부로 거른 뒤 회원마다 가장 짧은 기록 1건을 대표로 고르고, `RANK()`로 공동순위(1·2·2·4)를 매긴다(정책 공통 6). 같은 순위 안에서는 먼저 등록된 기록이 앞이다.
+순위는 저장하지 않고 조회할 때 계산한다(정책 공통 6).
+
+- 코스 랭킹: 기간·공개 여부로 거른 뒤 회원마다 가장 짧은 기록 1건을 대표로 고르고, `RANK()`로 공동순위(1·2·2·4)를 매긴다. 같은 순위 안에서는 먼저 등록된 기록이 앞이다.
+- 누적 거리 랭킹: 오늘 00:00(Asia/Seoul) 전에 등록된 `distance_run_records`를 회원마다 더해 거리(m 정수) 순으로 공동순위를 매긴다. 같은 순위 안에서는 회원 ID순이다. 지역 주간 랭킹은 `member_region_history`로 그 주 월요일의 지역을 골라 회원을 묶는다.
 
 #### `ranking.course_ranking_entries` — 코스 랭킹 엔트리
 
@@ -423,6 +447,21 @@ erDiagram
 - `MemberVisibilityChangedEvent`로 채운다. 행이 없으면 공개다.
 - 비공개 회원은 순위 계산·참여 수·평균·고스트 후보에서 빠진다. 엔트리는 남아 있어서 다시 공개하면 그대로 보인다.
 
+#### `ranking.member_region_history` — 회원 지역 이력
+
+지역 주간 랭킹은 그 주 월요일 00:00(Asia/Seoul)에 회원이 있던 활동 지역으로 회원을 묶는다(정책 공통 6). `MemberRegionChangedEvent` 하나가 한 행이다.
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `member_id` | `UUID` | | PK. 회원 ID(member 모듈) |
+| `source_version` | `BIGINT` | | PK. member가 보낸 버전 |
+| `region_code` | `VARCHAR(10)` | | 활동 지역(시·군·구) 법정동 코드 |
+| `effective_from` | `TIMESTAMPTZ` | | 이 지역 랭킹에 들어가는 첫 주의 월요일 00:00. 가입 때 지역은 가입한 주, 바꾼 지역은 바꾼 다음 주 |
+
+- 어느 주의 지역은 `effective_from`이 그 주 월요일 이하인 행 중 가장 늦은 행이다(같으면 버전이 큰 행). 이벤트가 다시 오거나 순서가 바뀌어 와도 결과가 같고, 지난주 순위도 같은 표로 지난주 지역을 고른다.
+- 이 표가 생기기 전에 가입한 회원은 member가 서버를 띄울 때 다시 보낸다(`member.region_event_backfill`).
+- 탈퇴하면 그 회원의 행을 지운다.
+
 #### `ranking.withdrawn_members` — 탈퇴 회원
 
 | 컬럼 | 타입 | NULL | 설명 |
@@ -430,12 +469,12 @@ erDiagram
 | `member_id` | `UUID` | | PK. 회원 ID(member 모듈) |
 | `withdrawn_at` | `TIMESTAMPTZ` | | 탈퇴 시각 |
 
-- `MemberWithdrawnEvent`를 받으면 그 회원의 랭킹 엔트리와 공개 복사본을 바로 지우고 이 행을 남긴다.
-- 탈퇴 뒤에 도착한 그 회원의 완주 기록은 받지 않는다.
+- `MemberWithdrawnEvent`를 받으면 그 회원의 랭킹 엔트리·누적 거리 기록·공개 복사본·지역 이력을 바로 지우고 이 행을 남긴다.
+- 탈퇴 뒤에 도착한 그 회원의 기록과 지역 변경은 받지 않는다.
 
 #### `ranking.distance_run_records` — 기록별 누적 거리 집계 원천 복사본
 
-`RunSessionEndedEvent`·`RunRecordDeletedEvent`를 받아 자기 스키마에 보관한다. 자유 러닝도 포함한다. 실제 랭킹 조회·자정 스냅샷을 대체하는 구현은 아니며 기존 F12 스텁 화면은 유지한다.
+`RunSessionEndedEvent`·`RunRecordDeletedEvent`를 받아 자기 스키마에 보관한다. 자유 러닝도 포함한다. 누적 거리 랭킹(F12)이 이 표를 회원마다 더해 순위를 매긴다.
 
 | 컬럼 | 타입 | 설명 |
 | --- | --- | --- |
@@ -448,7 +487,7 @@ erDiagram
 
 - 기록 ID PK와 `deleted OR EXCLUDED.deleted`로 중복·역순 전달을 처리한다. 증감 UPDATE가 아니라 기록별 삽입 복사본이므로 별도 `processed_event` 증감 원장은 필요하지 않다.
 - 회원 탈퇴 시 이 회원의 행을 실제 삭제한다. 기존 `ranking.withdrawn_members`를 확인해 늦은 이벤트는 받지 않는다. 탈퇴와 기록 이벤트는 같은 회원 잠금으로 직렬화한다.
-- `registered_at`의 미삭제 부분 인덱스를 둔다. F12의 기간·주간·전체 순위 계산은 해당 기능에서 정책대로 구현한다.
+- `distance_run_records_registered_idx`: `(registered_at)`, 삭제되지 않은 행만. 기간(이번 주·이번 달)과 자정 기준을 이 값으로 자른다.
 
 ### 3.4 review
 

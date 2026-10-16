@@ -44,6 +44,8 @@ services:
       postgres:
         condition: service_healthy
     environment:
+      # 스텁(app.stub.*: true)이나 가짜 소셜 검증이 켜져 있으면 기동을 막는다(StubGuard).
+      SPRING_PROFILES_ACTIVE: prod
       DB_URL: jdbc:postgresql://postgres:5432/wadadak
       DB_USERNAME: wadadak
       DB_PASSWORD: ${DB_PASSWORD}

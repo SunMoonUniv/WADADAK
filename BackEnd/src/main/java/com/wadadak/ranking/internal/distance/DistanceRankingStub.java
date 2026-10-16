@@ -8,6 +8,7 @@ import com.wadadak.common.region.RegionDirectory;
 import com.wadadak.common.stub.StubImplementation;
 import com.wadadak.ranking.RankingPeriod;
 import lombok.RequiredArgsConstructor;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.nio.charset.StandardCharsets;
@@ -23,15 +24,15 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 누적 거리 랭킹 스텁. 피그마 E1·I5의 기록에 요청자를 끼워 순위를 매긴다.
+ * 누적 거리 랭킹 스텁({@code app.stub.ranking: true}). 피그마 E1·I5의 기록에 요청자를 끼워 순위를 매긴다.
  * <ul>
  *     <li>전체 랭킹: 누적 31명 중 요청자 26위(128km, 공동순위), 이번 달 21명, 이번 주 16명 중 12위</li>
  *     <li>지역 주간: 요청자의 활동 지역은 서울 성북구로 둔다. 성북구는 16명 중 요청자 12위(지난주 19위),
  *     다른 시·군·구는 요청자 없이 같은 기록이다</li>
  * </ul>
- * ponytail: 실제 구현이 없어서 {@code app.stub.ranking}과 관계없이 뜬다. F12 실제 구현 PR에서 스텁 조건을 붙인다.
  */
 @Component
+@ConditionalOnProperty(name = "app.stub.ranking", havingValue = "true")
 @RequiredArgsConstructor
 class DistanceRankingStub implements DistanceRankingReader, StubImplementation {
 
