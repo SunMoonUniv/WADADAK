@@ -163,7 +163,7 @@ class RunService {
         List<String> rows=db.query("SELECT result_json FROM run.records WHERE id=?",(rs,n)->rs.getString(1),id);
         if(rows.isEmpty()) throw new AppException(RunErrorCode.NOT_FOUND);
         Result stored = json.readValue(rows.getFirst(),Result.class);
-        if (stored.stats() != null) return stored;
+        if (stored.stats() != null && RunResultStatsCalculator.VERSION.equals(stored.stats().version())) return stored;
         List<Input> inputs = db.query("SELECT payload FROM run.inputs WHERE session_id=? ORDER BY stream_seq",
             (rs,n)->json.readValue(rs.getString(1),Input.class),id);
         if (inputs.size() < 2) return stored;

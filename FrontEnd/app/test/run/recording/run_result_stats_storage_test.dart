@@ -15,7 +15,7 @@ void main() {
   setUpAll(sqfliteFfiInit);
   test('SQLite reopen, summaries, sync and old-server fallback keep calculated stats', () async {
     final fixture = jsonDecode(
-      File('../../run/fixtures/free_result_stats_v1.json').readAsStringSync(),
+      File('../../run/fixtures/free_result_stats_v2.json').readAsStringSync(),
     ) as Map;
     final inputs = ((fixture['cases'] as List).first['inputs'] as List)
         .map((p) => RunInput.fromJson((p as Map).cast<String, dynamic>()))
@@ -69,6 +69,19 @@ void main() {
       await store.synced(detail, oldResult);
       final oldDetail = (await store.list('alice', id: 'saved')).single;
       expect(ui.savedSnapshot(oldDetail).resultStats!.toJson(), expected);
+      final v1Result = {
+        ...oldResult,
+        'stats': {...expected, 'version': 'RESULT_V1', 'elevationGainM': 0.0},
+      };
+      await store.synced(detail, v1Result);
+      final v1Detail = (await store.list('alice', id: 'saved')).single;
+      final refreshed = ui.savedSnapshot(v1Detail);
+      expect(refreshed.resultStats!.toJson(), expected);
+      expect(refreshed.distanceMeters, oldResult['metrics']!['distanceM']);
+      expect(
+        v1Detail.result,
+        v1Result,
+      ); // Enrich the view; preserve stored history.
       final result = {...oldResult, 'stats': expected};
       await store.synced(detail, result);
       expect(

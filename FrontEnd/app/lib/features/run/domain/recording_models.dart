@@ -165,13 +165,16 @@ class RunMetrics {
 /// Incremental calculation shared by live display, recovery and fixture replay.
 class RunCalculator {
   RunResultStats? _resultStats;
-  RunResultStats resultStats(List<RunInput> inputs) => ended
-      ? (_resultStats ??= RunResultStats.calculate(
-          inputs,
-          segments,
-          lapsAt(lastMs),
-        ))
-      : RunResultStats.calculate(inputs, segments, lapsAt(lastMs));
+  RunResultStats resultStats(List<RunInput> inputs) {
+    if (!ended) {
+      return RunResultStats.calculate(inputs, segments, lapsAt(lastMs));
+    }
+    if (_resultStats?.version != RunResultStats.currentVersion) {
+      _resultStats = RunResultStats.calculate(inputs, segments, lapsAt(lastMs));
+    }
+    return _resultStats!;
+  }
+
   double _distanceM = 0;
   final MotionPace _motion = MotionPace();
   bool _v2 = false;

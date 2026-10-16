@@ -8,7 +8,7 @@ import 'package:wadadak/features/run/application/run_result_mapper.dart';
 
 void main() {
   final fixture = jsonDecode(
-    File('../../run/fixtures/free_result_stats_v1.json').readAsStringSync(),
+    File('../../run/fixtures/free_result_stats_v2.json').readAsStringSync(),
   ) as Map;
   for (final c in fixture['cases'] as List) {
     test('shared app/server result: ${c['name']}', () {
@@ -58,6 +58,16 @@ void main() {
       'metrics': {'distanceM': 1200, 'elapsedMs': 400000, 'activeMs': 390000},
     };
     expect(remoteRunSnapshot(result).resultStats, isNull);
+    expect(
+      RunResultStats.fromJson({'version': 'RESULT_V1', 'elevationGainM': 0})
+          .version,
+      'RESULT_V1',
+    );
+    expect(
+      RunResultStats.fromJson({'version': 'RESULT_V1', 'elevationGainM': 0})
+          .toJson()['version'],
+      'RESULT_V1',
+    );
     const stats = RunResultStats(
       elevationGainM: 42,
       bestLapNumber: 1,

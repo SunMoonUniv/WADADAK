@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../domain/free_run_session.dart';
 import '../domain/run_models.dart';
+import '../domain/run_result_stats.dart';
 import '../domain/recording_models.dart' as recording;
 import 'run_controller.dart';
 import 'run_result_mapper.dart';
@@ -104,7 +105,7 @@ class FreeRunController extends ChangeNotifier {
     recording.RunCalculator? calculator,
   ]) => {
     ...run.result!,
-    if (run.result!['stats'] == null &&
+    if ((run.result!['stats']?['version'] != RunResultStats.currentVersion) &&
         run.inputsLoaded &&
         run.inputs.isNotEmpty)
       'stats': (calculator ?? recording.RunCalculator.replay(run.inputs))
