@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -10,9 +12,13 @@ import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/map/map_view.dart';
 import 'package:wadadak/features/course/course_list_card.dart';
 import 'package:wadadak/features/course/detail/course_detail_screen.dart';
+import 'package:wadadak/features/course/detail/course_reviews_tab.dart';
 import 'package:wadadak/features/course/course_public_period_sheet.dart';
 import 'package:wadadak/features/home/my_location.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
+import 'package:wadadak/features/review/review_list_screen.dart';
+import 'package:wadadak/features/review/review_state.dart';
+import 'package:wadadak/features/review/review_widgets.dart';
 import 'package:wadadak/main.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
@@ -20,7 +26,7 @@ import '../../fakes.dart';
 
 void main() {
   late FakeCourseApi courses;
-  late FakeReviewSummaryApi reviews;
+  late FakeCourseReviewApi reviews;
 
   const route = [GeoPoint(37.5666, 126.9784), GeoPoint(37.5700, 126.9800), GeoPoint(37.5750, 126.9850)];
 
@@ -59,12 +65,15 @@ void main() {
   Finder text(String value) => find.text(value);
   String? tile(WidgetTester tester, String label) =>
       tester.widgetList<WdSummaryTile>(find.byType(WdSummaryTile)).firstWhere((tile) => tile.label == label).value;
+  /// G2에서 돌아올 때처럼 요약 · 미리보기를 다시 받게 한다.
+  ProviderContainer container(WidgetTester tester) =>
+      ProviderScope.containerOf(tester.element(find.byType(CourseDetailScreen)));
   String snackBar(WidgetTester tester) =>
       ((tester.widget<SnackBar>(find.byType(SnackBar)).content as Text).data)!;
 
   setUp(() {
     courses = FakeCourseApi()..details = {'c1': detail()};
-    reviews = FakeReviewSummaryApi(reviewSummary(count: 128, average: 4.6, items: (4.7, 4.4, 4.8, 4.1)));
+    reviews = FakeCourseReviewApi(reviewSummary(count: 128, average: 4.6, items: (4.7, 4.4, 4.8, 4.1)));
   });
 
   testWidgets('shows the course with its creator, route, km markers, stats and runner ratings', (tester) async {
@@ -132,17 +141,19 @@ void main() {
     expect(text('한강 야경 5K'), findsOneWidget);
   });
 
-  testWidgets('stays on the info tab and tells the review, ranking and run screens are not ready', (tester) async {
+  testWidgets('stays on the tab and tells the ranking and run screens are not ready', (tester) async {
     await openDetail(tester);
-
-    await tester.tap(text('리뷰 128'));
-    await tester.pumpAndSettle();
-    expect(snackBar(tester), '리뷰 탭은 아직 준비 중이에요.');
-    expect(text('러너 평가'), findsOneWidget);
 
     await tester.tap(text('랭킹'));
     await tester.pumpAndSettle();
     expect(snackBar(tester), '랭킹 탭은 아직 준비 중이에요.');
+    expect(text('러너 평가'), findsOneWidget);
+
+    await tester.tap(text('리뷰 128'));
+    await tester.pumpAndSettle();
+    await tester.tap(text('랭킹'));
+    await tester.pumpAndSettle();
+    expect(text('항목별 평균'), findsOneWidget, reason: '리뷰 탭에 머문다');
 
     await tester.tap(text('이 코스로 달리기'));
     await tester.pumpAndSettle();
@@ -196,11 +207,205 @@ void main() {
     expect(tile(tester, '평점'), '★ 4.6');
   });
 
+  testWidgets('keeps the runner ratings and offers to retry when refreshing them fails', (tester) async {
+    await openDetail(tester);
+    reviews.error = const ApiException('NETWORK', '');
+    container(tester).invalidate(reviewSummaryProvider('c1'));
+    await tester.pumpAndSettle();
+    expect(text('안전성'), findsOneWidget, reason: '받아 둔 평가는 그대로');
+    expect(tile(tester, '평점'), '★ 4.6');
+    expect(text(CourseReviewsTab.staleSummaryMessage), findsOneWidget);
+
+    reviews.error = null;
+    await tester.tap(text('다시 시도'));
+    await tester.pumpAndSettle();
+    expect(text(CourseReviewsTab.staleSummaryMessage), findsNothing);
+    expect(reviews.requests, 3);
+  });
+
   test('says the last public day as today', () {
     final lastDay = DateTime.utc(2026, 10, 15, 14, 59, 59);
     expect(publicPeriodText(lastDay, today), '오늘까지 공개돼요 · 누군가 완주하면 30일 연장돼요');
     expect(publicPeriodText(DateTime.utc(2026, 10, 16, 14, 59, 59), today),
         '공개 기간이 1일 남았어요(10월 16일까지) · 누군가 완주하면 30일 연장돼요');
+  });
+
+  group('review tab (B8)', () {
+    const latest = (sort: ReviewSort.latest, photoOnly: false, excludeMine: false);
+
+    setUp(() {
+      reviews
+        ..result = reviewSummary(
+          count: 128,
+          average: 4.6,
+          items: (4.7, 4.4, 4.8, 4.1),
+          counts: (92, 26, 6, 3, 1),
+        )
+        ..cards = [reviewCard('러닝왕김', mine: true), reviewCard('러너_하늘'), reviewCard('새벽러닝', rating: 4)];
+    });
+
+    Future<void> openReviews(WidgetTester tester) async {
+      await openDetail(tester);
+      await tester.tap(text('리뷰 128'));
+      await tester.pumpAndSettle();
+    }
+
+    List<String> chips(WidgetTester tester) => [
+          for (final chip in tester.widgetList<WdFilterChip>(find.byType(WdFilterChip)))
+            '${chip.label}${chip.selected ? '*' : ''}',
+        ];
+    bool photoOnly(WidgetTester tester) =>
+        tester.widget<ReviewPhotoOnlyCheck>(find.byType(ReviewPhotoOnlyCheck)).checked;
+
+    testWidgets('shows the rating summary, item averages and the first two reviews', (tester) async {
+      await openReviews(tester);
+
+      expect(text('4.6'), findsOneWidget);
+      expect(text('★ ★ ★ ★ ☆'), findsOneWidget);
+      expect(text('리뷰 128'), findsNWidgets(2), reason: '탭 이름 · 요약');
+      final bars = tester.widgetList<WdProgressBar>(find.byType(WdProgressBar)).map((bar) => bar.value);
+      expect(bars, [92 / 128, 26 / 128, 6 / 128, 3 / 128, 1 / 128], reason: '5점부터');
+
+      expect(text('항목별 평균'), findsOneWidget);
+      for (final (label, value) in [('안전성', '4.7'), ('도로 상태', '4.4'), ('야간 조명', '4.8'), ('편의시설', '4.1')]) {
+        expect(tile(tester, label), value);
+      }
+      expect(text('러너 평가'), findsNothing, reason: '정보 탭 내용은 숨는다');
+
+      expect(chips(tester), ['최신순*', '높은 평점', '낮은 평점']);
+      expect(photoOnly(tester), isFalse, reason: '사진은 G2처럼 오른쪽 체크박스');
+      expect(reviews.listRequests, [latest], reason: '내 리뷰도 함께 받는다');
+      expect([for (final card in tester.widgetList<WdReviewCard>(find.byType(WdReviewCard))) card.author],
+          ['나 (러닝왕김)', '러너_하늘'], reason: 'Figma B8처럼 두 개');
+      expect(text('리뷰 128개 모두 보기'), findsOneWidget);
+      expect(find.textContaining('공개 기간이'), findsOneWidget, reason: '어느 탭에서나 보인다');
+    });
+
+    testWidgets('sorts and filters photos, keeping the choice across tabs', (tester) async {
+      await openReviews(tester);
+
+      await tester.tap(text('높은 평점'));
+      await tester.pumpAndSettle();
+      await tester.tap(text('사진 리뷰만'));
+      await tester.pumpAndSettle();
+      expect(reviews.listRequests.skip(1), [
+        (sort: ReviewSort.highest, photoOnly: false, excludeMine: false),
+        (sort: ReviewSort.highest, photoOnly: true, excludeMine: false),
+      ]);
+      expect(chips(tester), ['최신순', '높은 평점*', '낮은 평점']);
+      expect(photoOnly(tester), isTrue);
+      expect(text('사진이 있는 리뷰가 아직 없어요.'), findsOneWidget);
+
+      await tester.tap(text('정보'));
+      await tester.pumpAndSettle();
+      expect(text('러너 평가'), findsOneWidget);
+      await tester.tap(text('리뷰 128'));
+      await tester.pumpAndSettle();
+      expect(chips(tester), ['최신순', '높은 평점*', '낮은 평점'], reason: 'B8-03 선택 유지');
+      expect(photoOnly(tester), isTrue);
+      expect(reviews.listRequests, hasLength(3), reason: '탭을 오가도 다시 받지 않는다');
+    });
+
+    testWidgets('keeps the shown reviews while another sort is loading, so the page does not jump', (tester) async {
+      await openReviews(tester);
+      reviews.listGate = Completer<void>();
+
+      await tester.tap(text('높은 평점'));
+      await tester.pump();
+      expect(find.byType(WdReviewCard), findsNWidgets(2), reason: '받는 동안 이전 카드 그대로');
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+
+      reviews.listGate!.complete();
+      await tester.pumpAndSettle();
+      expect(reviews.listRequests.last.sort, ReviewSort.highest);
+      expect(find.byType(WdReviewCard), findsNWidgets(2));
+    });
+
+    testWidgets('shows B8-1 when nobody has reviewed and does not ask for the list', (tester) async {
+      reviews.result = reviewSummary();
+      await openDetail(tester);
+      await tester.tap(text('리뷰 0'));
+      await tester.pumpAndSettle();
+
+      expect(text(CourseReviewsTab.emptyTitle), findsOneWidget);
+      expect(text(CourseReviewsTab.emptyMessage), findsOneWidget);
+      expect(find.byType(WdFilterChip), findsNothing);
+      expect(find.byType(ReviewPhotoOnlyCheck), findsNothing);
+      expect(find.textContaining('모두 보기'), findsNothing);
+      expect(reviews.listRequests, isEmpty);
+      expect(find.textContaining('공개 기간이'), findsOneWidget);
+    });
+
+    testWidgets('offers to retry the reviews and keeps the chosen sort', (tester) async {
+      reviews.listError = const ApiException('NETWORK', '');
+      await openReviews(tester);
+      expect(text(CourseReviewsTab.failedMessage), findsOneWidget);
+      expect(text('리뷰 128개 모두 보기'), findsOneWidget, reason: '요약은 받았다');
+
+      await tester.tap(text('낮은 평점'));
+      await tester.pumpAndSettle();
+      expect(text(CourseReviewsTab.failedMessage), findsOneWidget);
+      expect(chips(tester).first, '최신순');
+      expect(chips(tester)[2], '낮은 평점*');
+
+      reviews.listError = null;
+      await tester.tap(text('다시 시도'));
+      await tester.pumpAndSettle();
+      expect(find.byType(WdReviewCard), findsNWidgets(2));
+      expect(reviews.listRequests.last.sort, ReviewSort.lowest);
+    });
+
+    testWidgets('offers to retry when the summary cannot be loaded', (tester) async {
+      reviews.error = const ApiException('NETWORK', '');
+      await openDetail(tester);
+      await tester.tap(text('리뷰'));
+      await tester.pumpAndSettle();
+      expect(text(CourseReviewsTab.failedMessage), findsOneWidget);
+      expect(reviews.listRequests, isEmpty);
+
+      reviews.error = null;
+      await tester.tap(text('다시 시도'));
+      await tester.pumpAndSettle();
+      expect(text('리뷰 128'), findsNWidgets(2));
+      expect(find.byType(WdReviewCard), findsNWidgets(2));
+    });
+
+    testWidgets('keeps the summary and offers to retry when refreshing it fails (B8-02)', (tester) async {
+      await openReviews(tester);
+      reviews.error = const ApiException('NETWORK', '');
+      container(tester).invalidate(reviewSummaryProvider('c1'));
+      await tester.pumpAndSettle();
+      expect(text('4.6'), findsOneWidget, reason: '받아 둔 요약은 그대로');
+      expect(find.byType(WdReviewCard), findsNWidgets(2));
+      expect(text(CourseReviewsTab.staleSummaryMessage), findsOneWidget);
+
+      reviews
+        ..error = null
+        ..result = reviewSummary(count: 129, average: 4.7, items: (4.7, 4.4, 4.8, 4.1));
+      await tester.tap(text('다시 시도'));
+      await tester.pumpAndSettle();
+      expect(text(CourseReviewsTab.staleSummaryMessage), findsNothing);
+      expect(text('4.7'), findsWidgets);
+      expect(text('리뷰 129'), findsNWidgets(2));
+    });
+
+    testWidgets('keeps the reviews and offers to retry when refreshing them fails (B8-03)', (tester) async {
+      await openReviews(tester);
+      reviews.listError = const ApiException('NETWORK', '');
+      container(tester).invalidate(courseReviewPreviewProvider);
+      await tester.pumpAndSettle();
+      expect(find.byType(WdReviewCard), findsNWidgets(2), reason: '받아 둔 리뷰는 그대로');
+      expect(text(CourseReviewsTab.stalePreviewMessage), findsOneWidget);
+      expect(text(CourseReviewsTab.failedMessage), findsNothing);
+
+      reviews.listError = null;
+      await tester.ensureVisible(text('다시 시도'));
+      await tester.pumpAndSettle();
+      await tester.tap(text('다시 시도'));
+      await tester.pumpAndSettle();
+      expect(text(CourseReviewsTab.stalePreviewMessage), findsNothing);
+      expect(reviews.listRequests, hasLength(3));
+    });
   });
 
   group('from home', () {
@@ -255,6 +460,33 @@ void main() {
           reason: '정렬 그대로');
       expect(courses.listRequests.length, listRequests, reason: '목록을 다시 받지 않아 스크롤도 그대로다');
       expect(courses.mapRequests.length, mapRequests, reason: '지도 자리 그대로');
+    });
+
+    testWidgets('see all opens the course reviews (G2), and back shows fresh reviews (B8-05)', (tester) async {
+      reviews
+        ..result = reviewSummary(count: 3, average: 4.7, items: (4.7, 4.4, 4.8, 4.1))
+        ..cards = [reviewCard('러닝왕김', mine: true), reviewCard('러너_하늘'), reviewCard('새벽러닝')];
+      await openHome(tester);
+      await tester.tap(find.byType(CourseListCard));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('리뷰 3'));
+      await tester.pumpAndSettle();
+
+      final seeAll = find.text('리뷰 3개 모두 보기');
+      await tester.ensureVisible(seeAll);
+      await tester.pumpAndSettle();
+      await tester.tap(seeAll);
+      await tester.pumpAndSettle();
+      expect(find.byType(ReviewListScreen), findsOneWidget);
+      expect(reviews.listRequests.last.excludeMine, isTrue, reason: 'G2는 내 리뷰를 따로 보인다');
+      final requests = reviews.listRequests.length;
+
+      await tester.tap(find.bySemanticsLabel('뒤로 가기'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ReviewListScreen), findsNothing);
+      expect(find.text('항목별 평균'), findsOneWidget, reason: '리뷰 탭 그대로');
+      expect(reviews.listRequests, hasLength(requests + 1), reason: 'G2에서 쓰거나 지웠을 수 있어 다시 받는다');
+      expect(reviews.listRequests.last.excludeMine, isFalse);
     });
   });
 }

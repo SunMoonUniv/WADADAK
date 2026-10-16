@@ -196,7 +196,7 @@ class _ReviewListScreenState extends ConsumerState<ReviewListScreen> {
                           ),
                         ),
                         const SizedBox(width: WdSpace.s8),
-                        _PhotoOnlyCheck(
+                        ReviewPhotoOnlyCheck(
                           checked: _photoOnly,
                           onChanged: (checked) => setState(() => _photoOnly = checked),
                         ),
@@ -262,37 +262,6 @@ class _OutlineButton extends StatelessWidget {
       onTap: onTap,
       child: Center(
         child: Text(label, style: WdText.raw(12, FontWeight.w500, 18).copyWith(color: color)),
-      ),
-    ),
-  );
-}
-
-/// "사진 리뷰만" 체크박스. 동의 화면(WdConsentRow)과 같은 체크 모양이다: 켜면 초록, 끄면 회색.
-class _PhotoOnlyCheck extends StatelessWidget {
-  const _PhotoOnlyCheck({required this.checked, required this.onChanged});
-
-  final bool checked;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-    checked: checked,
-    label: '사진 리뷰만',
-    excludeSemantics: true,
-    child: GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () => onChanged(!checked),
-      // 칩과 같은 높이(36)로 눌리는 영역을 잡는다
-      child: SizedBox(
-        height: 36,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          spacing: WdSpace.s4,
-          children: [
-            WdIcon(WdIcons.check, size: 18, color: checked ? null : WdColors.checkOff),
-            Text('사진 리뷰만', style: WdText.label12Medium.copyWith(color: checked ? WdColors.ink : WdColors.muted)),
-          ],
-        ),
       ),
     ),
   );

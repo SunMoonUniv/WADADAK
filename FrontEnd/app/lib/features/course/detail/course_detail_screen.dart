@@ -7,11 +7,15 @@ import '../../../core/api/api_client.dart';
 import '../../../core/api/course_api_client.dart';
 import '../../../core/api/review_api_client.dart';
 import '../../../core/map/map_view.dart';
+import '../../../routes.dart';
+import '../../review/review_state.dart';
 import '../course_format.dart';
+import 'course_empty_card.dart';
+import 'course_reviews_tab.dart';
 
-/// B1 코스 상세 — 정보. 코스 정보는 코스 API, 평점 · 리뷰 수 · 러너 평가는 리뷰 API에서 받는다(B1-01).
+/// B1 코스 상세 — 정보 · B8 리뷰 탭. 코스 정보는 코스 API, 평점 · 리뷰 수 · 러너 평가 · 리뷰는 리뷰 API에서 받는다(B1-01).
 ///
-/// - 리뷰(B8) · 랭킹(B9) 탭과 이 코스로 달리기(C6) · 고스트 대결(C1)은 아직 없어 누르면 준비 중이라고 알린다.
+/// - 랭킹(B9) 탭과 이 코스로 달리기(C6) · 고스트 대결(C1)은 아직 없어 누르면 준비 중이라고 알린다.
 /// - 평균 페이스 · 현재 러너는 코스 통계(F11)가, 고도 프로필은 GPS 코스 등록(F7)이 생기면 붙인다.
 /// - 공유(B1-08)는 공유 링크를 정할 때까지 두지 않는다.
 /// - 비공개 · 삭제된 코스는 열지 않는다(B1-04).
@@ -44,9 +48,20 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
   CourseDetail? _course;
   Object? _error;
 
-  /// 리뷰 요약. 받지 못했으면 [_summaryFailed]이고 평점 · 러너 평가 대신 다시 시도를 보인다.
-  ReviewSummary? _summary;
-  var _summaryFailed = false;
+  /// 지금 보이는 탭. 0 정보, 1 리뷰(B8).
+  var _tab = 0;
+
+  /// 리뷰 탭을 한 번이라도 열었다. 그때부터 미리보기를 받고, 탭을 오가도 다시 받지 않는다.
+  var _reviewsOpened = false;
+
+  /// B8 정렬 · 사진 조건. 탭을 오가도 그대로다(B8-03).
+  var _reviewSort = ReviewSort.latest;
+  var _reviewPhotoOnly = false;
+
+  /// 마지막으로 보인 리뷰 미리보기. 조건을 바꿔 새로 받는 동안 그대로 두어, 목록이 잠깐 줄며 화면이 위로 튀지 않게 한다.
+  List<ReviewCard>? _shownReviews;
+
+  CourseReviewQuery get _reviewQuery => (courseId: widget.courseId, sort: _reviewSort, photoOnly: _reviewPhotoOnly);
 
   /// Figma B1 지도 높이.
   static const _mapHeight = 150.0;
@@ -58,7 +73,6 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
   void initState() {
     super.initState();
     _load();
-    _loadSummary();
   }
 
   @override
@@ -77,15 +91,8 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
     }
   }
 
-  Future<void> _loadSummary() async {
-    setState(() => _summaryFailed = false);
-    try {
-      final summary = await ref.read(reviewApiClientProvider).summary(widget.courseId);
-      if (mounted) setState(() => _summary = summary);
-    } on ApiException {
-      if (mounted) setState(() => _summaryFailed = true);
-    }
-  }
+  /// 리뷰 요약은 G2와 같은 것을 쓴다. G2에서 리뷰를 쓰거나 지우면 여기도 바뀐다.
+  void _retrySummary() => ref.invalidate(reviewSummaryProvider(widget.courseId));
 
   bool get _unavailable => switch (_error) {
         ApiException(:final code) =>
@@ -99,11 +106,23 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  /// 리뷰 · 랭킹 탭은 아직 없어 정보 탭에 머문다.
+  /// 랭킹 탭은 아직 없어 지금 탭에 머문다.
   void _onTab(int index) {
-    if (index == 0) return;
-    _tabs.index = 0;
-    _notReady(index == 1 ? '리뷰 탭은 아직 준비 중이에요.' : '랭킹 탭은 아직 준비 중이에요.');
+    if (index == 2) {
+      _tabs.index = _tab;
+      return _notReady('랭킹 탭은 아직 준비 중이에요.');
+    }
+    setState(() {
+      _tab = index;
+      if (index == 1) _reviewsOpened = true;
+    });
+  }
+
+  /// B8-05 모두 보기 → G2. 돌아오면 미리보기를 다시 받는다(G2에서 쓰거나 지웠을 수 있다).
+  /// 요약은 G2가 바꿀 때 직접 새로 받게 한다.
+  Future<void> _seeAllReviews(CourseDetail course) async {
+    await context.push(Routes.courseReviews(course.courseId), extra: course.name);
+    if (mounted) ref.invalidate(courseReviewPreviewProvider);
   }
 
   @override
@@ -140,8 +159,19 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
         },
       );
     }
-    final summary = _summary;
-    final rating = summary?.averageRating;
+    final summary = ref.watch(reviewSummaryProvider(widget.courseId));
+    final rating = summary.value?.averageRating;
+    final reviewCount = summary.value?.reviewCount;
+    // 리뷰 탭을 연 뒤에는 정보 탭에 있어도 미리보기를 붙잡아 둔다. 돌아와도 다시 받지 않는다.
+    // 리뷰가 없으면 B8-1 안내만 보여 받지 않는다.
+    final watched = _reviewsOpened && (reviewCount ?? 0) > 0
+        ? ref.watch(courseReviewPreviewProvider(_reviewQuery))
+        : const AsyncLoading<List<ReviewCard>>();
+    if (watched.value case final cards?) _shownReviews = cards;
+    final preview = switch ((watched, _shownReviews)) {
+      (AsyncValue(hasValue: false, hasError: false), final shown?) => AsyncData(shown),
+      _ => watched,
+    };
     return Scaffold(
       // 등록자 닉네임은 제목 아래에(정책 공통 4 · B1-01). 탈퇴했으면 서버가 `탈퇴한 사용자`로 준다.
       appBar: WdAppBar(
@@ -178,9 +208,23 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
                 WdTabBar(
                   controller: _tabs,
                   onTap: _onTab,
-                  tabs: ['정보', summary == null ? '리뷰' : '리뷰 ${formatCount(summary.reviewCount)}', '랭킹'],
+                  tabs: ['정보', reviewCount == null ? '리뷰' : '리뷰 ${formatCount(reviewCount)}', '랭킹'],
                 ),
-                _info(summary),
+                if (_tab == 0)
+                  _info(summary)
+                else
+                  CourseReviewsTab(
+                    summary: summary,
+                    preview: preview,
+                    sort: _reviewSort,
+                    photoOnly: _reviewPhotoOnly,
+                    onSort: (sort) => setState(() => _reviewSort = sort),
+                    onPhotoOnly: (photoOnly) => setState(() => _reviewPhotoOnly = photoOnly),
+                    onRetrySummary: _retrySummary,
+                    onRetryPreview: () => ref.invalidate(courseReviewPreviewProvider(_reviewQuery)),
+                    onSeeAll: () => _seeAllReviews(course),
+                  ),
+                // 공개 기간은 어느 탭에서나 맨 아래에 보인다(4.1 B8).
                 WdInfoBanner(publicPeriodText(course.expiresAt, widget.now()), plain: true),
               ],
             ),
@@ -236,64 +280,73 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
 
   /// 정보 탭. 리뷰가 있으면 러너 평가(항목 평균), 없으면 아직 달린 사람이 없다는 안내(Figma B1-1).
   /// 고도 프로필은 GPS 코스만 보이는데(B1-03) GPS 코스 등록(F7)이 생기면 붙인다.
-  Widget _info(ReviewSummary? summary) {
-    if (_summaryFailed) {
+  /// 받아 둔 요약이 있으면 다시 받다 실패해도 그대로 보이고, 그 아래에 다시 시도를 준다(B8-02와 같다).
+  Widget _info(AsyncValue<ReviewSummary> summary) {
+    final value = summary.value;
+    if (value == null && summary.hasError) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         spacing: WdSpace.s8,
         children: [
-          WdSectionHeading('러너 평가', actionLabel: '다시 시도', onAction: _loadSummary),
+          WdSectionHeading('러너 평가', actionLabel: '다시 시도', onAction: _retrySummary),
           Text('평가를 불러오지 못했어요.', style: WdText.ko13.copyWith(color: WdColors.muted)),
         ],
       );
     }
-    if (summary == null) {
+    if (value == null) {
       return const SizedBox(
         height: 96,
         child: Center(child: SizedBox.square(dimension: 24, child: CircularProgressIndicator(strokeWidth: 2))),
       );
     }
-    if (summary.reviewCount == 0) {
-      return WdSurface(
-        padding: const EdgeInsets.symmetric(horizontal: WdSpace.s16, vertical: WdSpace.s24),
-        child: Column(
-          spacing: WdSpace.s8,
-          children: [
-            const WdIcon(WdIcons.ghostInfo, size: 24),
-            Text(CourseDetailScreen.noRunnerTitle,
-                textAlign: TextAlign.center, style: WdText.ko15Bold.copyWith(color: WdColors.ink)),
-            Text(CourseDetailScreen.noRunnerMessage,
-                textAlign: TextAlign.center, style: WdText.ko12.copyWith(color: WdColors.muted)),
-          ],
-        ),
+    final stale = summary.hasError
+        ? CourseRefreshFailed(CourseReviewsTab.staleSummaryMessage, onRetry: _retrySummary)
+        : null;
+    if (value.reviewCount == 0) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        spacing: WdSpace.s16,
+        children: [
+          const CourseEmptyCard(
+            title: CourseDetailScreen.noRunnerTitle,
+            message: CourseDetailScreen.noRunnerMessage,
+          ),
+          ?stale,
+        ],
       );
     }
+    // Figma B1: 이름 70 · 간격 10 · 줄 사이 7, 점수는 12 Medium
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      spacing: WdSpace.s12,
+      spacing: WdSpace.s16,
       children: [
         const WdSectionHeading('러너 평가'),
-        for (final (label, value) in [
-          ('안전성', summary.safety),
-          ('도로 상태', summary.road),
-          ('야간 조명', summary.lighting),
-          ('편의시설', summary.amenity),
-        ])
-          Row(
-            spacing: WdSpace.s12,
-            children: [
-              SizedBox(width: 64, child: Text(label, style: WdText.ko12.copyWith(color: WdColors.muted))),
-              Expanded(child: WdProgressBar(value: (value ?? 0) / 5)),
-              SizedBox(
-                width: 28,
-                child: Text(
-                  value?.toStringAsFixed(1) ?? CourseDetailScreen.noValue,
-                  textAlign: TextAlign.end,
-                  style: WdText.ko12Bold.copyWith(color: WdColors.ink),
-                ),
+        Column(
+          spacing: 7,
+          children: [
+            for (final (label, average) in [
+              ('안전성', value.safety),
+              ('도로 상태', value.road),
+              ('야간 조명', value.lighting),
+              ('편의시설', value.amenity),
+            ])
+              Row(
+                spacing: WdSpace.s10,
+                children: [
+                  SizedBox(
+                    width: 70,
+                    child: Text(label, style: WdText.raw(12, FontWeight.w400, 18).copyWith(color: WdColors.muted)),
+                  ),
+                  Expanded(child: WdProgressBar(value: (average ?? 0) / 5, trackColor: WdColors.soft)),
+                  Text(
+                    average?.toStringAsFixed(1) ?? CourseDetailScreen.noValue,
+                    style: WdText.raw(12, FontWeight.w500, 18).copyWith(color: WdColors.ink),
+                  ),
+                ],
               ),
-            ],
-          ),
+          ],
+        ),
+        ?stale,
       ],
     );
   }
