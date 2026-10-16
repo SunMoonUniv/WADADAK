@@ -5,8 +5,9 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-/** RESULT_V1. Keep thresholds, interpolation and tie handling identical to Dart. */
+/** RESULT_V2. Keep thresholds, interpolation and tie handling identical to Dart. */
 final class RunResultStatsCalculator {
+    static final String VERSION = "RESULT_V2";
     static ResultStats calculate(List<Input> inputs, List<List<Input>> segments, List<Lap> laps) {
         if (inputs.isEmpty() || !"PACE_V2".equals(inputs.getFirst().reason())) {
             MotionPace motion = new MotionPace();
@@ -72,7 +73,7 @@ final class RunResultStatsCalculator {
                 block.add(p);
             }
         }
-        return new ResultStats("RESULT_V1", measured ? gain : null,
+        return new ResultStats(VERSION, measured ? gain : null,
             measured && (!gaps.isEmpty() || covered + .001 < distance), best == null ? null : best.number(),
             best == null ? null : best.paceSecondsPerKm(), bestPace);
     }
@@ -113,27 +114,86 @@ final class RunResultStatsCalculator {
 
     private static double gain(List<Input> points) {
         List<Double> heights = new ArrayList<>();
+        List<Double> errors = new ArrayList<>();
+        List<Double> distances = new ArrayList<>();
         int low = 0, high = 0;
         for (Input p : points) {
             while (points.get(low).elapsedMs() < p.elapsedMs() - 2500) low++;
             while (high < points.size() && points.get(high).elapsedMs() <= p.elapsedMs() + 2500) high++;
             List<Double> window = new ArrayList<>();
-            for (int i = low; i < high; i++) window.add(points.get(i).altitudeM());
+            Double error = 0.0;
+            for (int i = low; i < high; i++) {
+                window.add(points.get(i).altitudeM());
+                Double accuracy = points.get(i).altitudeAccuracyM();
+                if (accuracy == null || accuracy <= 0) error = null;
+                else if (error != null) error = Math.max(error, accuracy);
+            }
             window.sort(Comparator.naturalOrder());
             int m = window.size() / 2;
             heights.add(window.size() % 2 == 1 ? window.get(m) : (window.get(m - 1) + window.get(m)) / 2);
+            errors.add(error);
+            int index = heights.size() - 1;
+            distances.add(index == 0 ? 0.0 : distances.getLast() + FreeRunCalculator.distance(points.get(index - 1).location(), p.location()));
         }
-        double valley = heights.getFirst(), peak = valley, total = 0;
+        double total = 0;
+        int initialEnd = -1;
+        for (int i = 0; i < points.size(); i++) if (points.get(i).elapsedMs() - points.getFirst().elapsedMs() >= 5000) { initialEnd = i; break; }
+        boolean steadyStart = initialEnd >= 0 && steadyRise(points,distances,heights,0,initialEnd);
+        Integer valley = null, peak = null;
+        int stableStart = 0;
         boolean rising = false;
-        for (double h : heights.subList(1, heights.size())) {
+        for (int i = 0; i < heights.size(); i++) {
+            while (stableStart + 1 <= i && points.get(stableStart + 1).elapsedMs() <= points.get(i).elapsedMs() - 5000) stableStart++;
+            if (points.get(i).elapsedMs() - points.getFirst().elapsedMs() < 5000 || i - stableStart + 1 < 3) continue;
+            int floor = stableStart, crest = stableStart;
+            for (int j = stableStart + 1; j <= i; j++) {
+                if (heights.get(j) > heights.get(floor)) floor = j;
+                if (heights.get(j) < heights.get(crest)) crest = j;
+            }
+            if (valley == null) valley = steadyStart ? 0 : floor;
+            if (peak == null) peak = crest;
             if (!rising) {
-                valley = Math.min(valley, h);
-                if (h - valley >= 10) { rising = true; peak = h; }
+                if (heights.get(floor) < heights.get(valley)) valley = floor;
+                if (heights.get(crest) - heights.get(valley) >= threshold(errors,valley,crest) && supported(points,distances,valley,crest)) {
+                    rising = true; peak = crest;
+                }
             } else {
-                peak = Math.max(peak, h);
-                if (peak - h >= 10) { total += peak - valley; valley = h; rising = false; }
+                if (heights.get(crest) > heights.get(peak)) peak = crest;
+                if (heights.get(peak) - heights.get(floor) >= threshold(errors,peak,floor) && supported(points,distances,peak,floor)) {
+                    if (heights.get(peak) - heights.get(valley) >= threshold(errors,valley,peak)) total += heights.get(peak) - heights.get(valley);
+                    valley = floor; peak = crest; rising = false;
+                }
             }
         }
-        return total + (rising ? peak - valley : 0);
+        int last = heights.size() - 1;
+        if (valley != null && steadyRise(points,distances,heights,stableStart,last) &&
+            heights.get(last) - heights.get(valley) >= threshold(errors,valley,last) && supported(points,distances,valley,last)) {
+            if (!rising || peak == null || heights.get(last) > heights.get(peak)) { rising = true; peak = last; }
+        }
+        return total + (rising && peak != null && valley != null && heights.get(peak) - heights.get(valley) >= threshold(errors,valley,peak)
+            ? heights.get(peak) - heights.get(valley) : 0);
+    }
+    private static double threshold(List<Double> errors, int a, int b) {
+        return Math.max(errors.get(a) == null || errors.get(b) == null ? 10 : 1.5,
+            (errors.get(a) == null ? 0 : errors.get(a)) + (errors.get(b) == null ? 0 : errors.get(b)));
+    }
+    private static boolean supported(List<Input> points, List<Double> distances, int from, int to) {
+        return points.get(to).elapsedMs() - points.get(from).elapsedMs() >= 5000 && distances.get(to) - distances.get(from) >= 5;
+    }
+    private static boolean steadyRise(List<Input> points, List<Double> distances, List<Double> heights, int from, int to) {
+        if (!supported(points,distances,from,to)) return false;
+        int increases = 0;
+        Integer firstIncrease = null;
+        int lastIncrease = from;
+        for (int j = from + 1; j <= to; j++) {
+            double delta = heights.get(j) - heights.get(j - 1);
+            if (delta < -.05) return false;
+            if (delta > .01) {
+                if (firstIncrease == null) firstIncrease = j - 1;
+                lastIncrease = j; increases++;
+            }
+        }
+        return increases >= 3 && firstIncrease != null &&
+            points.get(lastIncrease).elapsedMs() - points.get(firstIncrease).elapsedMs() >= 5000;
     }
 }

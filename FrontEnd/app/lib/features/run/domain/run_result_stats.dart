@@ -4,20 +4,24 @@ import 'recording_models.dart' as recording;
 import 'motion_pace.dart';
 import 'run_lap.dart';
 
-/// RESULT_V1 is independent of PACE_V2: historical distance is never rewritten.
+/// RESULT_V2 changes elevation only; historical distance/time/laps stay intact.
 class RunResultStats {
+  static const currentVersion = 'RESULT_V2';
   const RunResultStats({
+    this.version = currentVersion,
     this.elevationGainM,
     this.elevationPartial = false,
     this.bestLapNumber,
     this.bestLapPaceSecondsPerKm,
     this.bestPaceSecondsPerKm,
   });
+  final String version;
   final double? elevationGainM, bestLapPaceSecondsPerKm, bestPaceSecondsPerKm;
   final bool elevationPartial;
   final int? bestLapNumber;
 
   factory RunResultStats.fromJson(Map<String, dynamic> j) => RunResultStats(
+    version: j['version'] as String? ?? 'RESULT_V1',
     elevationGainM: (j['elevationGainM'] as num?)?.toDouble(),
     elevationPartial: j['elevationPartial'] == true,
     bestLapNumber: (j['bestLapNumber'] as num?)?.toInt(),
@@ -25,7 +29,7 @@ class RunResultStats {
     bestPaceSecondsPerKm: (j['bestPaceSecondsPerKm'] as num?)?.toDouble(),
   );
   Map<String, dynamic> toJson() => {
-    'version': 'RESULT_V1',
+    'version': version,
     'elevationGainM': elevationGainM,
     'elevationPartial': elevationPartial,
     'bestLapNumber': bestLapNumber,
@@ -197,10 +201,12 @@ class RunResultStats {
   }
 
   static double _gain(List<recording.RunInput> points) {
-    // Centred 5-second median; a 10m reversal closes an ascent. Small dips are
-    // ignored, and the entire confirmed rise (not just its excess) is counted.
+    // Keep the 5s median and raw quality checks. Resolve small hills only when
+    // the rise exceeds both endpoint error estimates and persists for 5s/5m.
     var low = 0, high = 0;
     final heights = <double>[];
+    final errors = <double?>[];
+    final distances = <double>[];
     for (final p in points) {
       while (points[low].elapsedMs < p.elapsedMs - 2500) {
         low++;
@@ -209,31 +215,117 @@ class RunResultStats {
           points[high].elapsedMs <= p.elapsedMs + 2500) {
         high++;
       }
-      final window = points.sublist(low, high).map((p) => p.altitudeM!).toList()
-        ..sort();
+      final samples = points.sublist(low, high);
+      final window = samples.map((p) => p.altitudeM!).toList()..sort();
       final m = window.length ~/ 2;
       heights.add(
         window.length.isOdd ? window[m] : (window[m - 1] + window[m]) / 2,
       );
+      // Missing/zero accuracy is unknown, not perfect precision. Use the largest
+      // reported error in the smoothing window rather than averaging it away.
+      errors.add(
+        samples.any(
+              (p) => p.altitudeAccuracyM == null || p.altitudeAccuracyM! <= 0,
+            )
+            ? null
+            : samples.map((p) => p.altitudeAccuracyM!).reduce(math.max),
+      );
+      final i = heights.length - 1;
+      distances.add(i == 0 ? 0 : distances.last + points[i - 1].distanceTo(p));
     }
-    var valley = heights.first, peak = heights.first, total = 0.0;
+    double threshold(int a, int b) => math.max(
+      errors[a] == null || errors[b] == null ? 10 : 1.5,
+      (errors[a] ?? 0) + (errors[b] ?? 0),
+    );
+    bool supported(int from, int to) =>
+        points[to].elapsedMs - points[from].elapsedMs >= 5000 &&
+        distances[to] - distances[from] >= 5;
+    bool steadyRise(int from, int to) {
+      if (!supported(from, to)) return false;
+      var increases = 0;
+      int? firstIncrease;
+      var lastIncrease = from;
+      for (var j = from + 1; j <= to; j++) {
+        final delta = heights[j] - heights[j - 1];
+        if (delta < -.05) return false;
+        if (delta > .01) {
+          firstIncrease ??= j - 1;
+          lastIncrease = j;
+          increases++;
+        }
+      }
+      return increases >= 3 &&
+          firstIncrease != null &&
+          points[lastIncrease].elapsedMs - points[firstIncrease].elapsedMs >=
+              5000;
+    }
+
+    final initialEnd = points.indexWhere(
+      (p) => p.elapsedMs - points.first.elapsedMs >= 5000,
+    );
+    final steadyStart = initialEnd >= 0 && steadyRise(0, initialEnd);
+    int? valley, peak;
+    var total = 0.0, stableStart = 0;
     var rising = false;
-    for (final h in heights.skip(1)) {
+    for (var i = 0; i < heights.length; i++) {
+      while (stableStart + 1 <= i &&
+          points[stableStart + 1].elapsedMs <= points[i].elapsedMs - 5000) {
+        stableStart++;
+      }
+      if (points[i].elapsedMs - points.first.elapsedMs < 5000 ||
+          i - stableStart + 1 < 3) {
+        continue;
+      }
+      // A trough must stay low and a summit stay high over the trailing 5s.
+      // This rejects short downward spikes as well as short upward spikes.
+      var floor = stableStart, crest = stableStart;
+      for (var j = stableStart + 1; j <= i; j++) {
+        if (heights[j] > heights[floor]) floor = j;
+        if (heights[j] < heights[crest]) crest = j;
+      }
+      valley ??= steadyStart ? 0 : floor;
+      peak ??= crest;
       if (!rising) {
-        valley = math.min(valley, h);
-        if (h - valley >= 10) {
+        if (heights[floor] < heights[valley]) {
+          valley = floor;
+        }
+        if (heights[crest] - heights[valley] >= threshold(valley, crest) &&
+            supported(valley, crest)) {
           rising = true;
-          peak = h;
+          peak = crest;
         }
       } else {
-        peak = math.max(peak, h);
-        if (peak - h >= 10) {
-          total += peak - valley;
-          valley = h;
+        if (heights[crest] > heights[peak]) peak = crest;
+        if (heights[peak] - heights[floor] >= threshold(peak, floor) &&
+            supported(peak, floor)) {
+          if (heights[peak] - heights[valley] >= threshold(valley, peak)) {
+            total += heights[peak] - heights[valley];
+          }
+          valley = floor;
+          peak = crest;
           rising = false;
         }
       }
     }
-    return total + (rising ? peak - valley : 0);
+    // Preserve a measured ramp that starts/ends with the run, where a complete
+    // stable plateau cannot exist. Require 3 separate increases over 5s/5m;
+    // a single step or short burst cannot satisfy this edge-only exception.
+    final last = heights.length - 1;
+    if (valley != null &&
+        steadyRise(stableStart, last) &&
+        heights[last] - heights[valley] >= threshold(valley, last) &&
+        supported(valley, last)) {
+      if (!rising || peak == null || heights[last] > heights[peak]) {
+        rising = true;
+        peak = last;
+      }
+    }
+    return total +
+        (rising &&
+                peak != null &&
+                valley != null &&
+                heights[peak] - heights[valley] >= threshold(valley, peak)
+            ? heights[peak] - heights[valley]
+            : 0);
   }
 }

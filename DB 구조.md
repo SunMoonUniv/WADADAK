@@ -636,3 +636,7 @@ PK는 `(session_id, stream_seq)`, `session_id`만 같은 run 스키마 sessions�
 `run.records.result_json`·`summary_json`과 기기 `sessions.result`·`summary`에 선택 `stats` 객체를 추가한다. 필드는 `version="RESULT_V1"`, `elevationGainM`(nullable m), `elevationPartial`(boolean), `bestLapNumber`(nullable), `bestLapPaceSecondsPerKm`·`bestPaceSecondsPerKm`(nullable 초/km)다. 실제 측정된 상승 없음은 0, 원본 없음/분석 불가는 null이다.
 
 테이블 컬럼과 원본 payload는 바꾸지 않으므로 SQLite v3를 유지하고 Flyway 이관은 없다. 새 종료 요약과 새 서버 결과에 stats를 함께 보존한다. stats 없는 과거 서버 결과는 상세 읽기 시 원본으로 stats만 보완하며 DB 원본·기존 결과·최초 등록 시각·랭킹 이벤트는 바꾸지 않는다. 기기에 보존된 원본으로도 이전 서버 결과의 stats를 보완할 수 있다. 목록용 요약의 경로·원본 제외 원칙은 유지한다.
+
+#### 상승 고도 기준 변경 · RESULT_V2 (2026-10-16)
+
+stats의 구조와 테이블은 유지하고 새 계산의 `version`을 `RESULT_V2`로 기록한다. 별도 SQLite/Flyway 스키마 이관은 없다. 앱/서버 상세에서 원본이 남은 V1 결과의 stats만 계산해 표시하며 기존 원본·저장 결과·등록 시각·랭킹을 덮어쓰지 않는다. 원본 없는 이전 결과는 버전과 값을 보존한다. 새로 종료/등록하는 기록의 요약·상세에는 V2 stats를 저장한다.

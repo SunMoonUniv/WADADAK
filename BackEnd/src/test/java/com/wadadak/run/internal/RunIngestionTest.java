@@ -76,7 +76,7 @@ class RunIngestionTest {
         assertThat(db.queryForObject("SELECT count(*) FROM run.records",Long.class)).isEqualTo(1);
     }
     @Test void resultStatsSurviveUploadStorageHistoryAndLegacyDetailEnrichment() throws Exception {
-        var fixture=json.readTree(Files.readString(Path.of("../run/fixtures/free_result_stats_v1.json")));
+        var fixture=json.readTree(Files.readString(Path.of("../run/fixtures/free_result_stats_v2.json")));
         var source=fixture.get("cases").get(0);
         var raw=new ArrayList<Input>();
         for(var node:source.get("inputs")) {
@@ -93,7 +93,7 @@ class RunIngestionTest {
         assertThat(stored.stats().bestPaceSecondsPerKm()).isCloseTo(200,within(.000001));
         assertThat(runs.history(owner,new Cursorable(null,null)).content().getFirst().stats()).isEqualTo(stored.stats());
         mvc.perform(get("/api/v1/runs/records/"+id).with(jwt().jwt(j->j.subject(owner.toString()))))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.data.stats.version").value("RESULT_V1"));
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.stats.version").value("RESULT_V2"));
 
         // Simulate a record saved before stats existed. Only enrich the read:
         // registered time, original metrics, laps and ranking publication survive.
@@ -105,6 +105,13 @@ class RunIngestionTest {
         assertThat(enriched.metrics()).isEqualTo(stored.metrics());
         assertThat(enriched.laps()).isEqualTo(stored.laps());
         assertThat(enriched.registeredAt()).isEqualTo(stored.registeredAt());
+        var oldStats = new ResultStats("RESULT_V1",0.0,false,stored.stats().bestLapNumber(),
+            stored.stats().bestLapPaceSecondsPerKm(),stored.stats().bestPaceSecondsPerKm());
+        var v1 = new Result(stored.id(),stored.startedAt(),stored.endedAt(),stored.registeredAt(),stored.endReason(),
+            stored.metrics(),stored.routeSegments(),stored.laps(),stored.policyVersion(),stored.calculationVersion(),oldStats);
+        db.update("UPDATE run.records SET result_json=? WHERE id=?",json.writeValueAsString(v1),id);
+        assertThat(runs.result(owner,id).stats()).isEqualTo(stored.stats());
+        assertThat(json.readValue(db.queryForObject("SELECT result_json FROM run.records WHERE id=?",String.class,id),Result.class).stats()).isEqualTo(oldStats);
         assertThat(db.queryForObject("SELECT registration_published FROM run.records WHERE id=?",Boolean.class,id)).isTrue();
         assertThatThrownBy(()->runs.result(UUID.randomUUID(),id)).isInstanceOf(AppException.class);
     }
