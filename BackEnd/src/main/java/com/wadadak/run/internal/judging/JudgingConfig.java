@@ -7,9 +7,11 @@ package com.wadadak.run.internal.judging;
  * @param startRadiusM     출발 확인 반경. 첫 표본이 출발점에서 이 거리 안이어야 한다
  * @param finishToleranceM 끝 도달 오차. 코스상 위치가 전체 길이에서 이 거리 안이면 끝 도달
  * @param maxSpeedMps      이동 속도 상한(m/s). 두 표본 사이가 이보다 빠르면 그 사이를 인정하지 않는다
+ * @param maxAccuracyM     GPS 정확도 상한(m). 이보다 나쁜 표본은 코스 밖처럼 연결을 끊는다
  */
-record JudgingConfig(double routeToleranceM, double startRadiusM, double finishToleranceM, double maxSpeedMps) {
+record JudgingConfig(double routeToleranceM, double startRadiusM, double finishToleranceM, double maxSpeedMps,
+                     double maxAccuracyM) {
 
-    // ponytail: 주행 검증 전 개발용 값. 속도 상한은 1번 GPS 품질 기본값(12m/s)과 같다. 확정되면 설정 파일로 옮긴다
-    static final JudgingConfig DEFAULTS = new JudgingConfig(20, 30, 30, 12);
+    // ponytail: 주행 검증 전 개발용 값. 속도 상한·정확도 상한은 1번 GPS 품질 기본값(12m/s·30m)과 같다. 확정되면 설정 파일로 옮긴다
+    static final JudgingConfig DEFAULTS = new JudgingConfig(20, 30, 30, 12, 30);
 }
