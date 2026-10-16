@@ -189,11 +189,63 @@ class FreeRunResultView extends StatelessWidget {
                     ),
                   if (run.averageCadence == null)
                     const Text('케이던스 측정 데이터가 없어요.'),
-                  const _RunStatSummary([
-                    ('상승 고도', '—'),
-                    ('최고 구간', '—'),
-                    ('최고 페이스', '—'),
+                  _RunStatSummary([
+                    (
+                      '상승 고도',
+                      run.resultStats?.elevationGainM == null
+                          ? '—'
+                          : '${run.resultStats!.elevationGainM!.round()} m',
+                    ),
+                    (
+                      '최고 구간',
+                      run.resultStats?.bestLapNumber == null
+                          ? '—'
+                          : '${run.resultStats!.bestLapNumber! - 1}–${run.resultStats!.bestLapNumber} km',
+                    ),
+                    (
+                      '최고 페이스',
+                      formatRunPace(run.resultStats?.bestPaceSecondsPerKm),
+                    ),
                   ]),
+                  Text(
+                    '최고 구간은 완주한 1km 랩, 최고 페이스는 연속 30초 평균 기준이에요.',
+                    style: WdText.ko12.copyWith(color: WdColors.muted),
+                  ),
+                  if (run.resultStats?.bestLapPaceSecondsPerKm != null)
+                    Text(
+                      '최고 구간 페이스 ${formatRunPace(run.resultStats!.bestLapPaceSecondsPerKm)}/km',
+                      style: WdText.ko12.copyWith(color: WdColors.muted),
+                    ),
+                  if (run.resultStats == null)
+                    Text(
+                      '이 기록의 상세 지표를 계산할 원본 데이터가 없어요.',
+                      style: WdText.ko12.copyWith(color: WdColors.muted),
+                    ),
+                  if (run.resultStats != null &&
+                      run.resultStats!.bestLapNumber == null)
+                    Text(
+                      run.distanceMeters < 1000
+                          ? '최고 구간은 1km 완주 후 표시돼요.'
+                          : 'GPS 공백 없는 완성된 1km 랩이 없어 최고 구간을 표시할 수 없어요.',
+                      style: WdText.ko12.copyWith(color: WdColors.muted),
+                    ),
+                  if (run.resultStats != null &&
+                      run.resultStats!.bestPaceSecondsPerKm == null)
+                    Text(
+                      '최고 페이스를 계산할 연속 30초 이동 기록이 없어요.',
+                      style: WdText.ko12.copyWith(color: WdColors.muted),
+                    ),
+                  if (run.resultStats != null &&
+                      run.resultStats!.elevationGainM == null)
+                    Text(
+                      '상승 고도를 계산할 고도 측정 데이터가 없어요.',
+                      style: WdText.ko12.copyWith(color: WdColors.muted),
+                    ),
+                  if (run.resultStats?.elevationPartial == true)
+                    const WdInfoBanner(
+                      '상승 고도는 고도가 측정된 일부 구간만 포함해요.',
+                      tone: WdBannerTone.warning,
+                    ),
                   _RunStatSummary([
                     ('이동시간', formatRunTime(run.movingTime)),
                     ('총 페이스', formatRunPace(run.elapsedPaceSecondsPerKm)),

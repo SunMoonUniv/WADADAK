@@ -630,3 +630,9 @@ PK는 `(session_id, stream_seq)`, `session_id`만 같은 run 스키마 sessions�
 기기 `inputs.payload`와 서버 `run.inputs.payload`에 `altitudeM`·`altitudeAccuracyM`(m) 선택 JSON 필드를 보존한다. 실제 측정 0m·음수 고도를 허용하며 누락은 null/필드 생략이다. 고도 정확도는 고도가 있을 때만 보존하며 0 이상이다. 기존 JSON의 필드 누락은 호환되고 기존 좌표·순번·거리 계산·등록 시각을 수정하지 않는다.
 
 이 변경은 테이블 컬럼을 추가하지 않아 SQLite는 v3를 유지하고 Flyway 마이그레이션을 추가하지 않는다. 목록용 summary와 기존 Result의 2차원 경로는 확장하지 않으며 고도 원본은 상세 분석/course-source 후속 기능에서 사용할 수 있도록 원본에만 남긴다. 고도 수집 성공을 누적 상승고도나 코스 고도 프로필 계산 완료로 해석하지 않는다.
+
+#### 자유 러닝 RESULT_V1 추가 통계 (2026-10-16)
+
+`run.records.result_json`·`summary_json`과 기기 `sessions.result`·`summary`에 선택 `stats` 객체를 추가한다. 필드는 `version="RESULT_V1"`, `elevationGainM`(nullable m), `elevationPartial`(boolean), `bestLapNumber`(nullable), `bestLapPaceSecondsPerKm`·`bestPaceSecondsPerKm`(nullable 초/km)다. 실제 측정된 상승 없음은 0, 원본 없음/분석 불가는 null이다.
+
+테이블 컬럼과 원본 payload는 바꾸지 않으므로 SQLite v3를 유지하고 Flyway 이관은 없다. 새 종료 요약과 새 서버 결과에 stats를 함께 보존한다. stats 없는 과거 서버 결과는 상세 읽기 시 원본으로 stats만 보완하며 DB 원본·기존 결과·최초 등록 시각·랭킹 이벤트는 바꾸지 않는다. 기기에 보존된 원본으로도 이전 서버 결과의 stats를 보완할 수 있다. 목록용 요약의 경로·원본 제외 원칙은 유지한다.

@@ -45,7 +45,11 @@ public final class RunContracts {
     }
     public record Result(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt,
                          String endReason, Metrics metrics, List<List<GeoPoint>> routeSegments, List<Lap> laps,
-                         String policyVersion, String calculationVersion) {
+                         String policyVersion, String calculationVersion, ResultStats stats) {
+        public Result(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason,
+                      Metrics metrics, List<List<GeoPoint>> routeSegments, List<Lap> laps, String policyVersion, String calculationVersion) {
+            this(id,startedAt,endedAt,registeredAt,endReason,metrics,routeSegments,laps,policyVersion,calculationVersion,null);
+        }
         public Result(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason,
                       Metrics metrics, List<List<GeoPoint>> routeSegments, List<Lap> laps) {
             this(id,startedAt,endedAt,registeredAt,endReason,metrics,routeSegments,laps,null,null);
@@ -55,12 +59,17 @@ public final class RunContracts {
             this(id,startedAt,endedAt,registeredAt,endReason,metrics,routeSegments,List.of());
         }
     }
+    public record ResultStats(String version, Double elevationGainM, boolean elevationPartial,
+                              Integer bestLapNumber, Double bestLapPaceSecondsPerKm, Double bestPaceSecondsPerKm) {}
     public record Lap(int number, double distanceM, long movingMs, long elapsedMs, boolean complete, Double paceSecondsPerKm) {}
     public record Deleted(UUID id, boolean deleted) {}
     public record RecordSummary(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt,
-                                String endReason, Metrics metrics) {
+                                String endReason, Metrics metrics, ResultStats stats) {
+        public RecordSummary(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason, Metrics metrics) {
+            this(id,startedAt,endedAt,registeredAt,endReason,metrics,null);
+        }
         public static RecordSummary from(Result result) {
-            return new RecordSummary(result.id(),result.startedAt(),result.endedAt(),result.registeredAt(),result.endReason(),result.metrics());
+            return new RecordSummary(result.id(),result.startedAt(),result.endedAt(),result.registeredAt(),result.endReason(),result.metrics(),result.stats());
         }
     }
 }

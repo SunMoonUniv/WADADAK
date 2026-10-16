@@ -152,7 +152,7 @@ class RunService {
             db.update("UPDATE run.sessions SET updated_at=now(),processing='FAILED',failure='ZERO_DISTANCE' WHERE id=?",id); return;
         }
         Instant registered=clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
-        Result result=new Result(id,starts.getFirst(),calculation.endedAt(),registered,calculation.endReason(),calculation.metrics(),calculation.segments(),calculation.laps(),POLICY_VERSION,inputs.getFirst().reason());
+        Result result=new Result(id,starts.getFirst(),calculation.endedAt(),registered,calculation.endReason(),calculation.metrics(),calculation.segments(),calculation.laps(),POLICY_VERSION,inputs.getFirst().reason(),calculation.stats());
         db.update("INSERT INTO run.records(id,registered_at,result_json,summary_json) VALUES (?,?,?,?)",id,Timestamp.from(registered),json.writeValueAsString(result),json.writeValueAsString(RecordSummary.from(result)));
         publishRegistration(members.getFirst(),result);
         db.update("UPDATE run.sessions SET updated_at=now(),processing='DONE' WHERE id=?",id);
@@ -162,7 +162,15 @@ class RunService {
         session(owner,id,false);
         List<String> rows=db.query("SELECT result_json FROM run.records WHERE id=?",(rs,n)->rs.getString(1),id);
         if(rows.isEmpty()) throw new AppException(RunErrorCode.NOT_FOUND);
-        return json.readValue(rows.getFirst(),Result.class);
+        Result stored = json.readValue(rows.getFirst(),Result.class);
+        if (stored.stats() != null) return stored;
+        List<Input> inputs = db.query("SELECT payload FROM run.inputs WHERE session_id=? ORDER BY stream_seq",
+            (rs,n)->json.readValue(rs.getString(1),Input.class),id);
+        if (inputs.size() < 2) return stored;
+        // Enrich old results on detail reads; keep stored distance/time/ranking intact.
+        ResultStats stats = FreeRunCalculator.calculate(stored.startedAt(), inputs).stats();
+        return new Result(stored.id(),stored.startedAt(),stored.endedAt(),stored.registeredAt(),stored.endReason(),
+            stored.metrics(),stored.routeSegments(),stored.laps(),stored.policyVersion(),stored.calculationVersion(),stats);
     }
     @Transactional(readOnly=true)
     public CursorSlice<RecordSummary> history(UUID owner, Cursorable page) {

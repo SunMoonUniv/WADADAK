@@ -308,6 +308,7 @@ class RunLocalStore implements RunStore, RunHistoryStore {
       'metrics',
       'policyVersion',
       'calculationVersion',
+      'stats',
     ])
       if (result.containsKey(key)) key: result[key],
   };
@@ -323,6 +324,7 @@ class RunLocalStore implements RunStore, RunHistoryStore {
     }
     final startedAt = DateTime.parse(row['started_at'] as String);
     final ms = row['checkpoint_ms'] as int;
+    final calculator = RunCalculator.replay(inputs);
     return {
       'id': row['id'],
       'startedAt': startedAt.toUtc().toIso8601String(),
@@ -331,7 +333,8 @@ class RunLocalStore implements RunStore, RunHistoryStore {
           .toUtc()
           .toIso8601String(),
       'endReason': row['end_reason'],
-      'metrics': RunCalculator.replay(inputs).at(ms).toJson(),
+      'metrics': calculator.at(ms).toJson(),
+      'stats': calculator.resultStats(inputs).toJson(),
       'calculationVersion': inputs.firstOrNull?.reason,
     };
   }
