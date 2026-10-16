@@ -1,5 +1,8 @@
 package com.wadadak.run.internal.judging;
 
+import com.wadadak.run.internal.GpsQuality;
+import com.wadadak.run.internal.RunContracts.Input;
+import com.wadadak.run.internal.RunContracts.Kind;
 import com.wadadak.run.internal.judging.RouteGeometry.Projection;
 
 import java.time.Instant;
@@ -38,11 +41,11 @@ final class CourseTracker {
         this.config = config;
     }
 
-    List<Point> track(List<RunInput> inputs) {
+    List<Point> track(List<Input> inputs) {
         Tracking tracking = new Tracking();
         boolean paused = false;
-        for (RunInput input : inputs) {
-            if (input.kind() == RunInput.Kind.SEGMENT_END || input.kind() == RunInput.Kind.END) {
+        for (Input input : inputs) {
+            if (input.kind() == Kind.SEGMENT_END || input.kind() == Kind.END) {
                 break;
             }
             switch (input.kind()) {
@@ -71,13 +74,13 @@ final class CourseTracker {
         final List<Point> points = new ArrayList<>();
 
         /** 마지막으로 s를 정한 표본. null이면 기준 없음 */
-        RunInput anchor;
+        Input anchor;
         double anchorS;
         /** 다음 표본을 anchor와 이어도 되는지. 코스 밖 표본 뒤에는 false */
         boolean linkable;
 
         /** 보류 중인 표본과 그 points 안 위치 */
-        final List<RunInput> held = new ArrayList<>();
+        final List<Input> held = new ArrayList<>();
         final List<Integer> heldIndexes = new ArrayList<>();
         List<Hypothesis> hypotheses = new ArrayList<>();
 
@@ -88,8 +91,8 @@ final class CourseTracker {
             clearHeld();
         }
 
-        void sample(RunInput input) {
-            List<Projection> candidates = usable(input)
+        void sample(Input input) {
+            List<Projection> candidates = GpsQuality.good(input) // 자유 러닝 거리와 같은 GPS 품질 기준
                     ? route.candidates(route.toLocal(input.location()), config.routeToleranceM())
                     : List.of();
 
@@ -122,8 +125,8 @@ final class CourseTracker {
             extendHypotheses(input, candidates);
         }
 
-        private void extendHypotheses(RunInput input, List<Projection> candidates) {
-            RunInput previous = held.getLast();
+        private void extendHypotheses(Input input, List<Projection> candidates) {
+            Input previous = held.getLast();
             List<Hypothesis> alive = new ArrayList<>();
             for (Hypothesis hypothesis : hypotheses) {
                 Double next = choose(candidates, previous, hypothesis.last(), input);
@@ -149,7 +152,7 @@ final class CourseTracker {
         /** 보류했던 표본들을 남은 가설의 s로 소급해 정한다 */
         private void resolve(Hypothesis hypothesis) {
             for (int i = 0; i < held.size(); i++) {
-                RunInput input = held.get(i);
+                Input input = held.get(i);
                 double s = hypothesis.values.get(i);
                 boolean connected = i > 0 && withinSpeed(held.get(i - 1), input);
                 points.set(heldIndexes.get(i), new Point(input.seq(), input.elapsedMs(), input.measuredAt(), s, connected));
@@ -160,14 +163,14 @@ final class CourseTracker {
             clearHeld();
         }
 
-        private void place(RunInput input, double s, boolean connected) {
+        private void place(Input input, double s, boolean connected) {
             points.add(new Point(input.seq(), input.elapsedMs(), input.measuredAt(), s, connected));
             anchor = input;
             anchorS = s;
             linkable = true;
         }
 
-        private void hold(RunInput input) {
+        private void hold(Input input) {
             heldIndexes.add(points.size());
             held.add(input);
             points.add(new Point(input.seq(), input.elapsedMs(), input.measuredAt(), null, false));
@@ -202,7 +205,7 @@ final class CourseTracker {
      * 창 안 후보 중 정방향(s ≥ 직전 s)을 먼저, 그중 직전 s에 가장 가까운 것. 창 안에 없으면 null.
      * 정방향 우선은 왕복 코스 반환점에서 같은 거리의 가는 길·돌아오는 길 중 돌아오는 길을 고르게 한다.
      */
-    private Double choose(List<Projection> candidates, RunInput previous, double previousS, RunInput input) {
+    private Double choose(List<Projection> candidates, Input previous, double previousS, Input input) {
         double window = reach(previous, input) + config.routeToleranceM();
         Double forward = null;
         Double any = null;
@@ -232,7 +235,7 @@ final class CourseTracker {
     }
 
     /** 두 표본 사이 속도 상한으로 갈 수 있는 거리(m). 시간이 거꾸로면 0 */
-    private double reach(RunInput previous, RunInput input) {
+    private double reach(Input previous, Input input) {
         return Math.max(0, input.elapsedMs() - previous.elapsedMs()) / 1000.0 * config.maxSpeedMps();
     }
 
@@ -240,15 +243,9 @@ final class CourseTracker {
      * 실제 좌표 거리가 속도 상한 안이다. 경로를 따라 가까워 보여도 순간 이동한 표본을 걸러 낸다.
      * 두 표본의 GPS 정확도만큼 여유를 둔다. 표본 간격이 짧으면 오차만으로 상한을 넘을 수 있다.
      */
-    private boolean withinSpeed(RunInput previous, RunInput input) {
+    private boolean withinSpeed(Input previous, Input input) {
         double allowance = previous.accuracyM() + input.accuracyM();
         return input.elapsedMs() > previous.elapsedMs()
                 && previous.location().distanceMeters(input.location()) <= reach(previous, input) + allowance;
-    }
-
-    private boolean usable(RunInput input) {
-        Double accuracy = input.accuracyM();
-        return input.location() != null && accuracy != null && Double.isFinite(accuracy)
-                && accuracy >= 0 && accuracy <= config.maxAccuracyM();
     }
 }

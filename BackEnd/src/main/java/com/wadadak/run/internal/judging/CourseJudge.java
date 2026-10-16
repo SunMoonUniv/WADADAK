@@ -1,6 +1,8 @@
 package com.wadadak.run.internal.judging;
 
 import com.wadadak.course.CourseRouteSnapshot;
+import com.wadadak.run.internal.RunContracts.Input;
+import com.wadadak.run.internal.RunContracts.Kind;
 import com.wadadak.run.internal.judging.CourseTracker.Point;
 import com.wadadak.run.internal.judging.RecognizedDistance.Progress;
 import com.wadadak.run.internal.judging.RecognizedDistance.Range;
@@ -49,7 +51,7 @@ final class CourseJudge {
         this.config = config;
     }
 
-    Judgement judge(CourseRouteSnapshot course, List<RunInput> inputs) {
+    Judgement judge(CourseRouteSnapshot course, List<Input> inputs) {
         RouteGeometry route = new RouteGeometry(course.route());
         List<Point> points = new CourseTracker(route, config).track(inputs);
         RecognizedDistance recognized = RecognizedDistance.of(points);
@@ -70,8 +72,8 @@ final class CourseJudge {
             reason = Reason.DISTANCE_SHORT;
         }
 
-        long startMs = inputs.stream().filter(i -> i.kind() == RunInput.Kind.START)
-                .mapToLong(RunInput::elapsedMs).findFirst().orElse(0);
+        long startMs = inputs.stream().filter(i -> i.kind() == Kind.START)
+                .mapToLong(Input::elapsedMs).findFirst().orElse(0);
         long endMs = completion != null ? completion.point().elapsedMs() : segmentEndMs(inputs);
         long elapsedMs = Math.max(0, endMs - startMs);
         long movingMs = Math.max(0, elapsedMs - pausedMs(inputs, endMs));
@@ -118,24 +120,24 @@ final class CourseJudge {
     }
 
     /** 코스 구간이 끝난 시점: 처음 SEGMENT_END, 없으면 END, 둘 다 없으면 마지막 입력 */
-    private static long segmentEndMs(List<RunInput> inputs) {
+    private static long segmentEndMs(List<Input> inputs) {
         return inputs.stream()
-                .filter(i -> i.kind() == RunInput.Kind.SEGMENT_END || i.kind() == RunInput.Kind.END)
-                .mapToLong(RunInput::elapsedMs).findFirst()
+                .filter(i -> i.kind() == Kind.SEGMENT_END || i.kind() == Kind.END)
+                .mapToLong(Input::elapsedMs).findFirst()
                 .orElse(inputs.isEmpty() ? 0 : inputs.getLast().elapsedMs());
     }
 
     /** endMs까지의 일시정지 시간 합. 재개 없이 끝나면 endMs까지 정지로 본다 */
-    private static long pausedMs(List<RunInput> inputs, long endMs) {
+    private static long pausedMs(List<Input> inputs, long endMs) {
         long paused = 0;
         Long pausedAt = null;
-        for (RunInput input : inputs) {
+        for (Input input : inputs) {
             if (input.elapsedMs() > endMs) {
                 break;
             }
-            if (input.kind() == RunInput.Kind.PAUSE && pausedAt == null) {
+            if (input.kind() == Kind.PAUSE && pausedAt == null) {
                 pausedAt = input.elapsedMs();
-            } else if (input.kind() == RunInput.Kind.RESUME && pausedAt != null) {
+            } else if (input.kind() == Kind.RESUME && pausedAt != null) {
                 paused += input.elapsedMs() - pausedAt;
                 pausedAt = null;
             }
