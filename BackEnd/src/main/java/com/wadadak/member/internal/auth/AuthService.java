@@ -3,7 +3,7 @@ package com.wadadak.member.internal.auth;
 import com.wadadak.common.entity.UuidV7;
 import com.wadadak.common.exception.AppException;
 import com.wadadak.common.region.RegionDirectory;
-import com.wadadak.common.storage.ObjectStorage;
+import com.wadadak.common.storage.PhotoUploads;
 import com.wadadak.common.storage.UploadForm;
 import com.wadadak.event.member.MemberRegionChangedEvent;
 import com.wadadak.member.MemberErrorCode;
@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 @Service
@@ -35,7 +36,7 @@ class AuthService {
     private final TokenProvider tokenProvider;
     private final SocialTokenVerifier socialTokenVerifier;
     private final RegionDirectory regions;
-    private final ObjectStorage storage;
+    private final PhotoUploads uploads;
     private final ApplicationEventPublisher events;
     private final Clock clock;
 
@@ -47,10 +48,9 @@ class AuthService {
                 .orElseGet(() -> LoginResponse.signupRequired(tokenProvider.signupToken(account)));
     }
 
-    /** 가입 화면에서 프로필 사진을 올릴 폼. 가입 토큰이 만료됐으면 MEMBER-003. */
+    /** 가입 화면에서 프로필 사진을 올릴 폼. 가입 토큰이 만료됐으면 MEMBER-003, 너무 많이 받으면 COMMON-008. */
     UploadForm photoUploadForm(PhotoUploadRequest request) {
-        tokenProvider.parseSignupToken(request.signupToken());
-        return storage.photoUploadForm(PHOTO_MODULE);
+        return uploads.form(PHOTO_MODULE, uploader(tokenProvider.parseSignupToken(request.signupToken())));
     }
 
     @Transactional
@@ -67,8 +67,8 @@ class AuthService {
             throw new AppException(MemberErrorCode.REGION_NOT_FOUND);
         }
         String photo = request.profileImageKey();
-        // 사진 주소에 키가 보여서 남의 사진 키를 가져다 쓸 수 있다. 이미 누가 쓰는 키면 받지 않는다(DB 유니크가 마지막 방어)
-        if (photo != null && (!storage.isUploadedPhoto(PHOTO_MODULE, photo) || memberRepository.existsByProfileImageKey(photo))) {
+        // 사진 주소에 키가 보여서 남의 사진 키를 가져다 쓸 수 있다. 이 계정이 받은 폼의 키만, 한 번만 받는다(DB 유니크가 마지막 방어)
+        if (photo != null && !uploads.claim(PHOTO_MODULE, uploader(account), List.of(photo))) {
             throw new AppException(MemberErrorCode.PROFILE_PHOTO_NOT_FOUND);
         }
         Member member = memberRepository.save(Member.join(account, request.nickname(), request.bio(),
@@ -108,5 +108,10 @@ class AuthService {
         refreshTokenRepository.save(new RefreshToken(TokenProvider.hash(refreshToken), memberId, refreshExpiresAt));
         return new TokenResponse(tokenProvider.accessToken(memberId, now), now.plus(TokenProvider.ACCESS_TTL),
                 refreshToken, refreshExpiresAt);
+    }
+
+    /** 가입 사진 폼을 받는 사람. 가입 전이라 회원 ID 대신 소셜 계정으로 센다. */
+    private static String uploader(SocialAccount account) {
+        return account.provider() + ":" + account.socialId();
     }
 }

@@ -4,6 +4,7 @@ import com.nimbusds.jwt.SignedJWT;
 import com.wadadak.TestcontainersConfiguration;
 import com.wadadak.common.exception.AppException;
 import com.wadadak.common.storage.ObjectStorage;
+import com.wadadak.common.storage.PhotoUploads;
 import com.wadadak.common.storage.UploadForm;
 import com.wadadak.event.member.MemberRegionChangedEvent;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,6 +24,7 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +35,7 @@ import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 
@@ -58,17 +61,20 @@ class MemberModuleTests {
     @Autowired
     JdbcTemplate jdbcTemplate;
 
-    /** 저장소는 흉내만 낸다. 실제 업로드는 ObjectStorageTest가 확인한다. */
+    /** 저장소와 폼 장부는 흉내만 낸다. 실제 업로드는 ObjectStorageTest, 장부는 PhotoUploadsTest가 확인한다. */
     @MockitoBean
     ObjectStorage storage;
 
-    /** 저장소에 올라와 있는 사진 키 */
+    @MockitoBean
+    PhotoUploads uploads;
+
+    /** 폼으로 올라와 아직 저장하지 않은 사진 키. 저장(claim)하면 빠져서 다시 쓸 수 없다 */
     final Set<String> uploaded = new HashSet<>();
 
     @BeforeEach
     void storage() {
-        given(storage.isUploadedPhoto(anyString(), anyString()))
-                .willAnswer(call -> call.getArgument(0).equals("member") && uploaded.contains(call.<String>getArgument(1)));
+        given(uploads.claim(anyString(), anyString(), anyCollection())).willAnswer(call -> call.<Collection<String>>getArgument(2)
+                .stream().allMatch(key -> key.startsWith(call.getArgument(0) + "/") && uploaded.remove(key)));
         given(storage.url(anyString())).willAnswer(call -> "https://files.test/wadadak/" + call.getArgument(0));
     }
 
@@ -158,10 +164,10 @@ class MemberModuleTests {
     @Test
     void signsUpWithProfilePhoto() throws Exception {
         String signupToken = data(post("/login", login("kakao-photo"))).get("signupToken").asString();
-        given(storage.photoUploadForm("member"))
+        given(uploads.form("member", "KAKAO:kakao-photo"))
                 .willReturn(new UploadForm("https://files.test/wadadak", "member/form.jpg", Map.of("policy", "p")));
 
-        // 로그인 전이라 가입 토큰으로 업로드 폼을 받는다
+        // 로그인 전이라 가입 토큰으로 업로드 폼을 받는다. 발급 횟수는 소셜 계정으로 센다
         assertThat(post("/photo-uploads", "{\"signupToken\": \"%s\"}".formatted(signupToken)))
                 .hasStatusOk().bodyJson().extractingPath("$.data.key").isEqualTo("member/form.jpg");
         assertThat(post("/photo-uploads", "{\"signupToken\": \"broken\"}"))

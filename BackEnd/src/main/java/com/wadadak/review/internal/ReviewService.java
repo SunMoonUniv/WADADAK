@@ -61,7 +61,7 @@ class ReviewService {
             throw new AppException(ReviewErrorCode.ALREADY_REVIEWED);
         }
         // 사진 행은 리뷰 행을 FK로 가리키므로 리뷰를 저장한 다음에 넣는다. 사진이 잘못되면 리뷰 저장까지 함께 취소된다
-        List<ReviewView.Photo> savedPhotos = photos.replace(review.getId(), request.toContent().photoKeys());
+        List<ReviewView.Photo> savedPhotos = photos.replace(memberId, review.getId(), request.toContent().photoKeys());
         // eventId는 수신 측이 같은 이벤트를 두 번 처리하지 않게 하는 키, occurredAt은 발행 시각(개발 정책 5.3 공통 필드)
         events.publishEvent(new ReviewCreatedEvent(UuidV7.create(), clock.instant(), review.getId(), courseId,
                 review.getRating(), review.getCreatedAt()));
@@ -77,7 +77,7 @@ class ReviewService {
         int oldRating = review.getRating(); // 바꾸기 전 별점. course가 평점 합계에 (새 별점 − 이전 별점)을 더한다
         review.edit(content, runRecords.bestProgressPercent(memberId, review.getCourseId()));
         reviewRepository.flush(); // 바뀐 값을 지금 UPDATE해서 응답의 updatedAt이 새 값이 되게 한다
-        List<ReviewView.Photo> savedPhotos = photos.replace(review.getId(), content.photoKeys());
+        List<ReviewView.Photo> savedPhotos = photos.replace(memberId, review.getId(), content.photoKeys());
         // 별점이 그대로여도 발행한다. "리뷰가 수정됐다"는 사실을 알리고, 반영할지는 받는 쪽이 정한다(개발 정책 5.1)
         events.publishEvent(new ReviewUpdatedEvent(UuidV7.create(), clock.instant(), review.getId(), review.getCourseId(),
                 oldRating, review.getRating(), review.getCreatedAt()));
@@ -106,8 +106,8 @@ class ReviewService {
     }
 
     /** 사진 한 장을 올릴 폼. 리뷰를 쓰기 전에 받는다. */
-    UploadForm photoUploadForm() {
-        return photos.uploadForm();
+    UploadForm photoUploadForm(UUID memberId) {
+        return photos.uploadForm(memberId);
     }
 
     /** 숨김·삭제된 코스에는 쓰거나 고칠 수 없다(정책 공통 5, REVIEW-005). */

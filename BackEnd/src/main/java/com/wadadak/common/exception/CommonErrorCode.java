@@ -13,7 +13,8 @@ public enum CommonErrorCode implements ErrorCode {
     NOT_FOUND(HttpStatus.NOT_FOUND, "COMMON-004", "요청한 자원을 찾을 수 없습니다."),
     METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "COMMON-005", "지원하지 않는 요청 방식입니다."),
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON-006", "서버 오류가 발생했습니다."),
-    CONFLICT(HttpStatus.CONFLICT, "COMMON-007", "이미 처리되었거나 중복된 요청입니다.");
+    CONFLICT(HttpStatus.CONFLICT, "COMMON-007", "이미 처리되었거나 중복된 요청입니다."),
+    TOO_MANY_PHOTO_UPLOADS(HttpStatus.TOO_MANY_REQUESTS, "COMMON-008", "사진을 너무 많이 올렸습니다. 잠시 후 다시 시도해 주세요.");
 
     private final HttpStatus status;
     private final String code;

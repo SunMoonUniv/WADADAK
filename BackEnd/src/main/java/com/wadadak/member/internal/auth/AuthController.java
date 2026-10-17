@@ -25,7 +25,8 @@ class AuthController {
 
     @Operation(summary = "가입", description = "소셜 정보 동의 + 프로필 초기 설정을 한 번에 보낸다. "
             + "활동 지역(regionCode)은 지역 검색(GET /api/v1/regions)으로 고른 시·군·구 코드다. 시·도·읍·면·동이나 없는 코드는 MEMBER-007. "
-            + "프로필 사진은 선택이다. photo-uploads로 올린 키를 profileImageKey에 담는다. 올라오지 않았거나 이미 쓰는 키면 MEMBER-008.")
+            + "프로필 사진은 선택이다. photo-uploads로 올린 키를 profileImageKey에 담는다. "
+            + "같은 소셜 계정이 받은 폼의 키가 아니거나, 올라오지 않았거나, 이미 썼거나, 1시간이 지나 정리된 키면 MEMBER-008.")
     @PostMapping("/signup")
     ApiResult<TokenResponse> signup(@Valid @RequestBody SignupRequest request) {
         return ApiResult.success(authService.signup(request));
@@ -34,7 +35,8 @@ class AuthController {
     @Operation(summary = "가입 프로필 사진 업로드 폼 (F2)",
             description = "로그인 전이라 가입 토큰으로 받는다(만료 MEMBER-003). 앱은 사진을 JPEG로 바꾸고 위치 등 EXIF를 지운 뒤, "
                     + "url에 multipart/form-data로 fields를 모두 넣고 파일을 마지막 file 필드로 붙여 POST한다(10분 안에, 50MB 이하, image/jpeg만). "
-                    + "올린 뒤 key를 가입 요청의 profileImageKey에 담는다.")
+                    + "올린 뒤 key를 가입 요청의 profileImageKey에 담는다. 1시간 안에 가입하지 않으면 파일이 지워진다. "
+                    + "받고 저장하지 않은 폼이 최근 1시간에 20개면 COMMON-008(429).")
     @PostMapping("/photo-uploads")
     ApiResult<UploadForm> photoUpload(@Valid @RequestBody PhotoUploadRequest request) {
         return ApiResult.success(authService.photoUploadForm(request));

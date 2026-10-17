@@ -30,6 +30,7 @@ import java.util.regex.Pattern;
  * 사진 저장소(S3 호환, 개발 정책 7장 사진 업로드). 앱이 업로드 폼으로 직접 올리고, 모듈은 키만 저장한다.
  * 키는 {@code {module}/{UUID}.jpg}다. 사진은 공개 읽기라 {@link #url} 주소로 누구나 받는다(리뷰·프로필 사진은 모두에게 보인다).
  * 로컬은 {@code BackEnd/compose.yaml}, 공용 서버는 {@code deploy/compose.yaml}의 RustFS다.
+ * 폼 발급과 올라온 사진 확인은 발급 횟수를 세고 버려진 사진을 정리하는 {@link PhotoUploads}를 거친다.
  */
 @Slf4j
 @Component
@@ -61,8 +62,8 @@ public class ObjectStorage {
         this.clock = clock;
     }
 
-    /** 사진 한 장을 올릴 폼. 키는 서버가 정한다. JPEG만, 50MB 이하, 10분 안에 올린다. */
-    public UploadForm photoUploadForm(String module) {
+    /** 사진 한 장을 올릴 폼. 키는 서버가 정한다. JPEG만, 50MB 이하, 10분 안에 올린다. 모듈은 {@link PhotoUploads#form}으로 받는다. */
+    UploadForm photoUploadForm(String module) {
         return photoUploadForm(module, MAX_PHOTO_BYTES);
     }
 
@@ -84,8 +85,8 @@ public class ObjectStorage {
         return new UploadForm(publicUrl + "/" + bucket, key, fields);
     }
 
-    /** {@code module}의 사진 키 형식이고 실제로 올라와 있다. */
-    public boolean isUploadedPhoto(String module, String key) {
+    /** {@code module}의 사진 키 형식이고 실제로 올라와 있다. 모듈은 {@link PhotoUploads#claim}으로 확인한다. */
+    boolean isUploadedPhoto(String module, String key) {
         if (!KEY.matcher(key).matches() || !key.startsWith(module + "/")) {
             return false;
         }
@@ -125,14 +126,19 @@ public class ObjectStorage {
         });
     }
 
-    // ponytail: 지우지 못한 파일, 폼만 받고 저장하지 않은 파일은 남는다. 저장소가 차면 정리 배치를 둔다.
+    // ponytail: 여기서 지우지 못한 파일은 남는다(폼만 받고 저장하지 않은 파일은 PhotoUploads가 정리한다). 쌓이면 재시도 목록을 둔다.
     private void delete(List<String> keys) {
-        for (String key : keys) {
-            try {
-                client.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(key).build());
-            } catch (MinioException e) {
-                log.warn("사진을 지우지 못했습니다: {}", key, e);
-            }
+        keys.forEach(this::remove);
+    }
+
+    /** 지운다. 없는 파일도 성공이다. 실패하면 false */
+    boolean remove(String key) {
+        try {
+            client.removeObject(RemoveObjectArgs.builder().bucket(bucket).object(key).build());
+            return true;
+        } catch (MinioException e) {
+            log.warn("사진을 지우지 못했습니다: {}", key, e);
+            return false;
         }
     }
 
