@@ -3,6 +3,7 @@ package com.wadadak.review.internal;
 import com.wadadak.common.entity.UuidV7;
 import com.wadadak.common.exception.AppException;
 import com.wadadak.common.storage.ObjectStorage;
+import com.wadadak.common.storage.PhotoUploads;
 import com.wadadak.common.storage.UploadForm;
 import com.wadadak.review.ReviewErrorCode;
 import lombok.RequiredArgsConstructor;
@@ -32,24 +33,27 @@ class ReviewPhotos {
 
     private final JdbcClient jdbc;
     private final ObjectStorage storage;
+    private final PhotoUploads uploads;
 
-    /** 사진 한 장을 올릴 폼 */
-    UploadForm uploadForm() {
-        return storage.photoUploadForm(MODULE);
+    /** 사진 한 장을 올릴 폼. 너무 많이 받으면 COMMON-008 */
+    UploadForm uploadForm(UUID memberId) {
+        return uploads.form(MODULE, memberId.toString());
     }
 
     /**
      * 사진을 이 목록(보이는 순서)으로 바꾼다. 빠진 사진 파일은 커밋한 뒤 지운다.
-     * 5장 넘으면 REVIEW-006, 올라오지 않았거나 겹치거나 다른 리뷰의 사진이면 REVIEW-007.
+     * 5장 넘으면 REVIEW-006, 이 회원이 받은 폼으로 올라오지 않았거나 겹치거나 다른 리뷰의 사진이면 REVIEW-007.
      */
-    List<ReviewView.Photo> replace(UUID reviewId, List<String> keys) {
+    List<ReviewView.Photo> replace(UUID memberId, UUID reviewId, List<String> keys) {
         if (keys.size() > MAX_PHOTOS) {
             throw new AppException(ReviewErrorCode.TOO_MANY_PHOTOS);
         }
-        if (new HashSet<>(keys).size() < keys.size() || !keys.stream().allMatch(key -> storage.isUploadedPhoto(MODULE, key))) {
+        List<String> before = keys(reviewId);
+        // 이 리뷰에 있던 사진은 그대로 두고, 새 사진만 이 회원이 받은 폼으로 올린 것인지 확인한다
+        List<String> added = keys.stream().filter(key -> !before.contains(key)).toList();
+        if (new HashSet<>(keys).size() < keys.size() || !uploads.claim(MODULE, memberId.toString(), added)) {
             throw new AppException(ReviewErrorCode.PHOTO_NOT_FOUND);
         }
-        List<String> before = keys(reviewId);
         jdbc.sql("DELETE FROM review.review_photos WHERE review_id = :reviewId").param("reviewId", reviewId).update();
         try {
             for (int order = 0; order < keys.size(); order++) {

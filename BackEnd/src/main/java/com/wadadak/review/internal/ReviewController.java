@@ -114,10 +114,12 @@ class ReviewController {
     @Operation(summary = "리뷰 사진 업로드 폼 (B2·B10)",
             description = "사진 한 장마다 받는다. 앱은 사진을 JPEG로 바꾸고 위치 등 EXIF를 지운 뒤, url에 multipart/form-data로 "
                     + "fields를 모두 넣고 파일을 마지막 file 필드로 붙여 POST한다(10분 안에, 50MB 이하, image/jpeg만). "
-                    + "올린 뒤 key를 리뷰 작성·수정의 photoKeys에 담는다. 사진은 로그인 없이 받는다.")
+                    + "올린 뒤 key를 리뷰 작성·수정의 photoKeys에 담는다. 키는 폼을 받은 회원만 한 번 쓸 수 있고, "
+                    + "1시간 안에 저장하지 않으면 파일이 지워진다. 사진은 로그인 없이 받는다. "
+                    + "받고 저장하지 않은 폼이 최근 1시간에 20개면 COMMON-008(429).")
     @PostMapping("/photo-uploads")
-    ApiResult<UploadForm> photoUpload() {
-        return ApiResult.success(reviewService.photoUploadForm());
+    ApiResult<UploadForm> photoUpload(@AuthenticationPrincipal Jwt jwt) {
+        return ApiResult.success(reviewService.photoUploadForm(memberId(jwt)));
     }
 
     @Operation(summary = "리뷰 삭제 (B10)",
