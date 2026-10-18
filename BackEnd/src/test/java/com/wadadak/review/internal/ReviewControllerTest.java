@@ -2,6 +2,7 @@ package com.wadadak.review.internal;
 
 import com.wadadak.TestcontainersConfiguration;
 import com.wadadak.common.storage.ObjectStorage;
+import com.wadadak.common.storage.PhotoUploads;
 import com.wadadak.common.storage.UploadForm;
 import com.wadadak.event.review.ReviewCreatedEvent;
 import com.wadadak.event.review.ReviewDeletedEvent;
@@ -26,6 +27,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -33,6 +35,7 @@ import java.util.Set;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyCollection;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
@@ -65,17 +68,20 @@ class ReviewControllerTest {
     @Autowired
     JsonMapper jsonMapper;
 
-    /** 저장소는 흉내만 낸다. 실제 업로드는 ObjectStorageTest가 확인한다. */
+    /** 저장소와 폼 장부는 흉내만 낸다. 실제 업로드는 ObjectStorageTest, 장부는 PhotoUploadsTest가 확인한다. */
     @MockitoBean
     ObjectStorage storage;
 
-    /** 저장소에 올라와 있는 사진 키 */
+    @MockitoBean
+    PhotoUploads uploads;
+
+    /** 폼으로 올라와 아직 저장하지 않은 사진 키. 저장(claim)하면 빠져서 다시 쓸 수 없다 */
     final Set<String> uploaded = new HashSet<>();
 
     @BeforeEach
     void storage() {
-        given(storage.isUploadedPhoto(anyString(), anyString()))
-                .willAnswer(call -> call.getArgument(0).equals("review") && uploaded.contains(call.<String>getArgument(1)));
+        given(uploads.claim(anyString(), anyString(), anyCollection())).willAnswer(call -> call.<Collection<String>>getArgument(2)
+                .stream().allMatch(key -> key.startsWith(call.getArgument(0) + "/") && uploaded.remove(key)));
         given(storage.url(anyString())).willAnswer(call -> "https://files.test/wadadak/" + call.getArgument(0));
     }
 
@@ -267,10 +273,12 @@ class ReviewControllerTest {
 
     @Test
     void givesPhotoUploadForm() {
-        given(storage.photoUploadForm("review"))
+        UUID member = UUID.randomUUID();
+        // 발급 횟수는 회원 ID로 센다
+        given(uploads.form("review", member.toString()))
                 .willReturn(new UploadForm("https://files.test/wadadak", "review/abc.jpg", Map.of("policy", "p")));
 
-        assertThat(mvc.post().uri("/api/v1/reviews/photo-uploads").with(jwt().jwt(j -> j.subject(UUID.randomUUID().toString()))).exchange())
+        assertThat(mvc.post().uri("/api/v1/reviews/photo-uploads").with(jwt().jwt(j -> j.subject(member.toString()))).exchange())
                 .hasStatusOk().bodyJson().extractingPath("$.data.fields.policy").isEqualTo("p");
     }
 

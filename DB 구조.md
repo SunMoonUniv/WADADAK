@@ -19,13 +19,13 @@
 | `ranking` | ranking | `course_ranking_entries`, `distance_run_records`, `course_status_copies`, `member_visibility_copies`, `member_region_history`, `withdrawn_members` |
 | `review` | review | `reviews`, `review_photos`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
 | `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members` |
-| `common` | common | `region`, `event_publication`, `shedlock`, `flyway_schema_history` |
+| `common` | common | `region`, `event_publication`, `shedlock`, `photo_uploads`, `flyway_schema_history` |
 
 notification 스키마는 아직 없다. 해당 모듈을 구현할 때 이 문서에 추가한다.
 
 ### 공통 규칙 (개발 정책 6장)
 
-- **PK**: 애플리케이션이 만든 UUID v7(`UuidV7.create()`). 예외는 `region`(법정동 코드), `shedlock`(작업 이름), `event_publication`(Modulith가 만듦), `flyway_schema_history`(Flyway가 관리)다.
+- **PK**: 애플리케이션이 만든 UUID v7(`UuidV7.create()`). 예외는 `region`(법정동 코드), `shedlock`(작업 이름), `photo_uploads`(사진 키), `event_publication`(Modulith가 만듦), `flyway_schema_history`(Flyway가 관리)다.
   - 다른 모듈의 행 하나에 정확히 한 행이 대응하는 테이블은 그 모듈의 ID를 PK로 쓴다. 이벤트를 다시 받아도 PK로 한 번만 저장된다(개발 정책 5.4). 예: `course_ranking_entries`·`review.course_run_records`(run 기록 ID), 복사본 테이블(코스·회원 ID)
 - **시각**: `TIMESTAMPTZ`에 UTC로 저장한다. 엔티티 테이블은 모두 `created_at`·`updated_at`을 가진다(`BaseEntity`).
 - **enum**: Java enum 이름을 `VARCHAR`로 저장하고 `CHECK`로 값을 제한한다.
@@ -37,7 +37,7 @@ notification 스키마는 아직 없다. 해당 모듈을 구현할 때 이 문�
 
 - 실선: 같은 스키마 안의 FK
 - 점선: 다른 모듈(스키마)의 ID를 값으로만 저장한 참조. FK 없음
-- 모든 엔티티 테이블에 있는 `created_at`·`updated_at`은 생략했다. `common`의 인프라 테이블(`event_publication`, `shedlock`, `flyway_schema_history`)은 다른 테이블과 관계가 없어 3.5에서만 설명한다.
+- 모든 엔티티 테이블에 있는 `created_at`·`updated_at`은 생략했다. `common`의 인프라 테이블(`event_publication`, `shedlock`, `photo_uploads`, `flyway_schema_history`)은 다른 테이블과 관계가 없어 3.5에서만 설명한다.
 - `course_ranking_entries.run_record_id`, `course_run_records.run_record_id`, `reviews.source_run_record_id`는 run 모듈의 러닝 기록 ID다. 아래 `run_records`에 점선으로 연결했다. 다른 스키마이므로 FK는 없다.
 - `course_status_copies`·`withdrawn_members`는 ranking과 review에 같은 이름으로 있다. ERD에서는 review 쪽을 `review_` 접두사로 구분했다.
 
@@ -595,7 +595,22 @@ Spring Modulith가 관리한다. 이벤트를 발행하면 리스너마다 한 �
 
 #### `common.shedlock` — 스케줄 작업 잠금
 
-여러 인스턴스 중 한 곳에서만 스케줄 작업을 실행하게 한다(개발 정책 8.1). 행 하나가 작업 하나다(`common.event-monitor`, `common.event-retry`). 시각은 DB 시각(`TIMESTAMP`)을 쓴다.
+여러 인스턴스 중 한 곳에서만 스케줄 작업을 실행하게 한다(개발 정책 8.1). 행 하나가 작업 하나다(`common.event-monitor`, `common.event-retry`, `common.photo-upload-cleanup`). 시각은 DB 시각(`TIMESTAMP`)을 쓴다.
+
+#### `common.photo_uploads` — 저장하지 않은 사진 업로드
+
+업로드 폼을 받고 아직 리뷰·가입에 저장하지 않은 사진이다(`PhotoUploads`, 개발 정책 7장 사진 업로드). 앱이 저장소에 직접 올려서 서버는 업로드를 보지 못하므로, 폼을 줄 때 적고 저장하면 지운다.
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `photo_key` | `VARCHAR(100)` | | PK. 사진 키 `{module}/{UUID}.jpg` |
+| `owner` | `VARCHAR(100)` | | 폼을 받은 사람. 회원 ID, 가입 전에는 `{소셜 제공자}:{소셜 ID}` |
+| `created_at` | `TIMESTAMPTZ` | | 폼 발급 시각 |
+
+- `photo_uploads_owner_idx`: `(owner, created_at)`. 한 사람이 최근 1시간에 받고 저장하지 않은 폼이 20개면 더 주지 않는다(COMMON-008).
+- `photo_uploads_created_at_idx`: `created_at`. 10분마다 1시간 지난 행의 파일을 지우고 행도 지운다. 파일을 못 지우면 행을 남겨 다음에 다시 지운다.
+- 저장(claim)은 저장하는 쪽 트랜잭션에서 `owner`가 같은 행을 지운다. 행이 없으면(남이 받은 폼, 이미 저장, 정리됨) 사진을 받지 않는다. 그래서 키 하나는 폼을 받은 사람만 한 번 쓴다.
+- 행을 고치지 않아 `updated_at`이 없다.
 
 #### `common.flyway_schema_history` — 마이그레이션 이력
 
