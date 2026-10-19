@@ -10,6 +10,7 @@ import '../../../core/api/review_api_client.dart';
 import '../../../core/map/map_view.dart';
 import '../../../routes.dart';
 import '../../review/review_state.dart';
+import '../../run/domain/run_models.dart';
 import '../course_format.dart';
 import 'course_empty_card.dart';
 import 'course_ranking_state.dart';
@@ -21,7 +22,7 @@ import 'course_run_bar.dart';
 /// 랭킹 · 고스트는 랭킹 API에서 받는다(B1-01).
 ///
 /// - 이 코스로 달리기(C6) · 고스트 대결(C1)은 아직 없어 누르면 준비 중이라고 알린다.
-/// - 평균 페이스 · 현재 러너는 코스 통계(F11)가, 고도 프로필은 GPS 코스 등록(F7)이 생기면 붙인다.
+/// - 평균 페이스는 코스 API(코스 통계 F11)에서 받는다. 현재 러너는 run의 현재 러너 수 이벤트, 고도 프로필은 GPS 코스 등록(F7)이 생기면 붙인다.
 /// - 공유(B1-08)는 공유 링크를 정할 때까지 두지 않는다.
 /// - 비공개 · 삭제된 코스는 열지 않는다(B1-04).
 class CourseDetailScreen extends ConsumerStatefulWidget {
@@ -235,8 +236,8 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
                     ('거리', formatKm(course.distanceMeters)),
                     ('난이도', course.difficulty.label),
                     ('평점', rating == null ? CourseDetailScreen.noValue : '★ ${rating.toStringAsFixed(1)}'),
-                    // 코스 통계(F11)가 생기면 붙인다.
-                    ('평균 페이스', CourseDetailScreen.noValue),
+                    // Figma B1 `5′14″`. 완주가 없으면 `—`.
+                    ('평균 페이스', formatRunPace(course.averagePaceSecondsPerKm?.toDouble())),
                   ]),
                   WdTabBar(
                     controller: _tabs,

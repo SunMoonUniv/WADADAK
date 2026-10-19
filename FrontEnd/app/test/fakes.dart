@@ -30,6 +30,8 @@ CourseListItem testCourse(
   List<CourseTag> tags = const [],
   CourseType courseType = CourseType.custom,
   DateTime? expiresAt,
+  double? averageRating,
+  int reviewCount = 0,
 }) =>
     CourseListItem(
       courseId: courseId ?? 'id-$name',
@@ -39,6 +41,8 @@ CourseListItem testCourse(
       tags: tags,
       courseType: courseType,
       expiresAt: expiresAt ?? DateTime.utc(2026, 11, 13, 14, 59, 59),
+      averageRating: averageRating,
+      reviewCount: reviewCount,
       route: route,
     );
 
@@ -168,7 +172,7 @@ class FakeCourseApi implements CourseApiClient {
   Completer<void>? registerGate;
   final registrations = <FakeRegistration>[];
 
-  /// 지도 범위와 상관없이 돌려줄 코스. 필터는 거리 · 난이도 · 특징 · 유형을 서버처럼 적용한다.
+  /// 지도 범위와 상관없이 돌려줄 코스. 필터는 거리 · 난이도 · 최소 평점 · 특징 · 유형을 서버처럼 적용한다.
   List<CourseListItem> onMap = [];
   ApiException? mapError;
   final mapRequests = <({GeoPoint southWest, GeoPoint northEast, CourseFilter filter})>[];
@@ -242,11 +246,12 @@ class FakeCourseApi implements CourseApiClient {
     return CourseMap(totalCount: courses.length, courses: courses);
   }
 
-  /// 서버처럼 [course]가 [filter]에 맞나(FIL-02~05).
+  /// 서버처럼 [course]가 [filter]에 맞나(FIL-02~05). 최소 평점이 있으면 리뷰가 없는 코스는 빠진다.
   static bool matches(CourseListItem course, CourseFilter filter) =>
       course.distanceMeters >= (filter.minDistanceMeters ?? 0) &&
       course.distanceMeters <= (filter.maxDistanceMeters ?? course.distanceMeters) &&
       (filter.difficulties.isEmpty || filter.difficulties.contains(course.difficulty)) &&
+      (filter.minRating == null || (course.averageRating ?? -1) >= filter.minRating!) &&
       course.tags.toSet().containsAll(filter.tags) &&
       (filter.courseType == null || filter.courseType == course.courseType);
 

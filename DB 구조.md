@@ -15,7 +15,7 @@
 | 스키마 | 모듈 | 테이블 |
 | --- | --- | --- |
 | `member` | member | `members`, `agreements`, `refresh_tokens`, `region_event_backfill` |
-| `course` | course | `courses`, `daily_registration_counts`, `registration_requests` |
+| `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `course_stats`, `course_daily_stats`, `processed_events` |
 | `ranking` | ranking | `course_ranking_entries`, `distance_run_records`, `course_status_copies`, `member_visibility_copies`, `member_region_history`, `withdrawn_members` |
 | `review` | review | `reviews`, `review_photos`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
 | `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members` |
@@ -47,6 +47,8 @@ erDiagram
     members ||--o{ refresh_tokens : "member_id"
     members ||--o| region_event_backfill : "member_id"
     courses ||--o{ registration_requests : "course_id"
+    courses ||--o| course_stats : "course_id"
+    courses ||--o{ course_daily_stats : "course_id"
     members ||..o{ courses : "creator_id"
     members ||..o{ daily_registration_counts : "member_id"
     members ||..o{ registration_requests : "member_id"
@@ -132,6 +134,22 @@ erDiagram
         uuid member_id "member ID"
         uuid idempotency_key
         uuid course_id FK
+    }
+    course_stats {
+        uuid course_id PK "FK"
+        integer completion_count
+        bigint completion_seconds "완주 소요시간 합"
+        bigint view_count
+        integer rating_sum
+        integer review_count
+    }
+    course_daily_stats {
+        uuid id PK
+        uuid course_id FK
+        date stat_date "Asia/Seoul"
+        integer view_count
+        integer rating_sum "리뷰 작성일"
+        integer review_count "리뷰 작성일"
     }
     course_ranking_entries {
         uuid run_record_id PK "run 기록 ID"
@@ -368,7 +386,7 @@ erDiagram
 | `courses_expires_at_idx` | `expires_at` | `ACTIVE` | 만료 배치 |
 | `courses_hidden_at_idx` | `hidden_at` | `HIDDEN` | 숨긴 지 24시간 지난 코스 삭제 배치 |
 
-- 지금은 사용자 지정(`CUSTOM`) 코스 등록만 행을 만든다. GPS 코스 등록과 숨김·삭제·만료 배치는 아직 없다.
+- 지금은 사용자 지정(`CUSTOM`) 코스 등록만 행을 만든다. 만료 배치(1분마다 만료된 코스를 `HIDDEN`, 숨긴 지 24시간 지나면 `DELETED`)는 있고, GPS 코스 등록과 등록자 삭제는 아직 없다.
 
 #### `course.daily_registration_counts` — 일일 등록 수
 
@@ -396,6 +414,51 @@ erDiagram
 - `registration_requests_uk`: `UNIQUE (member_id, idempotency_key)`. 같은 키로 다시 요청하면 새로 만들지 않고 이 코스를 돌려준다.
 - `registration_requests_created_at_idx`: `(created_at)`. 24시간 지난 행을 지우는 데 쓴다.
 - 24시간 지난 행을 지우는 배치는 아직 없다.
+
+#### `course.course_stats` — 코스 누적 통계
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `course_id` | `UUID` | | PK, FK → `courses.id` |
+| `completion_count` | `INTEGER` | | 서버가 확정한 완주 수. 기본 0 |
+| `completion_seconds` | `BIGINT` | | 그 완주들의 코스 총 소요시간 합(초). 기본 0 |
+| `view_count` | `BIGINT` | | 코스 상세(B1) 조회 수. 인기순 2차 기준(FIL-01). 기본 0 |
+| `rating_sum` | `INTEGER` | | 리뷰 전체 별점 합. 기본 0 |
+| `review_count` | `INTEGER` | | 리뷰 수. 기본 0 |
+
+- 행은 첫 증감 때 `INSERT … ON CONFLICT DO UPDATE SET x = x + EXCLUDED.x`로 만든다. 행이 없는 코스는 모두 0이다.
+- 평균 페이스 = `completion_seconds ÷ completion_count ÷ 코스 거리(km)`, 초/km 정수로 반올림. 정책 용어의 코스 완주 페이스(`코스 총 소요시간 ÷ 코스 전체 거리`)의 평균과 같다. 경로는 바꿀 수 없어(정책 B7) 거리 합계는 두지 않는다.
+- 평점 = `rating_sum ÷ review_count`, 소수 첫째 자리 반올림(리뷰 API와 같은 계산). 리뷰가 없으면 NULL. 목록 · 지도가 `LEFT JOIN`해 평점순 · 최소 평점에 쓴다.
+- 받는 이벤트(개발 정책 5.6): `RunSessionEndedEvent`(코스 완주 +1), `RunRecordDeletedEvent`(완주 기록 −1), `ReviewCreatedEvent` · `ReviewUpdatedEvent` · `ReviewDeletedEvent`(평점 합 · 리뷰 수). 조회 수는 상세 API가 센다.
+- 공개 중(`ACTIVE`)인 코스만 바뀐다. 증감 전에 코스 행을 `FOR SHARE`로 잠가 상태를 본다. 코스가 `DELETED`가 되면 같은 트랜잭션에서 행을 지운다(개발 정책 6.2).
+- 도전 수(인기순)는 run이 `CourseRunStartedEvent`를 발행하면 열을 더한다.
+- 이 테이블을 만든 때(2026-10-19) 전에 쓴 리뷰는 들어 있지 않다(정책 문서 4.1 `F11 코스 통계`). 그 리뷰를 지우면 `rating_sum` · `review_count`가 0 아래로 내려갈 수 있고, 리뷰 수가 0 이하면 평점은 NULL이다.
+
+#### `course.course_daily_stats` — 코스 일별 통계
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `id` | `UUID` | | PK |
+| `course_id` | `UUID` | | FK → `courses.id` |
+| `stat_date` | `DATE` | | 날짜(Asia/Seoul) |
+| `view_count` | `INTEGER` | | 그날 조회 수. 기본 0 |
+| `rating_sum` | `INTEGER` | | 그날 작성된 리뷰의 별점 합. 기본 0 |
+| `review_count` | `INTEGER` | | 그날 작성된 리뷰 수. 기본 0 |
+
+- `course_daily_stats_uk`: `UNIQUE (course_id, stat_date)`.
+- 기간 정렬(FIL-09)이 고른 기간의 합을 낸다. 리뷰 수정 · 삭제도 작성일(`createdAt`) 행을 바꾼다(개발 정책 5.6).
+- 증감 · 삭제 규칙은 `course_stats`와 같다.
+
+#### `course.processed_events` — 이벤트 처리 기록
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `event_id` | `UUID` | | 받은 이벤트 ID |
+| `listener` | `VARCHAR(100)` | | 처리한 곳의 이름(예: `course.stats.review-created`). 코드 상수이고 바꾸지 않는다 |
+| `processed_at` | `TIMESTAMPTZ` | | 처리 시각 |
+
+- PK `(event_id, listener)`. 증감형 이벤트는 트랜잭션 첫 단계에서 `INSERT … ON CONFLICT DO NOTHING`하고 0행이면 끝낸다. 같은 이벤트를 다시 받아도 한 번만 더한다(개발 정책 5.4).
+- 자유 러닝 · 미완주처럼 통계와 관계없는 이벤트는 적지 않는다.
 
 ### 3.3 ranking
 

@@ -16,6 +16,7 @@ import org.locationtech.jts.io.WKBReader;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.OffsetDateTime;
@@ -32,6 +33,7 @@ import java.util.stream.Collectors;
 
 /**
  * 지도 범위 안 코스 조회(A2·A4·A5·A6). 지도·목록·코스 수가 같은 조건을 써야 해서(MAP-07) 조건을 이곳 한 군데에서 만든다.
+ * 평점 · 리뷰 수는 코스 통계(F11)에서 읽는다. 통계 행이 없는 코스는 리뷰가 없다.
  */
 @Repository
 @RequiredArgsConstructor
@@ -52,10 +54,16 @@ class CourseMapRepository {
     private static final Set<String> GWANGJU_DISTRICTS = Set.of(
             "1221000000", "1224000000", "1227000000", "1230000000", "1233000000");
 
-    /** 목록 카드(지도 범위 안 코스도 같다)에 쓰는 열과 최신순 커서용 등록 시각. */
+    /** 코스와 코스 통계. 조건 · 열은 코스를 {@code c}, 통계를 {@code s}로 부른다. */
+    private static final String FROM = "course.courses c LEFT JOIN course.course_stats s ON s.course_id = c.id";
+
+    /** 전체 기간 평점. 리뷰 API처럼 소수 첫째 자리로 반올림한다. 리뷰가 없으면 NULL */
+    private static final String RATING = "CASE WHEN s.review_count > 0 THEN round(s.rating_sum::numeric / s.review_count, 1) END";
+
+    /** 목록 카드(지도 범위 안 코스도 같다)에 쓰는 열과 커서용 등록 시각. */
     private static final String LIST_COLUMNS = """
             c.id, c.name, c.distance_meters, c.difficulty, c.tags, c.course_type, c.expires_at, ST_AsBinary(c.route) AS route,
-            c.created_at""";
+            c.created_at, %s AS average_rating, GREATEST(coalesce(s.review_count, 0), 0) AS review_count""".formatted(RATING);
 
     private final JdbcClient jdbc;
     private final RegionDirectory regionDirectory;
@@ -64,10 +72,10 @@ class CourseMapRepository {
         Filter filter = Filter.of(request);
         List<Row> rows = jdbc.sql("""
                         SELECT %s, count(*) OVER () AS total
-                        FROM course.courses c
+                        FROM %s
                         WHERE %s
                         ORDER BY c.created_at DESC, c.id DESC
-                        LIMIT :limit""".formatted(LIST_COLUMNS, filter.where()))
+                        LIMIT :limit""".formatted(LIST_COLUMNS, FROM, filter.where()))
                 .params(filter.params())
                 .param("limit", MAX_COURSES)
                 .query((rs, rowNum) -> new Row(rs.getInt("total"), item(rs)))
@@ -90,10 +98,10 @@ class CourseMapRepository {
                         SELECT g.code, min(g.sigungu_code) AS sigungu_code, count(*) AS n, avg(g.lat) AS lat, avg(g.lng) AS lng
                         FROM (SELECT %s AS code, c.sigungu_code,
                                      ST_Y(c.start_point::geometry) AS lat, ST_X(c.start_point::geometry) AS lng
-                              FROM course.courses c
+                              FROM %s
                               WHERE %s) g
                         GROUP BY g.code
-                        ORDER BY n DESC, g.code""".formatted(key, filter.where()))
+                        ORDER BY n DESC, g.code""".formatted(key, FROM, filter.where()))
                 .params(filter.params())
                 .param("metro", METRO_CITIES.keySet())
                 .param("gwangju", GWANGJU_DISTRICTS)
@@ -111,7 +119,8 @@ class CourseMapRepository {
 
     /**
      * 범위 안 코스 목록 한 쪽(A2 · A6). 조건은 지도 · 지역별 코스 수와 같다(MAP-07).
-     * 최신순은 등록 시각이 늦은 코스부터, 가까운순은 [origin]에서 출발점까지 가까운 코스부터다. 정렬 값이 같으면 ID순.
+     * 최신순은 등록 시각이 늦은 코스부터, 가까운순은 [origin]에서 출발점까지 가까운 코스부터, 평점순은 평점이 높은 코스부터
+     * (같으면 리뷰 수가 많은 코스, 그다음 최신순, 리뷰가 없으면 맨 뒤)다. 정렬 값이 모두 같으면 ID순.
      *
      * @param origin 현재 위치. 가까운순이면 있어야 한다
      */
@@ -130,10 +139,10 @@ class CourseMapRepository {
                 }
                 yield """
                         SELECT %s
-                        FROM course.courses c
+                        FROM %s
                         WHERE %s%s
                         ORDER BY c.created_at DESC, c.id DESC
-                        LIMIT :limit""".formatted(LIST_COLUMNS, filter.where(),
+                        LIMIT :limit""".formatted(LIST_COLUMNS, FROM, filter.where(),
                         after == null ? "" : "\n  AND (c.created_at, c.id) < (:afterCreatedAt, :afterId)");
             }
             case NEAREST -> {
@@ -146,11 +155,31 @@ class CourseMapRepository {
                         SELECT *
                         FROM (SELECT %s,
                                      ST_Distance(c.start_point, ST_SetSRID(ST_MakePoint(:originLng, :originLat), 4326)::geography) AS distance
-                              FROM course.courses c
+                              FROM %s
                               WHERE %s) l%s
                         ORDER BY l.distance, l.id
-                        LIMIT :limit""".formatted(LIST_COLUMNS, filter.where(),
+                        LIMIT :limit""".formatted(LIST_COLUMNS, FROM, filter.where(),
                         after == null ? "" : "\nWHERE (l.distance, l.id) > (:afterDistance, :afterId)");
+            }
+            case RATING -> {
+                if (after != null) {
+                    CourseListCursor.RatingKey key = after.ratingKey();
+                    params.put("afterRating", key.rating());
+                    params.put("afterReviews", key.reviewCount());
+                    params.put("afterCreatedAt", OffsetDateTime.ofInstant(key.createdAt(), ZoneOffset.UTC));
+                }
+                // 리뷰가 없는 코스는 평점을 -1로 두어 맨 뒤로 보낸다(평점은 1~5).
+                // 정렬 값이 모두 내림차순이라 행 비교 하나로 다음 쪽을 자른다.
+                yield """
+                        SELECT *
+                        FROM (SELECT %s, coalesce(%s, -1) AS rating_key
+                              FROM %s
+                              WHERE %s) l%s
+                        ORDER BY l.rating_key DESC, l.review_count DESC, l.created_at DESC, l.id DESC
+                        LIMIT :limit""".formatted(LIST_COLUMNS, RATING, FROM, filter.where(), after == null ? "" : """
+
+                        WHERE (l.rating_key, l.review_count, l.created_at, l.id)
+                              < (:afterRating, :afterReviews, :afterCreatedAt, :afterId)""");
             }
         };
         List<ListRow> rows = jdbc.sql(sql).params(params).query((rs, rowNum) -> listRow(rs, sort)).list();
@@ -167,9 +196,11 @@ class CourseMapRepository {
                 .map(CourseTag::valueOf)
                 .sorted()
                 .toList();
+        BigDecimal rating = rs.getBigDecimal("average_rating");
         return new CourseListItem(rs.getObject("id", UUID.class), rs.getString("name"), rs.getInt("distance_meters"),
                 Difficulty.valueOf(rs.getString("difficulty")), tags, CourseType.valueOf(rs.getString("course_type")),
-                rs.getObject("expires_at", OffsetDateTime.class).toInstant(), points(rs.getBytes("route")));
+                rs.getObject("expires_at", OffsetDateTime.class).toInstant(), rating == null ? null : rating.doubleValue(),
+                rs.getInt("review_count"), points(rs.getBytes("route")));
     }
 
     private static ListRow listRow(ResultSet rs, CourseListSort sort) throws SQLException {
@@ -178,6 +209,8 @@ class CourseMapRepository {
         CourseListCursor cursor = switch (sort) {
             case LATEST -> CourseListCursor.latest(rs.getObject("created_at", OffsetDateTime.class).toInstant(), id);
             case NEAREST -> CourseListCursor.nearest(rs.getDouble("distance"), id);
+            case RATING -> CourseListCursor.rating(rs.getBigDecimal("rating_key"), item.reviewCount(),
+                    rs.getObject("created_at", OffsetDateTime.class).toInstant(), id);
         };
         return new ListRow(item, cursor);
     }
@@ -234,6 +267,11 @@ class CourseMapRepository {
             if (request.difficulties() != null && !request.difficulties().isEmpty()) {
                 conditions.add("c.difficulty IN (:difficulties)");
                 params.put("difficulties", request.difficulties().stream().map(Enum::name).toList());
+            }
+            if (request.minRating() != null) {
+                // 리뷰가 없으면 평점이 NULL이라 빠진다
+                conditions.add(RATING + " >= :minRating");
+                params.put("minRating", request.minRating());
             }
             if (request.tags() != null && !request.tags().isEmpty()) {
                 conditions.add("c.tags @> ARRAY[:tags]::varchar[]");

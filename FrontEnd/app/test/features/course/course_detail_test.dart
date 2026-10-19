@@ -35,7 +35,7 @@ void main() {
 
   const route = [GeoPoint(37.5666, 126.9784), GeoPoint(37.5700, 126.9800), GeoPoint(37.5750, 126.9850)];
 
-  CourseDetail detail({String? nickname = '러닝왕김', DateTime? expiresAt}) => CourseDetail(
+  CourseDetail detail({String? nickname = '러닝왕김', DateTime? expiresAt, int? pace}) => CourseDetail(
         courseId: 'c1',
         name: '한강 야경 5K',
         courseType: CourseType.custom,
@@ -45,6 +45,7 @@ void main() {
         route: route,
         distanceMarkers: [for (var km = 1; km <= 5; km++) DistanceMarker(km, route[1])],
         expiresAt: expiresAt ?? DateTime.utc(2026, 11, 13, 14, 59, 59),
+        averagePaceSecondsPerKm: pace,
         creatorNickname: nickname,
       );
 
@@ -135,6 +136,13 @@ void main() {
     rankings = FakeCourseRankingApi({RankingPeriod.all: allRanking()});
   });
 
+  testWidgets('shows the average pace of every completion (Figma B1 5′14″)', (tester) async {
+    courses.details = {'c1': detail(pace: 314)};
+    await openDetail(tester);
+
+    expect(tile(tester, '평균 페이스'), '5′14″');
+  });
+
   testWidgets('shows the course with its creator, route, km markers, stats and runner ratings', (tester) async {
     await openDetail(tester);
 
@@ -149,7 +157,7 @@ void main() {
     expect(tile(tester, '거리'), '5.2km');
     expect(tile(tester, '난이도'), '중');
     expect(tile(tester, '평점'), '★ 4.6');
-    expect(tile(tester, '평균 페이스'), '—', reason: '코스 통계(F11) 전');
+    expect(tile(tester, '평균 페이스'), '—', reason: '아직 아무도 완주하지 않았다');
     expect(text('리뷰 128'), findsOneWidget);
 
     final map = tester.widget<MapView>(find.byType(MapView));

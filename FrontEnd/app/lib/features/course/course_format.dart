@@ -7,6 +7,13 @@ String formatKm(int meters) => '${(meters ~/ 100 / 10).toStringAsFixed(1)}km';
 String formatCount(int count) => count.toString().replaceAllMapped(RegExp(r'\B(?=(\d{3})+$)'), (_) => ',');
 
 /// 현재 위치에서 코스 출발점까지 거리(Figma A2 카드 `0.8 km 거리`). 100m 안은 `0.1km 거리`로 보인다.
+/// 카드 평점 `★ 4.6 (128)`(Figma A2 · A6). 리뷰가 없으면 null이라 보이지 않는다.
+String? formatCardRating(double? rating, int reviewCount) =>
+    rating == null ? null : '★ ${rating.toStringAsFixed(1)} (${formatCount(reviewCount)})';
+
+/// 지도 이름표 `한강 야경 5K · ★4.6`(Figma A5). 리뷰가 없으면 이름만이다.
+String formatMapLabel(String name, double? rating) => rating == null ? name : '$name · ★${rating.toStringAsFixed(1)}';
+
 String formatAway(int meters) => '${formatKm(meters < 100 ? 100 : meters)} 거리';
 
 /// 월.일(Asia/Seoul). 예: `09.08`(Figma B9 · G3 완주 날짜).

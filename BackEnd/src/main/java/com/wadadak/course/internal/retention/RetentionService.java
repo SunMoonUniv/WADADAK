@@ -5,6 +5,7 @@ import com.wadadak.common.entity.UuidV7;
 import com.wadadak.course.internal.course.Course;
 import com.wadadak.course.internal.course.CourseRepository;
 import com.wadadak.course.internal.course.ExpiringCourse;
+import com.wadadak.course.internal.stats.CourseStatsService;
 import com.wadadak.event.course.CourseExpiringSoonEvent;
 import com.wadadak.event.course.CourseStatus;
 import com.wadadak.event.course.CourseStatusChangedEvent;
@@ -35,6 +36,7 @@ class RetentionService {
     static final Duration DELETE_AFTER = Duration.ofHours(24);
 
     private final CourseRepository courseRepository;
+    private final CourseStatsService courseStats;
     private final ApplicationEventPublisher events;
     private final Clock clock;
 
@@ -62,7 +64,7 @@ class RetentionService {
         return true;
     }
 
-    /** 숨긴 지 24시간 지난 코스를 삭제로 바꾼다. 만료 · 등록자 삭제 모두 같다 */
+    /** 숨긴 지 24시간 지난 코스를 삭제로 바꾸고 그 코스의 통계를 지운다(개발 정책 6.2). 만료 · 등록자 삭제 모두 같다 */
     @Transactional
     boolean deleteIfDue(UUID courseId) {
         Instant now = clock.instant();
@@ -72,6 +74,7 @@ class RetentionService {
             return false;
         }
         course.delete();
+        courseStats.deleteFor(courseId);
         publishStatus(course, now);
         return true;
     }
