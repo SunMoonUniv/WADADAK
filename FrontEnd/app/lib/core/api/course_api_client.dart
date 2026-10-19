@@ -181,13 +181,16 @@ class RegionCount {
   final GeoPoint center;
 }
 
-/// 코스 목록 정렬(FIL-01). 인기순 · 평점순 · 실시간순은 코스 통계(F11)를 만든 뒤 붙인다.
+/// 코스 목록 정렬(FIL-01). 인기순 · 실시간순은 run이 도전 수 · 현재 러너 수 이벤트를 발행하면 붙인다.
 enum CourseListSort {
   /// 등록 시각이 늦은 코스부터.
   latest('LATEST', '최신순'),
 
   /// 현재 위치에서 출발점까지 직선 거리가 가까운 코스부터. 현재 위치가 필요하다.
-  nearest('NEAREST', '가까운순');
+  nearest('NEAREST', '가까운순'),
+
+  /// 전체 기간 평점(카드에 보이는 값)이 높은 코스부터. 같으면 리뷰 수가 많은 코스, 그다음 최신순. 리뷰가 없으면 맨 뒤.
+  rating('RATING', '평점순');
 
   const CourseListSort(this.apiName, this.label);
   final String apiName;
@@ -202,9 +205,13 @@ class CourseFilter {
     this.minDistanceMeters,
     this.maxDistanceMeters,
     this.difficulties = const {},
+    this.minRating,
     this.tags = const {},
     this.courseType,
   });
+
+  /// A3 최소 평점 칩(FIL-03). `전체`는 null이다.
+  static const minRatings = [3.0, 4.0, 4.5];
 
   /// 조건 없음. A3를 처음 열거나 `초기화`한 상태다.
   static const none = CourseFilter();
@@ -218,6 +225,9 @@ class CourseFilter {
   /// 난이도(FIL-03). 그중 하나면 된다. 비면 전체.
   final Set<Difficulty> difficulties;
 
+  /// 최소 평점(FIL-03, 포함). 카드에 보이는 전체 기간 평점으로 거르고 리뷰가 없는 코스는 빠진다. null이면 전체.
+  final double? minRating;
+
   /// 특징(FIL-04). 모두 가진 코스만 남는다. 비면 조건이 없다.
   final Set<CourseTag> tags;
 
@@ -230,6 +240,7 @@ class CourseFilter {
         'minDistanceMeters': ?minDistanceMeters,
         'maxDistanceMeters': ?maxDistanceMeters,
         if (difficulties.isNotEmpty) 'difficulties': [for (final difficulty in difficulties) difficulty.apiName],
+        'minRating': ?minRating,
         if (tags.isNotEmpty) 'tags': [for (final tag in tags) tag.apiName],
         'courseType': ?courseType?.apiName,
       };
@@ -240,6 +251,7 @@ class CourseFilter {
       other.minDistanceMeters == minDistanceMeters &&
       other.maxDistanceMeters == maxDistanceMeters &&
       setEquals(other.difficulties, difficulties) &&
+      other.minRating == minRating &&
       setEquals(other.tags, tags) &&
       other.courseType == courseType;
 
@@ -248,6 +260,7 @@ class CourseFilter {
         minDistanceMeters,
         maxDistanceMeters,
         Object.hashAllUnordered(difficulties),
+        minRating,
         Object.hashAllUnordered(tags),
         courseType,
       );
@@ -269,8 +282,8 @@ class CourseListPage {
   final String? nextCursor;
 }
 
-/// 코스 목록 카드(A2-05 · A6-03). 지도 범위 안 코스(A5)도 이 값이다.
-/// 평점 · 리뷰 수 · 현재 러너는 코스 통계(F11)가 생기면 붙인다.
+/// 코스 목록 카드(A2-05 · A6-03). 지도 범위 안 코스(A5 이름표 · 선택 카드)도 이 값이다.
+/// 현재 러너는 run이 현재 러너 수 이벤트를 발행하면 붙인다.
 @immutable
 class CourseListItem {
   const CourseListItem({
@@ -281,6 +294,8 @@ class CourseListItem {
     required this.tags,
     required this.courseType,
     required this.expiresAt,
+    this.averageRating,
+    this.reviewCount = 0,
     required this.route,
   });
 
@@ -292,6 +307,8 @@ class CourseListItem {
         tags: [for (final tag in json['tags']! as List) ?CourseTag.fromApi(tag as String)],
         courseType: CourseType.fromApi(json['courseType']! as String),
         expiresAt: DateTime.parse(json['expiresAt']! as String),
+        averageRating: (json['averageRating'] as num?)?.toDouble(),
+        reviewCount: json['reviewCount'] as int? ?? 0,
         route: [for (final point in json['route']! as List) GeoPoint.fromJson(point as Map)],
       );
 
@@ -307,12 +324,16 @@ class CourseListItem {
   /// 공개 만료 시각(만료일 23:59:59 Asia/Seoul).
   final DateTime expiresAt;
 
+  /// 전체 기간 평점(소수 첫째 자리 반올림). 리뷰가 없으면 null.
+  final double? averageRating;
+  final int reviewCount;
+
   /// 카드 썸네일 · 지도 코스 선. 첫 점 출발, 마지막 점 도착(코스 방향).
   final List<GeoPoint> route;
 }
 
 /// 코스 상세(B1 공통 헤더 · 정보 탭). 평점 · 리뷰 수 · 항목 평가는 리뷰 API에서 받는다.
-/// 평균 페이스 · 현재 러너는 코스 통계(F11)가 생기면 붙인다.
+/// 현재 러너는 run이 현재 러너 수 이벤트를 발행하면 붙인다.
 @immutable
 class CourseDetail {
   const CourseDetail({
@@ -325,6 +346,7 @@ class CourseDetail {
     required this.route,
     required this.distanceMarkers,
     required this.expiresAt,
+    this.averagePaceSecondsPerKm,
     this.creatorNickname,
   });
 
@@ -341,6 +363,7 @@ class CourseDetail {
             DistanceMarker((marker as Map)['km']! as int, GeoPoint.fromJson(marker['point']! as Map)),
         ],
         expiresAt: DateTime.parse(json['expiresAt']! as String),
+        averagePaceSecondsPerKm: json['averagePaceSecondsPerKm'] as int?,
         creatorNickname: json['creatorNickname'] as String?,
       );
 
@@ -361,6 +384,9 @@ class CourseDetail {
 
   /// 공개 만료 시각(만료일 23:59:59 Asia/Seoul). 완주로 연장되면 바뀐다(B1-04).
   final DateTime expiresAt;
+
+  /// 코스 평균 페이스(초/km). 모든 완주의 코스 완주 페이스 평균이다. 완주가 없으면 null.
+  final int? averagePaceSecondsPerKm;
 
   /// 등록자 닉네임. 탈퇴했으면 `탈퇴한 사용자`. 서버가 회원 정보를 받지 못하면 null이다.
   final String? creatorNickname;

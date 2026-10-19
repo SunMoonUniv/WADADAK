@@ -7,6 +7,7 @@ import com.wadadak.course.internal.course.Course;
 import com.wadadak.course.internal.course.CourseGeometry;
 import com.wadadak.course.internal.course.CourseRepository;
 import com.wadadak.course.internal.route.RouteService;
+import com.wadadak.course.internal.stats.CourseStatsService;
 import com.wadadak.member.MemberApi;
 import com.wadadak.member.MemberProfile;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +19,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * 코스 상세 조회(B1).
+ * 코스 상세 조회(B1). 열 때마다 조회 수를 1 늘린다(F11, 인기순 2차 기준).
  *
  * <p>트랜잭션을 걸지 않았다. 조회만 하고, 중간에 member 모듈을 부르기 때문이다.
  * 나중에 member가 다른 서버가 되면 그 호출이 네트워크를 기다리는데, 트랜잭션 안이면 그동안 DB 커넥션을 쥐고 있게 된다(개발 정책 4.4).
@@ -31,6 +32,7 @@ class CourseDetailService {
 
     private final CourseRepository courseRepository;
     private final RouteService routeService;
+    private final CourseStatsService courseStats;
     private final MemberApi memberApi;
 
     /**
@@ -43,10 +45,21 @@ class CourseDetailService {
         if (!course.isActive()) {
             throw new AppException(CourseErrorCode.COURSE_NOT_AVAILABLE);
         }
+        recordView(courseId);
         List<GeoPoint> route = CourseGeometry.points(course.getRoute());
         return new CourseDetail(course.getId(), course.getName(), course.getCourseType(), course.getDifficulty(),
                 course.getTags().stream().sorted().toList(), course.getDistanceMeters(), route,
-                routeService.distanceMarkers(route), course.getExpiresAt(), nickname(course.getCreatorId()));
+                routeService.distanceMarkers(route), course.getExpiresAt(),
+                courseStats.averagePaceSecondsPerKm(courseId, course.getDistanceMeters()), nickname(course.getCreatorId()));
+    }
+
+    /** 조회 수는 정렬 보조 값이라, 세지 못해도 상세는 그대로 돌려준다. */
+    private void recordView(UUID courseId) {
+        try {
+            courseStats.recordView(courseId);
+        } catch (RuntimeException e) {
+            log.warn("코스 조회 수를 세지 못했다. 상세는 그대로 돌려준다 courseId={}", courseId, e);
+        }
     }
 
     /** 표시용이라 회원 정보를 받지 못해도 상세는 그대로 돌려준다(개발 정책 4.4). */

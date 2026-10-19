@@ -17,11 +17,11 @@ typedef CourseFilterRequest = ({CourseFilter filter, CourseListSort sort, MapAre
 /// A3에서 `코스 N개 보기`로 확정한 필터 · 정렬.
 typedef CourseFilterChoice = ({CourseFilter filter, CourseListSort sort});
 
-/// A3 코스 필터. 정렬 · 거리 · 난이도 · 코스 태그 · 코스 유형을 고른다.
+/// A3 코스 필터. 정렬 · 거리 · 난이도 · 최소 평점 · 코스 태그 · 코스 유형을 고른다.
 /// 바꿀 때마다 약 300ms 뒤 지금 지도 범위의 예상 코스 수를 다시 센다(FIL-07).
 /// 고르는 동안은 홈에 적용하지 않고 `코스 N개 보기`를 누르면 확정해 돌려준다. 뒤로 가면 버린다.
 ///
-/// 인기순 · 평점순 · 실시간순 정렬, 최소 평점, 기간 슬라이더(FIL-09)는 코스 통계(F11)를 만든 뒤 붙인다.
+/// 인기순 · 실시간순 정렬은 run의 도전 수 · 현재 러너 수 이벤트 뒤에, 기간 슬라이더(FIL-09)는 다음 단계에 붙인다.
 class CourseFilterScreen extends ConsumerStatefulWidget {
   const CourseFilterScreen({super.key, required this.request});
 
@@ -45,6 +45,7 @@ class _CourseFilterScreenState extends ConsumerState<CourseFilterScreen> {
   /// 거리 범위(km). [_DistanceScale.stops] 중 하나다.
   late double _minKm, _maxKm;
   late Set<Difficulty> _difficulties;
+  double? _minRating;
   late Set<CourseTag> _tags;
   CourseType? _courseType;
 
@@ -66,6 +67,7 @@ class _CourseFilterScreenState extends ConsumerState<CourseFilterScreen> {
     _minKm = (filter.minDistanceMeters ?? 1000) / 1000;
     _maxKm = (filter.maxDistanceMeters ?? 20000) / 1000;
     _difficulties = {...filter.difficulties};
+    _minRating = filter.minRating;
     _tags = {...filter.tags};
     _courseType = filter.courseType;
     _countNow();
@@ -82,6 +84,7 @@ class _CourseFilterScreenState extends ConsumerState<CourseFilterScreen> {
         minDistanceMeters: _minKm <= _DistanceScale.min ? null : (_minKm * 1000).round(),
         maxDistanceMeters: _maxKm >= _DistanceScale.max ? null : (_maxKm * 1000).round(),
         difficulties: {..._difficulties},
+        minRating: _minRating,
         tags: {..._tags},
         courseType: _courseType,
       );
@@ -125,6 +128,7 @@ class _CourseFilterScreenState extends ConsumerState<CourseFilterScreen> {
         _minKm = _DistanceScale.min;
         _maxKm = _DistanceScale.max;
         _difficulties = {};
+        _minRating = null;
         _tags = {};
         _courseType = null;
       });
@@ -186,6 +190,17 @@ class _CourseFilterScreenState extends ConsumerState<CourseFilterScreen> {
                   difficulty.label,
                   selected: _difficulties.contains(difficulty),
                   onTap: () => _edit(() => _difficulties = _toggled(_difficulties, difficulty)),
+                ),
+            ]),
+          ]),
+          _section('최소 평점', [
+            _chips([
+              _chip('전체', selected: _minRating == null, onTap: () => _edit(() => _minRating = null)),
+              for (final rating in CourseFilter.minRatings)
+                _chip(
+                  '★${rating.toStringAsFixed(1)}+',
+                  selected: _minRating == rating,
+                  onTap: () => _edit(() => _minRating = rating),
                 ),
             ]),
           ]),
