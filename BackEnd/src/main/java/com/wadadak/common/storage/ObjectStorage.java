@@ -2,12 +2,12 @@ package com.wadadak.common.storage;
 
 import com.wadadak.common.entity.UuidV7;
 import io.minio.BucketExistsArgs;
+import io.minio.GetObjectArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PostPolicy;
 import io.minio.RemoveObjectArgs;
 import io.minio.SetBucketPolicyArgs;
-import io.minio.StatObjectArgs;
 import io.minio.errors.ErrorResponseException;
 import io.minio.errors.MinioException;
 import lombok.extern.slf4j.Slf4j;
@@ -16,9 +16,12 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.io.IOException;
+import java.io.InputStream;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.ZonedDateTime;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -40,6 +43,8 @@ public class ObjectStorage {
     static final long MAX_PHOTO_BYTES = 50L * 1024 * 1024;
     private static final Duration FORM_TTL = Duration.ofMinutes(10);
     private static final String JPEG = "image/jpeg";
+    /** JPEG 파일의 첫 3바이트(SOI 마커 FF D8 + 다음 마커의 FF) */
+    private static final byte[] JPEG_START = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF};
     private static final Pattern KEY = Pattern.compile("[a-z]+/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\.jpg");
     private static final Set<String> MISSING = Set.of("NoSuchKey", "NoSuchBucket", "NoSuchObject");
 
@@ -85,20 +90,23 @@ public class ObjectStorage {
         return new UploadForm(publicUrl + "/" + bucket, key, fields);
     }
 
-    /** {@code module}의 사진 키 형식이고 실제로 올라와 있다. 모듈은 {@link PhotoUploads#claim}으로 확인한다. */
+    /**
+     * {@code module}의 사진 키 형식이고 실제로 JPEG가 올라와 있다. 모듈은 {@link PhotoUploads#claim}으로 확인한다.
+     * 폼은 {@code Content-Type} 헤더만 강제하므로 내용이 JPEG인지는 여기서 앞 3바이트로 본다.
+     */
     boolean isUploadedPhoto(String module, String key) {
         if (!KEY.matcher(key).matches() || !key.startsWith(module + "/")) {
             return false;
         }
-        try {
-            client.statObject(StatObjectArgs.builder().bucket(bucket).object(key).build());
-            return true;
+        GetObjectArgs head = GetObjectArgs.builder().bucket(bucket).object(key).offset(0L).length((long) JPEG_START.length).build();
+        try (InputStream in = client.getObject(head)) {
+            return Arrays.equals(in.readNBytes(JPEG_START.length), JPEG_START);
         } catch (ErrorResponseException e) {
             if (MISSING.contains(e.errorResponse().code())) {
                 return false;
             }
             throw new IllegalStateException("사진을 확인하지 못했습니다.", e);
-        } catch (MinioException e) {
+        } catch (MinioException | IOException e) {
             throw new IllegalStateException("사진을 확인하지 못했습니다.", e);
         }
     }
