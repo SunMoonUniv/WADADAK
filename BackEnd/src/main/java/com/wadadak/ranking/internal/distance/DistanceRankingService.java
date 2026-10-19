@@ -28,6 +28,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -71,8 +72,8 @@ class DistanceRankingService implements DistanceRankingReader {
             return new MyDistanceRanking(MyDistanceRanking.Status.RANKED, rank, mine.meters(), thisWeek, mine.periodRuns(),
                     (int) Math.ceil(rank * 100.0 / ranking.size()), null);
         }).orElse(NO_RECORD);
-        return new DistanceRankingSummary(ranking.size(), day.cutoff(), me, top(ranking, TOP_SIZE, requesterId, day),
-                nextCursor(ranking, TOP_SIZE));
+        return new DistanceRankingSummary(ranking.size(), day.cutoff(), me.withProfile(myProfile(requesterId)),
+                top(ranking, TOP_SIZE, requesterId, day), nextCursor(ranking, TOP_SIZE));
     }
 
     @Override
@@ -92,7 +93,7 @@ class DistanceRankingService implements DistanceRankingReader {
         List<MemberDistance> rows = regionWeek(day, shown);
         List<Ranked> ranking = rank(rows);
         MyDistanceRanking me = shown.code().equals(myRegion) ? regionMe(day, shown, rows, ranking, requesterId) : OTHER_REGION;
-        return new RegionWeeklyRanking(shown, day.monday(), day.cutoff(), ranking.size(), me,
+        return new RegionWeeklyRanking(shown, day.monday(), day.cutoff(), ranking.size(), me.withProfile(myProfile(requesterId)),
                 top(ranking, REGION_TOP_SIZE, requesterId, day), nextCursor(ranking, REGION_TOP_SIZE));
     }
 
@@ -128,6 +129,11 @@ class DistanceRankingService implements DistanceRankingReader {
     /** 지난주 마지막 지역 랭킹. 지난주 월요일에 그 지역에 있던 회원끼리 지난주 기록 전체로 매긴다 */
     private List<MemberDistance> regionLastWeek(Day day, Region region) {
         return repository.distances(day.lastWeekStart(), day.weekStart(), day.weekStart(), region.code(), day.lastWeekStart());
+    }
+
+    /** 내 순위 카드의 `나 (닉네임)`·사진. 못 찾으면 {@code null} */
+    private MemberProfile myProfile(UUID requesterId) {
+        return MemberProfiles.find(memberApi, Set.of(requesterId)).get(requesterId);
     }
 
     /** 내 활동 지역을 아직 받지 못했으면(가입 직후 잠깐) 없는 지역과 같다 */

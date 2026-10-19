@@ -60,6 +60,7 @@ class DistanceRankingControllerTest {
         assertThat(result).bodyJson().extractingPath("$.data.me.rank").isEqualTo(26);
         assertThat(result).bodyJson().extractingPath("$.data.me.thisWeekDistanceMeters").isEqualTo(48_200);
         assertThat(result).bodyJson().extractingPath("$.data.me.topPercent").isEqualTo(84);
+        assertThat(result).bodyJson().extractingPath("$.data.me.nickname").asString().startsWith("러너-");
     }
 
     @Test
@@ -91,6 +92,7 @@ class DistanceRankingControllerTest {
         assertThat(result).bodyJson().extractingPath("$.data.top[0].nickname").isEqualTo("러너_하늘");
         assertThat(result).bodyJson().extractingPath("$.data.me.rank").isEqualTo(12);
         assertThat(result).bodyJson().extractingPath("$.data.me.lastWeekRank").isEqualTo(19);
+        assertThat(result).bodyJson().extractingPath("$.data.me.nickname").asString().startsWith("러너-");
         assertThat(result).bodyJson().extractingPath("$.data.nextCursor").isEqualTo("5");
     }
 

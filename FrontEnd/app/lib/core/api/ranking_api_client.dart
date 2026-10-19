@@ -57,6 +57,8 @@ class MyDistanceRanking {
   MyDistanceRanking.fromJson(Map json)
       : status = MyRankStatus.values.firstWhere((s) => s.apiName == json['status']),
         rank = json['rank'] as int?,
+        nickname = json['nickname'] as String?,
+        profileImageUrl = json['profileImageUrl'] as String?,
         distanceMeters = json['distanceMeters'] as int?,
         thisWeekDistanceMeters = json['thisWeekDistanceMeters'] as int?,
         topPercent = json['topPercent'] as int?,
@@ -64,6 +66,10 @@ class MyDistanceRanking {
 
   final MyRankStatus status;
   final int? rank;
+
+  /// 내 닉네임 · 사진. 상태와 관계없이 오고, 서버가 프로필을 못 찾으면 null이다.
+  final String? nickname;
+  final String? profileImageUrl;
 
   /// 그 기간 내 거리. 기록이 없으면 null.
   final int? distanceMeters;
@@ -161,6 +167,8 @@ class MyCourseRanking {
   MyCourseRanking.fromJson(Map json)
       : status = MyRankStatus.values.firstWhere((s) => s.apiName == json['status']),
         rank = json['rank'] as int?,
+        nickname = json['nickname'] as String?,
+        profileImageUrl = json['profileImageUrl'] as String?,
         courseElapsedSeconds = json['courseElapsedSeconds'] as int?,
         paceSecondsPerKm = json['paceSecondsPerKm'] as int?,
         completedAt = switch (json['completedAt']) {
@@ -172,6 +180,10 @@ class MyCourseRanking {
   /// 순위 있음 · 그 기간 완주 기록 없음 · 내 정보 비공개(순위 대신 `비공개 중`).
   final MyRankStatus status;
   final int? rank;
+
+  /// 내 닉네임 · 사진. 상태와 관계없이 오고, 서버가 프로필을 못 찾으면 null이다.
+  final String? nickname;
+  final String? profileImageUrl;
 
   /// 내 대표 기록. 그 기간 완주 기록이 없으면 null이다. 비공개여도 기록이 있으면 채운다.
   final int? courseElapsedSeconds;

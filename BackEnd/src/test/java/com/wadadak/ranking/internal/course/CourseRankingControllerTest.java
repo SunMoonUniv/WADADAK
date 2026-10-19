@@ -54,6 +54,7 @@ class CourseRankingControllerTest {
         assertThat(week).bodyJson().extractingPath("$.data.top[*].rank").asArray().containsExactly(1, 1, 3);
         assertThat(week).bodyJson().extractingPath("$.data.me.status").isEqualTo("NO_RECORD");
         assertThat(week).bodyJson().extractingPath("$.data.me.rank").isNull();
+        assertThat(week).bodyJson().extractingPath("$.data.me.nickname").asString().startsWith("러너-");
     }
 
     @Test
@@ -74,6 +75,7 @@ class CourseRankingControllerTest {
         assertThat(result).bodyJson().extractingPath("$.data.me.status").isEqualTo("PRIVATE");
         assertThat(result).bodyJson().extractingPath("$.data.me.rank").isNull();
         assertThat(result).bodyJson().extractingPath("$.data.me.courseElapsedSeconds").isEqualTo(318);
+        assertThat(result).bodyJson().extractingPath("$.data.me.nickname").asString().startsWith("러너-");
         assertThat(result).bodyJson().extractingPath("$.data.top[*].mine").asArray().containsOnly(false);
     }
 

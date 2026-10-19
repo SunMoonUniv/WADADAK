@@ -24,6 +24,7 @@ void main() {
     me: const {
       'status': 'RANKED',
       'rank': 24,
+      'nickname': '러닝왕김',
       'courseElapsedSeconds': 1690,
       'paceSecondsPerKm': 304,
       'completedAt': '2026-09-08T01:00:00Z',
@@ -76,7 +77,8 @@ void main() {
     expect(tester.widget<WdStatSummary>(find.byType(WdStatSummary)).items,
         [('참여 러너', '25명'), ('1위 기록', '24:20'), ('평균 기록', '26:20')]);
     final me = tester.widget<WdMyRankCard>(find.byType(WdMyRankCard));
-    expect([me.data.rank, me.data.meta, me.data.value], ['24', '5′04″/km · 09.08 · 상위 96%', '28:10']);
+    expect([me.data.rank, me.data.name, me.data.meta, me.data.value],
+        ['24', '나 (러닝왕김)', '5′04″/km · 09.08 · 상위 96%', '28:10']);
     expect(me.onTap, isNull, reason: '내 순위는 누를 수 없다');
     expect(find.text('전체 순위 25명'), findsOneWidget);
     expect(find.textContaining('프로필'), findsNothing, reason: 'I3가 생길 때까지 러너를 누를 수 없다');

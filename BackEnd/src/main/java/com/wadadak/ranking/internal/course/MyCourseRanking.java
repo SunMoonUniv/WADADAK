@@ -5,11 +5,13 @@ import java.time.Instant;
 /**
  * 내 순위(B9-02). {@code status}가 {@code RANKED}가 아니면 {@code rank}·{@code topPercent}는 {@code null}이다.
  *
+ * @param nickname             내 닉네임(`나 (닉네임)` 표시용). 상태와 관계없이 채운다. 프로필 조회에 실패하면 {@code null}
+ * @param profileImageUrl      내 프로필 사진. 없거나 조회에 실패하면 {@code null}
  * @param courseElapsedSeconds 내 대표 기록의 코스 총 소요시간. 그 기간 완주 기록이 없으면 {@code null}
  * @param topPercent           상위 비율(%). 순위 ÷ 참여 러너 수 × 100을 올림한 정수(1~100)
  */
-record MyCourseRanking(Status status, Integer rank, Integer courseElapsedSeconds, Integer paceSecondsPerKm,
-                       Instant completedAt, Integer topPercent) {
+record MyCourseRanking(Status status, Integer rank, String nickname, String profileImageUrl,
+                       Integer courseElapsedSeconds, Integer paceSecondsPerKm, Instant completedAt, Integer topPercent) {
 
     enum Status {
         /** 순위가 있다 */

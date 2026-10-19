@@ -88,7 +88,7 @@ class DistanceRankingServiceTest {
         jdbc.update("DELETE FROM ranking.member_region_history");
         jdbc.update("DELETE FROM ranking.member_visibility_copies");
         given(memberApi.getProfiles(any())).willAnswer(call -> call.<Set<UUID>>getArgument(0).stream()
-                .map(id -> new MemberProfile(id, "러너" + id.getLeastSignificantBits(), null, false))
+                .map(DistanceRankingServiceTest::profile)
                 .toList());
 
         run(A, 10_000, THIS_WEEK);
@@ -135,7 +135,9 @@ class DistanceRankingServiceTest {
         assertThat(summary.top().getFirst().nickname()).isEqualTo("러너1");
         assertThat(summary.nextCursor()).isEqualTo("3");
         // 5위 / 9명 = 55.6% → 56
-        assertThat(summary.me()).isEqualTo(new MyDistanceRanking(MyDistanceRanking.Status.RANKED, 5, 10_000, 8_000, 2, 56, null));
+        assertThat(summary.me()).isEqualTo(new MyDistanceRanking(MyDistanceRanking.Status.RANKED, 5, 10_000, 8_000, 2, 56, null)
+                .withProfile(profile(ME)));
+        assertThat(summary.me().nickname()).isEqualTo("러너" + ME.getLeastSignificantBits());
     }
 
     @Test
@@ -157,14 +159,16 @@ class DistanceRankingServiceTest {
         // A와 나는 이번 달 10km로 공동 3위. ID가 앞선 A가 먼저다
         assertThat(month.participantCount()).isEqualTo(7);
         assertThat(month.top()).extracting(DistanceRankingEntry::memberId).containsExactly(B, J, A);
-        assertThat(month.me()).isEqualTo(new MyDistanceRanking(MyDistanceRanking.Status.RANKED, 3, 10_000, 8_000, 2, 43, null));
+        assertThat(month.me()).isEqualTo(new MyDistanceRanking(MyDistanceRanking.Status.RANKED, 3, 10_000, 8_000, 2, 43, null)
+                .withProfile(profile(ME)));
 
         DistanceRankingSummary week = reader.summary(RankingPeriod.WEEK, ME);
         // 월요일 01:00 기록(G)은 이번 주다
         assertThat(week.participantCount()).isEqualTo(5);
         assertThat(reader.entries(RankingPeriod.WEEK, ME, new Cursorable(null, 50)).content())
                 .extracting(DistanceRankingEntry::memberId).containsExactly(A, ME, J, K, G);
-        assertThat(week.me()).isEqualTo(new MyDistanceRanking(MyDistanceRanking.Status.RANKED, 2, 8_000, 8_000, 1, 40, null));
+        assertThat(week.me()).isEqualTo(new MyDistanceRanking(MyDistanceRanking.Status.RANKED, 2, 8_000, 8_000, 1, 40, null)
+                .withProfile(profile(ME)));
     }
 
     @Test
@@ -172,15 +176,19 @@ class DistanceRankingServiceTest {
         DistanceRankingSummary week = reader.summary(RankingPeriod.WEEK, H);
 
         assertThat(week.participantCount()).isEqualTo(5);
-        assertThat(week.me()).isEqualTo(new MyDistanceRanking(MyDistanceRanking.Status.PRIVATE, null, 30_000, 30_000, 1, null, null));
+        assertThat(week.me()).isEqualTo(new MyDistanceRanking(MyDistanceRanking.Status.PRIVATE, null, 30_000, 30_000, 1, null, null)
+                .withProfile(profile(H)));
         assertThat(reader.regionWeekly(null, H).me())
-                .isEqualTo(new MyDistanceRanking(MyDistanceRanking.Status.PRIVATE, null, 30_000, null, 1, null, null));
+                .isEqualTo(new MyDistanceRanking(MyDistanceRanking.Status.PRIVATE, null, 30_000, null, 1, null, null)
+                        .withProfile(profile(H)));
     }
 
     @Test
     void runnerWithoutRecordHasNoRank() {
-        assertThat(reader.summary(RankingPeriod.ALL, UUID.randomUUID()).me())
-                .isEqualTo(new MyDistanceRanking(MyDistanceRanking.Status.NO_RECORD, null, null, null, null, null, null));
+        UUID stranger = UUID.randomUUID();
+        assertThat(reader.summary(RankingPeriod.ALL, stranger).me())
+                .isEqualTo(new MyDistanceRanking(MyDistanceRanking.Status.NO_RECORD, null, null, null, null, null, null)
+                        .withProfile(profile(stranger)));
         assertThat(reader.summary(RankingPeriod.MONTH, C).me().status()).isEqualTo(MyDistanceRanking.Status.NO_RECORD);
     }
 
@@ -196,7 +204,8 @@ class DistanceRankingServiceTest {
         assertThat(ranking.top()).extracting(DistanceRankingEntry::memberId).containsExactly(A, ME, J, G);
         assertThat(ranking.nextCursor()).isNull();
         // 지난주 성북은 I(5km)·나(2km). J의 지난주 7km는 그때 종로라 빠진다
-        assertThat(ranking.me()).isEqualTo(new MyDistanceRanking(MyDistanceRanking.Status.RANKED, 2, 8_000, null, 1, null, 2));
+        assertThat(ranking.me()).isEqualTo(new MyDistanceRanking(MyDistanceRanking.Status.RANKED, 2, 8_000, null, 1, null, 2)
+                .withProfile(profile(ME)));
         assertThat(reader.regionWeeklyEntries(null, ME, new Cursorable("2", 2)).content())
                 .extracting(DistanceRankingEntry::rank).containsExactly(3, 4);
     }
@@ -214,6 +223,10 @@ class DistanceRankingServiceTest {
         assertThatThrownBy(() -> reader.regionWeekly(null, UUID.randomUUID()))
                 .isInstanceOfSatisfying(AppException.class,
                         e -> assertThat(e.getErrorCode()).isEqualTo(RankingErrorCode.REGION_NOT_FOUND));
+    }
+
+    private static MemberProfile profile(UUID id) {
+        return new MemberProfile(id, "러너" + id.getLeastSignificantBits(), null, false);
     }
 
     private void run(UUID member, double meters, Instant registeredAt) {

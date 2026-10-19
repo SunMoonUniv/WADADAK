@@ -39,6 +39,7 @@ class DistanceRankingController {
                     + "자정 뒤에 지운 기록·탈퇴·내 정보 비공개는 바로 빠진다. "
                     + "자유 러닝·미완주·코스 밖의 정상 측정 거리도 포함하고, 내 정보 비공개 회원은 빠진다. "
                     + "me.status: RANKED / NO_RECORD 그 기간 기록 없음 / PRIVATE 내 정보 비공개(순위 대신 `비공개 중`). "
+                    + "me.nickname·me.profileImageUrl은 내 행의 `나 (닉네임)`·사진용이고 상태와 관계없이 채운다(조회 실패 시 null). "
                     + "me.thisWeekDistanceMeters는 \"이번 주 +n km\", topPercent는 순위 ÷ 참여 수 × 100 올림. 거리는 m 단위 정수.")
     @GetMapping("/distance")
     ApiResult<DistanceRankingSummary> summary(
@@ -63,7 +64,7 @@ class DistanceRankingController {
                     + "가입 때 지역은 바로, 바꾼 지역은 다음 주부터 들어간다(이번 주는 바꾸기 전 지역). "
                     + "상위 5줄을 주고 6위부터는 nextCursor로 목록 API를 부른다. "
                     + "me.status: RANKED(lastWeekRank는 \"지난주 n위\", 지난주 이 지역 마지막 순위) / NO_RECORD / PRIVATE / "
-                    + "OTHER_REGION 내 활동 지역이 아닌 지역. "
+                    + "OTHER_REGION 내 활동 지역이 아닌 지역. me.nickname·me.profileImageUrl은 전체 랭킹과 같다. "
                     + "없는 지역이거나 시·군·구가 아닌 코드는 RANKING-002(404). regionCode를 비웠는데 내 활동 지역을 아직 받지 못했어도(가입 직후 잠깐) 같다.")
     @GetMapping("/distance/regions/weekly")
     ApiResult<RegionWeeklyRanking> regionWeekly(

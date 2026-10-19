@@ -139,7 +139,7 @@ WdRank courseRank(CourseRankingEntry entry, {bool withDate = false}) {
 }
 
 /// 내 순위(B9-02). 순위 · 페이스 · 날짜 · 상위 비율이고 누를 수 없다.
-/// 서버가 내 닉네임을 주지 않아 `나`만 쓴다(E1과 같다). 내 정보 비공개면 순위 자리에 `비공개 중`.
+/// 이름은 순위 줄처럼 `나 (닉네임)`이고 닉네임이 없으면 `나`. 내 정보 비공개면 순위 자리에 `비공개 중`.
 class CourseMyRankCard extends StatelessWidget {
   const CourseMyRankCard(this.me, {super.key, required this.period});
 
@@ -165,7 +165,8 @@ class CourseMyRankCard extends StatelessWidget {
           MyCourseRanking(:final rank?) => '$rank',
           _ => CourseRankingStats.noValue,
         },
-        name: '나',
+        name: me.nickname == null ? '나' : '나 (${me.nickname})',
+        avatar: me.profileImageUrl == null ? null : NetworkImage(me.profileImageUrl!),
         meta: record ??
             (period == RankingPeriod.all ? '아직 완주 기록이 없어요' : '${courseRankingPeriodLabel(period)} 완주 기록이 없어요'),
         value: switch (me.courseElapsedSeconds) {
