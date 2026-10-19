@@ -42,6 +42,15 @@ class FreeRunCalculatorTest {
         assertThat(result.paceSecondsPerKm()).isCloseTo(1000.0/3,within(.01));
         assertThat(result.elapsedPaceSecondsPerKm()).isCloseTo(1000,within(.01));
     }
+    @Test void segmentEndReasonIsKeptButNotValidated() {
+        // 사유(ROUTE_END·COURSE_ONLY)는 원본에 보존만 한다. 모르는 값이어도 기록 처리가 실패하지 않는다
+        for (String reason : new String[]{"ROUTE_END", "COURSE_ONLY", null, "route_end"}) {
+            var inputs=List.of(point(0,Kind.START,0,null,0),point(1,Kind.GPS,0,36.0,3),point(2,Kind.GPS,1000,36.00005,3),
+                new Input(3,Kind.SEGMENT_END,1000,start.plusMillis(1000),null,null,reason),
+                point(4,Kind.PAUSE,2000,null,0),point(5,Kind.END,3000,null,0));
+            assertThat(FreeRunCalculator.calculate(start,inputs).metrics().distanceM()).isPositive();
+        }
+    }
     @Test void segmentEndDoesNotChangeFreeRunResult() throws Exception {
         // 코스 구간 종료 입력은 자유 러닝 거리·시간·랩·통계에 영향이 없다(코스 판정 경계 전용)
         var mapper=JsonMapper.builder().findAndAddModules().build();
