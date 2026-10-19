@@ -6,6 +6,7 @@ import com.wadadak.run.internal.judging.CourseJudge.Judgement;
 import com.wadadak.run.internal.judging.CourseJudge.Reason;
 import com.wadadak.run.internal.judging.CourseTrackerTest.Run;
 import com.wadadak.run.internal.RunContracts.Kind;
+import com.wadadak.run.internal.RunContracts.Input;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -45,6 +46,20 @@ class CourseJudgeTest {
         assertThat(j.progressPercent()).isCloseTo(progress, within(0.005));
         assertThat(j.completed()).isEqualTo(completed);
         assertThat(j.reviewEligible()).isEqualTo(review);
+    }
+
+    @Test
+    void barometerSamplesDoNotChangeCourseJudgement() {
+        var original = new Run().at(0,0).walk(0,5000).event(Kind.END).inputs;
+        var withPressure = new ArrayList<Input>();
+        for (Input p : original) {
+            withPressure.add(new Input(withPressure.size(),p.kind(),p.elapsedMs(),p.measuredAt(),p.location(),p.accuracyM(),
+                p.reason(),p.speedMps(),p.speedAccuracyMps(),p.steps(),p.durationMs(),p.sampleEndMs(),p.altitudeM(),p.altitudeAccuracyM()));
+            if (p.kind() == Kind.GPS) withPressure.add(new Input(withPressure.size(),Kind.BAROMETER,p.elapsedMs(),p.measuredAt(),
+                null,null,null,null,null,null,null,p.elapsedMs(),null,null,1000.0,3));
+        }
+        var judge = new CourseJudge(JudgingConfig.DEFAULTS);
+        assertThat(judge.judge(K2,withPressure)).isEqualTo(judge.judge(K2,original));
     }
 
     // ---- 4장 완주 경계 ----

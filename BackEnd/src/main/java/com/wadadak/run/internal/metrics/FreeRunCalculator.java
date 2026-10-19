@@ -67,7 +67,13 @@ public final class FreeRunCalculator {
             lastMs = p.elapsedMs();
             if (v2) motion.add(p);
             switch (p.kind()) {
-                case START -> {}
+                case START, SEGMENT_END -> {}
+                case BAROMETER -> {
+                    if (p.pressureHpa()==null || !Double.isFinite(p.pressureHpa()) || p.pressureHpa()<=0 ||
+                        p.pressureAccuracy()==null || p.pressureAccuracy()<0 || p.pressureAccuracy()>3 ||
+                        p.sampleEndMs()==null || p.sampleEndMs()<0 || p.sampleEndMs()>p.elapsedMs() ||
+                        p.elapsedMs()-p.sampleEndMs()>2000) invalid();
+                }
                 case CADENCE -> {
                     if (p.steps()==null || p.durationMs()==null || p.durationMs()<=0 || p.durationMs()>10000 || p.steps()<0 || p.steps()*1000L>p.durationMs()*5) invalid();
                     long sampleEnd = p.sampleEndMs()==null?p.elapsedMs():p.sampleEndMs();

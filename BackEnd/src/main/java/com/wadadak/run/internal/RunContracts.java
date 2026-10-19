@@ -9,12 +9,15 @@ import java.util.UUID;
 
 public final class RunContracts {
     private RunContracts() {}
-    public enum Kind { START, GPS, PAUSE, RESUME, GAP, SEGMENT_END, END, CADENCE }
+    public enum Kind { START, GPS, PAUSE, RESUME, GAP, SEGMENT_END, END, CADENCE, BAROMETER }
     public record Prepare(@NotNull Instant startedAt, @Pattern(regexp="FREE") String mode) {}
     public record Input(@Min(0) long seq, @NotNull Kind kind, @Min(0) long elapsedMs,
                         @NotNull Instant measuredAt, GeoPoint location, Double accuracyM,
                         @Size(max=40) String reason, Double speedMps, Double speedAccuracyMps, Integer steps, Long durationMs, Long sampleEndMs,
-                        Double altitudeM, Double altitudeAccuracyM) {
+                        Double altitudeM, Double altitudeAccuracyM, Double pressureHpa, Integer pressureAccuracy) {
+        public Input(long seq, Kind kind, long elapsedMs, Instant measuredAt, GeoPoint location, Double accuracyM, String reason, Double speedMps, Double speedAccuracyMps, Integer steps, Long durationMs, Long sampleEndMs, Double altitudeM, Double altitudeAccuracyM) {
+            this(seq,kind,elapsedMs,measuredAt,location,accuracyM,reason,speedMps,speedAccuracyMps,steps,durationMs,sampleEndMs,altitudeM,altitudeAccuracyM,null,null);
+        }
         // Existing sources and stored GPS payloads remain valid without altitude.
         public Input(long seq, Kind kind, long elapsedMs, Instant measuredAt, GeoPoint location, Double accuracyM, String reason, Double speedMps, Double speedAccuracyMps, Integer steps, Long durationMs, Long sampleEndMs) {
             this(seq,kind,elapsedMs,measuredAt,location,accuracyM,reason,speedMps,speedAccuracyMps,steps,durationMs,sampleEndMs,null,null);
@@ -60,7 +63,11 @@ public final class RunContracts {
         }
     }
     public record ResultStats(String version, Double elevationGainM, boolean elevationPartial,
-                              Integer bestLapNumber, Double bestLapPaceSecondsPerKm, Double bestPaceSecondsPerKm) {}
+                              Integer bestLapNumber, Double bestLapPaceSecondsPerKm, Double bestPaceSecondsPerKm, String elevationSource) {
+        public ResultStats(String version, Double elevationGainM, boolean elevationPartial, Integer bestLapNumber, Double bestLapPaceSecondsPerKm, Double bestPaceSecondsPerKm) {
+            this(version,elevationGainM,elevationPartial,bestLapNumber,bestLapPaceSecondsPerKm,bestPaceSecondsPerKm,null);
+        }
+    }
     public record Lap(int number, double distanceM, long movingMs, long elapsedMs, boolean complete, Double paceSecondsPerKm) {}
     public record Deleted(UUID id, boolean deleted) {}
     public record RecordSummary(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt,

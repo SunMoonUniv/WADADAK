@@ -241,6 +241,14 @@ class FreeRunResultView extends StatelessWidget {
                       '상승 고도를 계산할 고도 측정 데이터가 없어요.',
                       style: WdText.ko12.copyWith(color: WdColors.muted),
                     ),
+                  if (run.resultStats?.elevationSource == 'BAROMETER' ||
+                      run.resultStats?.elevationSource == 'MIXED')
+                    Text(
+                      run.resultStats?.elevationSource == 'BAROMETER'
+                          ? '기압 센서로 측정한 상승 고도예요.'
+                          : '구간별로 기압 센서와 GPS 고도를 사용했어요.',
+                      style: WdText.ko12.copyWith(color: WdColors.muted),
+                    ),
                   if (run.resultStats?.elevationPartial == true)
                     const WdInfoBanner(
                       '상승 고도는 고도가 측정된 일부 구간만 포함해요.',

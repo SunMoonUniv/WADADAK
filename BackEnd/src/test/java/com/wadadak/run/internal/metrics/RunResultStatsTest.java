@@ -25,7 +25,7 @@ class RunResultStatsTest {
                     .isCloseTo(expected.get(key).asDouble(), within(.000001));
             }
             assertThat(actual.get("elevationPartial").asBoolean()).as(c.get("name").asString()).isEqualTo(expected.get("elevationPartial").asBoolean());
-            assertThat(result.stats().version()).isEqualTo("RESULT_V2");
+            assertThat(result.stats().version()).isEqualTo(RunResultStatsCalculator.VERSION);
             var withoutAltitude = inputs.stream().map(p -> new Input(p.seq(),p.kind(),p.elapsedMs(),p.measuredAt(),p.location(),p.accuracyM(),p.reason(),p.speedMps(),p.speedAccuracyMps(),p.steps(),p.durationMs(),p.sampleEndMs())).toList();
             var original = FreeRunCalculator.calculate(Instant.parse(c.get("startedAt").asString()), withoutAltitude);
             assertThat(result.metrics()).isEqualTo(original.metrics());

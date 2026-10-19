@@ -7,7 +7,17 @@ import 'run_result_stats.dart';
 
 enum RunPhase { running, paused, ended }
 
-enum RunKind { start, gps, pause, resume, gap, end, cadence }
+enum RunKind {
+  start,
+  gps,
+  pause,
+  resume,
+  gap,
+  segmentEnd,
+  end,
+  cadence,
+  barometer,
+}
 
 class RunInput {
   const RunInput({
@@ -26,10 +36,14 @@ class RunInput {
     this.sampleEndMs,
     this.altitudeM,
     this.altitudeAccuracyM,
+    this.pressureHpa,
+    this.pressureAccuracy,
   });
   factory RunInput.fromJson(Map<String, dynamic> j) => RunInput(
     seq: j['seq'] as int,
-    kind: RunKind.values.byName((j['kind'] as String).toLowerCase()),
+    kind: j['kind'] == 'SEGMENT_END'
+        ? RunKind.segmentEnd
+        : RunKind.values.byName((j['kind'] as String).toLowerCase()),
     elapsedMs: j['elapsedMs'] as int,
     measuredAt: DateTime.parse(j['measuredAt'] as String),
     lat: (j['location']?['lat'] as num?)?.toDouble(),
@@ -43,6 +57,8 @@ class RunInput {
     sampleEndMs: (j['sampleEndMs'] as num?)?.toInt(),
     altitudeM: (j['altitudeM'] as num?)?.toDouble(),
     altitudeAccuracyM: (j['altitudeAccuracyM'] as num?)?.toDouble(),
+    pressureHpa: (j['pressureHpa'] as num?)?.toDouble(),
+    pressureAccuracy: (j['pressureAccuracy'] as num?)?.toInt(),
   );
   final int seq, elapsedMs;
   final int? steps, durationMs, sampleEndMs;
@@ -54,6 +70,10 @@ class RunInput {
 
   /// Optional raw vertical measurements in metres; never used for horizontal pace.
   final double? altitudeM, altitudeAccuracyM;
+
+  /// Raw hPa and Android accuracy status (0..3); status is not an error in metres.
+  final double? pressureHpa;
+  final int? pressureAccuracy;
   bool get good =>
       kind == RunKind.gps &&
       lat != null &&
@@ -68,7 +88,9 @@ class RunInput {
       accuracyM! <= 30;
   Map<String, dynamic> toJson() => {
     'seq': seq,
-    'kind': kind.name.toUpperCase(),
+    'kind': kind == RunKind.segmentEnd
+        ? 'SEGMENT_END'
+        : kind.name.toUpperCase(),
     'elapsedMs': elapsedMs,
     'measuredAt': measuredAt.toUtc().toIso8601String(),
     if (lat != null && lng != null) 'location': {'lat': lat, 'lng': lng},
@@ -81,6 +103,8 @@ class RunInput {
     if (sampleEndMs != null) 'sampleEndMs': sampleEndMs,
     if (altitudeM != null) 'altitudeM': altitudeM,
     if (altitudeAccuracyM != null) 'altitudeAccuracyM': altitudeAccuracyM,
+    if (pressureHpa != null) 'pressureHpa': pressureHpa,
+    if (pressureAccuracy != null) 'pressureAccuracy': pressureAccuracy,
   };
   double distanceTo(RunInput other) {
     const radius = 6371008.8;
@@ -252,6 +276,8 @@ class RunCalculator {
     lastMs = input.elapsedMs;
     switch (input.kind) {
       case RunKind.start:
+      case RunKind.segmentEnd:
+      case RunKind.barometer:
         break;
       case RunKind.cadence:
         if (!paused &&

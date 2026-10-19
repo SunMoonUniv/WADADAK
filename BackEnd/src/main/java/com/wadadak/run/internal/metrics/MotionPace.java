@@ -25,7 +25,7 @@ final class MotionPace {
         if (ended) return;
         if (p.kind() != Kind.GPS) {
             // 코스 구간 종료(SEGMENT_END)는 코스 판정 경계일 뿐 자유 러닝 이동·정지와 무관하다
-            if (p.kind() == Kind.START || p.kind() == Kind.CADENCE || p.kind() == Kind.SEGMENT_END) return;
+            if (p.kind() == Kind.START || p.kind() == Kind.CADENCE || p.kind() == Kind.BAROMETER || p.kind() == Kind.SEGMENT_END) return;
             closeStop(p.kind() == Kind.GAP ? previous == null ? null : previous.elapsedMs() : p.elapsedMs());
             resetWindow();
             if (p.kind() == Kind.PAUSE) paused = true;

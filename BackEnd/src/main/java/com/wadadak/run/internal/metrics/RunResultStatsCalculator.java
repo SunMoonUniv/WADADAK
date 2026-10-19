@@ -6,9 +6,9 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-/** RESULT_V2. Keep thresholds, interpolation and tie handling identical to Dart. */
+/** RESULT_V3. Keep thresholds, interpolation and tie handling identical to Dart. */
 public final class RunResultStatsCalculator {
-    public static final String VERSION = "RESULT_V2";
+    public static final String VERSION = "RESULT_V3";
     static ResultStats calculate(List<Input> inputs, List<List<Input>> segments, List<Lap> laps) {
         if (inputs.isEmpty() || !"PACE_V2".equals(inputs.getFirst().reason())) {
             MotionPace motion = new MotionPace();
@@ -29,7 +29,9 @@ public final class RunResultStatsCalculator {
         }
         Double bestPace = null;
         double distance = 0, covered = 0, gain = 0;
-        boolean measured = false;
+        boolean measured = false, usedPressure = false, usedGps = false;
+        List<Input> pressure = pressureSamples(inputs);
+        int pressureIndex = 0;
         for (List<Input> segment : segments) {
             if (segment.isEmpty()) continue;
             double[] distances = new double[segment.size()];
@@ -45,6 +47,14 @@ public final class RunResultStatsCalculator {
                         if (bestPace == null || pace < bestPace) bestPace = pace;
                     }
                 }
+            }
+            while (pressureIndex < pressure.size() && pressure.get(pressureIndex).sampleEndMs() < segment.getFirst().elapsedMs()) pressureIndex++;
+            int pressureStart = pressureIndex;
+            while (pressureIndex < pressure.size() && pressure.get(pressureIndex).sampleEndMs() <= segment.getLast().elapsedMs()) pressureIndex++;
+            ElevationResult barometer = barometerElevation(pressure.subList(pressureStart,pressureIndex),segment,distances);
+            if (barometer.gainM() != null) {
+                measured = true; usedPressure = true; covered += barometer.coveredM(); gain += barometer.gainM();
+                continue;
             }
             List<Input> block = new ArrayList<>();
             double blockDistance = 0;
@@ -65,7 +75,7 @@ public final class RunResultStatsCalculator {
                 }
                 if (!usable || jump) {
                     if (block.size() >= 3 && block.getLast().elapsedMs() - block.getFirst().elapsedMs() >= 2000) {
-                        measured = true; covered += blockDistance; gain += gain(block);
+                        measured = true; usedGps = true; covered += blockDistance; gain += gain(gpsPoints(block),false);
                     }
                     block.clear(); blockDistance = 0;
                     continue;
@@ -76,7 +86,8 @@ public final class RunResultStatsCalculator {
         }
         return new ResultStats(VERSION, measured ? gain : null,
             measured && (!gaps.isEmpty() || covered + .001 < distance), best == null ? null : best.number(),
-            best == null ? null : best.paceSecondsPerKm(), bestPace);
+            best == null ? null : best.paceSecondsPerKm(), bestPace,
+            usedPressure ? (usedGps ? "MIXED" : "BAROMETER") : (usedGps ? "GPS" : null));
     }
 
     private static double distanceAt(List<Input> points, double[] distances, long ms) {
@@ -113,19 +124,72 @@ public final class RunResultStatsCalculator {
         return result;
     }
 
-    private static double gain(List<Input> points) {
+    private record ElevationPoint(long elapsedMs, double height, Double accuracyM, double distanceM) {}
+    private record ElevationResult(Double gainM, double coveredM) {}
+    private static List<Input> pressureSamples(List<Input> inputs) {
+        List<Input> samples = new ArrayList<>();
+        boolean paused = false;
+        long boundary = 0, previous = -1;
+        for (Input p : inputs) {
+            if (p.kind() == Kind.PAUSE) paused = true;
+            if (p.kind() == Kind.RESUME) paused = false;
+            if (p.kind() == Kind.PAUSE || p.kind() == Kind.RESUME || p.kind() == Kind.GAP) boundary = p.elapsedMs();
+            if (p.kind() != Kind.BAROMETER || paused) continue;
+            Long ms = p.sampleEndMs();
+            if (ms == null || ms < boundary || ms <= previous || ms > p.elapsedMs() || p.elapsedMs()-ms > 2000) continue;
+            previous = ms;
+            samples.add(p);
+        }
+        return samples;
+    }
+    private static ElevationResult barometerElevation(List<Input> samples, List<Input> segment, double[] distances) {
+        List<ElevationPoint> block = new ArrayList<>();
+        double gain = 0, covered = 0;
+        boolean measured = false;
+        for (int i = 0; i <= samples.size(); i++) {
+            Input p = i == samples.size() ? null : samples.get(i);
+            boolean usable = p != null && p.pressureHpa() != null && Double.isFinite(p.pressureHpa()) &&
+                p.pressureHpa() >= 300 && p.pressureHpa() <= 1100 && p.pressureAccuracy() != null && p.pressureAccuracy() >= 1 && p.pressureAccuracy() <= 3;
+            double height = usable ? 44330.0 * (1 - Math.pow(p.pressureHpa()/1013.25,1/5.255)) : 0;
+            boolean jump = false;
+            if (usable && !block.isEmpty()) {
+                long dt = p.sampleEndMs()-block.getLast().elapsedMs();
+                jump = dt <= 0 || dt > 10000 || Math.abs(height-block.getLast().height())*1000/dt > 3;
+            }
+            if (!usable || jump) {
+                if (block.size() >= 3 && block.getLast().elapsedMs()-block.getFirst().elapsedMs() >= 2000) {
+                    measured = true; gain += gain(block,true); covered += block.getLast().distanceM()-block.getFirst().distanceM();
+                }
+                block.clear();
+                continue;
+            }
+            block.add(new ElevationPoint(p.sampleEndMs(),height,null,distanceAt(segment,distances,p.sampleEndMs())));
+        }
+        return new ElevationResult(measured ? gain : null, covered);
+    }
+    private static List<ElevationPoint> gpsPoints(List<Input> points) {
+        List<ElevationPoint> result = new ArrayList<>();
+        double distance = 0;
+        for (int i = 0; i < points.size(); i++) {
+            Input p = points.get(i);
+            if (i > 0) distance += FreeRunCalculator.distance(points.get(i-1).location(),p.location());
+            result.add(new ElevationPoint(p.elapsedMs(),p.altitudeM(),p.altitudeAccuracyM(),distance));
+        }
+        return result;
+    }
+    private static double gain(List<ElevationPoint> points, boolean barometric) {
         List<Double> heights = new ArrayList<>();
         List<Double> errors = new ArrayList<>();
         List<Double> distances = new ArrayList<>();
         int low = 0, high = 0;
-        for (Input p : points) {
+        for (ElevationPoint p : points) {
             while (points.get(low).elapsedMs() < p.elapsedMs() - 2500) low++;
             while (high < points.size() && points.get(high).elapsedMs() <= p.elapsedMs() + 2500) high++;
             List<Double> window = new ArrayList<>();
             Double error = 0.0;
             for (int i = low; i < high; i++) {
-                window.add(points.get(i).altitudeM());
-                Double accuracy = points.get(i).altitudeAccuracyM();
+                window.add(points.get(i).height());
+                Double accuracy = points.get(i).accuracyM();
                 if (accuracy == null || accuracy <= 0) error = null;
                 else if (error != null) error = Math.max(error, accuracy);
             }
@@ -133,8 +197,7 @@ public final class RunResultStatsCalculator {
             int m = window.size() / 2;
             heights.add(window.size() % 2 == 1 ? window.get(m) : (window.get(m - 1) + window.get(m)) / 2);
             errors.add(error);
-            int index = heights.size() - 1;
-            distances.add(index == 0 ? 0.0 : distances.getLast() + FreeRunCalculator.distance(points.get(index - 1).location(), p.location()));
+            distances.add(p.distanceM());
         }
         double total = 0;
         int initialEnd = -1;
@@ -155,33 +218,34 @@ public final class RunResultStatsCalculator {
             if (peak == null) peak = crest;
             if (!rising) {
                 if (heights.get(floor) < heights.get(valley)) valley = floor;
-                if (heights.get(crest) - heights.get(valley) >= threshold(errors,valley,crest) && supported(points,distances,valley,crest)) {
+                if (heights.get(crest) - heights.get(valley) >= threshold(barometric,errors,valley,crest) && supported(points,distances,valley,crest)) {
                     rising = true; peak = crest;
                 }
             } else {
                 if (heights.get(crest) > heights.get(peak)) peak = crest;
-                if (heights.get(peak) - heights.get(floor) >= threshold(errors,peak,floor) && supported(points,distances,peak,floor)) {
-                    if (heights.get(peak) - heights.get(valley) >= threshold(errors,valley,peak)) total += heights.get(peak) - heights.get(valley);
+                if (heights.get(peak) - heights.get(floor) >= threshold(barometric,errors,peak,floor) && supported(points,distances,peak,floor)) {
+                    if (heights.get(peak) - heights.get(valley) >= threshold(barometric,errors,valley,peak)) total += heights.get(peak) - heights.get(valley);
                     valley = floor; peak = crest; rising = false;
                 }
             }
         }
         int last = heights.size() - 1;
         if (valley != null && steadyRise(points,distances,heights,stableStart,last) &&
-            heights.get(last) - heights.get(valley) >= threshold(errors,valley,last) && supported(points,distances,valley,last)) {
+            heights.get(last) - heights.get(valley) >= threshold(barometric,errors,valley,last) && supported(points,distances,valley,last)) {
             if (!rising || peak == null || heights.get(last) > heights.get(peak)) { rising = true; peak = last; }
         }
-        return total + (rising && peak != null && valley != null && heights.get(peak) - heights.get(valley) >= threshold(errors,valley,peak)
+        return total + (rising && peak != null && valley != null && heights.get(peak) - heights.get(valley) >= threshold(barometric,errors,valley,peak)
             ? heights.get(peak) - heights.get(valley) : 0);
     }
-    private static double threshold(List<Double> errors, int a, int b) {
+    private static double threshold(boolean barometric, List<Double> errors, int a, int b) {
+        if (barometric) return 1.5;
         return Math.max(errors.get(a) == null || errors.get(b) == null ? 10 : 1.5,
             (errors.get(a) == null ? 0 : errors.get(a)) + (errors.get(b) == null ? 0 : errors.get(b)));
     }
-    private static boolean supported(List<Input> points, List<Double> distances, int from, int to) {
+    private static boolean supported(List<ElevationPoint> points, List<Double> distances, int from, int to) {
         return points.get(to).elapsedMs() - points.get(from).elapsedMs() >= 5000 && distances.get(to) - distances.get(from) >= 5;
     }
-    private static boolean steadyRise(List<Input> points, List<Double> distances, List<Double> heights, int from, int to) {
+    private static boolean steadyRise(List<ElevationPoint> points, List<Double> distances, List<Double> heights, int from, int to) {
         if (!supported(points,distances,from,to)) return false;
         int increases = 0;
         Integer firstIncrease = null;

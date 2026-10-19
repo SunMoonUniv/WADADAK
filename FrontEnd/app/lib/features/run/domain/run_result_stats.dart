@@ -4,18 +4,20 @@ import 'recording_models.dart' as recording;
 import 'motion_pace.dart';
 import 'run_lap.dart';
 
-/// RESULT_V2 changes elevation only; historical distance/time/laps stay intact.
+/// RESULT_V3 adds barometric elevation only; historical distance/time/laps stay intact.
 class RunResultStats {
-  static const currentVersion = 'RESULT_V2';
+  static const currentVersion = 'RESULT_V3';
   const RunResultStats({
     this.version = currentVersion,
     this.elevationGainM,
     this.elevationPartial = false,
+    this.elevationSource,
     this.bestLapNumber,
     this.bestLapPaceSecondsPerKm,
     this.bestPaceSecondsPerKm,
   });
   final String version;
+  final String? elevationSource;
   final double? elevationGainM, bestLapPaceSecondsPerKm, bestPaceSecondsPerKm;
   final bool elevationPartial;
   final int? bestLapNumber;
@@ -24,6 +26,7 @@ class RunResultStats {
     version: j['version'] as String? ?? 'RESULT_V1',
     elevationGainM: (j['elevationGainM'] as num?)?.toDouble(),
     elevationPartial: j['elevationPartial'] == true,
+    elevationSource: j['elevationSource'] as String?,
     bestLapNumber: (j['bestLapNumber'] as num?)?.toInt(),
     bestLapPaceSecondsPerKm: (j['bestLapPaceSecondsPerKm'] as num?)?.toDouble(),
     bestPaceSecondsPerKm: (j['bestPaceSecondsPerKm'] as num?)?.toDouble(),
@@ -32,6 +35,7 @@ class RunResultStats {
     'version': version,
     'elevationGainM': elevationGainM,
     'elevationPartial': elevationPartial,
+    'elevationSource': elevationSource,
     'bestLapNumber': bestLapNumber,
     'bestLapPaceSecondsPerKm': bestLapPaceSecondsPerKm,
     'bestPaceSecondsPerKm': bestPaceSecondsPerKm,
@@ -69,7 +73,9 @@ class RunResultStats {
 
     double? bestPace;
     var totalDistance = 0.0, coveredDistance = 0.0, gain = 0.0;
-    var measured = false;
+    var measured = false, usedPressure = false, usedGps = false;
+    final pressure = _pressureSamples(inputs);
+    var pressureIndex = 0;
     for (final segment in segments) {
       // Each segment is already confirmed movement, split at stops/pauses/gaps.
       final distances = <double>[0];
@@ -109,14 +115,36 @@ class RunResultStats {
         }
       }
 
+      // Select one source per continuous movement segment, never join datum offsets.
+      while (pressureIndex < pressure.length &&
+          pressure[pressureIndex].sampleEndMs! < segment.first.elapsedMs) {
+        pressureIndex++;
+      }
+      final pressureStart = pressureIndex;
+      while (pressureIndex < pressure.length &&
+          pressure[pressureIndex].sampleEndMs! <= segment.last.elapsedMs) {
+        pressureIndex++;
+      }
+      final barometer = _barometerElevation(
+        pressure.sublist(pressureStart, pressureIndex),
+        distanceAt,
+      );
+      if (barometer.gainM != null) {
+        measured = true;
+        usedPressure = true;
+        coveredDistance += barometer.coveredM;
+        gain += barometer.gainM!;
+        continue;
+      }
       var block = <recording.RunInput>[];
       var blockDistance = 0.0;
       void finishBlock() {
         if (block.length >= 3 &&
             block.last.elapsedMs - block.first.elapsedMs >= 2000) {
           measured = true;
+          usedGps = true;
           coveredDistance += blockDistance;
-          gain += _gain(block);
+          gain += _gain(_gpsPoints(block));
         }
         block = [];
         blockDistance = 0;
@@ -154,6 +182,9 @@ class RunResultStats {
     }
     return RunResultStats(
       elevationGainM: measured ? gain : null,
+      elevationSource: usedPressure
+          ? (usedGps ? 'MIXED' : 'BAROMETER')
+          : (usedGps ? 'GPS' : null),
       elevationPartial:
           measured &&
           (gaps.isNotEmpty || coveredDistance + .001 < totalDistance),
@@ -200,9 +231,98 @@ class RunResultStats {
     return result;
   }
 
-  static double _gain(List<recording.RunInput> points) {
-    // Keep the 5s median and raw quality checks. Resolve small hills only when
-    // the rise exceeds both endpoint error estimates and persists for 5s/5m.
+  static List<recording.RunInput> _pressureSamples(
+    List<recording.RunInput> inputs,
+  ) {
+    final samples = <recording.RunInput>[];
+    var paused = false, boundary = 0, previous = -1;
+    for (final p in inputs) {
+      if (p.kind == recording.RunKind.pause) paused = true;
+      if (p.kind == recording.RunKind.resume) paused = false;
+      if (p.kind == recording.RunKind.pause ||
+          p.kind == recording.RunKind.resume ||
+          p.kind == recording.RunKind.gap) {
+        boundary = p.elapsedMs;
+      }
+      if (p.kind != recording.RunKind.barometer || paused) continue;
+      final ms = p.sampleEndMs;
+      if (ms == null ||
+          ms < boundary ||
+          ms <= previous ||
+          ms > p.elapsedMs ||
+          p.elapsedMs - ms > 2000) {
+        continue;
+      }
+      previous = ms;
+      samples.add(p);
+    }
+    return samples;
+  }
+
+  static _ElevationResult _barometerElevation(
+    List<recording.RunInput> samples,
+    double Function(int) distanceAt,
+  ) {
+    var block = <_ElevationPoint>[];
+    var gain = 0.0, covered = 0.0;
+    var measured = false;
+    void finish() {
+      if (block.length >= 3 &&
+          block.last.elapsedMs - block.first.elapsedMs >= 2000) {
+        measured = true;
+        gain += _gain(block, barometric: true);
+        covered += block.last.distanceM - block.first.distanceM;
+      }
+      block = [];
+    }
+
+    for (final p in samples) {
+      final pressure = p.pressureHpa;
+      final accuracy = p.pressureAccuracy;
+      if (pressure == null ||
+          !pressure.isFinite ||
+          pressure < 300 ||
+          pressure > 1100 ||
+          accuracy == null ||
+          accuracy < 1 ||
+          accuracy > 3) {
+        finish();
+        continue;
+      }
+      // Standard atmosphere is sufficient for differences; this is not GPS altitude.
+      final height = 44330.0 * (1 - math.pow(pressure / 1013.25, 1 / 5.255));
+      final ms = p.sampleEndMs!;
+      if (block.isNotEmpty) {
+        final dt = ms - block.last.elapsedMs;
+        if (dt <= 0 ||
+            dt > 10000 ||
+            (height - block.last.height).abs() * 1000 / dt > 3) {
+          finish();
+          continue;
+        }
+      }
+      block.add(_ElevationPoint(ms, height, null, distanceAt(ms)));
+    }
+    finish();
+    return _ElevationResult(measured ? gain : null, covered);
+  }
+
+  static List<_ElevationPoint> _gpsPoints(List<recording.RunInput> points) {
+    var distance = 0.0;
+    return [
+      for (var i = 0; i < points.length; i++)
+        _ElevationPoint(
+          points[i].elapsedMs,
+          points[i].altitudeM!,
+          points[i].altitudeAccuracyM,
+          i == 0 ? 0 : distance += points[i - 1].distanceTo(points[i]),
+        ),
+    ];
+  }
+
+  static double _gain(List<_ElevationPoint> points, {bool barometric = false}) {
+    // Keep the 5s median and persistence checks for both sources. GPS also
+    // requires a rise exceeding its endpoint errors; pressure uses 1.5m.
     var low = 0, high = 0;
     final heights = <double>[];
     final errors = <double?>[];
@@ -216,7 +336,7 @@ class RunResultStats {
         high++;
       }
       final samples = points.sublist(low, high);
-      final window = samples.map((p) => p.altitudeM!).toList()..sort();
+      final window = samples.map((p) => p.height).toList()..sort();
       final m = window.length ~/ 2;
       heights.add(
         window.length.isOdd ? window[m] : (window[m - 1] + window[m]) / 2,
@@ -224,19 +344,18 @@ class RunResultStats {
       // Missing/zero accuracy is unknown, not perfect precision. Use the largest
       // reported error in the smoothing window rather than averaging it away.
       errors.add(
-        samples.any(
-              (p) => p.altitudeAccuracyM == null || p.altitudeAccuracyM! <= 0,
-            )
+        samples.any((p) => p.accuracyM == null || p.accuracyM! <= 0)
             ? null
-            : samples.map((p) => p.altitudeAccuracyM!).reduce(math.max),
+            : samples.map((p) => p.accuracyM!).reduce(math.max),
       );
-      final i = heights.length - 1;
-      distances.add(i == 0 ? 0 : distances.last + points[i - 1].distanceTo(p));
+      distances.add(p.distanceM);
     }
-    double threshold(int a, int b) => math.max(
-      errors[a] == null || errors[b] == null ? 10 : 1.5,
-      (errors[a] ?? 0) + (errors[b] ?? 0),
-    );
+    double threshold(int a, int b) => barometric
+        ? 1.5
+        : math.max(
+            errors[a] == null || errors[b] == null ? 10 : 1.5,
+            (errors[a] ?? 0) + (errors[b] ?? 0),
+          );
     bool supported(int from, int to) =>
         points[to].elapsedMs - points[from].elapsedMs >= 5000 &&
         distances[to] - distances[from] >= 5;
@@ -328,4 +447,22 @@ class RunResultStats {
             ? heights[peak] - heights[valley]
             : 0);
   }
+}
+
+class _ElevationPoint {
+  const _ElevationPoint(
+    this.elapsedMs,
+    this.height,
+    this.accuracyM,
+    this.distanceM,
+  );
+  final int elapsedMs;
+  final double height, distanceM;
+  final double? accuracyM;
+}
+
+class _ElevationResult {
+  const _ElevationResult(this.gainM, this.coveredM);
+  final double? gainM;
+  final double coveredM;
 }

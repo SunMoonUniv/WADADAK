@@ -57,6 +57,7 @@ void main() {
                 run: snapshot(
                   const RunResultStats(
                     elevationGainM: 42,
+                    elevationSource: 'BAROMETER',
                     elevationPartial: true,
                     bestLapNumber: 3,
                     bestLapPaceSecondsPerKm: 310,
@@ -70,6 +71,7 @@ void main() {
         ),
       );
       expect(find.text('42 m'), findsOneWidget);
+      expect(find.text('기압 센서로 측정한 상승 고도예요.'), findsOneWidget);
       expect(find.text('2–3 km'), findsOneWidget);
       expect(find.text('4′35″'), findsOneWidget);
       expect(find.text('최고 구간 페이스 5′10″/km'), findsOneWidget);

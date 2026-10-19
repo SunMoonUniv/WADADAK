@@ -51,6 +51,26 @@ class RunDevice {
     if (Platform.isAndroid) await _channel.invokeMethod<void>('stopSteps');
   }
 
+  Future<bool> startPressure() async {
+    if (!Platform.isAndroid) return false;
+    try {
+      return await _channel.invokeMethod<bool>('startPressure') ?? false;
+    } on MissingPluginException {
+      return false;
+    } on PlatformException {
+      return false;
+    }
+  }
+
+  Future<Map<String, dynamic>?> samplePressure() async {
+    if (!Platform.isAndroid) return null;
+    return _channel.invokeMapMethod<String, dynamic>('samplePressure');
+  }
+
+  Future<void> stopPressure() async {
+    if (Platform.isAndroid) await _channel.invokeMethod<void>('stopPressure');
+  }
+
   Future<void> close() async {
     if (Platform.isAndroid) await _channel.invokeMethod<void>('close');
   }

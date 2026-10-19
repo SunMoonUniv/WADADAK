@@ -19,6 +19,11 @@ void main() {
       final actual = calc.resultStats(inputs).toJson();
       final expected = c['expected'] as Map;
       for (final key in expected.keys) {
+        // Keep V2's historical fixture immutable while checking the current stats version.
+        if (key == 'version') {
+          expect(actual[key], RunResultStats.currentVersion);
+          continue;
+        }
         final value = expected[key];
         expect(
           actual[key],
