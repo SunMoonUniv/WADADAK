@@ -49,6 +49,8 @@ class RunIngestionTest {
     @Autowired MockMvc mvc;
     @Autowired ApplicationEventPublisher events;
     @Autowired TransactionTemplate tx;
+    @Autowired RunSessionRepository sessions;
+    @Autowired RunRecordRepository records;
     @MockitoBean RunProcessingWorker worker;
     final UUID owner=UUID.randomUUID(),id=UUID.randomUUID();
     final Instant start=Instant.parse("2026-10-12T00:00:00Z");
@@ -123,6 +125,59 @@ class RunIngestionTest {
         assertThat(db.queryForObject("SELECT count(*) FROM run.inputs",Long.class)).isEqualTo(1);
         assertThatThrownBy(()->runs.status(UUID.randomUUID(),id)).isInstanceOf(AppException.class);
         assertThatThrownBy(()->runs.prepare(UUID.randomUUID(),id,new Prepare(start,"FREE"))).isInstanceOf(AppException.class);
+    }
+    @Test void duplicatesWithinOneBatchAreIdempotentAndConflictingPayloadsAreRejected() {
+        Input changed=new Input(0,Kind.START,100,start.plusMillis(100),null,null,null);
+        assertThatThrownBy(()->runs.upload(owner,id,new Upload(9,List.of(inputs.get(1),inputs.getFirst(),changed))))
+            .isInstanceOf(AppException.class);
+        assertThat(db.queryForObject("SELECT count(*) FROM run.inputs WHERE session_id=?",Long.class,id)).isZero();
+        assertThat(runs.status(owner,id).processing()).isEqualTo("PREPARED");
+        assertThat(runs.upload(owner,id,new Upload(9,List.of(inputs.getFirst(),inputs.getFirst(),inputs.get(1)))).processing())
+            .isEqualTo("NEEDS_DATA");
+        assertThat(db.queryForObject("SELECT count(*) FROM run.inputs WHERE session_id=?",Long.class,id)).isEqualTo(2);
+        runs.upload(owner,id,new Upload(9,inputs));
+        runs.process(id);
+        assertThat(runs.status(owner,id).processing()).isEqualTo("DONE");
+        assertThat(db.queryForObject("SELECT count(*) FROM run.inputs WHERE session_id=?",Long.class,id)).isEqualTo(10);
+    }
+    @Test void jpaStateAndJdbcInputsCommitAndRollBackInTheSameTransaction() {
+        UUID newId=UUID.randomUUID();
+        assertThatThrownBy(()->tx.executeWithoutResult(status->{
+            runs.prepare(owner,newId,new Prepare(start,"FREE"));
+            runs.upload(owner,newId,new Upload(9,inputs));
+            runs.process(newId);
+            records.flush();
+            assertThat(db.queryForObject("SELECT count(*) FROM run.inputs WHERE session_id=?",Long.class,newId)).isEqualTo(10);
+            assertThat(db.queryForObject("SELECT processing FROM run.sessions WHERE id=?",String.class,newId)).isEqualTo("DONE");
+            assertThat(db.queryForObject("SELECT count(*) FROM run.records WHERE id=?",Long.class,newId)).isOne();
+            throw new IllegalStateException("rollback JPA and JDBC together");
+        })).isInstanceOf(IllegalStateException.class).hasMessage("rollback JPA and JDBC together");
+        assertThat(sessions.existsById(newId)).isFalse();
+        assertThat(records.existsById(newId)).isFalse();
+        assertThat(db.queryForObject("SELECT count(*) FROM run.inputs WHERE session_id=?",Long.class,newId)).isZero();
+
+        tx.executeWithoutResult(status->{
+            runs.prepare(owner,newId,new Prepare(start,"FREE"));
+            runs.upload(owner,newId,new Upload(9,inputs));
+            runs.process(newId);
+        });
+        assertThat(runs.status(owner,newId).processing()).isEqualTo("DONE");
+        assertThat(runs.result(owner,newId).metrics().distanceM()).isPositive();
+        assertThat(sessions.findById(newId).orElseThrow().getCreatedAt()).isNotNull();
+        assertThat(records.findById(newId).orElseThrow().getUpdatedAt()).isNotNull();
+    }
+    @Test void simultaneousFirstPreparationCreatesOneSessionAndKeepsOriginalStart() {
+        UUID newId=UUID.randomUUID();
+        try(var executor=Executors.newFixedThreadPool(2)) {
+            var first=CompletableFuture.supplyAsync(()->runs.prepare(owner,newId,new Prepare(start,"FREE")),executor);
+            var second=CompletableFuture.supplyAsync(()->runs.prepare(owner,newId,new Prepare(start,"FREE")),executor);
+            assertThat(first.join().processing()).isEqualTo("PREPARED");
+            assertThat(second.join().processing()).isEqualTo("PREPARED");
+        }
+        assertThat(db.queryForObject("SELECT count(*) FROM run.sessions WHERE id=?",Long.class,newId)).isOne();
+        assertThatThrownBy(()->runs.prepare(owner,newId,new Prepare(start.plusSeconds(1),"FREE")))
+            .isInstanceOf(AppException.class);
+        assertThat(sessions.findById(newId).orElseThrow().getStartedAt()).isEqualTo(start);
     }
     @Test void simultaneousRetriesAndWorkersRegisterOneRecord() {
         try (var executor = Executors.newFixedThreadPool(2)) {
