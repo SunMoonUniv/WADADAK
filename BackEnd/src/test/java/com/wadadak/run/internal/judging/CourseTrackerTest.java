@@ -203,6 +203,79 @@ class CourseTrackerTest {
     }
 
     @Test
+    void exactlyTenSecondsBetweenGpsSamplesStaysConnected() {
+        Run run = new Run().at(0, 0);
+        run.ms += 10_000;
+        run.y = 10;
+        run.gps(5.0);
+
+        List<Point> points = track(K1, run);
+        assertThat(points.getLast().connected()).isTrue();
+        assertThat(RecognizedDistance.of(points).meters()).isCloseTo(10, within(1e-6));
+    }
+
+    @Test
+    void moreThanTenSecondsBreaksConnectionAndNormalSamplingResumes() {
+        Run run = new Run().at(0, 0).walk(0, 100);
+        run.ms += 10_001;
+        run.y = 200;
+        run.gps(5.0);
+        run.walk(0, 205);
+
+        List<Point> points = track(K1, run);
+        assertThat(at(points, 200).connected()).isFalse();
+        assertThat(at(points, 205).connected()).isTrue();
+        assertThat(RecognizedDistance.of(points).meters()).isCloseTo(105, within(1e-6));
+    }
+
+    @Test
+    void nonGpsSensorEventsDoNotHideTheGpsGap() {
+        Run run = new Run().at(0, 0);
+        run.ms += 5_000;
+        run.event(Kind.CADENCE);
+        run.ms += 5_000;
+        run.event(Kind.BAROMETER);
+        run.ms += 1;
+        run.y = 20;
+        run.gps(5.0);
+
+        List<Point> points = track(K1, run);
+        assertThat(points.getLast().connected()).isFalse();
+        assertThat(RecognizedDistance.of(points).meters()).isZero();
+    }
+
+    @Test
+    void gapDiscardsUnresolvedLoopHypothesesBeforeResuming() {
+        Run run = new Run().at(0, 0); // loop start has s = 0 and s = 2,000 hypotheses
+        run.ms += 60_000;
+        run.x = 100;
+        run.gps(5.0);
+        run.walk(200, 0);
+
+        List<Point> points = track(K4, run);
+        assertThat(points.getFirst().s()).isNull();
+        assertThat(at(points, 100).connected()).isFalse();
+        assertThat(at(points, 105).connected()).isTrue();
+        assertThat(RecognizedDistance.of(points).meters()).isCloseTo(100, within(1e-6));
+    }
+
+    @Test
+    void loopPositionAfterGapIsResolvedWithoutUsingTheOldAnchor() {
+        Run run = new Run().at(0, 0).walk(500, 0).walk(500, 500).walk(0, 500).walk(0, 100);
+        run.ms += 60_000;
+        run.y = 0;
+        long resumedSeq = run.inputs.size();
+        run.gps(5.0);
+        run.walk(100, 0); // leave the 20m tolerance of the loop's closing segment
+
+        List<Point> points = track(K4, run);
+        Point resumed = points.stream().filter(point -> point.seq() == resumedSeq).findFirst().orElseThrow();
+        assertThat(resumed.s()).isCloseTo(0, within(1e-6));
+        assertThat(resumed.connected()).isFalse();
+        assertThat(RecognizedDistance.of(points).meters()).isCloseTo(1900, within(1e-6));
+    }
+
+    @Test
     void inputsAfterSegmentEndAreDropped() {
         List<Point> points = track(K1, new Run().at(0, 0).walk(0, 500).event(Kind.SEGMENT_END).walk(0, 1000));
 
