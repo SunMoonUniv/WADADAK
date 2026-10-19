@@ -255,7 +255,7 @@ Figma `디자인 · 전체 화면 (와이어프레임 기준)` 페이지의 섹�
 <details>
 <summary>💬 리뷰 · 커뮤니티 (4 / 4)</summary>
 
-- [x] B2 · 코스 리뷰 작성 — 진입은 G2 "리뷰 작성하기"(리뷰 자격이 있는 가장 최근 기록이 근거)
+- [x] B2 · 코스 리뷰 작성 — 진입은 마이페이지 내 기록에서 `openReviewWriter(context, ref, courseId:, courseName:)`(리뷰 자격이 있는 가장 최근 기록이 근거, 이미 썼으면 B10)
 - [x] G2 · 코스 리뷰 전체 — B8 "리뷰 N개 모두 보기"에서 `Routes.courseReviews(courseId)`, extra로 코스 이름
 - [x] B10 · 리뷰 수정
 - [x] B10-1 · 리뷰 수정 — 근거 기록 삭제됨

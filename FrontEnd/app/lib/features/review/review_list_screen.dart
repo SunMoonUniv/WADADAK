@@ -11,13 +11,10 @@ import 'review_form_screen.dart';
 import 'review_state.dart';
 import 'review_widgets.dart';
 
-/// 리뷰를 쓸 자격이 없을 때 "리뷰 작성하기"를 누르면 보이는 안내(정책 공통 5).
-const reviewEligibilityGuide = '이 코스를 한 번에 20% 이상(최소 1km) 달리면 리뷰를 쓸 수 있어요.';
-
 /// G2 · 코스 리뷰 전체. B8 "모두 보기"에서 연다.
 ///
 /// 위에서부터 평점 요약 · 내 리뷰(있을 때) · 다른 러너 리뷰 목록이다. 목록은 내 리뷰를 빼고 받는다.
-/// "리뷰 작성하기"는 늘 보인다: 내 리뷰가 있으면 수정(B10), 자격이 있으면 작성(B2), 없으면 안내.
+/// 리뷰 작성은 마이페이지 내 기록에서 `openReviewWriter`(review_entry.dart)로 연다. 여기서는 내 리뷰 수정 · 삭제만 한다.
 class ReviewListScreen extends ConsumerStatefulWidget {
   const ReviewListScreen({super.key, required this.courseId, required this.courseName});
 
@@ -47,27 +44,6 @@ class _ReviewListScreenState extends ConsumerState<ReviewListScreen> {
       await ref.read(reviewFeedProvider(_query).notifier).loadMore();
     } on Object catch (e) {
       if (mounted) showError(context, e, onRetry: _loadMore);
-    }
-  }
-
-  /// 내 리뷰가 있으면 B10, 자격이 있으면 B2, 없으면 안내.
-  void _write(MyReview? my) {
-    if (my == null) {
-      // 아직 못 받았거나 실패했다. 다시 받는다.
-      ref.invalidate(myReviewProvider(widget.courseId));
-      return;
-    }
-    if (my.review != null) {
-      _edit(my);
-    } else if (my.eligibleRecord case final record?) {
-      context.push(
-        Routes.reviewForm,
-        extra: ReviewFormArgs.write(courseId: widget.courseId, courseName: widget.courseName, record: record),
-      );
-    } else {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text(reviewEligibilityGuide)));
     }
   }
 
@@ -136,7 +112,13 @@ class _ReviewListScreenState extends ConsumerState<ReviewListScreen> {
                 },
                 child: ListView(
                   physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(WdSpace.s24, WdSpace.s20, WdSpace.s24, WdSpace.s24),
+                  // 아래 버튼 바가 없으니 시스템 내비게이션 바만큼 더 띄운다
+                  padding: EdgeInsets.fromLTRB(
+                    WdSpace.s24,
+                    WdSpace.s20,
+                    WdSpace.s24,
+                    WdSpace.s24 + MediaQuery.paddingOf(context).bottom,
+                  ),
                   children: [
                     ReviewSummaryCard(summary.value!),
                     if (my != null) ...[
@@ -228,18 +210,6 @@ class _ReviewListScreenState extends ConsumerState<ReviewListScreen> {
                 ),
               ),
             ),
-      bottomNavigationBar: DecoratedBox(
-        // Figma G2: 위 1px 선 · pt10 · pb18 · px16
-        decoration: const BoxDecoration(
-          color: WdColors.paper,
-          border: Border(top: BorderSide(color: WdColors.map)),
-        ),
-        child: SafeArea(
-          top: false,
-          minimum: const EdgeInsets.fromLTRB(WdSpace.s16, WdSpace.s10, WdSpace.s16, 18),
-          child: WdButton('리뷰 작성하기', onPressed: () => _write(mine.value)),
-        ),
-      ),
     );
   }
 }
