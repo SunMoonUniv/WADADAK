@@ -8,6 +8,8 @@ import 'package:wadadak/core/api/upload_form.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/map/map_view.dart';
 import 'package:wadadak/core/upload/photo_uploader.dart';
+import 'package:wadadak/features/home/home_screen.dart';
+import 'package:wadadak/features/review/review_entry.dart';
 import 'package:wadadak/main.dart';
 import 'package:wadadak/router.dart';
 import 'package:wadadak/routes.dart';
@@ -133,8 +135,8 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  /// 로그인한 앱을 띄우고 G2로 간다(B8 "모두 보기"가 하는 일).
-  Future<void> openReviews(WidgetTester tester) async {
+  /// 로그인한 앱을 띄운다(홈).
+  Future<void> openApp(WidgetTester tester) async {
     tester.view
       ..physicalSize = const Size(402, 874)
       ..devicePixelRatio = 1;
@@ -153,9 +155,23 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+  }
+
+  /// 로그인한 앱을 띄우고 G2로 간다(B8 "모두 보기"가 하는 일).
+  Future<void> openReviews(WidgetTester tester) async {
+    await openApp(tester);
     ProviderScope.containerOf(tester.element(find.byType(WadadakApp)))
         .read(routerProvider)
         .push(Routes.courseReviews(_course), extra: _courseName);
+    await tester.pumpAndSettle();
+  }
+
+  /// 다른 화면(마이페이지 내 기록 등)이 하듯 홈에서 [openReviewWriter]를 부른다.
+  Future<void> openWriter(WidgetTester tester) async {
+    await openApp(tester);
+    // Consumer 화면의 Element가 곧 WidgetRef다
+    final home = tester.element(find.byType(HomeScreen));
+    openReviewWriter(home, home as WidgetRef, courseId: _course, courseName: _courseName).ignore();
     await tester.pumpAndSettle();
   }
 
@@ -188,21 +204,36 @@ void main() {
     );
   });
 
-  testWidgets('without eligibility the write button explains how to get it', (tester) async {
+  testWidgets('G2 has no write button even when I can write one', (tester) async {
+    // 리뷰 작성은 마이페이지 내 기록에서 openReviewWriter로 연다
+    api.my = {...api.my, 'eligibleRecord': _record};
     await openReviews(tester);
 
-    await tap(tester, find.text('리뷰 작성하기'));
+    expect(find.text('리뷰 작성하기'), findsNothing);
+  });
 
-    expect(find.text('이 코스를 한 번에 20% 이상(최소 1km) 달리면 리뷰를 쓸 수 있어요.'), findsOneWidget);
+  testWidgets('without eligibility the writer explains how to get it', (tester) async {
+    await openWriter(tester);
+
+    expect(api.calls, ['mine']);
+    expect(find.text(reviewEligibilityGuide), findsOneWidget);
     expect(find.text('리뷰 쓰기'), findsNothing);
+  });
+
+  testWidgets('the writer opens B10 when I already wrote a review', (tester) async {
+    api.my = {...api.my, 'review': _card('mine', '원세찬', 4, mine: true), 'sourceRecord': _record};
+    await openWriter(tester);
+
+    expect(find.text('리뷰 수정'), findsOneWidget);
+    expect(find.text('5.2km · 2026.09.08 완주 100% · 27:14'), findsOneWidget);
+    expect(find.text('원세찬 후기'), findsOneWidget);
   });
 
   testWidgets('B2 writes a review with every rating, a tag and a new photo', (tester) async {
     api.my = {...api.my, 'eligibleRecord': _record};
     photos.photo = testPhoto;
-    await openReviews(tester);
+    await openWriter(tester);
 
-    await tap(tester, find.text('리뷰 작성하기'));
     expect(find.text('리뷰 쓰기'), findsOneWidget);
     expect(find.text('5.2km · 2026.09.08 완주 100% · 27:14'), findsOneWidget);
 
@@ -230,10 +261,10 @@ void main() {
     expect(written.input.tags, {ReviewTag.crowded});
     expect(written.input.photoKeys, ['review/new.jpg']);
     expect(photos.uploaded, [testPhoto]);
-    // G2로 돌아와 다시 받는다
+    // 등록하면 닫히고 원래 화면으로 돌아간다
     expect(find.text('리뷰를 등록했어요.'), findsOneWidget);
     expect(find.text('리뷰 쓰기'), findsNothing);
-    expect(api.calls.where((call) => call == 'mine'), hasLength(2));
+    expect(find.byType(HomeScreen), findsOneWidget);
   });
 
   testWidgets('B10-1 edits my review whose source record was deleted', (tester) async {

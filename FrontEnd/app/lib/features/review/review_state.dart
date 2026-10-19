@@ -11,7 +11,7 @@ final reviewSummaryProvider = FutureProvider.autoDispose.family<ReviewSummary, S
   retry: _noRetry,
 );
 
-/// 이 코스에 대한 내 리뷰 상태(G2 내 리뷰 · 작성 버튼 · B10). 키는 코스 ID.
+/// 이 코스에 대한 내 리뷰 상태(G2 내 리뷰 · B10). 키는 코스 ID.
 final myReviewProvider = FutureProvider.autoDispose.family<MyReview, String>(
   (ref, courseId) => ref.watch(reviewApiClientProvider).mine(courseId),
   retry: _noRetry,
