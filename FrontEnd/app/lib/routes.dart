@@ -22,6 +22,9 @@ abstract final class Routes {
   /// G2 코스 리뷰 전체. B8 "모두 보기"에서 연다. extra: 코스 이름(String).
   static String courseReviews(String courseId) => '/course/${Uri.encodeComponent(courseId)}/reviews';
 
+  /// G3 코스 전체 순위. B9 "전체 순위 N명 보기"에서 연다. extra: `CourseRankingsArgs`.
+  static String courseRankings(String courseId) => '/course/${Uri.encodeComponent(courseId)}/rankings';
+
   /// B2 리뷰 쓰기 · B10 리뷰 수정. G2 위에 쌓는다. extra: `ReviewFormArgs`.
   static const reviewForm = '/review/form';
   static const run = '/run';

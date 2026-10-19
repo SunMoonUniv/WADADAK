@@ -33,7 +33,7 @@ RankingPage _page(List<Map<String, Object?>> entries, String? nextCursor) =>
 
 /// 전체 랭킹: 누적 25명 중 나 24위, 이번 주는 아무도 없다.
 /// 지역 주간: 성북구(내 지역) 30명 중 나 12위, 아산시 3명.
-class FakeRankingApi implements RankingApiClient {
+class FakeRankingApi extends Fake implements RankingApiClient {
   final calls = <String>[];
 
   /// 다음 호출 한 번을 실패시킨다.
