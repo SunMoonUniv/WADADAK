@@ -467,13 +467,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                   for (final course in shown) MapLine(id: 'course-${course.courseId}', points: course.route),
                 ],
                 markers: [
-                  // 이름표 아래 가운데가 출발점에 온다. 고른 코스는 배경이 파랗다.
+                  // 이름표 아래 가운데가 출발점에 온다. 고른 코스는 배경이 파랗다. 리뷰가 있으면 평점을 붙인다(Figma A5).
                   for (final course in shown)
                     MapMarker(
                       id: 'course-${course.courseId}',
                       position: course.route.first,
-                      child: WdMapCourseLabel(course.name, selected: selected != null),
-                      imageKey: 'course-label:${course.name}${selected != null ? ':selected' : ''}',
+                      child: WdMapCourseLabel(formatMapLabel(course.name, course.averageRating), selected: selected != null),
+                      imageKey: 'course-label:${formatMapLabel(course.name, course.averageRating)}'
+                          '${selected != null ? ':selected' : ''}',
                       anchor: MapMarker.bottom,
                       onTap: () => _select(course),
                     ),

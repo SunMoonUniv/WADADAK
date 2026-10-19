@@ -116,11 +116,12 @@ void main() {
 
     await openFilter(tester);
 
-    for (final title in ['정렬', '거리', '난이도', '코스 태그', '코스 유형']) {
+    for (final title in ['정렬', '거리', '난이도', '최소 평점', '코스 태그', '코스 유형']) {
       expect(find.text(title), findsOneWidget);
     }
-    // 코스 통계(F11) 뒤에 붙는 것은 숨긴다.
-    for (final hidden in ['인기순', '평점순', '실시간순', '최소 평점', '★4.0+', '1개월']) {
+    expect(find.text('평점순'), findsOneWidget);
+    // 인기순 · 실시간순은 run의 도전 수 · 현재 러너 수 이벤트 뒤에, 기간 슬라이더는 다음 단계에 붙인다.
+    for (final hidden in ['인기순', '실시간순', '1개월']) {
       expect(find.text(hidden), findsNothing);
     }
     expect(selected(tester, chip('최신순')), isTrue);
@@ -185,10 +186,12 @@ void main() {
     expect(selected(tester, chip('평지')), isTrue, reason: 'A3를 다시 열어도 걸린 조건 그대로(FIL-08)');
     expect(applyLabel(tester), '코스 1개 보기');
 
+    await tester.tap(chip('★4.0+'));
     await tester.tap(find.text('초기화'));
     await waitForCount(tester);
 
     expect(selected(tester, chip('평지')), isFalse);
+    expect(selected(tester, chip('★4.0+')), isFalse, reason: '최소 평점도 전체로');
     expect(selected(tester, chip('전체').last), isTrue, reason: '코스 유형 전체');
     expect(selected(tester, chip('최신순')), isTrue);
     expect(courses.mapRequests.last.filter.isNone, isTrue, reason: '기본 조건으로 다시 센다(A3-05)');
@@ -254,6 +257,45 @@ void main() {
     expect(courses.mapRequests.last.filter,
         const CourseFilter(tags: {CourseTag.uphill, CourseTag.nightLight}, courseType: CourseType.gps));
     expect(applyLabel(tester), '코스 1개 보기');
+  });
+
+  testWidgets('sorts by rating and keeps only courses rated at least the chosen minimum', (tester) async {
+    courses
+      ..onMap = [
+        testCourse('별점 4.8', courseId: 'r1', averageRating: 4.8, reviewCount: 76),
+        testCourse('별점 4.2', courseId: 'r2', averageRating: 4.2, reviewCount: 23),
+        testCourse('리뷰 없음', courseId: 'r3'),
+      ]
+      ..listed = courses.onMap;
+    await openHome(tester);
+    expect(find.text('★ 4.8 (76)'), findsOneWidget, reason: 'Figma A2 카드 평점 · 리뷰 수');
+    expect(find.text('★ 4.2 (23)'), findsOneWidget);
+
+    // 목록 칩 줄에서 바로 평점순(A2-04)
+    await tester.tap(chip('평점순'));
+    await tester.pumpAndSettle();
+    expect(courses.listRequests.last.sort, CourseListSort.rating);
+    expect(courses.listRequests.last.origin, isNull, reason: '평점순은 현재 위치가 필요 없다');
+    expect([selected(tester, chip('최신순')), selected(tester, chip('평점순'))], [false, true]);
+
+    // A3 최소 평점: 하나만 고른다(FIL-03).
+    await openFilter(tester);
+    expect(selected(tester, chip('평점순')), isTrue);
+    final allRatings = chip('전체').at(1);
+    expect(selected(tester, allRatings), isTrue);
+    await tester.tap(chip('★3.0+'));
+    await tester.tap(chip('★4.5+'));
+    await waitForCount(tester);
+    expect([selected(tester, allRatings), selected(tester, chip('★3.0+')), selected(tester, chip('★4.5+'))],
+        [false, false, true]);
+    expect(courses.mapRequests.last.filter, const CourseFilter(minRating: 4.5));
+    expect(applyLabel(tester), '코스 1개 보기', reason: '리뷰가 없는 코스는 빠진다');
+
+    await apply(tester);
+    expect(courses.listRequests.last.filter, const CourseFilter(minRating: 4.5));
+    expect(courses.listRequests.last.sort, CourseListSort.rating);
+    expect(find.text('지금 달리기 좋은 코스 1'), findsOneWidget);
+    expect(selected(tester, filterChip()), isTrue, reason: '조건이 걸려 있다');
   });
 
   testWidgets('tells when the courses cannot be counted, and retries', (tester) async {

@@ -146,13 +146,21 @@ class RetentionTest {
                 .matching(e -> e.courseId().equals(expired) && e.status() == CourseStatus.HIDDEN
                         && e.reason() == CourseStatusReason.EXPIRED && e.version() == hiddenVersion);
 
+        // 숨기기 전에 쌓인 통계. 숨겨도 남고, 삭제하면 지운다(개발 정책 6.2)
+        jdbc.update("INSERT INTO course.course_stats (course_id, review_count, rating_sum, created_at, updated_at) "
+                + "VALUES (?, 1, 5, now(), now())", expired);
+        jdbc.update("INSERT INTO course.course_daily_stats (id, course_id, stat_date, view_count, created_at, updated_at) "
+                + "VALUES (?, ?, DATE '2026-10-20', 3, now(), now())", UUID.randomUUID(), expired);
+
         CLOCK.set(seoul("2026-11-01T00:00:29"));
         scheduler.hideAndDelete();
         assertThat(status(expired)).as("24시간이 안 됐다").isEqualTo("HIDDEN");
+        assertThat(statsRows(expired)).isEqualTo(2);
 
         CLOCK.set(seoul("2026-11-01T00:00:30"));
         scheduler.hideAndDelete();
         assertThat(status(expired)).isEqualTo("DELETED");
+        assertThat(statsRows(expired)).as("삭제하면 통계도 지운다").isZero();
         assertThat(status(lastDay)).isEqualTo("HIDDEN");
         long deletedVersion = version(expired);
         assertThat(deletedVersion).as("상태가 바뀔 때마다 버전이 커진다").isGreaterThan(hiddenVersion);
@@ -232,6 +240,11 @@ class RetentionTest {
 
     private String status(UUID courseId) {
         return jdbc.queryForObject("SELECT status FROM course.courses WHERE id = ?", String.class, courseId);
+    }
+
+    private long statsRows(UUID courseId) {
+        return jdbc.queryForObject("SELECT (SELECT count(*) FROM course.course_stats WHERE course_id = ?) "
+                + "+ (SELECT count(*) FROM course.course_daily_stats WHERE course_id = ?)", Long.class, courseId, courseId);
     }
 
     private long version(UUID courseId) {

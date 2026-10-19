@@ -121,13 +121,62 @@ class CourseListControllerTest {
         assertThat(mapped).isEqualTo(listed);
     }
 
+    /**
+     * 평점순은 카드에 보이는 평점(소수 첫째 자리 반올림)이 높은 코스부터, 같으면 리뷰 수가 많은 코스, 그다음 최신순이다.
+     * 리뷰가 없는 코스는 맨 뒤다. 최소 평점도 보이는 평점으로 거르고 리뷰가 없는 코스는 뺀다.
+     */
+    @Test
+    void listsTopRatedFirstAndFiltersByTheShownRating() throws Exception {
+        UUID five = insert(33.661, 126.301, NOW);
+        UUID manyReviews = insert(33.662, 126.302, NOW);
+        // 정확한 평균(4.71)은 위 코스(4.70)보다 높지만 보이는 평점이 같아 리뷰 수로 정한다
+        UUID fewReviews = insert(33.663, 126.303, NOW);
+        UUID olderSame = insert(33.664, 126.304, NOW.minusSeconds(60));
+        UUID roundedUp = insert(33.665, 126.305, NOW);
+        UUID noReviews = insert(33.666, 126.306, NOW.plusSeconds(60));
+        reviews(five, 5, 1);
+        reviews(manyReviews, 47, 10);
+        reviews(fewReviews, 33, 7);
+        reviews(olderSame, 33, 7);
+        reviews(roundedUp, 93, 20); // 4.65 → 4.7
+        String area = "swLat=33.660&swLng=126.300&neLat=33.670&neLng=126.310";
+        String query = area + "&sort=RATING&size=2";
+
+        List<UUID> all = new ArrayList<>();
+        JsonNode page = data(list(query));
+        all.addAll(ids(page));
+        while (!page.get("nextCursor").isNull()) {
+            page = data(list(query + "&cursor=" + page.get("nextCursor").asString()));
+            all.addAll(ids(page));
+        }
+        // 4.7 넷 중 리뷰 수 20 · 10 · 7(최신) · 7(오래됨)
+        assertThat(all).containsExactly(five, roundedUp, manyReviews, fewReviews, olderSame, noReviews);
+
+        JsonNode cards = data(list(area + "&sort=RATING&size=10")).get("content");
+        assertThat(cards.get(0).get("averageRating").asDouble()).isEqualTo(5.0);
+        assertThat(cards.get(0).get("reviewCount").asInt()).isEqualTo(1);
+        assertThat(cards.get(1).get("averageRating").asDouble()).isEqualTo(4.7);
+        assertThat(cards.get(5).get("averageRating").isNull()).isTrue();
+        assertThat(cards.get(5).get("reviewCount").asInt()).isZero();
+
+        assertThat(ids(data(list(area + "&sort=LATEST&minRating=4.7"))))
+                .containsExactlyInAnyOrder(five, roundedUp, manyReviews, fewReviews, olderSame);
+        assertThat(ids(data(list(area + "&sort=LATEST&minRating=4.8")))).containsExactly(five);
+        // 지도 · 지역별 코스 수도 같은 조건이다(MAP-07)
+        JsonNode map = data(mvc.get().uri("/api/v1/courses/map?" + area + "&minRating=4.8").with(jwt()).exchange());
+        assertThat(map.get("totalCount").asInt()).isEqualTo(1);
+        assertThat(map.get("courses").get(0).get("averageRating").asDouble()).isEqualTo(5.0);
+        assertThat(data(mvc.get().uri("/api/v1/courses/map/regions?" + area + "&minRating=4.8&level=DISTRICT").with(jwt())
+                .exchange()).get("totalCount").asInt()).isEqualTo(1);
+    }
+
     @Test
     void rejectsBadListRequests() {
         String area = "swLat=33.6&swLng=126.3&neLat=33.7&neLng=126.4";
         String latestCursor = CourseListCursor.latest(NOW, UUID.randomUUID()).encode();
 
         assertBadRequest(list(area));
-        // 인기순은 코스 통계(F11) 뒤에 붙는다
+        // 인기순은 run의 도전 수 이벤트 뒤에 붙는다
         assertBadRequest(list(area + "&sort=POPULAR"));
         assertBadRequest(list(area + "&sort=NEAREST"));
         assertBadRequest(list(area + "&sort=NEAREST&lat=33.65"));
@@ -136,6 +185,10 @@ class CourseListControllerTest {
         assertBadRequest(list(area + "&sort=NEAREST&lat=33.65&lng=126.35&cursor=" + latestCursor));
         assertBadRequest(list(area + "&sort=LATEST&size=51"));
         assertBadRequest(list("swLat=33.7&swLng=126.3&neLat=33.6&neLng=126.4&sort=LATEST"));
+        assertBadRequest(list(area + "&sort=LATEST&minRating=5.1"));
+        assertBadRequest(list(area + "&sort=RATING&cursor=" + latestCursor));
+        assertThat(list(area + "&sort=RATING&cursor=" + CourseListCursor.rating(new java.math.BigDecimal("-1"), 0, NOW,
+                UUID.randomUUID()).encode())).hasStatusOk();
         assertThat(list(area + "&sort=LATEST&cursor=" + latestCursor)).hasStatusOk();
     }
 
@@ -162,6 +215,12 @@ class CourseListControllerTest {
 
     private static void assertBadRequest(MvcTestResult result) {
         assertThat(result).hasStatus(HttpStatus.BAD_REQUEST).bodyJson().extractingPath("$.code").isEqualTo("COMMON-001");
+    }
+
+    /** 코스 통계에 리뷰 평점 합과 수를 바로 넣는다 */
+    private void reviews(UUID course, int ratingSum, int reviewCount) {
+        jdbcTemplate.update("INSERT INTO course.course_stats (course_id, rating_sum, review_count, created_at, updated_at) "
+                + "VALUES (?, ?, ?, now(), now())", course, ratingSum, reviewCount);
     }
 
     private UUID insert(double lat, double lng, Instant createdAt) {

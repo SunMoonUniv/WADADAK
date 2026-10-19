@@ -9,7 +9,7 @@ import 'course_format.dart';
 
 /// 코스 목록 카드(A2-05 · A6-03). Figma A6 카드 모양이다(썸네일 64×58 · 오른쪽 `›`).
 ///
-/// 평점 · 리뷰 수 · 현재 러너는 코스 통계(F11)를 만든 뒤 붙인다.
+/// 현재 러너는 run이 현재 러너 수 이벤트를 발행하면 붙인다.
 class CourseListCard extends StatelessWidget {
   const CourseListCard({super.key, required this.course, required this.now, this.myLocation, this.onTap});
 
@@ -18,7 +18,7 @@ class CourseListCard extends StatelessWidget {
   /// 만료까지 남은 날을 세는 기준 시각.
   final DateTime now;
 
-  /// 현재 위치. 있으면 출발점까지 직선 거리를 둘째 줄에 보인다(Figma A2 `0.8 km 거리`).
+  /// 현재 위치. 있으면 출발점까지 직선 거리를 둘째 줄 평점 뒤에 보인다(Figma A2 `★ 4.6 (128) · 0.8 km 거리`).
   final GeoPoint? myLocation;
   final VoidCallback? onTap;
 
@@ -29,12 +29,17 @@ class CourseListCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final daysLeft = daysUntilExpiry(course.expiresAt, now);
     final myLocation = this.myLocation;
+    // Figma A2: `★ 4.6 (128) · 0.8 km 거리`. 리뷰가 없으면 거리만, 둘 다 없으면 줄이 없다.
+    final second = [
+      ?formatCardRating(course.averageRating, course.reviewCount),
+      if (myLocation != null) formatAway(myLocation.distanceTo(course.route.first).round()),
+    ];
     return WdCourseCard(
       title: course.name,
       // Figma A6: `5.2km · 난이도 중 · 평지`. 특징은 첫 번째(FIL-04 순서)만 보인다.
       lines: [
         [formatKm(course.distanceMeters), '난이도 ${course.difficulty.label}', ?course.tags.firstOrNull?.label].join(' · '),
-        if (myLocation != null) formatAway(myLocation.distanceTo(course.route.first).round()),
+        if (second.isNotEmpty) second.join(' · '),
       ],
       thumbnail: CourseRouteThumbnail(course.route),
       thumbnailSize: const Size(64, 58),

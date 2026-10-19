@@ -6,9 +6,12 @@ import com.wadadak.common.geo.GeoPoint;
 import com.wadadak.course.internal.course.CourseTag;
 import com.wadadak.course.internal.course.CourseType;
 import com.wadadak.course.internal.course.Difficulty;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
 
+import java.math.BigDecimal;
 import java.util.Set;
 
 /**
@@ -17,6 +20,7 @@ import java.util.Set;
  * @param minDistanceMeters FIL-02 거리 하한(포함)
  * @param maxDistanceMeters FIL-02 거리 상한(포함). {@code 20km+}를 고르면 보내지 않는다
  * @param difficulties      FIL-03. 그중 하나면 된다. 없으면 전체
+ * @param minRating         FIL-03 최소 평점(포함). 전체 기간 평점(소수 첫째 자리 반올림)으로 본다. 리뷰가 없는 코스는 빠진다
  * @param tags              FIL-04. 모두 가진 코스만(AND)
  * @param courseType        FIL-05. 없으면 전체
  */
@@ -28,6 +32,7 @@ record CourseMapRequest(
         @PositiveOrZero Integer minDistanceMeters,
         @PositiveOrZero Integer maxDistanceMeters,
         Set<Difficulty> difficulties,
+        @DecimalMin("0.0") @DecimalMax("5.0") BigDecimal minRating,
         Set<CourseTag> tags,
         CourseType courseType) {
 

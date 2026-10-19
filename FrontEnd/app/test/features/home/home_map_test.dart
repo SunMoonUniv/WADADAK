@@ -95,6 +95,17 @@ void main() {
     expect(area.northEast.lng, greaterThan(MapView.seoulCityHall.lng));
   });
 
+  testWidgets('adds the rating to the name label when the course has reviews (Figma A5)', (tester) async {
+    courses.onMap = [
+      testCourse('한강 야경 5K', courseId: 'r1', averageRating: 4.6, reviewCount: 128),
+      jeongneung,
+    ];
+    await openHome(tester);
+
+    expect(find.widgetWithText(WdMapCourseLabel, '한강 야경 5K · ★4.6'), findsOneWidget);
+    expect(find.widgetWithText(WdMapCourseLabel, '정릉 오르막 4K'), findsOneWidget, reason: '리뷰가 없으면 이름만');
+  });
+
   testWidgets('loads again for the new area when the map stops moving', (tester) async {
     courses.onMap = [seongbukcheon];
     await openHome(tester);

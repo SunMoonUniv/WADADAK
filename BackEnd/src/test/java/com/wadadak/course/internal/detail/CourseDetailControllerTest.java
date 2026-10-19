@@ -19,6 +19,8 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -104,6 +106,33 @@ class CourseDetailControllerTest {
         assertThat(detail.get("creatorNickname").isNull()).isTrue();
     }
 
+    /** 열 때마다 조회 수가 늘고(누적 · 오늘 날짜), 완주가 있으면 평균 페이스를 준다(F11) */
+    @Test
+    void countsViewsAndShowsTheAveragePace() throws Exception {
+        UUID course = insert(UUID.randomUUID(), "ACTIVE");
+
+        assertThat(data(detail(course)).get("averagePaceSecondsPerKm").isNull()).as("완주가 없다").isTrue();
+        assertThat(views(course)).isEqualTo(1);
+
+        // 5.2km 코스를 52분 · 56분 20초에 완주 → 평균 54분 10초 ÷ 5.2km = 625초/km(10′25″)
+        jdbcTemplate.update("UPDATE course.course_stats SET completion_count = 2, completion_seconds = ? WHERE course_id = ?",
+                3_120 + 3_380, course);
+        assertThat(data(detail(course)).get("averagePaceSecondsPerKm").asInt()).isEqualTo(625);
+        assertThat(views(course)).isEqualTo(2);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT view_count FROM course.course_daily_stats WHERE course_id = ? AND stat_date = ?", Integer.class,
+                course, LocalDate.now(ZoneId.of("Asia/Seoul")))).isEqualTo(2);
+    }
+
+    @Test
+    void doesNotCountViewsOfHiddenCourses() {
+        UUID hidden = insert(UUID.randomUUID(), "HIDDEN");
+
+        assertThat(detail(hidden)).hasStatus(HttpStatus.CONFLICT);
+        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM course.course_stats WHERE course_id = ?", Long.class, hidden))
+                .isZero();
+    }
+
     @Test
     void blocksHiddenOrDeletedCoursesAndUnknownOnes() {
         UUID hidden = insert(UUID.randomUUID(), "HIDDEN");
@@ -123,6 +152,10 @@ class CourseDetailControllerTest {
         UUID course = insert(UUID.randomUUID(), "ACTIVE");
 
         assertThat(mvc.get().uri("/api/v1/courses/" + course).exchange()).hasStatus(HttpStatus.UNAUTHORIZED);
+    }
+
+    private long views(UUID course) {
+        return jdbcTemplate.queryForObject("SELECT view_count FROM course.course_stats WHERE course_id = ?", Long.class, course);
     }
 
     private MvcTestResult detail(UUID course) {
