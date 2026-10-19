@@ -18,7 +18,7 @@ import java.util.List;
  *       창 안에 없으면 직전 s에 가장 가까운 후보로 옮기고(점프) 연결을 끊는다</li>
  *   <li>기준이 없을 때(첫 표본, PAUSE·GAP 뒤) 후보가 여럿이면 보류한다. 가설을 모두 들고 다음 표본으로 늘려 가다가
  *       하나만 남으면 그 가설로 보류했던 표본까지 소급해 정한다. 순환 코스 출발점(s = 0과 끝)이 이렇게 갈린다</li>
- *   <li>연결을 끊는 것: 코스 밖·나쁜 GPS 표본, 점프, PAUSE~RESUME, GAP, 속도 상한 초과. PAUSE~RESUME 사이 GPS와
+ *   <li>연결을 끊는 것: 코스 밖·나쁜 GPS 표본, 점프, PAUSE~RESUME, GAP, 10초 초과 GPS 공백, 속도 상한 초과. PAUSE~RESUME 사이 GPS와
  *       SEGMENT_END·END 이후는 버린다</li>
  * </ul>
  */
@@ -84,7 +84,7 @@ final class CourseTracker {
         final List<Integer> heldIndexes = new ArrayList<>();
         List<Hypothesis> hypotheses = new ArrayList<>();
 
-        /** PAUSE·GAP: 기준을 버린다. 정지·공백 전후는 잇지 않는다 */
+        /** PAUSE·GAP·10초 초과 GPS 공백: 기준과 보류 가설을 버린다. 정지·공백 전후는 잇지 않는다 */
         void forget() {
             anchor = null;
             linkable = false;
@@ -92,6 +92,12 @@ final class CourseTracker {
         }
 
         void sample(Input input) {
+            Input previous = anchor != null ? anchor : held.isEmpty() ? null : held.getLast();
+            if (previous != null && input.elapsedMs() - previous.elapsedMs() > GpsQuality.MAX_INTERVAL_MS) {
+                // A silent GPS gap has the same boundary as GAP. Old anchors/hypotheses
+                // must not resolve an ambiguous loop/crossing after reception resumes.
+                forget();
+            }
             List<Projection> candidates = GpsQuality.good(input) // 자유 러닝 거리와 같은 GPS 품질 기준
                     ? route.candidates(route.toLocal(input.location()), config.routeToleranceM())
                     : List.of();
@@ -244,8 +250,9 @@ final class CourseTracker {
      * 두 표본의 GPS 정확도만큼 여유를 둔다. 표본 간격이 짧으면 오차만으로 상한을 넘을 수 있다.
      */
     private boolean withinSpeed(Input previous, Input input) {
+        long interval = input.elapsedMs() - previous.elapsedMs();
         double allowance = previous.accuracyM() + input.accuracyM();
-        return input.elapsedMs() > previous.elapsedMs()
+        return interval > 0 && interval <= GpsQuality.MAX_INTERVAL_MS
                 && previous.location().distanceMeters(input.location()) <= reach(previous, input) + allowance;
     }
 }

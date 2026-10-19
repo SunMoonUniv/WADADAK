@@ -86,6 +86,32 @@ class CourseJudgeTest {
     }
 
     @Test
+    void unmarkedGpsGapDoesNotSupplyTheDistanceNeededToComplete() {
+        Run run = new Run().at(0, 0);
+        run.ms += 60_000;
+        run.y = 100;
+        run.gps(5.0);
+        run.walk(0, 1000).event(Kind.END);
+
+        Judgement result = judge(K1, run);
+        assertResult(result, 900, 90, false, false);
+        assertThat(result.reason()).isEqualTo(Reason.DISTANCE_SHORT);
+    }
+
+    @Test
+    void gpsGapAtTheLoopFinishDoesNotBecomeACompletion() {
+        Run run = new Run().at(0, 0).walk(500, 0).walk(500, 500).walk(0, 500).walk(0, 100);
+        run.ms += 60_000;
+        run.y = 0;
+        run.gps(5.0);
+        run.walk(100, 0).event(Kind.END);
+
+        Judgement result = judge(K4, run);
+        assertResult(result, 1900, 95, false, true);
+        assertThat(result.reason()).isEqualTo(Reason.FINISH_NOT_REACHED);
+    }
+
+    @Test
     void c04StartNotConfirmed() {
         Judgement j = judge(K2, new Run().at(0, 200).walk(0, 5000));
         assertResult(j, 4800, 96, false, true);
