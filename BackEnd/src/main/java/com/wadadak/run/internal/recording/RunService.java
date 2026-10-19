@@ -105,6 +105,9 @@ class RunService {
                 (p.kind()==Kind.GPS && (p.location()==null || p.accuracyM()==null)) ||
                 (p.accuracyM()!=null && (!Double.isFinite(p.accuracyM()) || p.accuracyM()<0)) ||
                 (p.altitudeM()!=null && (!Double.isFinite(p.altitudeM()) || p.kind()!=Kind.GPS)) ||
+                (p.pressureHpa()!=null && (p.kind()!=Kind.BAROMETER || !Double.isFinite(p.pressureHpa()) || p.pressureHpa()<=0)) ||
+                (p.pressureAccuracy()!=null && (p.kind()!=Kind.BAROMETER || p.pressureAccuracy()<0 || p.pressureAccuracy()>3)) ||
+                (p.kind()==Kind.BAROMETER && (p.pressureHpa()==null || p.pressureAccuracy()==null || p.sampleEndMs()==null || p.sampleEndMs()<0 || p.sampleEndMs()>p.elapsedMs() || p.elapsedMs()-p.sampleEndMs()>2000)) ||
                 (p.altitudeAccuracyM()!=null && (!Double.isFinite(p.altitudeAccuracyM()) || p.altitudeAccuracyM()<0 || p.altitudeM()==null))) invalid();
             String encoded=json.writeValueAsString(p);
             List<String> existing=db.query("SELECT payload FROM run.inputs WHERE session_id=? AND stream_seq=?",(rs,n)->rs.getString(1),id,p.seq());

@@ -5,7 +5,17 @@ import 'run_result_stats.dart';
 
 enum RunState { ready, running, paused, finished }
 
-enum RunInputKind { start, gps, pause, resume, gap, end, cadence }
+enum RunInputKind {
+  start,
+  gps,
+  pause,
+  resume,
+  gap,
+  segmentEnd,
+  end,
+  cadence,
+  barometer,
+}
 
 class RunPoint {
   const RunPoint(this.latitude, this.longitude);
@@ -23,7 +33,7 @@ class RunPoint {
   }
 }
 
-/// GPS and button actions share one sequence, ready for SQLite in the next step.
+/// GPS, sensor and button actions share the recording stream's sequence.
 class RunInput {
   const RunInput({
     required this.seq,
@@ -41,7 +51,9 @@ class RunInput {
 
   Map<String, Object?> toJson() => {
     'seq': seq,
-    'kind': kind.name.toUpperCase(),
+    'kind': kind == RunInputKind.segmentEnd
+        ? 'SEGMENT_END'
+        : kind.name.toUpperCase(),
     'elapsedMs': elapsedMs,
     'measuredAt': measuredAt.toUtc().toIso8601String(),
     'location': point == null

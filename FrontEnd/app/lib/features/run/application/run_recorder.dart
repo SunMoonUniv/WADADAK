@@ -20,6 +20,7 @@ class RunRecorder {
   RunCalculator calculator = RunCalculator();
   final RunAutoResume _autoResume = RunAutoResume();
   int _originMs = 0;
+  int _pressureBoundaryMs = 0, _lastPressureMs = -1;
   int elapsedMs = 0;
   bool confirmingEnd = false;
   bool faulted = false;
@@ -65,6 +66,8 @@ class RunRecorder {
         current = run;
         calculator = RunCalculator()..add(start);
         _originMs = origin;
+        _pressureBoundaryMs = 0;
+        _lastPressureMs = -1;
         elapsedMs = 0;
         _autoResume.reset();
         changes.add(null);
@@ -186,6 +189,40 @@ class RunRecorder {
         );
         await _commit([input], current!.phase, ms);
       });
+  Future<void> barometer(
+    double pressureHpa,
+    int pressureAccuracy, {
+    required int sampleClockMs,
+  }) => _serial(() async {
+    if (!active ||
+        current!.phase != RunPhase.running ||
+        !pressureHpa.isFinite ||
+        pressureHpa <= 0 ||
+        pressureAccuracy < 0 ||
+        pressureAccuracy > 3) {
+      return;
+    }
+    final ms = await _elapsed();
+    final sampleMs = sampleClockMs - _originMs;
+    if (sampleMs < _pressureBoundaryMs ||
+        sampleMs <= _lastPressureMs ||
+        sampleMs > ms ||
+        ms - sampleMs > 2000) {
+      return;
+    }
+    final input = RunInput(
+      seq: current!.inputs.length,
+      kind: RunKind.barometer,
+      elapsedMs: ms,
+      measuredAt: current!.startedAt.add(Duration(milliseconds: ms)),
+      sampleEndMs: sampleMs,
+      pressureHpa: pressureHpa,
+      pressureAccuracy: pressureAccuracy,
+    );
+    await _commit([input], current!.phase, ms);
+    _lastPressureMs = sampleMs;
+  });
+
   Future<void> pause() => _serial(() async {
     if (!active || current!.phase != RunPhase.running) return;
     final ms = await _elapsed();
@@ -312,6 +349,11 @@ class RunRecorder {
     run.pending = pending;
     run.endReason = reason;
     for (final input in batch) {
+      if (input.kind == RunKind.pause ||
+          input.kind == RunKind.resume ||
+          input.kind == RunKind.gap) {
+        _pressureBoundaryMs = input.elapsedMs;
+      }
       calculator.add(input);
     }
     elapsedMs = ms;

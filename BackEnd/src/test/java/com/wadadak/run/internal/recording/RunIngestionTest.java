@@ -94,7 +94,7 @@ class RunIngestionTest {
         assertThat(stored.stats().bestPaceSecondsPerKm()).isCloseTo(200,within(.000001));
         assertThat(runs.history(owner,new Cursorable(null,null)).content().getFirst().stats()).isEqualTo(stored.stats());
         mvc.perform(get("/api/v1/runs/records/"+id).with(jwt().jwt(j->j.subject(owner.toString()))))
-            .andExpect(status().isOk()).andExpect(jsonPath("$.data.stats.version").value("RESULT_V2"));
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.stats.version").value("RESULT_V3"));
 
         // Simulate a record saved before stats existed. Only enrich the read:
         // registered time, original metrics, laps and ranking publication survive.
@@ -292,6 +292,57 @@ class RunIngestionTest {
         assertThatThrownBy(()->runs.upload(owner,id,new Upload(9,List.of(changed)))).isInstanceOf(AppException.class);
         assertThat(db.queryForObject("SELECT count(*) FROM run.records WHERE id=?",Long.class,id)).isEqualTo(1);
         assertThat(runs.result(owner,id).registeredAt()).isEqualTo(first.registeredAt());
+    }
+
+    @Test void barometerRawSurvivesUploadRetrySummaryAndLegacyReadWithoutChangingHistory() throws Exception {
+        var fixture=json.readTree(Files.readString(Path.of("../run/fixtures/free_barometer_v3.json")));
+        var raw=new ArrayList<Input>();
+        for(var node:fixture.get("cases").get(0).get("inputs")) raw.add(json.treeToValue(node,Input.class));
+        long finalSeq=raw.size()-1;
+        mvc.perform(post("/api/v1/runs/sessions/"+id+"/record")
+            .with(jwt().jwt(j->j.subject(owner.toString())))
+            .contentType("application/json").content(json.writeValueAsString(new Upload(finalSeq,raw))))
+            .andExpect(status().isOk());
+        assertThat(db.query("SELECT payload FROM run.inputs WHERE session_id=? ORDER BY stream_seq",
+            (rs,n)->json.readValue(rs.getString(1),Input.class),id)).containsExactlyElementsOf(raw);
+        runs.process(id);
+        Result stored=runs.result(owner,id);
+        assertThat(stored.stats().elevationGainM()).isCloseTo(3,within(.000001));
+        assertThat(stored.stats().elevationSource()).isEqualTo("BAROMETER");
+        assertThat(runs.history(owner,new Cursorable(null,null)).content().getFirst().stats()).isEqualTo(stored.stats());
+        runs.upload(owner,id,new Upload(finalSeq,raw)); runs.process(id);
+        assertThat(runs.result(owner,id)).isEqualTo(stored);
+        Input p=raw.stream().filter(v->v.kind()==Kind.BAROMETER).findFirst().orElseThrow();
+        var changed=new Input(p.seq(),p.kind(),p.elapsedMs(),p.measuredAt(),null,null,null,null,null,null,null,
+            p.sampleEndMs(),null,null,p.pressureHpa()+1,p.pressureAccuracy());
+        assertThatThrownBy(()->runs.upload(owner,id,new Upload(finalSeq,List.of(changed)))).isInstanceOf(AppException.class);
+        var oldStats=new ResultStats("RESULT_V2",0.0,false,stored.stats().bestLapNumber(),
+            stored.stats().bestLapPaceSecondsPerKm(),stored.stats().bestPaceSecondsPerKm());
+        var old=new Result(stored.id(),stored.startedAt(),stored.endedAt(),stored.registeredAt(),stored.endReason(),
+            stored.metrics(),stored.routeSegments(),stored.laps(),stored.policyVersion(),stored.calculationVersion(),oldStats);
+        db.update("UPDATE run.records SET result_json=? WHERE id=?",json.writeValueAsString(old),id);
+        Result enriched=runs.result(owner,id);
+        assertThat(enriched.stats()).isEqualTo(stored.stats());
+        assertThat(enriched.metrics()).isEqualTo(stored.metrics());
+        assertThat(enriched.registeredAt()).isEqualTo(stored.registeredAt());
+        assertThat(json.readValue(db.queryForObject("SELECT result_json FROM run.records WHERE id=?",String.class,id),Result.class)).isEqualTo(old);
+        assertThat(db.queryForObject("SELECT registration_published FROM run.records WHERE id=?",Boolean.class,id)).isTrue();
+        assertThatThrownBy(()->runs.result(UUID.randomUUID(),id)).isInstanceOf(AppException.class);
+        runs.delete(owner,id);
+        assertThat(db.queryForObject("SELECT count(*) FROM run.inputs WHERE session_id=?",Long.class,id)).isZero();
+        assertThatThrownBy(()->runs.upload(owner,id,new Upload(finalSeq,raw))).isInstanceOf(AppException.class);
+    }
+
+    @Test void invalidPressureFieldsRollBackBeforeDurableStorage() {
+        for (Input p : List.of(
+            new Input(1,Kind.BAROMETER,1000,start.plusMillis(1000),null,null,null,null,null,null,null,1000L,null,null,Double.NaN,3),
+            new Input(1,Kind.BAROMETER,1000,start.plusMillis(1000),null,null,null,null,null,null,null,1000L,null,null,1000.0,4),
+            new Input(1,Kind.BAROMETER,1000,start.plusMillis(1000),null,null,null,null,null,null,null,1001L,null,null,1000.0,3),
+            new Input(1,Kind.BAROMETER,1000,start.plusMillis(1000),null,null,null,null,null,null,null,null,null,null,1000.0,3),
+            new Input(1,Kind.GPS,1000,start.plusMillis(1000),inputs.get(1).location(),3.0,null,null,null,null,null,1000L,null,null,1000.0,3))) {
+            assertThatThrownBy(()->runs.upload(owner,id,new Upload(9,List.of(inputs.getFirst(),p)))).isInstanceOf(AppException.class);
+            assertThat(db.queryForObject("SELECT count(*) FROM run.inputs WHERE session_id=?",Long.class,id)).isZero();
+        }
     }
 
     @Test void invalidVerticalFieldsNeverPoisonDurableInputs() {

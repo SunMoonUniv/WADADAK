@@ -21,7 +21,12 @@ class MotionPace {
   void add(RunInput p) {
     if (ended) return;
     if (p.kind != RunKind.gps) {
-      if (p.kind == RunKind.start || p.kind == RunKind.cadence) return;
+      if (p.kind == RunKind.start ||
+          p.kind == RunKind.cadence ||
+          p.kind == RunKind.barometer ||
+          p.kind == RunKind.segmentEnd) {
+        return;
+      }
       // Unknown GPS time must never be subtracted as stationary time.
       _closeStop(p.kind == RunKind.gap ? _previous?.elapsedMs : p.elapsedMs);
       _resetWindow();
