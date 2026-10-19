@@ -105,8 +105,8 @@ class CourseRankingServiceTest {
         assertThat(summary.top()).extracting(CourseRankingEntry::rank).containsExactly(1, 1, 3, 4);
         assertThat(summary.top()).extracting(CourseRankingEntry::memberId).containsExactly(b, a, c, me);
         assertThat(summary.top().getFirst().nickname()).isEqualTo("닉-" + b.toString().substring(0, 4));
-        assertThat(summary.me()).isEqualTo(new MyCourseRanking(MyCourseRanking.Status.RANKED, 4, 340,
-                340, Instant.parse("2026-10-13T00:00:00Z"), 100));
+        assertThat(summary.me()).isEqualTo(new MyCourseRanking(MyCourseRanking.Status.RANKED, 4,
+                "닉-" + me.toString().substring(0, 4), null, 340, 340, Instant.parse("2026-10-13T00:00:00Z"), 100));
         assertThat(summary.ghost().memberId()).isEqualTo(b);
     }
 

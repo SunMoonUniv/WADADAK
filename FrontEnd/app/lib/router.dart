@@ -8,6 +8,7 @@ import 'core/map/map_view.dart';
 import 'features/course/create/course_info_screen.dart';
 import 'features/course/create/route_draw_screen.dart';
 import 'features/course/detail/course_detail_screen.dart';
+import 'features/course/detail/course_rankings_screen.dart';
 import 'features/home/course_filter_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/onboarding/consent_screen.dart';
@@ -83,6 +84,17 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/course/:courseId/reviews',
         builder: (_, state) =>
             ReviewListScreen(courseId: state.pathParameters['courseId']!, courseName: state.extra as String? ?? ''),
+      ),
+      GoRoute(
+        path: '/course/:courseId/rankings',
+        builder: (_, state) {
+          final args = state.extra! as CourseRankingsArgs;
+          return CourseRankingsScreen(
+            courseId: state.pathParameters['courseId']!,
+            courseName: args.courseName,
+            period: args.period,
+          );
+        },
       ),
       GoRoute(path: Routes.reviewForm, builder: (_, state) => ReviewFormScreen(args: state.extra! as ReviewFormArgs)),
     ],

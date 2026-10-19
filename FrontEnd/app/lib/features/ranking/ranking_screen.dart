@@ -107,7 +107,8 @@ class _DistanceTabState extends ConsumerState<_DistanceTab> with AutomaticKeepAl
   Widget _myCard(MyDistanceRanking me, String chip) => WdMyRankCard(
         WdRank(
           rank: myRankLabel(me),
-          name: '나',
+          name: myName(me),
+          avatar: myAvatar(me),
           meta: me.status == MyRankStatus.noRecord
               ? (_period == RankingPeriod.all ? '아직 기록이 없어요' : '$chip 기록이 없어요')
               : [

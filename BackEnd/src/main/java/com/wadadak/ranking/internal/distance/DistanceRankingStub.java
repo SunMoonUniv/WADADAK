@@ -6,6 +6,7 @@ import com.wadadak.common.paging.Cursorable;
 import com.wadadak.common.region.Region;
 import com.wadadak.common.region.RegionDirectory;
 import com.wadadak.common.stub.StubImplementation;
+import com.wadadak.member.MemberProfile;
 import com.wadadak.ranking.RankingPeriod;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -60,7 +61,8 @@ class DistanceRankingStub implements DistanceRankingReader, StubImplementation {
         List<Ranked> ranking = ranking(OTHERS_KM.get(period), requesterId, MINE_KM.get(period));
         Ranked mine = ranking.stream().filter(ranked -> ranked.memberId().equals(requesterId)).findFirst().orElseThrow();
         MyDistanceRanking me = new MyDistanceRanking(MyDistanceRanking.Status.RANKED, mine.rank(), mine.meters(),
-                meters(MINE_KM.get(RankingPeriod.WEEK)), mine.runCount(), (int) Math.ceil(mine.rank() * 100.0 / ranking.size()), null);
+                meters(MINE_KM.get(RankingPeriod.WEEK)), mine.runCount(), (int) Math.ceil(mine.rank() * 100.0 / ranking.size()), null)
+                .withProfile(myProfile(requesterId));
         return new DistanceRankingSummary(ranking.size(), calculatedAt(), me, top(ranking, TOP_SIZE, requesterId),
                 ranking.size() > TOP_SIZE ? String.valueOf(TOP_SIZE) : null);
     }
@@ -81,7 +83,8 @@ class DistanceRankingStub implements DistanceRankingReader, StubImplementation {
                 .findFirst()
                 .map(mine -> new MyDistanceRanking(MyDistanceRanking.Status.RANKED, mine.rank(), mine.meters(), null,
                         mine.runCount(), null, MY_LAST_WEEK_RANK))
-                .orElse(new MyDistanceRanking(MyDistanceRanking.Status.OTHER_REGION, null, null, null, null, null, null));
+                .orElse(new MyDistanceRanking(MyDistanceRanking.Status.OTHER_REGION, null, null, null, null, null, null))
+                .withProfile(myProfile(requesterId));
         LocalDate today = LocalDate.now(clock.withZone(TimeConfig.SEOUL));
         return new RegionWeeklyRanking(shown, today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)), calculatedAt(),
                 ranking.size(), me, top(ranking, REGION_TOP_SIZE, requesterId),
@@ -104,7 +107,7 @@ class DistanceRankingStub implements DistanceRankingReader, StubImplementation {
                     meters(othersKm[i]), weeklyAverage(ALL_KM[i])));
         }
         if (mineKm != null) {
-            runners.add(new Ranked(0, requesterId, "러너-" + requesterId.toString().substring(0, 4), meters(mineKm),
+            runners.add(new Ranked(0, requesterId, myProfile(requesterId).nickname(), meters(mineKm),
                     weeklyAverage(MINE_KM.get(RankingPeriod.ALL))));
         }
         runners.sort(Comparator.comparingInt(Ranked::meters).reversed());
@@ -114,6 +117,10 @@ class DistanceRankingStub implements DistanceRankingReader, StubImplementation {
             ranking.add(runners.get(i).withRank(tie ? ranking.get(i - 1).rank() : i + 1));
         }
         return ranking;
+    }
+
+    private static MemberProfile myProfile(UUID requesterId) {
+        return new MemberProfile(requesterId, "러너-" + requesterId.toString().substring(0, 4), null, false);
     }
 
     private static List<DistanceRankingEntry> top(List<Ranked> ranking, int size, UUID requesterId) {

@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:wadadak/core/api/api_client.dart';
 import 'package:wadadak/core/api/course_api_client.dart';
 import 'package:wadadak/core/api/member_api_client.dart';
+import 'package:wadadak/core/api/ranking_api_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:wadadak/core/api/region_api_client.dart';
@@ -445,4 +446,85 @@ ReviewSummary reviewSummary({
         'lighting': items?.$3,
         'amenity': items?.$4,
       },
+    });
+
+/// 코스 랭킹만 받는 랭킹 API(B1 · B8 · B9 · G3). 기간마다 [summaries]를 돌려준다. 없는 기간은 참여 0명이다.
+class FakeCourseRankingApi extends Fake implements RankingApiClient {
+  FakeCourseRankingApi([Map<RankingPeriod, CourseRankingSummary>? summaries]) : summaries = summaries ?? {};
+
+  Map<RankingPeriod, CourseRankingSummary> summaries;
+  ApiException? error;
+
+  /// 있으면 요약 응답이 이것이 끝날 때까지 늦는다.
+  Completer<void>? gate;
+  final summaryRequests = <RankingPeriod>[];
+
+  /// G3 순위. 기간마다 1위부터의 전체 줄이고 [pageSize]씩 잘라 준다(서버와 같은 오프셋 커서).
+  Map<RankingPeriod, List<CourseRankingEntry>> rows = {};
+  int pageSize = 20;
+  ApiException? entriesError;
+  final entryRequests = <(RankingPeriod, String?)>[];
+
+  @override
+  Future<CourseRankingSummary> courseSummary(String courseId, RankingPeriod period) async {
+    summaryRequests.add(period);
+    await gate?.future;
+    if (error != null) throw error!;
+    return summaries[period] ?? courseRankingSummary();
+  }
+
+  @override
+  Future<CourseRankingPage> courseEntries(String courseId, RankingPeriod period, {String? cursor}) async {
+    entryRequests.add((period, cursor));
+    await gate?.future;
+    if (entriesError != null) throw entriesError!;
+    final all = rows[period] ?? const <CourseRankingEntry>[];
+    final from = int.parse(cursor ?? '0');
+    final to = from + pageSize < all.length ? from + pageSize : all.length;
+    return (entries: all.sublist(from, to), nextCursor: to < all.length ? '$to' : null);
+  }
+}
+
+/// 코스 순위 한 줄. [pace]가 없으면 1km 코스처럼 시간과 같다. 2026-09-07 완주.
+CourseRankingEntry courseRankingEntry(int rank, String nickname, int seconds,
+        {int? pace, bool mine = false, String completedAt = '2026-09-07T01:00:00Z'}) =>
+    CourseRankingEntry.fromJson({
+      'rank': rank,
+      'memberId': 'member-$nickname',
+      'nickname': nickname,
+      'profileImageUrl': null,
+      'courseElapsedSeconds': seconds,
+      'paceSecondsPerKm': pace ?? seconds,
+      'completedAt': completedAt,
+      'mine': mine,
+    });
+
+/// 코스 랭킹 요약 값. [me]가 없으면 그 기간 내 기록이 없다. [ghost]는 공개 고스트의 순위다.
+CourseRankingSummary courseRankingSummary({
+  int participants = 0,
+  int? average,
+  Map<String, Object?> me = const {'status': 'NO_RECORD'},
+  List<CourseRankingEntry> top = const [],
+  int? ghost,
+}) =>
+    CourseRankingSummary.fromJson({
+      'participantCount': participants,
+      'averageCourseElapsedSeconds': average,
+      'me': me,
+      'top': [
+        for (final entry in top)
+          {
+            'rank': entry.rank,
+            'memberId': entry.memberId,
+            'nickname': entry.nickname,
+            'profileImageUrl': entry.profileImageUrl,
+            'courseElapsedSeconds': entry.courseElapsedSeconds,
+            'paceSecondsPerKm': entry.paceSecondsPerKm,
+            'completedAt': entry.completedAt.toIso8601String(),
+            'mine': entry.mine,
+          },
+      ],
+      'ghost': ghost == null
+          ? null
+          : {'runRecordId': 'run-$ghost', 'memberId': 'member-$ghost', 'rank': ghost, 'courseElapsedSeconds': 1452},
     });

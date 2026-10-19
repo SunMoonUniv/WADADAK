@@ -14,6 +14,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 /**
  * 순위가 매겨진 대표 기록으로 응답을 만든다. 실제 구현과 스텁이 같은 규칙을 쓰게 한 곳에 둔다.
@@ -35,10 +36,13 @@ final class CourseRankingAssembler {
     static CourseRankingSummary summary(List<RankedRecord> ranking, UUID requesterId, boolean requesterVisible,
                                         RankedRecord privateRecord, Function<Set<UUID>, Map<UUID, MemberProfile>> profiles) {
         List<RankedRecord> top = ranking.subList(0, Math.min(TOP_SIZE, ranking.size()));
-        Map<UUID, MemberProfile> found = profiles.apply(memberIds(top));
+        // 내 순위 카드에도 닉네임·사진이 필요해 요청자를 같은 조회에 넣는다
+        Map<UUID, MemberProfile> found = profiles.apply(
+                Stream.concat(top.stream().map(RankedRecord::memberId), Stream.of(requesterId)).collect(Collectors.toSet()));
         Integer average = ranking.isEmpty() ? null
                 : (int) Math.round(ranking.stream().mapToInt(RankedRecord::courseElapsedSeconds).average().orElseThrow());
-        return new CourseRankingSummary(ranking.size(), average, me(ranking, requesterId, requesterVisible, privateRecord),
+        return new CourseRankingSummary(ranking.size(), average,
+                me(ranking, requesterId, requesterVisible, privateRecord, found.get(requesterId)),
                 top.stream().map(record -> entry(record, found, requesterId)).toList(),
                 ghostCandidates(ranking, requesterId, 1).stream().findFirst().orElse(null));
     }
@@ -63,18 +67,22 @@ final class CourseRankingAssembler {
     }
 
     private static MyCourseRanking me(List<RankedRecord> ranking, UUID requesterId, boolean requesterVisible,
-                                      RankedRecord privateRecord) {
+                                      RankedRecord privateRecord, MemberProfile profile) {
+        String nickname = profile == null ? null : profile.nickname();
+        String image = profile == null ? null : profile.profileImageUrl();
         if (!requesterVisible) {
-            return privateRecord == null ? new MyCourseRanking(MyCourseRanking.Status.PRIVATE, null, null, null, null, null)
-                    : new MyCourseRanking(MyCourseRanking.Status.PRIVATE, null, privateRecord.courseElapsedSeconds(),
-                    pace(privateRecord), privateRecord.completedAt(), null);
+            return privateRecord == null
+                    ? new MyCourseRanking(MyCourseRanking.Status.PRIVATE, null, nickname, image, null, null, null, null)
+                    : new MyCourseRanking(MyCourseRanking.Status.PRIVATE, null, nickname, image,
+                    privateRecord.courseElapsedSeconds(), pace(privateRecord), privateRecord.completedAt(), null);
         }
         return ranking.stream()
                 .filter(record -> record.memberId().equals(requesterId))
                 .findFirst()
-                .map(record -> new MyCourseRanking(MyCourseRanking.Status.RANKED, record.rank(), record.courseElapsedSeconds(),
-                        pace(record), record.completedAt(), (int) Math.ceil(record.rank() * 100.0 / ranking.size())))
-                .orElse(new MyCourseRanking(MyCourseRanking.Status.NO_RECORD, null, null, null, null, null));
+                .map(record -> new MyCourseRanking(MyCourseRanking.Status.RANKED, record.rank(), nickname, image,
+                        record.courseElapsedSeconds(), pace(record), record.completedAt(),
+                        (int) Math.ceil(record.rank() * 100.0 / ranking.size())))
+                .orElse(new MyCourseRanking(MyCourseRanking.Status.NO_RECORD, null, nickname, image, null, null, null, null));
     }
 
     private static CourseRankingEntry entry(RankedRecord record, Map<UUID, MemberProfile> profiles, UUID requesterId) {

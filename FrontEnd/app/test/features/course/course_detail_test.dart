@@ -6,13 +6,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wadadak/core/api/api_client.dart';
 import 'package:wadadak/core/api/course_api_client.dart';
 import 'package:wadadak/core/api/member_api_client.dart';
+import 'package:wadadak/core/api/ranking_api_client.dart';
 import 'package:wadadak/core/api/review_api_client.dart';
 import 'package:wadadak/core/auth/social_login.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/map/map_view.dart';
 import 'package:wadadak/features/course/course_list_card.dart';
 import 'package:wadadak/features/course/detail/course_detail_screen.dart';
+import 'package:wadadak/features/course/detail/course_ranking_tab.dart';
+import 'package:wadadak/features/course/detail/course_rankings_screen.dart';
 import 'package:wadadak/features/course/detail/course_reviews_tab.dart';
+import 'package:wadadak/features/course/detail/course_run_bar.dart';
 import 'package:wadadak/features/course/course_public_period_sheet.dart';
 import 'package:wadadak/features/home/my_location.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
@@ -27,6 +31,7 @@ import '../../fakes.dart';
 void main() {
   late FakeCourseApi courses;
   late FakeCourseReviewApi reviews;
+  late FakeCourseRankingApi rankings;
 
   const route = [GeoPoint(37.5666, 126.9784), GeoPoint(37.5700, 126.9800), GeoPoint(37.5750, 126.9850)];
 
@@ -43,6 +48,52 @@ void main() {
         creatorNickname: nickname,
       );
 
+  /// Figma B9: 312명 중 나 24위(27:14 · 5′14″/km · 09.08 · 상위 8%), 1위 24:12, 평균 28:40. 공개 고스트는 1위.
+  CourseRankingSummary allRanking({
+    Map<String, Object?> me = const {
+      'status': 'RANKED',
+      'rank': 24,
+      'nickname': '러닝왕김',
+      'courseElapsedSeconds': 1634,
+      'paceSecondsPerKm': 314,
+      'completedAt': '2026-09-08T01:00:00Z',
+      'topPercent': 8,
+    },
+  }) =>
+      courseRankingSummary(
+        participants: 312,
+        average: 1720,
+        me: me,
+        top: [
+          courseRankingEntry(1, '러너_하늘', 1452, pace: 279),
+          courseRankingEntry(2, '러너_민', 1488, pace: 286),
+          courseRankingEntry(3, '성북러너', 1502, pace: 289),
+          courseRankingEntry(4, '달리는곰', 1520, pace: 292),
+          courseRankingEntry(5, '한강러너', 1544, pace: 297),
+        ],
+        ghost: 1,
+      );
+
+  /// 이번 주: 3명 중 나 2위. 공개 고스트는 1위.
+  final weekRanking = courseRankingSummary(
+    participants: 3,
+    average: 1510,
+    me: const {
+      'status': 'RANKED',
+      'rank': 2,
+      'courseElapsedSeconds': 1500,
+      'paceSecondsPerKm': 288,
+      'completedAt': '2026-10-14T01:00:00Z',
+      'topPercent': 67,
+    },
+    top: [
+      courseRankingEntry(1, '새벽러닝', 1490, pace: 287),
+      courseRankingEntry(2, '러닝왕김', 1500, pace: 288, mine: true),
+      courseRankingEntry(3, '야경러너', 1540, pace: 296),
+    ],
+    ghost: 1,
+  );
+
   /// 오늘은 2026-10-15(Asia/Seoul)다.
   final today = DateTime.utc(2026, 10, 15, 3);
 
@@ -56,6 +107,7 @@ void main() {
         mapEngineProvider.overrideWithValue(MapEngine.dev),
         courseApiClientProvider.overrideWithValue(courses),
         reviewApiClientProvider.overrideWithValue(reviews),
+        rankingApiClientProvider.overrideWithValue(rankings),
       ],
       child: MaterialApp(theme: WdTheme.light(), home: CourseDetailScreen(courseId: 'c1', now: () => today)),
     ));
@@ -70,10 +122,17 @@ void main() {
       ProviderScope.containerOf(tester.element(find.byType(CourseDetailScreen)));
   String snackBar(WidgetTester tester) =>
       ((tester.widget<SnackBar>(find.byType(SnackBar)).content as Text).data)!;
+  /// 아래 버튼(라벨, 켜짐).
+  List<(String, bool)> bottomButtons(WidgetTester tester) => [
+        for (final button in tester.widgetList<WdButton>(
+            find.descendant(of: find.byType(WdBottomBar), matching: find.byType(WdButton))))
+          (button.label, button.onPressed != null),
+      ];
 
   setUp(() {
     courses = FakeCourseApi()..details = {'c1': detail()};
     reviews = FakeCourseReviewApi(reviewSummary(count: 128, average: 4.6, items: (4.7, 4.4, 4.8, 4.1)));
+    rankings = FakeCourseRankingApi({RankingPeriod.all: allRanking()});
   });
 
   testWidgets('shows the course with its creator, route, km markers, stats and runner ratings', (tester) async {
@@ -108,8 +167,8 @@ void main() {
           findsOneWidget);
     }
     expect(text('공개 기간이 29일 남았어요(11월 13일까지) · 누군가 완주하면 30일 연장돼요'), findsOneWidget);
-    expect(text('이 코스로 달리기'), findsOneWidget);
-    expect(text('고스트 대결 ▶'), findsOneWidget, reason: 'Figma B1');
+    expect(bottomButtons(tester), [('이 코스로 달리기', true), ('고스트 대결 ▶', true)], reason: 'Figma B1');
+    expect(rankings.summaryRequests, [RankingPeriod.all], reason: 'B1 고스트는 전체 기간(B1-07)');
     expect(find.byWidgetPredicate((widget) => widget is WdIcon && widget.icon == WdIcons.share), findsNothing,
         reason: '공유 링크를 정할 때까지 공유는 두지 않는다');
   });
@@ -141,26 +200,15 @@ void main() {
     expect(text('한강 야경 5K'), findsOneWidget);
   });
 
-  testWidgets('stays on the tab and tells the ranking and run screens are not ready', (tester) async {
+  testWidgets('tells the run screens are not ready yet', (tester) async {
     await openDetail(tester);
-
-    await tester.tap(text('랭킹'));
-    await tester.pumpAndSettle();
-    expect(snackBar(tester), '랭킹 탭은 아직 준비 중이에요.');
-    expect(text('러너 평가'), findsOneWidget);
-
-    await tester.tap(text('리뷰 128'));
-    await tester.pumpAndSettle();
-    await tester.tap(text('랭킹'));
-    await tester.pumpAndSettle();
-    expect(text('항목별 평균'), findsOneWidget, reason: '리뷰 탭에 머문다');
 
     await tester.tap(text('이 코스로 달리기'));
     await tester.pumpAndSettle();
-    expect(snackBar(tester), CourseDetailScreen.runNotReadyMessage);
+    expect(snackBar(tester), CourseRunBar.notReadyMessage);
     await tester.tap(text('고스트 대결 ▶'));
     await tester.pumpAndSettle();
-    expect(snackBar(tester), CourseDetailScreen.runNotReadyMessage);
+    expect(snackBar(tester), CourseRunBar.notReadyMessage);
   });
 
   testWidgets('does not open the public period sheet (B11) from the period notice', (tester) async {
@@ -408,6 +456,210 @@ void main() {
     });
   });
 
+  group('ranking tab (B9)', () {
+    Future<void> openRanking(WidgetTester tester) async {
+      await openDetail(tester);
+      await tester.tap(text('랭킹'));
+      await tester.pumpAndSettle();
+    }
+
+    List<String> chips(WidgetTester tester) => [
+          for (final chip in tester.widgetList<WdFilterChip>(find.byType(WdFilterChip)))
+            '${chip.label}${chip.selected ? '*' : ''}',
+        ];
+    WdRank myRank(WidgetTester tester) => tester.widget<WdMyRankCard>(find.byType(WdMyRankCard)).data;
+    List<(String, String)> stats(WidgetTester tester) => tester.widget<WdStatSummary>(find.byType(WdStatSummary)).items;
+    List<WdRank> ranks(WidgetTester tester) => tester.widget<WdRankList>(find.byType(WdRankList)).ranks;
+    Future<void> pull(WidgetTester tester) async {
+      await tester.fling(find.byType(ListView).first, const Offset(0, 400), 1000);
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('shows my rank, the course stats and the top five (Figma B9)', (tester) async {
+      await openRanking(tester);
+
+      expect(chips(tester), ['전체 기간*', '이번 달', '이번 주']);
+      final me = myRank(tester);
+      expect([me.rank, me.name, me.meta, me.value], ['24', '나 (러닝왕김)', '5′14″/km · 09.08 · 상위 8%', '27:14']);
+      expect(tester.widget<WdMyRankCard>(find.byType(WdMyRankCard)).onTap, isNull, reason: '내 순위는 누를 수 없다(B9-02)');
+      expect(stats(tester), [('참여 러너', '312명'), ('1위 기록', '24:12'), ('평균 기록', '28:40')]);
+      expect([for (final rank in ranks(tester)) '${rank.rank} ${rank.name} ${rank.meta} ${rank.value}'], [
+        '1 러너_하늘 4′39″/km 24:12',
+        '2 러너_민 4′46″/km 24:48',
+        '3 성북러너 4′49″/km 25:02',
+        '4 달리는곰 4′52″/km 25:20',
+        '5 한강러너 4′57″/km 25:44',
+      ]);
+      expect(tester.widget<WdRankList>(find.byType(WdRankList)).onTap, isNull, reason: 'I3가 생길 때까지');
+      expect(text('전체 순위 312명 보기'), findsOneWidget);
+      expect(find.textContaining('공개 기간이'), findsOneWidget, reason: '어느 탭에서나 보인다');
+      expect(bottomButtons(tester), [('이 코스로 달리기', true), ('고스트 대결 ▶', true)]);
+      expect(rankings.summaryRequests, [RankingPeriod.all], reason: '고스트 버튼과 같은 요약을 쓴다');
+    });
+
+    testWidgets('changes the period, keeping the shown ranking while loading and the choice across tabs',
+        (tester) async {
+      rankings.summaries[RankingPeriod.week] = weekRanking;
+      await openRanking(tester);
+      rankings.gate = Completer<void>();
+
+      await tester.tap(text('이번 주'));
+      await tester.pump();
+      expect(chips(tester), ['전체 기간', '이번 달', '이번 주*']);
+      expect(myRank(tester).rank, '24', reason: '받는 동안 보이던 랭킹 그대로');
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(bottomButtons(tester).last, ('고스트 대결 ▶', false), reason: '고른 기간의 고스트를 받는 중');
+
+      rankings.gate!.complete();
+      rankings.gate = null;
+      await tester.pumpAndSettle();
+      expect(myRank(tester).meta, '4′48″/km · 10.14 · 상위 67%');
+      expect(myRank(tester).name, '나', reason: '닉네임을 못 받으면 `나`만');
+      expect([for (final rank in ranks(tester)) rank.name], ['새벽러닝', '나 (러닝왕김)', '야경러너'],
+          reason: '내 줄은 B8 리뷰처럼 `나 (닉네임)`');
+      expect(text('전체 순위 3명 보기'), findsOneWidget);
+      expect(bottomButtons(tester).last, ('고스트 대결 ▶', true));
+      expect(rankings.summaryRequests, [RankingPeriod.all, RankingPeriod.week]);
+
+      await tester.tap(text('정보'));
+      await tester.pumpAndSettle();
+      expect(text('러너 평가'), findsOneWidget);
+      await tester.tap(text('랭킹'));
+      await tester.pumpAndSettle();
+      expect(chips(tester).last, '이번 주*', reason: '탭을 오가도 기간은 그대로');
+      expect(rankings.summaryRequests, hasLength(2), reason: '탭을 오가도 다시 받지 않는다');
+
+      await tester.tap(text('전체 기간'));
+      await tester.pumpAndSettle();
+      expect(rankings.summaryRequests, [RankingPeriod.all, RankingPeriod.week, RankingPeriod.all],
+          reason: '기간을 바꾸면 받아 둔 것이 있어도 다시 받는다(B9-01)');
+      expect(myRank(tester).rank, '24');
+    });
+
+    testWidgets('shows B9-1 with the first-run button when nobody has finished', (tester) async {
+      rankings.summaries = {};
+      await openDetail(tester);
+      expect(bottomButtons(tester), [('고스트 없음', false), (CourseRunBar.firstRunLabel, true)], reason: 'B1-1도 같다');
+
+      await tester.tap(text('랭킹'));
+      await tester.pumpAndSettle();
+      expect(text(CourseRankingTab.emptyTitle), findsOneWidget);
+      expect(text(CourseRankingTab.emptyMessage), findsOneWidget);
+      expect(find.byType(WdFilterChip), findsNothing, reason: 'Figma B9-1');
+      expect(find.byType(WdMyRankCard), findsNothing);
+      expect(find.textContaining('전체 순위'), findsNothing);
+      expect(find.textContaining('공개 기간이'), findsOneWidget);
+      expect(bottomButtons(tester), [('고스트 없음', false), (CourseRunBar.firstRunLabel, true)]);
+
+      await tester.tap(text(CourseRunBar.firstRunLabel));
+      await tester.pumpAndSettle();
+      expect(snackBar(tester), CourseRunBar.notReadyMessage);
+    });
+
+    testWidgets('shows zero runners and dashes for a period without records (B9-03)', (tester) async {
+      await openRanking(tester);
+      await tester.tap(text('이번 달'));
+      await tester.pumpAndSettle();
+
+      expect(chips(tester), ['전체 기간', '이번 달*', '이번 주']);
+      expect(stats(tester), [('참여 러너', '0명'), ('1위 기록', '—'), ('평균 기록', '—')]);
+      final me = myRank(tester);
+      expect([me.rank, me.meta, me.value], ['—', '이번 달 완주 기록이 없어요', '—']);
+      expect(text('이번 달에 완주한 러너가 아직 없어요'), findsOneWidget);
+      expect(find.byType(WdRankList), findsNothing);
+      expect(find.textContaining('전체 순위'), findsNothing);
+      expect(bottomButtons(tester), [('고스트 없음', false), ('이 코스로 달리기', true)],
+          reason: '전체 기간에는 달린 러너가 있다');
+    });
+
+    testWidgets('turns the ghost off when I am the only finisher', (tester) async {
+      rankings.summaries = {
+        RankingPeriod.all: courseRankingSummary(
+          participants: 1,
+          average: 1634,
+          me: const {
+            'status': 'RANKED',
+            'rank': 1,
+            'courseElapsedSeconds': 1634,
+            'paceSecondsPerKm': 314,
+            'completedAt': '2026-09-08T01:00:00Z',
+            'topPercent': 100,
+          },
+          top: [courseRankingEntry(1, '러닝왕김', 1634, pace: 314, mine: true)],
+        ),
+      };
+      await openDetail(tester);
+      expect(bottomButtons(tester), [('고스트 없음', false), ('이 코스로 달리기', true)], reason: '내 기록은 고스트가 아니다');
+
+      await tester.tap(text('랭킹'));
+      await tester.pumpAndSettle();
+      expect([for (final rank in ranks(tester)) rank.name], ['나 (러닝왕김)']);
+      expect(text('전체 순위 1명 보기'), findsOneWidget);
+    });
+
+    testWidgets('shows private instead of my rank (common 6)', (tester) async {
+      rankings.summaries = {
+        RankingPeriod.all: allRanking(me: const {
+          'status': 'PRIVATE',
+          'courseElapsedSeconds': 1634,
+          'paceSecondsPerKm': 314,
+          'completedAt': '2026-09-08T01:00:00Z',
+        }),
+      };
+      await openRanking(tester);
+
+      final me = myRank(tester);
+      expect([me.rank, me.meta, me.value], ['비공개 중', '5′14″/km · 09.08', '27:14']);
+    });
+
+    testWidgets('offers to retry with dashes when the ranking cannot be loaded, and turns the ghost off',
+        (tester) async {
+      rankings.error = const ApiException('NETWORK', '');
+      await openDetail(tester);
+      expect(bottomButtons(tester), [('이 코스로 달리기', true), ('고스트 대결 ▶', false)], reason: '조회 실패는 비활성');
+
+      await tester.tap(text('랭킹'));
+      await tester.pumpAndSettle();
+      expect(chips(tester), ['전체 기간*', '이번 달', '이번 주']);
+      expect(stats(tester), [('참여 러너', '—'), ('1위 기록', '—'), ('평균 기록', '—')]);
+      expect(text(CourseRankingTab.failedMessage), findsOneWidget);
+
+      rankings.error = null;
+      await tester.ensureVisible(text('다시 시도'));
+      await tester.pumpAndSettle();
+      await tester.tap(text('다시 시도'));
+      await tester.pumpAndSettle();
+      expect(myRank(tester).rank, '24');
+      expect(bottomButtons(tester).last, ('고스트 대결 ▶', true));
+    });
+
+    testWidgets('pulls to refresh only on the ranking tab and keeps the ranking when it fails', (tester) async {
+      await openDetail(tester);
+      await pull(tester);
+      expect(rankings.summaryRequests, hasLength(1), reason: '정보 탭은 당겨도 받지 않는다');
+
+      await tester.tap(text('랭킹'));
+      await tester.pumpAndSettle();
+      await pull(tester);
+      expect(rankings.summaryRequests, hasLength(2));
+
+      rankings.error = const ApiException('NETWORK', '');
+      await pull(tester);
+      expect(myRank(tester).rank, '24', reason: '받아 둔 랭킹 그대로');
+      expect(text(CourseRankingTab.staleMessage), findsOneWidget);
+      expect(bottomButtons(tester).last, ('고스트 대결 ▶', false));
+
+      rankings.error = null;
+      await tester.ensureVisible(text('다시 시도'));
+      await tester.pumpAndSettle();
+      await tester.tap(text('다시 시도'));
+      await tester.pumpAndSettle();
+      expect(text(CourseRankingTab.staleMessage), findsNothing);
+      expect(bottomButtons(tester).last, ('고스트 대결 ▶', true));
+      expect(rankings.summaryRequests, hasLength(4));
+    });
+  });
+
   group('from home', () {
     late FakeMyLocation location;
 
@@ -427,6 +679,7 @@ void main() {
           mapEngineProvider.overrideWithValue(MapEngine.dev),
           courseApiClientProvider.overrideWithValue(courses),
           reviewApiClientProvider.overrideWithValue(reviews),
+          rankingApiClientProvider.overrideWithValue(rankings),
           myLocationProvider.overrideWithValue(location),
         ],
         child: const WadadakApp(),
@@ -487,6 +740,37 @@ void main() {
       expect(find.text('항목별 평균'), findsOneWidget, reason: '리뷰 탭 그대로');
       expect(reviews.listRequests, hasLength(requests + 1), reason: 'G2에서 쓰거나 지웠을 수 있어 다시 받는다');
       expect(reviews.listRequests.last.excludeMine, isFalse);
+    });
+
+    testWidgets('see all opens the course rankings (G3) with the chosen period (B9-05)', (tester) async {
+      rankings
+        ..summaries[RankingPeriod.week] = weekRanking
+        ..rows[RankingPeriod.week] = weekRanking.top;
+      await openHome(tester);
+      await tester.tap(find.byType(CourseListCard));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('랭킹'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('이번 주'));
+      await tester.pumpAndSettle();
+
+      final seeAll = find.text('전체 순위 3명 보기');
+      await tester.ensureVisible(seeAll);
+      await tester.pumpAndSettle();
+      await tester.tap(seeAll);
+      await tester.pumpAndSettle();
+      final screen = tester.widget<CourseRankingsScreen>(find.byType(CourseRankingsScreen));
+      expect((screen.courseId, screen.courseName, screen.period), ('c1', '한강 야경 5K', RankingPeriod.week));
+      expect(rankings.entryRequests, [(RankingPeriod.week, null)]);
+      expect(find.text('전체 순위 3명'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(WdFilterChip, '전체 기간'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.bySemanticsLabel('뒤로 가기'));
+      await tester.pumpAndSettle();
+      expect(find.byType(CourseRankingsScreen), findsNothing);
+      expect(tester.widget<WdFilterChip>(find.widgetWithText(WdFilterChip, '이번 주')).selected, isTrue,
+          reason: 'G3에서 바꾼 기간은 B9에 넘기지 않는다');
     });
   });
 }

@@ -33,7 +33,7 @@ RankingPage _page(List<Map<String, Object?>> entries, String? nextCursor) =>
 
 /// 전체 랭킹: 누적 25명 중 나 24위, 이번 주는 아무도 없다.
 /// 지역 주간: 성북구(내 지역) 30명 중 나 12위, 아산시 3명.
-class FakeRankingApi implements RankingApiClient {
+class FakeRankingApi extends Fake implements RankingApiClient {
   final calls = <String>[];
 
   /// 다음 호출 한 번을 실패시킨다.
@@ -62,6 +62,7 @@ class FakeRankingApi implements RankingApiClient {
       'me': {
         'status': 'RANKED',
         'rank': 24,
+        'nickname': 'wonehgus',
         'distanceMeters': 128000,
         'thisWeekDistanceMeters': 48200,
         'topPercent': 96,
@@ -87,7 +88,7 @@ class FakeRankingApi implements RankingApiClient {
       'participantCount': asan ? 3 : 30,
       'me': asan
           ? {'status': 'OTHER_REGION'}
-          : {'status': 'RANKED', 'rank': 12, 'distanceMeters': 48200, 'lastWeekRank': 19},
+          : {'status': 'RANKED', 'rank': 12, 'nickname': 'wonehgus', 'distanceMeters': 48200, 'lastWeekRank': 19},
       'top': asan ? _runners(1, 3, 30000) : [_entry(1, '러너_하늘', 102400), ..._runners(2, 5, 88100)],
       'nextCursor': asan ? null : '5',
     });
@@ -137,6 +138,7 @@ void main() {
     expect(find.text('러너 25명'), findsOneWidget);
     expect(find.text('1,284 km'), findsOneWidget);
     expect(find.text('이번 주 +48.2 km · 상위 96%'), findsOneWidget);
+    expect(find.text('나 (wonehgus)'), findsOneWidget, reason: 'Figma E1');
     expect(find.text('128 km'), findsOneWidget);
     expect(find.text('러너4'), findsOneWidget);
     expect(find.text('주 평균 38 km'), findsWidgets);
@@ -174,6 +176,7 @@ void main() {
     await tap(tester, find.text('지역 주간 랭킹'));
 
     expect(find.text('성북구 · 지난주 19위 ▲7'), findsOneWidget);
+    expect(find.text('나 (wonehgus)'), findsOneWidget);
     expect(find.text('성북구 순위 · 이번 주'), findsOneWidget);
     expect(find.text('러너5'), findsOneWidget);
     expect(find.text('러너6'), findsNothing);
@@ -196,7 +199,7 @@ void main() {
     await tap(tester, find.text('아산시'));
 
     expect(find.text('전체 순위 3명'), findsOneWidget);
-    expect(find.text('나'), findsNothing);
+    expect(find.textContaining('나 ('), findsNothing);
 
     // I2도 같은 지역을 본다.
     await tap(tester, find.bySemanticsLabel('뒤로 가기'));

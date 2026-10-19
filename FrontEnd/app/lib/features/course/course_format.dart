@@ -9,6 +9,13 @@ String formatCount(int count) => count.toString().replaceAllMapped(RegExp(r'\B(?
 /// 현재 위치에서 코스 출발점까지 거리(Figma A2 카드 `0.8 km 거리`). 100m 안은 `0.1km 거리`로 보인다.
 String formatAway(int meters) => '${formatKm(meters < 100 ? 100 : meters)} 거리';
 
+/// 월.일(Asia/Seoul). 예: `09.08`(Figma B9 · G3 완주 날짜).
+String formatMonthDay(DateTime time) {
+  final seoul = time.toUtc().add(const Duration(hours: 9));
+  String two(int value) => value.toString().padLeft(2, '0');
+  return '${two(seoul.month)}.${two(seoul.day)}';
+}
+
 /// 오늘 사용자 지정 코스를 이미 등록했을 때 B3 · B4에 보이는 안내.
 const customQuotaUsedUpMessage = '오늘은 그려서 만든 코스를 이미 등록했어요. 내일 다시 만들 수 있어요.';
 

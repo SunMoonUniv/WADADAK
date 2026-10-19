@@ -21,6 +21,12 @@ String weekLabel(DateTime monday) => '${monday.month}월 ${(monday.day + 6) ~/ 7
 ImageProvider? avatarOf(DistanceRankingEntry entry) =>
     entry.profileImageUrl == null ? null : NetworkImage(entry.profileImageUrl!);
 
+/// 내 행 이름. 순위 줄처럼 `나 (닉네임)`이고 닉네임을 못 받으면 `나`(Figma E1 · I5).
+String myName(MyDistanceRanking me) => me.nickname == null ? '나' : '나 (${me.nickname})';
+
+ImageProvider? myAvatar(MyDistanceRanking me) =>
+    me.profileImageUrl == null ? null : NetworkImage(me.profileImageUrl!);
+
 /// 내 순위 자리: 내 정보 비공개면 `비공개 중`, 기록이 없거나 다른 지역이면 `-`.
 String myRankLabel(MyDistanceRanking me) => switch (me.status) {
       MyRankStatus.ranked => '${me.rank}',
@@ -50,7 +56,8 @@ class RegionMyRankCard extends StatelessWidget {
     return WdMyRankCard(
       WdRank(
         rank: myRankLabel(me),
-        name: '나',
+        name: myName(me),
+        avatar: myAvatar(me),
         meta: switch (me) {
           MyDistanceRanking(status: MyRankStatus.noRecord) => '$region · 이번 주 기록이 없어요',
           MyDistanceRanking(:final rank?, :final lastWeekRank?) =>

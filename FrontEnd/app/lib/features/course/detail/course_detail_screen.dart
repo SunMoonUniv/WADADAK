@@ -5,17 +5,22 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../../../core/api/api_client.dart';
 import '../../../core/api/course_api_client.dart';
+import '../../../core/api/ranking_api_client.dart';
 import '../../../core/api/review_api_client.dart';
 import '../../../core/map/map_view.dart';
 import '../../../routes.dart';
 import '../../review/review_state.dart';
 import '../course_format.dart';
 import 'course_empty_card.dart';
+import 'course_ranking_state.dart';
+import 'course_ranking_tab.dart';
 import 'course_reviews_tab.dart';
+import 'course_run_bar.dart';
 
-/// B1 코스 상세 — 정보 · B8 리뷰 탭. 코스 정보는 코스 API, 평점 · 리뷰 수 · 러너 평가 · 리뷰는 리뷰 API에서 받는다(B1-01).
+/// B1 코스 상세 — 정보 · B8 리뷰 · B9 랭킹 탭. 코스 정보는 코스 API, 평점 · 리뷰 수 · 러너 평가 · 리뷰는 리뷰 API,
+/// 랭킹 · 고스트는 랭킹 API에서 받는다(B1-01).
 ///
-/// - 랭킹(B9) 탭과 이 코스로 달리기(C6) · 고스트 대결(C1)은 아직 없어 누르면 준비 중이라고 알린다.
+/// - 이 코스로 달리기(C6) · 고스트 대결(C1)은 아직 없어 누르면 준비 중이라고 알린다.
 /// - 평균 페이스 · 현재 러너는 코스 통계(F11)가, 고도 프로필은 GPS 코스 등록(F7)이 생기면 붙인다.
 /// - 공유(B1-08)는 공유 링크를 정할 때까지 두지 않는다.
 /// - 비공개 · 삭제된 코스는 열지 않는다(B1-04).
@@ -31,7 +36,6 @@ class CourseDetailScreen extends ConsumerStatefulWidget {
   static const unavailableMessage = '비공개되었거나 삭제된 코스예요.';
   static const loadFailedTitle = '코스를 불러오지 못했어요';
   static const loadFailedMessage = '네트워크를 확인하고 다시 시도해 주세요.';
-  static const runNotReadyMessage = '코스 러닝은 아직 준비 중이에요.';
   static const noRunnerTitle = '아직 이 코스를 달린 사람이 없어요';
   static const noRunnerMessage = '처음 완주하면 평균 페이스 · 평점 · 랭킹이 만들어져요.\n첫 번째 기록의 주인공이 되어 보세요.';
 
@@ -48,7 +52,7 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
   CourseDetail? _course;
   Object? _error;
 
-  /// 지금 보이는 탭. 0 정보, 1 리뷰(B8).
+  /// 지금 보이는 탭. 0 정보, 1 리뷰(B8), 2 랭킹(B9).
   var _tab = 0;
 
   /// 리뷰 탭을 한 번이라도 열었다. 그때부터 미리보기를 받고, 탭을 오가도 다시 받지 않는다.
@@ -62,6 +66,14 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
   List<ReviewCard>? _shownReviews;
 
   CourseReviewQuery get _reviewQuery => (courseId: widget.courseId, sort: _reviewSort, photoOnly: _reviewPhotoOnly);
+
+  /// B9 기간. 탭을 오가도 그대로다. 정보 · 리뷰 탭의 고스트는 늘 전체 기간이다(정책 공통 6).
+  var _rankingPeriod = RankingPeriod.all;
+
+  /// 마지막으로 보인 랭킹과 그 기간. 기간을 바꿔 새로 받는 동안 그대로 두어 화면이 튀지 않게 한다(B8과 같다).
+  (RankingPeriod, CourseRankingSummary)? _shownRanking;
+
+  CourseRankingKey get _rankingKey => (courseId: widget.courseId, period: _rankingPeriod);
 
   /// Figma B1 지도 높이.
   static const _mapHeight = 150.0;
@@ -106,12 +118,7 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
       ..showSnackBar(SnackBar(content: Text(message)));
   }
 
-  /// 랭킹 탭은 아직 없어 지금 탭에 머문다.
   void _onTab(int index) {
-    if (index == 2) {
-      _tabs.index = _tab;
-      return _notReady('랭킹 탭은 아직 준비 중이에요.');
-    }
     setState(() {
       _tab = index;
       if (index == 1) _reviewsOpened = true;
@@ -123,6 +130,22 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
   Future<void> _seeAllReviews(CourseDetail course) async {
     await context.push(Routes.courseReviews(course.courseId), extra: course.name);
     if (mounted) ref.invalidate(courseReviewPreviewProvider);
+  }
+
+  /// B9-01 기간을 바꾸면 그 기간을 새로 받는다(받아 둔 것이 있어도).
+  void _selectRankingPeriod(RankingPeriod period) {
+    if (period == _rankingPeriod) return;
+    ref.invalidate(courseRankingProvider((courseId: widget.courseId, period: period)));
+    setState(() => _rankingPeriod = period);
+  }
+
+  /// 랭킹 탭에서 당겨서 새로고침(B9-01). 실패하면 받아 둔 랭킹 아래에 다시 시도를 보인다.
+  Future<void> _refreshRanking() =>
+      ref.refresh(courseRankingProvider(_rankingKey).future).then((_) {}, onError: (_) {});
+
+  /// B9-05 전체 순위 보기 → G3. 지금 고른 기간으로 연다.
+  void _seeAllRankings(CourseDetail course) {
+    context.push(Routes.courseRankings(course.courseId), extra: (courseName: course.name, period: _rankingPeriod));
   }
 
   @override
@@ -172,6 +195,10 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
       (AsyncValue(hasValue: false, hasError: false), final shown?) => AsyncData(shown),
       _ => watched,
     };
+    // 정보 · 리뷰 탭의 고스트 대결 버튼은 늘 전체 기간, 랭킹 탭은 고른 기간을 쓴다(정책 공통 6).
+    final allRanking = ref.watch(courseRankingProvider((courseId: widget.courseId, period: RankingPeriod.all)));
+    final ranking = ref.watch(courseRankingProvider(_rankingKey));
+    if (ranking.value case final value?) _shownRanking = (_rankingPeriod, value);
     return Scaffold(
       // 등록자 닉네임은 제목 아래에(정책 공통 4 · B1-01). 탈퇴했으면 서버가 `탈퇴한 사용자`로 준다.
       appBar: WdAppBar(
@@ -182,63 +209,76 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
         },
         onBack: () => context.pop(),
       ),
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: WdSpace.s24),
-        children: [
-          _map(course),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(WdSpace.s24, WdSpace.s16, WdSpace.s24, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              spacing: WdSpace.s16,
-              children: [
-                Wrap(
-                  children: [
-                    WdTag(course.courseType.label, filled: false),
-                    for (final tag in course.tags) WdTag(tag.label, filled: false),
-                  ],
-                ),
-                WdSummaryTiles([
-                  ('거리', formatKm(course.distanceMeters)),
-                  ('난이도', course.difficulty.label),
-                  ('평점', rating == null ? CourseDetailScreen.noValue : '★ ${rating.toStringAsFixed(1)}'),
-                  // 코스 통계(F11)가 생기면 붙인다.
-                  ('평균 페이스', CourseDetailScreen.noValue),
-                ]),
-                WdTabBar(
-                  controller: _tabs,
-                  onTap: _onTab,
-                  tabs: ['정보', reviewCount == null ? '리뷰' : '리뷰 ${formatCount(reviewCount)}', '랭킹'],
-                ),
-                if (_tab == 0)
-                  _info(summary)
-                else
-                  CourseReviewsTab(
-                    summary: summary,
-                    preview: preview,
-                    sort: _reviewSort,
-                    photoOnly: _reviewPhotoOnly,
-                    onSort: (sort) => setState(() => _reviewSort = sort),
-                    onPhotoOnly: (photoOnly) => setState(() => _reviewPhotoOnly = photoOnly),
-                    onRetrySummary: _retrySummary,
-                    onRetryPreview: () => ref.invalidate(courseReviewPreviewProvider(_reviewQuery)),
-                    onSeeAll: () => _seeAllReviews(course),
+      body: RefreshIndicator(
+        color: WdColors.ink,
+        // 당겨서 새로고침은 랭킹 탭에서만 한다(4.1 B9-01).
+        notificationPredicate: (notification) => _tab == 2 && notification.depth == 0,
+        onRefresh: _refreshRanking,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: WdSpace.s24),
+          children: [
+            _map(course),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(WdSpace.s24, WdSpace.s16, WdSpace.s24, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                spacing: WdSpace.s16,
+                children: [
+                  Wrap(
+                    children: [
+                      WdTag(course.courseType.label, filled: false),
+                      for (final tag in course.tags) WdTag(tag.label, filled: false),
+                    ],
                   ),
-                // 공개 기간은 어느 탭에서나 맨 아래에 보인다(4.1 B8).
-                WdInfoBanner(publicPeriodText(course.expiresAt, widget.now()), plain: true),
-              ],
+                  WdSummaryTiles([
+                    ('거리', formatKm(course.distanceMeters)),
+                    ('난이도', course.difficulty.label),
+                    ('평점', rating == null ? CourseDetailScreen.noValue : '★ ${rating.toStringAsFixed(1)}'),
+                    // 코스 통계(F11)가 생기면 붙인다.
+                    ('평균 페이스', CourseDetailScreen.noValue),
+                  ]),
+                  WdTabBar(
+                    controller: _tabs,
+                    onTap: _onTab,
+                    tabs: ['정보', reviewCount == null ? '리뷰' : '리뷰 ${formatCount(reviewCount)}', '랭킹'],
+                  ),
+                  if (_tab == 0)
+                    _info(summary)
+                  else if (_tab == 1)
+                    CourseReviewsTab(
+                      summary: summary,
+                      preview: preview,
+                      sort: _reviewSort,
+                      photoOnly: _reviewPhotoOnly,
+                      onSort: (sort) => setState(() => _reviewSort = sort),
+                      onPhotoOnly: (photoOnly) => setState(() => _reviewPhotoOnly = photoOnly),
+                      onRetrySummary: _retrySummary,
+                      onRetryPreview: () => ref.invalidate(courseReviewPreviewProvider(_reviewQuery)),
+                      onSeeAll: () => _seeAllReviews(course),
+                    )
+                  else
+                    CourseRankingTab(
+                      ranking: ranking,
+                      shown: _shownRanking,
+                      period: _rankingPeriod,
+                      onPeriod: _selectRankingPeriod,
+                      onRetry: () => ref.invalidate(courseRankingProvider(_rankingKey)),
+                      onSeeAll: () => _seeAllRankings(course),
+                    ),
+                  // 공개 기간은 어느 탭에서나 맨 아래에 보인다(4.1 B8).
+                  WdInfoBanner(publicPeriodText(course.expiresAt, widget.now()), plain: true),
+                ],
+              ),
             ),
-          ),
-        ],
-      ),
-      bottomNavigationBar: WdBottomBar.dual(
-        secondary: WdButton(
-          '이 코스로 달리기',
-          variant: WdButtonVariant.secondary,
-          onPressed: () => _notReady(CourseDetailScreen.runNotReadyMessage),
+          ],
         ),
-        // Figma B1 · 디자인 시스템 Dual CTA와 같은 `고스트 대결 ▶`.
-        primary: WdButton('고스트 대결 ▶', onPressed: () => _notReady(CourseDetailScreen.runNotReadyMessage)),
+      ),
+      bottomNavigationBar: CourseRunBar(
+        ranking: _tab == 2 ? ranking : allRanking,
+        period: _tab == 2 ? _rankingPeriod : RankingPeriod.all,
+        onRun: () => _notReady(CourseRunBar.notReadyMessage),
+        onGhost: (_) => _notReady(CourseRunBar.notReadyMessage),
       ),
     );
   }
