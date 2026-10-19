@@ -247,12 +247,12 @@ final class CourseTracker {
 
     /**
      * 실제 좌표 거리가 속도 상한 안이다. 경로를 따라 가까워 보여도 순간 이동한 표본을 걸러 낸다.
-     * 두 표본의 GPS 정확도만큼 여유를 둔다. 표본 간격이 짧으면 오차만으로 상한을 넘을 수 있다.
+     * 자유 러닝과 같이 GPS 오차 여유는 두지 않는다(정책 "12m/s 초과 위치 튐은 연결하지 않는다").
+     * 오차로 걸리면 그 한 구간만 빠지고 다음 표본부터 다시 이어지며, 완주 5% 허용 안의 손실이다.
      */
     private boolean withinSpeed(Input previous, Input input) {
         long interval = input.elapsedMs() - previous.elapsedMs();
-        double allowance = previous.accuracyM() + input.accuracyM();
         return interval > 0 && interval <= GpsQuality.MAX_INTERVAL_MS
-                && previous.location().distanceMeters(input.location()) <= reach(previous, input) + allowance;
+                && previous.location().distanceMeters(input.location()) <= reach(previous, input);
     }
 }
