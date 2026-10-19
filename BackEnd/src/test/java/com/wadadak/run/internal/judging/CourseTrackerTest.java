@@ -297,12 +297,17 @@ class CourseTrackerTest {
     }
 
     @Test
-    void gpsErrorOnShortIntervalStaysConnected() {
-        // 1초 간격 6m/s 주행인데 오차로 앞 표본은 5m 뒤, 뒤 표본은 5m 앞에 찍힘: 좌표상 16m > 12m지만 정확도 5m + 5m 여유로 연결
-        List<Point> points = track(K1, new Run().at(0, 0).walk(0, 100).walk(0, 95, 5, 1000).walk(0, 111, 16, 1000));
+    void gpsJumpOverSpeedLimitBreaksOnlyThatStep() {
+        // 1초 간격 6m/s 주행인데 오차로 앞 표본은 5m 뒤, 뒤 표본은 5m 앞에 찍힘: 좌표상 16m > 12m라 그 구간만 끊긴다.
+        // GPS 오차 여유는 두지 않는다(자유 러닝·정책과 같은 12m/s 기준). 다음 표본부터 다시 이어진다
+        List<Point> points = track(K1, new Run().at(0, 0).walk(0, 100)
+                .walk(0, 95, 5, 1000).walk(0, 111, 16, 1000).walk(0, 114, 3, 1000));
 
-        assertThat(points.getLast().s()).isCloseTo(111, within(1e-6));
+        assertThat(at(points, 111).connected()).isFalse();
         assertThat(points.getLast().connected()).isTrue();
+        // [0, 100] + [111, 114]: 95→111 한 구간만 빠진다
+        assertThat(RecognizedDistance.of(points).ranges()).hasSize(2);
+        assertThat(RecognizedDistance.of(points).meters()).isCloseTo(103, within(1e-6));
     }
 
     @Test
