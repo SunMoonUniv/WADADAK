@@ -12,96 +12,120 @@ import com.wadadak.run.internal.RunContracts.*;
 import com.wadadak.run.RunErrorCode;
 import com.wadadak.run.internal.metrics.FreeRunCalculator;
 import com.wadadak.run.internal.metrics.RunResultStatsCalculator;
-import java.sql.Timestamp;
+import org.springframework.data.domain.PageRequest;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
 
 @Service
 class RunService {
-    private final JdbcTemplate db;
+    private final RunSessionRepository sessions;
+    private final RunRecordRepository records;
+    private final DeletedRunRecordRepository deletedRecords;
+    private final WithdrawnRunMemberRepository withdrawnMembers;
+    private final RunInputRepository inputs;
+    private final RunLocks locks;
     private final JsonMapper json;
     private final ApplicationEventPublisher events;
     private final Clock clock;
     static final String POLICY_VERSION = "2026-10-14";
-    RunService(JdbcTemplate db, JsonMapper json, ApplicationEventPublisher events, Clock clock) {
-        this.db=db; this.json=json; this.events=events; this.clock=clock;
-    }
-    private void lockMember(UUID member) {
-        db.query("SELECT pg_advisory_xact_lock(hashtextextended(?::text,0))", (rs,n)->true, "run-member:"+member);
-    }
-    private boolean withdrawn(UUID member) {
-        return db.queryForObject("SELECT count(*) FROM run.withdrawn_members WHERE member_id=?",Long.class,member)>0;
+    RunService(RunSessionRepository sessions, RunRecordRepository records,
+               DeletedRunRecordRepository deletedRecords, WithdrawnRunMemberRepository withdrawnMembers,
+               RunInputRepository inputs, RunLocks locks, JsonMapper json,
+               ApplicationEventPublisher events, Clock clock) {
+        this.sessions=sessions; this.records=records; this.deletedRecords=deletedRecords;
+        this.withdrawnMembers=withdrawnMembers; this.inputs=inputs; this.locks=locks;
+        this.json=json; this.events=events; this.clock=clock;
     }
     private void ensureActiveMember(UUID member) {
-        if (withdrawn(member)) throw new AppException(RunErrorCode.NOT_FOUND);
+        if (withdrawnMembers.existsById(member)) throw new AppException(RunErrorCode.NOT_FOUND);
     }
     @Transactional
     public void withdraw(UUID member, Instant withdrawnAt) {
-        lockMember(member);
-        db.update("INSERT INTO run.withdrawn_members(member_id,withdrawn_at) VALUES (?,?) ON CONFLICT DO NOTHING", member, Timestamp.from(withdrawnAt));
-        for (UUID id : db.query("SELECT id FROM run.sessions WHERE member_id=? ORDER BY id", (rs,n)->rs.getObject(1,UUID.class),member)) {
-            lock(id);
+        locks.member(member);
+        if (!withdrawnMembers.existsById(member))
+            withdrawnMembers.save(new WithdrawnRunMember(member,withdrawnAt));
+        for (UUID id : sessions.findIdsByMemberId(member)) {
+            locks.session(id);
             deleteStored(member,id);
         }
     }
-    record Session(UUID id, UUID owner, Instant startedAt, Long finalSeq, String processing, String failure) {}
-    private Session session(UUID owner, UUID id, boolean lock) {
-        List<Session> rows=db.query("SELECT * FROM run.sessions WHERE id=? AND member_id=?"+(lock?" FOR UPDATE":""),
-            (rs,n)->new Session(id, owner, rs.getTimestamp("started_at").toInstant(),
-                rs.getObject("final_seq",Long.class),rs.getString("processing"),rs.getString("failure")),id,owner);
-        if(rows.isEmpty()) throw new AppException(RunErrorCode.NOT_FOUND);
-        return rows.getFirst();
-    }
-    private void lock(UUID id) {
-        db.query("SELECT pg_advisory_xact_lock(hashtextextended(?::text,0))", (rs,n)->true, id.toString());
+    private RunSession session(UUID owner, UUID id, boolean lock) {
+        return (lock ? sessions.findOwnedForUpdate(id,owner) : sessions.findByIdAndMemberId(id,owner))
+            .orElseThrow(()->new AppException(RunErrorCode.NOT_FOUND));
     }
     private void ensureNotDeleted(UUID id) {
-        if (db.queryForObject("SELECT count(*) FROM run.deleted_records WHERE id=?",Long.class,id)>0)
-            throw new AppException(RunErrorCode.NOT_FOUND);
+        if (deletedRecords.existsById(id)) throw new AppException(RunErrorCode.NOT_FOUND);
     }
     @Transactional
     public Deleted delete(UUID owner, UUID id) {
-        lockMember(owner); ensureActiveMember(owner); lock(id);
+        locks.member(owner); ensureActiveMember(owner); locks.session(id);
         return deleteStored(owner,id);
     }
     private Deleted deleteStored(UUID owner, UUID id) {
-        List<UUID> owners = db.query("SELECT member_id FROM run.sessions WHERE id=? UNION SELECT member_id FROM run.deleted_records WHERE id=?", (rs,n)->rs.getObject(1,UUID.class),id,id);
-        if (owners.stream().anyMatch(value -> !value.equals(owner))) throw new AppException(RunErrorCode.NOT_FOUND);
-        List<Result> registered = db.query("SELECT result_json FROM run.records WHERE id=?", (rs,n)->json.readValue(rs.getString(1),Result.class),id);
-        if (!registered.isEmpty()) {
-            Result r=registered.getFirst();
+        sessions.findMemberId(id).ifPresent(member -> requireOwner(owner,member));
+        var deleted=deletedRecords.findById(id);
+        deleted.ifPresent(record -> requireOwner(owner,record.getMemberId()));
+        records.findById(id).ifPresent(record -> {
+            Result r=json.readValue(record.getResultJson(),Result.class);
             events.publishEvent(new RunRecordDeletedEvent(UuidV7.create(),clock.instant(),id,owner,null,false,
                 r.metrics().distanceM(),0,r.startedAt(),r.endedAt(),r.registeredAt()));
-        }
-        db.update("INSERT INTO run.deleted_records(id,member_id) VALUES (?,?) ON CONFLICT DO NOTHING",id,owner);
-        db.update("DELETE FROM run.records WHERE id=?",id);
-        db.update("DELETE FROM run.inputs WHERE session_id=?",id);
-        db.update("DELETE FROM run.sessions WHERE id=?",id);
+            records.delete(record);
+        });
+        if (deleted.isEmpty()) deletedRecords.save(new DeletedRunRecord(id,owner,clock.instant()));
+        // Flush JPA child deletions before JDBC removes inputs and JPA removes their parent.
+        records.flush();
+        inputs.delete(id);
+        sessions.deleteById(id);
+        sessions.flush();
         return new Deleted(id,true);
+    }
+    private static void requireOwner(UUID owner, UUID storedOwner) {
+        if (!owner.equals(storedOwner)) throw new AppException(RunErrorCode.NOT_FOUND);
     }
     @Transactional
     public Status prepare(UUID owner, UUID id, Prepare request) {
-        lockMember(owner); ensureActiveMember(owner); lock(id); ensureNotDeleted(id);
+        locks.member(owner); ensureActiveMember(owner); locks.session(id); ensureNotDeleted(id);
         if(request.startedAt()==null || !"FREE".equals(request.mode()) || request.startedAt().isAfter(clock.instant().plusSeconds(300))) invalid();
-        db.update("INSERT INTO run.sessions(id,member_id,started_at,processing) VALUES (?,?,?,'PREPARED') ON CONFLICT DO NOTHING",
-            id,owner,Timestamp.from(request.startedAt()));
-        Session s=session(owner,id,true);
-        if(!s.startedAt().equals(request.startedAt())) throw new AppException(RunErrorCode.CONFLICT);
+        // The advisory ID lock protects first creation and retries, including different owners.
+        RunSession s=sessions.findById(id).orElseGet(()->sessions.save(new RunSession(id,owner,request.startedAt())));
+        requireOwner(owner,s.getMemberId());
+        if(!s.getStartedAt().equals(request.startedAt())) throw new AppException(RunErrorCode.CONFLICT);
         return statusOf(s);
     }
     @Transactional
     public Status upload(UUID owner, UUID id, Upload request) {
-        lockMember(owner); ensureActiveMember(owner); lock(id); ensureNotDeleted(id);
-        Session s=session(owner,id,true);
-        if(s.finalSeq()!=null && s.finalSeq()!=request.finalSeq()) throw new AppException(RunErrorCode.CONFLICT);
+        locks.member(owner); ensureActiveMember(owner); locks.session(id); ensureNotDeleted(id);
+        RunSession s=session(owner,id,true);
+        if(s.getFinalSeq()!=null && s.getFinalSeq()!=request.finalSeq()) throw new AppException(RunErrorCode.CONFLICT);
+        Map<Long,Input> existing=inputs.findExisting(id,request.inputs().stream().map(Input::seq).toList());
+        Map<Long,Input> pending=new LinkedHashMap<>();
         for(Input p:request.inputs()) {
-            if(p.seq()>request.finalSeq() || p.elapsedMs()>7L*86400000 ||
+            validate(p,request.finalSeq());
+            Input previous=existing.get(p.seq());
+            if(previous==null) previous=pending.get(p.seq());
+            if(previous!=null) {
+                if(!previous.equals(p)) throw new AppException(RunErrorCode.CONFLICT);
+            } else {
+                if(!s.acceptsInputs()) throw new AppException(RunErrorCode.CONFLICT);
+                pending.put(p.seq(),p);
+            }
+        }
+        // JpaTransactionManager shares the DataSource/connection with JdbcTemplate.
+        // Flush newly persisted sessions before JDBC inserts their child stream rows.
+        sessions.flush();
+        inputs.insertBatch(id,pending.values());
+        if(s.acceptsInputs()) s.accept(request.finalSeq(),inputs.count(id));
+        return statusOf(s);
+    }
+    private static void validate(Input p,long finalSeq) {
+            if(p.seq()>finalSeq || p.elapsedMs()>7L*86400000 ||
                 (p.kind()==Kind.GPS && (p.location()==null || p.accuracyM()==null)) ||
                 (p.accuracyM()!=null && (!Double.isFinite(p.accuracyM()) || p.accuracyM()<0)) ||
                 (p.altitudeM()!=null && (!Double.isFinite(p.altitudeM()) || p.kind()!=Kind.GPS)) ||
@@ -109,71 +133,57 @@ class RunService {
                 (p.pressureAccuracy()!=null && (p.kind()!=Kind.BAROMETER || p.pressureAccuracy()<0 || p.pressureAccuracy()>3)) ||
                 (p.kind()==Kind.BAROMETER && (p.pressureHpa()==null || p.pressureAccuracy()==null || p.sampleEndMs()==null || p.sampleEndMs()<0 || p.sampleEndMs()>p.elapsedMs() || p.elapsedMs()-p.sampleEndMs()>2000)) ||
                 (p.altitudeAccuracyM()!=null && (!Double.isFinite(p.altitudeAccuracyM()) || p.altitudeAccuracyM()<0 || p.altitudeM()==null))) invalid();
-            String encoded=json.writeValueAsString(p);
-            List<String> existing=db.query("SELECT payload FROM run.inputs WHERE session_id=? AND stream_seq=?",(rs,n)->rs.getString(1),id,p.seq());
-            if(!existing.isEmpty()) {
-                if(!json.readValue(existing.getFirst(),Input.class).equals(p)) throw new AppException(RunErrorCode.CONFLICT);
-            } else {
-                if(!List.of("PREPARED","NEEDS_DATA").contains(s.processing())) throw new AppException(RunErrorCode.CONFLICT);
-                db.update("INSERT INTO run.inputs(session_id,stream_seq,payload) VALUES (?,?,?)",id,p.seq(),encoded);
-            }
-        }
-        if(List.of("PREPARED","NEEDS_DATA").contains(s.processing())) {
-            long count=db.queryForObject("SELECT count(*) FROM run.inputs WHERE session_id=?",Long.class,id);
-            db.update("UPDATE run.sessions SET updated_at=now(),final_seq=?,processing=? WHERE id=?",request.finalSeq(),count==request.finalSeq()+1?"PROCESSING":"NEEDS_DATA",id);
-        }
-        return statusOf(session(owner,id,false));
     }
     @Transactional(readOnly=true)
     public Status status(UUID owner, UUID id) { return statusOf(session(owner,id,false)); }
-    private Status statusOf(Session s) {
+    private Status statusOf(RunSession s) {
         List<Range> missing=new ArrayList<>();
-        if("NEEDS_DATA".equals(s.processing())) {
-            List<Long> seqs=db.query("SELECT stream_seq FROM run.inputs WHERE session_id=? ORDER BY stream_seq",(rs,n)->rs.getLong(1),s.id());
+        if("NEEDS_DATA".equals(s.getProcessing())) {
+            List<Long> seqs=inputs.sequences(s.getId());
             long next=0;
             for(long seq:seqs) { if(seq>next) missing.add(new Range(next,seq-1)); next=seq+1; }
-            if(next<=s.finalSeq()) missing.add(new Range(next,s.finalSeq()));
+            if(next<=s.getFinalSeq()) missing.add(new Range(next,s.getFinalSeq()));
         }
-        return new Status(s.id(),s.processing(),missing,"DONE".equals(s.processing())?s.id():null,s.failure());
+        return new Status(s.getId(),s.getProcessing(),missing,"DONE".equals(s.getProcessing())?s.getId():null,s.getFailure());
     }
+    @Transactional(readOnly=true)
     public List<UUID> waiting() {
-        return db.query("SELECT id FROM run.sessions WHERE processing='PROCESSING' ORDER BY started_at LIMIT 10",(rs,n)->rs.getObject(1,UUID.class));
+        return sessions.findWaitingIds(PageRequest.of(0,10));
     }
     @Transactional
     public void process(UUID id) {
-        List<UUID> members=db.query("SELECT member_id FROM run.sessions WHERE id=?", (rs,n)->rs.getObject(1,UUID.class),id);
-        if (members.isEmpty()) return;
-        lockMember(members.getFirst());
-        if (withdrawn(members.getFirst())) return;
-        lock(id);
-        if(db.queryForObject("SELECT count(*) FROM run.deleted_records WHERE id=?",Long.class,id)>0) return;
-        List<Instant> starts=db.query("SELECT started_at FROM run.sessions WHERE id=? AND processing='PROCESSING' FOR UPDATE SKIP LOCKED",(rs,n)->rs.getTimestamp(1).toInstant(),id);
-        if(starts.isEmpty()) return;
-        List<Input> inputs=db.query("SELECT payload FROM run.inputs WHERE session_id=? ORDER BY stream_seq",(rs,n)->json.readValue(rs.getString(1),Input.class),id);
+        var member=sessions.findMemberId(id);
+        if(member.isEmpty()) return;
+        locks.member(member.get());
+        if(withdrawnMembers.existsById(member.get())) return;
+        locks.session(id);
+        if(deletedRecords.existsById(id)) return;
+        var pending=sessions.findProcessingForUpdate(id);
+        if(pending.isEmpty()) return;
+        RunSession session=pending.get();
+        List<Input> raw=inputs.findAll(id);
         FreeRunCalculator.Calculation calculation;
-        try { calculation=FreeRunCalculator.calculate(starts.getFirst(),inputs); }
-        catch(AppException e) { db.update("UPDATE run.sessions SET updated_at=now(),processing='FAILED',failure=? WHERE id=?",e.getErrorCode().getCode(),id); return; }
+        try { calculation=FreeRunCalculator.calculate(session.getStartedAt(),raw); }
+        catch(AppException e) { session.fail(e.getErrorCode().getCode()); return; }
         if(calculation.metrics().distanceM()<=0) {
-            db.update("UPDATE run.sessions SET updated_at=now(),processing='FAILED',failure='ZERO_DISTANCE' WHERE id=?",id); return;
+            session.fail("ZERO_DISTANCE"); return;
         }
         Instant registered=clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
-        Result result=new Result(id,starts.getFirst(),calculation.endedAt(),registered,calculation.endReason(),calculation.metrics(),calculation.segments(),calculation.laps(),POLICY_VERSION,inputs.getFirst().reason(),calculation.stats());
-        db.update("INSERT INTO run.records(id,registered_at,result_json,summary_json) VALUES (?,?,?,?)",id,Timestamp.from(registered),json.writeValueAsString(result),json.writeValueAsString(RecordSummary.from(result)));
-        publishRegistration(members.getFirst(),result);
-        db.update("UPDATE run.sessions SET updated_at=now(),processing='DONE' WHERE id=?",id);
+        Result result=new Result(id,session.getStartedAt(),calculation.endedAt(),registered,calculation.endReason(),calculation.metrics(),calculation.segments(),calculation.laps(),POLICY_VERSION,raw.getFirst().reason(),calculation.stats());
+        RunRecord record=records.save(new RunRecord(id,registered,json.writeValueAsString(result),json.writeValueAsString(RecordSummary.from(result))));
+        publishRegistration(member.get(),record,result);
+        session.complete();
     }
     @Transactional(readOnly=true)
     public Result result(UUID owner, UUID id) {
         session(owner,id,false);
-        List<String> rows=db.query("SELECT result_json FROM run.records WHERE id=?",(rs,n)->rs.getString(1),id);
-        if(rows.isEmpty()) throw new AppException(RunErrorCode.NOT_FOUND);
-        Result stored = json.readValue(rows.getFirst(),Result.class);
-        if (stored.stats() != null && RunResultStatsCalculator.VERSION.equals(stored.stats().version())) return stored;
-        List<Input> inputs = db.query("SELECT payload FROM run.inputs WHERE session_id=? ORDER BY stream_seq",
-            (rs,n)->json.readValue(rs.getString(1),Input.class),id);
-        if (inputs.size() < 2) return stored;
+        RunRecord record=records.findById(id).orElseThrow(()->new AppException(RunErrorCode.NOT_FOUND));
+        Result stored=json.readValue(record.getResultJson(),Result.class);
+        if (stored.stats()!=null && RunResultStatsCalculator.VERSION.equals(stored.stats().version())) return stored;
+        List<Input> raw=inputs.findAll(id);
+        if(raw.size()<2) return stored;
         // Enrich old results on detail reads; keep stored distance/time/ranking intact.
-        ResultStats stats = FreeRunCalculator.calculate(stored.startedAt(), inputs).stats();
+        ResultStats stats = FreeRunCalculator.calculate(stored.startedAt(), raw).stats();
         return new Result(stored.id(),stored.startedAt(),stored.endedAt(),stored.registeredAt(),stored.endReason(),
             stored.metrics(),stored.routeSegments(),stored.laps(),stored.policyVersion(),stored.calculationVersion(),stats);
     }
@@ -185,31 +195,32 @@ class RunService {
             try { String[] parts=page.cursor().split("\\|",2); before=Instant.parse(parts[0]); beforeId=UUID.fromString(parts[1]); }
             catch(RuntimeException e) { invalid(); }
         }
-        List<RecordSummary> rows;
         int limit=page.size()+1;
-        if(page.cursor()==null) rows=db.query("SELECT r.summary_json FROM run.records r JOIN run.sessions s ON s.id=r.id WHERE s.member_id=? ORDER BY r.registered_at DESC,r.id DESC LIMIT ?",(rs,n)->json.readValue(rs.getString(1),RecordSummary.class),owner,limit);
-        else rows=db.query("SELECT r.summary_json FROM run.records r JOIN run.sessions s ON s.id=r.id WHERE s.member_id=? AND (r.registered_at,r.id)<(?,?) ORDER BY r.registered_at DESC,r.id DESC LIMIT ?",(rs,n)->json.readValue(rs.getString(1),RecordSummary.class),owner,Timestamp.from(before),beforeId,limit);
+        List<String> summaries=page.cursor()==null ? records.findSummaries(owner,limit)
+            : records.findSummariesBefore(owner,before,beforeId,limit);
+        List<RecordSummary> rows=summaries.stream().map(value->json.readValue(value,RecordSummary.class)).toList();
         boolean more=rows.size()>page.size();
         List<RecordSummary> content=List.copyOf(rows.subList(0,Math.min(page.size(),rows.size())));
         RecordSummary last=content.isEmpty()?null:content.getLast();
         return new CursorSlice<>(content,more?last.registeredAt()+"|"+last.id():null);
     }
+    @Transactional(readOnly=true)
     public List<UUID> unpublished() {
-        return db.query("SELECT id FROM run.records WHERE NOT registration_published ORDER BY registered_at LIMIT 10",(rs,n)->rs.getObject(1,UUID.class));
+        return records.findUnpublishedIds(PageRequest.of(0,10));
     }
     @Transactional
     public void publishStored(UUID id) {
-        List<UUID> members=db.query("SELECT member_id FROM run.sessions WHERE id=?",(rs,n)->rs.getObject(1,UUID.class),id);
-        if (members.isEmpty()) return;
-        UUID member=members.getFirst(); lockMember(member); lock(id);
-        if (withdrawn(member)) return;
-        List<Result> results=db.query("SELECT result_json FROM run.records WHERE id=? AND NOT registration_published FOR UPDATE",(rs,n)->json.readValue(rs.getString(1),Result.class),id);
-        if (!results.isEmpty()) publishRegistration(member,results.getFirst());
+        var member=sessions.findMemberId(id);
+        if(member.isEmpty()) return;
+        locks.member(member.get()); locks.session(id);
+        if(withdrawnMembers.existsById(member.get())) return;
+        records.findUnpublishedForUpdate(id).ifPresent(record ->
+            publishRegistration(member.get(),record,json.readValue(record.getResultJson(),Result.class)));
     }
-    private void publishRegistration(UUID member, Result result) {
+    private void publishRegistration(UUID member,RunRecord record,Result result) {
         events.publishEvent(new RunSessionEndedEvent(UuidV7.create(),result.registeredAt(),result.id(),member,null,false,
             result.metrics().distanceM(),0,0,0,0,false,null,result.startedAt(),result.endedAt(),result.registeredAt(),result.policyVersion()));
-        db.update("UPDATE run.records SET registration_published=true,updated_at=now() WHERE id=?",result.id());
+        record.markRegistrationPublished();
     }
     private static void invalid() { throw new AppException(RunErrorCode.INVALID); }
 }
