@@ -49,7 +49,7 @@ class ObjectStorageTest {
     @Test
     void uploadsWithFormAndServesPublicly() throws Exception {
         UploadForm form = storage.photoUploadForm("review");
-        byte[] photo = "jpeg-bytes".getBytes(StandardCharsets.UTF_8);
+        byte[] photo = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF, (byte) 0xE0, 0, 0x10};
 
         assertThat(form.key()).matches("review/[0-9a-f-]{36}\\.jpg");
         assertThat(post(form, "image/jpeg", photo).statusCode()).isBetween(200, 299);
@@ -79,6 +79,19 @@ class ObjectStorageTest {
         UploadForm small = storage.photoUploadForm("review", 5);
         assertThat(post(small, "image/jpeg", new byte[6]).statusCode()).isBetween(400, 499);
         assertThat(storage.isUploadedPhoto("review", small.key())).isFalse();
+    }
+
+    @Test
+    void rejectsNonJpegContentSentAsJpeg() throws Exception {
+        // 폼은 헤더만 본다. 저장소는 받지만 저장할 때 내용으로 거른다
+        UploadForm html = storage.photoUploadForm("review");
+        assertThat(post(html, "image/jpeg", "<html>".getBytes(StandardCharsets.UTF_8)).statusCode()).isBetween(200, 299);
+        assertThat(storage.isUploadedPhoto("review", html.key())).isFalse();
+
+        // 3바이트보다 짧은 파일
+        UploadForm tiny = storage.photoUploadForm("review");
+        assertThat(post(tiny, "image/jpeg", new byte[]{(byte) 0xFF, (byte) 0xD8}).statusCode()).isBetween(200, 299);
+        assertThat(storage.isUploadedPhoto("review", tiny.key())).isFalse();
     }
 
     @Test
