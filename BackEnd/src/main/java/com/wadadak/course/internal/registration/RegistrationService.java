@@ -11,6 +11,7 @@ import com.wadadak.course.internal.course.CourseGeometry;
 import com.wadadak.course.internal.course.CourseName;
 import com.wadadak.course.internal.course.CourseRepository;
 import com.wadadak.course.internal.course.CourseType;
+import com.wadadak.course.internal.course.Retention;
 import com.wadadak.course.internal.route.GeneratedRoute;
 import com.wadadak.course.internal.route.RouteService;
 import com.wadadak.event.course.CourseCreatedEvent;
@@ -21,9 +22,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
-import java.time.Instant;
 import java.time.LocalDate;
-import java.time.LocalTime;
 import java.util.UUID;
 
 /**
@@ -32,9 +31,6 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 class RegistrationService {
-
-    /** 등록일 포함 30일(정책 공통 4) */
-    static final int RETENTION_DAYS = 30;
 
     private final RouteService routeService;
     private final SimilarityChecker similarityChecker;
@@ -70,7 +66,7 @@ class RegistrationService {
         }
 
         Course course = courseRepository.save(Course.registerCustom(memberId, name, request.difficulty(), request.tagsOrEmpty(),
-                route, generated.distanceMeters(), emdCode, expiresAt(today)));
+                route, generated.distanceMeters(), emdCode, Retention.initialExpiresAt(today)));
         requestRepository.save(new RegistrationRequest(memberId, idempotencyKey, course.getId()));
         events.publishEvent(new CourseCreatedEvent(UuidV7.create(), clock.instant(), course.getId(), memberId, null));
         return RegisteredCourse.from(course);
@@ -100,10 +96,5 @@ class RegistrationService {
 
     private LocalDate today() {
         return LocalDate.now(clock.withZone(TimeConfig.SEOUL));
-    }
-
-    /** 등록일 포함 {@value #RETENTION_DAYS}일째 23:59:59(Asia/Seoul). 10/1 등록이면 10/30 23:59:59 */
-    private static Instant expiresAt(LocalDate registeredOn) {
-        return registeredOn.plusDays(RETENTION_DAYS - 1).atTime(LocalTime.of(23, 59, 59)).atZone(TimeConfig.SEOUL).toInstant();
     }
 }

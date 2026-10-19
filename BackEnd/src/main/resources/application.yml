@@ -50,6 +50,10 @@ app:
     member: false
     course: false
     ranking: false
+  course:
+    # 만료 배치(F11): 1분마다 만료 코스 비공개 · 숨긴 지 24시간 지난 코스 삭제, 매일 09:00 만료 임박(D-7 · D-1) 알림.
+    retention-batch:
+      enabled: true
   member:
     jwt:
       # public-key-location과 같은 키 쌍의 개인키(PKCS#8 PEM).
