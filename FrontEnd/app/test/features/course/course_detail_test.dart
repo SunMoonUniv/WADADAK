@@ -278,6 +278,13 @@ void main() {
         '공개 기간이 1일 남았어요(10월 16일까지) · 누군가 완주하면 30일 연장돼요');
   });
 
+  test('drops the extension hint once the current period is already extended', () {
+    expect(publicPeriodText(DateTime.utc(2026, 11, 13, 14, 59, 59), today),
+        '공개 기간이 29일 남았어요(11월 13일까지) · 누군가 완주하면 30일 연장돼요');
+    expect(publicPeriodText(DateTime.utc(2026, 11, 14, 14, 59, 59), today), '공개 기간이 30일 남았어요(11월 14일까지)');
+    expect(publicPeriodText(DateTime.utc(2026, 12, 13, 14, 59, 59), today), '공개 기간이 59일 남았어요(12월 13일까지)');
+  });
+
   group('review tab (B8)', () {
     const latest = (sort: ReviewSort.latest, photoOnly: false, excludeMine: false);
 

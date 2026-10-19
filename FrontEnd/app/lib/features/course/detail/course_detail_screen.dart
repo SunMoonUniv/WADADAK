@@ -393,10 +393,15 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
 }
 
 /// 공개 기간 안내(B1-04). 남은 날과 만료일을 함께 보인다. 만료일 당일은 오늘까지라고 한다.
+/// 연장 안내는 지금 30일 구간에서 아직 아무도 완주하지 않았을 때만 붙인다(처음 올린 뒤 · 새 구간이 시작된 뒤).
+/// 누가 완주하면 만료일이 30일 늘어 남은 날이 30일 이상이 되고, 그 구간이 끝날 때까지는 다시 연장되지 않는다(정책 공통 4).
 String publicPeriodText(DateTime expiresAt, DateTime now) {
   final daysLeft = daysUntilExpiry(expiresAt, now);
   // 만료 시각은 만료일 23:59:59(Asia/Seoul). 한국은 서머타임이 없어 UTC+9로 날짜를 센다.
   final seoul = expiresAt.toUtc().add(const Duration(hours: 9));
   final period = daysLeft <= 0 ? '오늘까지 공개돼요' : '공개 기간이 $daysLeft일 남았어요(${seoul.month}월 ${seoul.day}일까지)';
-  return '$period · 누군가 완주하면 30일 연장돼요';
+  return daysLeft >= retentionDays ? period : '$period · 누군가 완주하면 30일 연장돼요';
 }
+
+/// 유지 기간 한 구간(등록일 포함 30일, 정책 공통 4).
+const retentionDays = 30;

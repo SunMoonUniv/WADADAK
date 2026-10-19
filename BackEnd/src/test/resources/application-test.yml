@@ -11,3 +11,7 @@ app:
       private-key-location: classpath:jwt/test-private.pem
     social:
       fake: true
+  # 테스트가 넣은 지난 날짜 코스를 배치가 숨기지 않게 끈다. 만료 배치 테스트는 메서드를 직접 부른다.
+  course:
+    retention-batch:
+      enabled: false
