@@ -81,6 +81,10 @@ erDiagram
         varchar(30) affiliation
         varchar(100) profile_image_key UK "member/..."
         varchar(20) running_experience
+        smallint birth_year "출생연도"
+        smallint height_cm
+        smallint weight_kg
+        varchar(10) gender "MALE, FEMALE"
         boolean info_public
         boolean profile_searchable
         timestamptz withdrawn_at
@@ -296,6 +300,10 @@ erDiagram
 | `affiliation` | `VARCHAR(30)` | O | 소속(학교·회사·크루) |
 | `profile_image_key` | `VARCHAR(100)` | O | 프로필 사진의 저장소 키. `member/`로 시작한다(개발 정책 7장 사진 업로드). 사진이 없으면 NULL. 탈퇴하면 비우고 파일도 지운다 |
 | `running_experience` | `VARCHAR(20)` | | `BEGINNER`, `MONTHS_6`, `YEAR_1`, `YEAR_3` |
+| `birth_year` | `SMALLINT` | O | 출생연도. 서버가 올해(Asia/Seoul) − 100 ~ 올해 − 15만 받는다(정책 공통 9) |
+| `height_cm` | `SMALLINT` | O | 키(cm). 100~250 |
+| `weight_kg` | `SMALLINT` | O | 체중(kg). 20~300 |
+| `gender` | `VARCHAR(10)` | O | `MALE`, `FEMALE` |
 | `info_public` | `BOOLEAN` | | 정보 공개. 기본 `true` |
 | `profile_searchable` | `BOOLEAN` | | 프로필 검색 허용. 기본 `true` |
 | `withdrawn_at` | `TIMESTAMPTZ` | O | 탈퇴 시각 |
@@ -304,7 +312,9 @@ erDiagram
 - `members_social_uk`: `UNIQUE (social_provider, social_id)`. 로그인할 때 소셜 계정으로 회원을 찾는다.
 - `members_nickname_uk`: `UNIQUE (lower(nickname))`. 대소문자만 다른 닉네임도 중복으로 본다.
 - `members_profile_image_key_uk`: `UNIQUE (profile_image_key)`. 사진 주소에 키가 보이므로, 남의 키를 가져다 쓰면 그 회원이 사진을 바꾸거나 탈퇴할 때 원래 파일이 지워진다. 그래서 키 하나는 회원 하나만 쓴다(MEMBER-008).
+- `members_body_info_ck`: 신체 정보(`birth_year`·`height_cm`·`weight_kg`·`gender`)는 네 값이 모두 있거나 모두 NULL이다. 신체 정보 동의(`BODY_INFO`)를 끄거나 탈퇴하면 모두 비운다.
 - 탈퇴 처리와 공개·검색 설정을 바꾸는 기능은 아직 없다. 지금은 가입할 때의 기본값만 들어간다.
+- 신체 정보 컬럼과 동의 항목 `BODY_INFO`는 아직 마이그레이션이 없다.
 
 #### `member.agreements` — 약관 동의 이력
 
@@ -312,13 +322,13 @@ erDiagram
 | --- | --- | --- | --- |
 | `id` | `UUID` | | PK |
 | `member_id` | `UUID` | | FK → `members.id` |
-| `type` | `VARCHAR(30)` | | `OVER_14`(만 14세 이상), `SERVICE_TERMS`(서비스 이용약관), `PRIVACY_POLICY`(개인정보 수집·이용), `LOCATION_TERMS`(위치기반서비스 이용약관), `PROFILE_INFO`(프로필 정보) |
+| `type` | `VARCHAR(30)` | | `OVER_14`(만 14세 이상), `SERVICE_TERMS`(서비스 이용약관), `PRIVACY_POLICY`(개인정보 수집·이용), `LOCATION_TERMS`(위치기반서비스 이용약관), `PROFILE_INFO`(프로필 정보), `BODY_INFO`(신체 정보 수집 및 이용, 선택) |
 | `version` | `VARCHAR(20)` | | 동의한 약관 버전. 현재 버전은 `AgreementType`에 있다 |
 | `agreed` | `BOOLEAN` | | 동의 여부 |
 | `created_at` | `TIMESTAMPTZ` | | 동의 시각 |
 
 - 행을 쌓기만 하고 고치지 않는다. 회원·항목별 현재 상태는 그 회원·항목의 마지막 행이다.
-- 가입하면 5개 항목이 모두 현재 버전, `agreed = true`로 한 줄씩 생긴다. 모두 필수 항목이다.
+- 가입하면 필수 5개 항목이 현재 버전, `agreed = true`로 한 줄씩 생긴다. 선택 항목 `BODY_INFO`는 가입할 때 고른 값으로 한 줄 생기고, 프로필 편집에서 바꿀 때마다 한 줄 더 쌓인다.
 - 약관 내용을 바꾸면 `AgreementType`의 버전을 올린다.
 - `agreements_member_id_idx`: `(member_id)`
 
