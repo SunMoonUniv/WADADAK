@@ -58,6 +58,7 @@ void main() {
     tester,
   ) async {
     await mount(tester);
+    expect(find.text('내 러닝 기록 보기'), findsNothing);
     await tester.tap(find.text('자유 러닝 시작'));
     await tester.pump(const Duration(seconds: 1));
     expect(controller.countdown, isNull);
