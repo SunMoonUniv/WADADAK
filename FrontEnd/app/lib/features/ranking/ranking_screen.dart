@@ -78,7 +78,7 @@ class _DistanceTabState extends ConsumerState<_DistanceTab> with AutomaticKeepAl
         ...switch (feed) {
           AsyncValue(:final value?) when value.summary.participantCount == 0 => const [RankingEmpty()],
           AsyncValue(:final value?) => [
-              _Podium(value.summary.top, whole: _period == RankingPeriod.all),
+              _Podium(value.summary.top),
               _myCard(value.summary.me, chip),
               if (value.rest.isNotEmpty) ...[
                 const WdSectionHeading('전체 순위'),
@@ -99,7 +99,7 @@ class _DistanceTabState extends ConsumerState<_DistanceTab> with AutomaticKeepAl
       rank: '${entry.rank}',
       name: entry.nickname,
       meta: whole ? '주 평균 ${km(entry.weeklyAverageMeters, whole: true)}' : '러닝 ${entry.runCount}회',
-      value: km(entry.distanceMeters, whole: whole),
+      value: km(entry.distanceMeters),
       avatar: avatarOf(entry),
     );
   }
@@ -116,7 +116,7 @@ class _DistanceTabState extends ConsumerState<_DistanceTab> with AutomaticKeepAl
                     '이번 주 +${km(me.thisWeekDistanceMeters!)}',
                   if (me.topPercent != null) '상위 ${me.topPercent}%',
                 ].join(' · '),
-          value: me.distanceMeters == null ? '-' : km(me.distanceMeters!, whole: _period == RankingPeriod.all),
+          value: me.distanceMeters == null ? '-' : km(me.distanceMeters!),
         ),
         onTap: () => context.go(Routes.my),
       );
@@ -124,10 +124,9 @@ class _DistanceTabState extends ConsumerState<_DistanceTab> with AutomaticKeepAl
 
 /// 시상대. 왼쪽부터 2 · 1 · 3번째 줄이고, 블록 높이와 색은 순위로 정한다(공동 순위면 같은 블록).
 class _Podium extends StatelessWidget {
-  const _Podium(this.top, {required this.whole});
+  const _Podium(this.top);
 
   final List<DistanceRankingEntry> top;
-  final bool whole;
 
   @override
   Widget build(BuildContext context) => Padding(
@@ -155,7 +154,7 @@ class _Podium extends StatelessWidget {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: WdText.raw(12, FontWeight.w500, 18).copyWith(color: WdColors.ink)),
-        Text(km(entry.distanceMeters, whole: whole),
+        Text(km(entry.distanceMeters),
             style: WdText.raw(16, FontWeight.w700, 23).copyWith(color: WdColors.ink)),
         Container(
           height: height,
