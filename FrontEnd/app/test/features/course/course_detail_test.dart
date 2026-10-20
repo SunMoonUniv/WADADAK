@@ -23,6 +23,7 @@ import 'package:wadadak/features/onboarding/permission_screen.dart';
 import 'package:wadadak/features/review/review_list_screen.dart';
 import 'package:wadadak/features/review/review_state.dart';
 import 'package:wadadak/features/review/review_widgets.dart';
+import 'package:wadadak/features/run/application/course_run_entry.dart';
 import 'package:wadadak/main.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
@@ -208,12 +209,13 @@ void main() {
     expect(text('한강 야경 5K'), findsOneWidget);
   });
 
-  testWidgets('tells the run screens are not ready yet', (tester) async {
+  testWidgets('picks this course for the run tab and tells ghost racing is not ready yet', (tester) async {
     await openDetail(tester);
 
     await tester.tap(text('이 코스로 달리기'));
     await tester.pumpAndSettle();
-    expect(snackBar(tester), CourseRunBar.notReadyMessage);
+    final picked = container(tester).read(selectedCourseProvider);
+    expect((picked?.courseId, picked?.name), ('c1', '한강 야경 5K'));
     await tester.tap(text('고스트 대결 ▶'));
     await tester.pumpAndSettle();
     expect(snackBar(tester), CourseRunBar.notReadyMessage);
@@ -568,7 +570,7 @@ void main() {
 
       await tester.tap(text(CourseRunBar.firstRunLabel));
       await tester.pumpAndSettle();
-      expect(snackBar(tester), CourseRunBar.notReadyMessage);
+      expect(container(tester).read(selectedCourseProvider)?.courseId, 'c1', reason: '첫 번째로 달리기도 코스 러닝');
     });
 
     testWidgets('shows zero runners and dashes for a period without records (B9-03)', (tester) async {
