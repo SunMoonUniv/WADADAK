@@ -66,6 +66,7 @@ class AuthController extends AsyncNotifier<AuthState> {
     required String? affiliation,
     required RunningExperience runningExperience,
     XFile? photo,
+    BodyInfo? bodyInfo,
   }) async {
     final current = state.value;
     if (current is! SignupRequired) throw StateError('가입 토큰이 없습니다');
@@ -82,6 +83,7 @@ class AuthController extends AsyncNotifier<AuthState> {
       affiliation: affiliation,
       runningExperience: runningExperience,
       profileImageKey: profileImageKey,
+      bodyInfo: bodyInfo,
     );
     await _signedIn(tokens);
   }

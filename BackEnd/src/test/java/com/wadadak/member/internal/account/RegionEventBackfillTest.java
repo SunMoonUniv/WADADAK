@@ -34,7 +34,7 @@ class RegionEventBackfillTest {
     @Test
     void republishesSignupRegionOnceWithSignupTime(AssertablePublishedEvents events) {
         Member member = memberRepository.save(Member.join(new SocialAccount(SocialProvider.KAKAO, "backfill-" + UUID.randomUUID()),
-                "백필러너", null, "1129000000", null, RunningExperience.MONTHS_6, null));
+                "백필러너", null, "1129000000", null, RunningExperience.MONTHS_6, null, null));
         jdbc.update("INSERT INTO member.region_event_backfill (member_id) VALUES (?)", member.getId());
         Timestamp joinedAt = jdbc.queryForObject("SELECT created_at FROM member.members WHERE id = ?", Timestamp.class,
                 member.getId());

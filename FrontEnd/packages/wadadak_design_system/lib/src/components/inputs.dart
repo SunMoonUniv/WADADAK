@@ -21,6 +21,7 @@ class WdTextField extends StatelessWidget {
     this.onSubmitted,
     this.onTap,
     this.maxLength,
+    this.suffixText,
     this.enabled = true,
     this.soft = false,
   });
@@ -36,6 +37,9 @@ class WdTextField extends StatelessWidget {
 
   /// 글자 수 상한. 넘게 입력되지 않으며 글자 수 표시는 하지 않는다.
   final int? maxLength;
+
+  /// 값 뒤 단위(예: cm). 값이 있을 때만 보인다.
+  final String? suffixText;
   final bool enabled;
   final bool soft;
 
@@ -65,6 +69,8 @@ class WdTextField extends StatelessWidget {
       decoration: InputDecoration(
         hintText: hintText,
         hintStyle: text.copyWith(color: soft ? WdColors.muted : WdColors.neutralTextWeak),
+        suffixText: suffixText,
+        suffixStyle: text.copyWith(color: WdColors.neutralText),
         isDense: true,
         filled: true,
         fillColor: soft ? WdColors.soft : WdColors.white,

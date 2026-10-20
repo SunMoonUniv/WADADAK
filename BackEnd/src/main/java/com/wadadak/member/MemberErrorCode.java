@@ -15,7 +15,8 @@ public enum MemberErrorCode implements ErrorCode {
     ALREADY_REGISTERED(HttpStatus.CONFLICT, "MEMBER-005", "이미 가입된 계정입니다."),
     NICKNAME_TAKEN(HttpStatus.CONFLICT, "MEMBER-006", "이미 사용 중인 닉네임입니다."),
     REGION_NOT_FOUND(HttpStatus.BAD_REQUEST, "MEMBER-007", "활동 지역을 찾을 수 없습니다. 다시 선택해 주세요."),
-    PROFILE_PHOTO_NOT_FOUND(HttpStatus.BAD_REQUEST, "MEMBER-008", "프로필 사진을 찾을 수 없습니다. 다시 골라 주세요.");
+    PROFILE_PHOTO_NOT_FOUND(HttpStatus.BAD_REQUEST, "MEMBER-008", "프로필 사진을 찾을 수 없습니다. 다시 골라 주세요."),
+    INVALID_BIRTH_YEAR(HttpStatus.BAD_REQUEST, "MEMBER-009", "고를 수 없는 출생연도입니다. 다시 선택해 주세요.");
 
     private final HttpStatus status;
     private final String code;

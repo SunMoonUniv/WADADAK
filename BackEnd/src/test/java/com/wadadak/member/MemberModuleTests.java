@@ -24,6 +24,8 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.time.Clock;
+import java.time.Year;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
@@ -61,6 +63,9 @@ class MemberModuleTests {
     @Autowired
     JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    Clock clock;
+
     /** 저장소와 폼 장부는 흉내만 낸다. 실제 업로드는 ObjectStorageTest, 장부는 PhotoUploadsTest가 확인한다. */
     @MockitoBean
     ObjectStorage storage;
@@ -93,14 +98,19 @@ class MemberModuleTests {
         assertThat(memberApi.getProfiles(Set.of(memberId)))
                 .containsExactly(new MemberProfile(memberId, "흐름러너", null, false));
         assertThat(jdbcTemplate.queryForMap(
-                "SELECT bio, region_code, affiliation, running_experience FROM member.members WHERE id = ?", memberId))
+                "SELECT bio, region_code, affiliation, running_experience, birth_year FROM member.members WHERE id = ?", memberId))
                 .containsEntry("bio", null)
                 .containsEntry("region_code", "1129000000")
                 .containsEntry("affiliation", "선문대학교")
-                .containsEntry("running_experience", "MONTHS_6");
+                .containsEntry("running_experience", "MONTHS_6")
+                .containsEntry("birth_year", null);
         assertThat(jdbcTemplate.queryForList(
                 "SELECT type FROM member.agreements WHERE member_id = ? AND version = '1' AND agreed", String.class, memberId))
                 .containsExactlyInAnyOrder("OVER_14", "SERVICE_TERMS", "PRIVACY_POLICY", "LOCATION_TERMS", "PROFILE_INFO");
+        // 신체 정보를 보내지 않으면 선택 동의는 동의하지 않음으로 남는다
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT agreed FROM member.agreements WHERE member_id = ? AND type = 'BODY_INFO'", Boolean.class, memberId))
+                .isFalse();
         // 가입 때 정한 활동 지역은 이전 지역 없이 발행한다(ranking이 바로 반영).
         assertThat(events).contains(MemberRegionChangedEvent.class)
                 .matching(e -> e.memberId().equals(memberId) && e.regionCode().equals("1129000000")
@@ -200,6 +210,49 @@ class MemberModuleTests {
     }
 
     @Test
+    void signsUpWithBodyInfo() throws Exception {
+        String signupToken = data(post("/login", login("kakao-body"))).get("signupToken").asString();
+        // 연도만으로 만 14세 이상이 확실한 가장 늦은 해
+        int birthYear = Year.now(clock).getValue() - 15;
+
+        String accessToken = data(post("/signup", signup(signupToken, "몸러너", bodyInfo(birthYear, 175, 68, "MALE"))))
+                .get("accessToken").asString();
+        UUID memberId = UUID.fromString(SignedJWT.parse(accessToken).getJWTClaimsSet().getSubject());
+
+        assertThat(jdbcTemplate.queryForMap(
+                "SELECT birth_year, height_cm, weight_kg, gender FROM member.members WHERE id = ?", memberId))
+                .containsEntry("birth_year", birthYear)
+                .containsEntry("height_cm", 175)
+                .containsEntry("weight_kg", 68)
+                .containsEntry("gender", "MALE");
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT agreed FROM member.agreements WHERE member_id = ? AND type = 'BODY_INFO'", Boolean.class, memberId))
+                .isTrue();
+    }
+
+    @Test
+    void rejectsIncompleteOrOutOfRangeBodyInfo() throws Exception {
+        String signupToken = data(post("/login", login("kakao-body-bad"))).get("signupToken").asString();
+        int thisYear = Year.now(clock).getValue();
+
+        // 네 값은 한 묶음이다. 성별이 빠졌거나 키·체중이 범위 밖이면 요청 검증에서 막는다
+        for (String body : List.of("{\"birthYear\": 1998, \"heightCm\": 175, \"weightKg\": 68}",
+                bodyInfo(1998, 99, 68, "MALE"), bodyInfo(1998, 175, 301, "FEMALE"))) {
+            assertThat(post("/signup", signup(signupToken, "몸검증러너", body)))
+                    .hasStatus(HttpStatus.BAD_REQUEST)
+                    .bodyJson().extractingPath("$.code").isEqualTo("COMMON-001");
+        }
+        // 만 14세 미만일 수 있는 해(올해 − 14)와 100년보다 전
+        for (int birthYear : List.of(thisYear - 14, thisYear - 101)) {
+            assertThat(post("/signup", signup(signupToken, "몸검증러너", bodyInfo(birthYear, 175, 68, "FEMALE"))))
+                    .hasStatus(HttpStatus.BAD_REQUEST)
+                    .bodyJson().extractingPath("$.code").isEqualTo("MEMBER-009");
+        }
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM member.members WHERE social_id = 'kakao-body-bad'", Integer.class)).isZero();
+    }
+
+    @Test
     void requiresAllMandatoryAgreements() throws Exception {
         String signupToken = data(post("/login", login("kakao-terms"))).get("signupToken").asString();
 
@@ -256,6 +309,16 @@ class MemberModuleTests {
     }
 
     private static String signup(String signupToken, String nickname, boolean agreeAll, String regionCode, String photo) {
+        return signup(signupToken, nickname, agreeAll, regionCode, photo, null);
+    }
+
+    /** 신체 정보를 함께 보내는 가입 */
+    private static String signup(String signupToken, String nickname, String bodyInfo) {
+        return signup(signupToken, nickname, true, "1129000000", null, bodyInfo);
+    }
+
+    private static String signup(String signupToken, String nickname, boolean agreeAll, String regionCode, String photo,
+                                 String bodyInfo) {
         return """
                 {
                   "signupToken": "%s",
@@ -265,8 +328,15 @@ class MemberModuleTests {
                   "regionCode": "%s",
                   "affiliation": "선문대학교",
                   "runningExperience": "MONTHS_6",
-                  "profileImageKey": %s
-                }""".formatted(signupToken, agreeAll, nickname, regionCode, photo == null ? "null" : "\"" + photo + "\"");
+                  "profileImageKey": %s,
+                  "bodyInfo": %s
+                }""".formatted(signupToken, agreeAll, nickname, regionCode, photo == null ? "null" : "\"" + photo + "\"",
+                bodyInfo);
+    }
+
+    private static String bodyInfo(int birthYear, int heightCm, int weightKg, String gender) {
+        return """
+                {"birthYear": %d, "heightCm": %d, "weightKg": %d, "gender": "%s"}""".formatted(birthYear, heightCm, weightKg, gender);
     }
 
     /** 저장소에 올라온 프로필 사진 키 하나 */

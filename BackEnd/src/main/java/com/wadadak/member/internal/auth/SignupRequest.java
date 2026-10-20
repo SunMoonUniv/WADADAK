@@ -1,5 +1,6 @@
 package com.wadadak.member.internal.auth;
 
+import com.wadadak.member.internal.account.BodyInfo;
 import com.wadadak.member.internal.account.RunningExperience;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.AssertTrue;
@@ -13,6 +14,7 @@ import jakarta.validation.constraints.Size;
  *
  * @param regionCode      활동 지역(시·군·구) 법정동 코드
  * @param profileImageKey 가입 사진 업로드 폼으로 올린 키. 선택
+ * @param bodyInfo        신체 정보. 선택. 보내면 신체 정보 수집 및 이용(선택 동의)에 동의한 것이다
  */
 record SignupRequest(
         @NotBlank String signupToken,
@@ -23,7 +25,8 @@ record SignupRequest(
         @NotBlank @Pattern(regexp = "^\\d{10}$", message = "법정동 코드 10자리여야 합니다") String regionCode,
         @Size(max = 30) String affiliation,
         @NotNull RunningExperience runningExperience,
-        @Size(max = 100) String profileImageKey) {
+        @Size(max = 100) String profileImageKey,
+        @Valid BodyInfo bodyInfo) {
 
     /** 모두 필수라 true여야 한다. */
     record Agreements(
