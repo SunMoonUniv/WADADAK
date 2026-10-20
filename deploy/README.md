@@ -1,10 +1,11 @@
 # 공용 서버 (배포)
 
-실기기에서 실제 소셜 로그인으로 시험하는 팀 공용 서버다. 서버 PC 한 대에서 Docker로 띄우고, 포트포워딩 없이 Cloudflare 터널로 `https://api.leedohyunn8n.shop`(서버)과 `https://files.leedohyunn8n.shop`(사진)에 연다. main에 머지되면 자동으로 배포된다.
+실기기에서 실제 소셜 로그인으로 시험하는 팀 공용 서버다. 서버 PC 한 대에서 Docker로 띄우고, 포트포워딩 없이 Cloudflare 터널로 `https://api.leedohyunn8n.shop`(서버)과 `https://files.leedohyunn8n.shop`(사진)에 연다. 서버(`BackEnd/` · `deploy/`)가 바뀐 PR이 main에 머지되면 자동으로 배포된다.
 
 ```
 PR ─► CI (GitHub 서버) ─► 승인 · 머지
 main push ─► backend.yml
+               changes  (ubuntu-latest)          바뀐 파일 확인. 서버가 그대로면 아래 둘을 건너뛴다
                backend  (ubuntu-latest)          테스트
                deploy   (서버 PC self-hosted 러너) 이미지 빌드 → compose up --wait
                         비밀값은 GitHub 환경 wadadak-server의 Secrets에서 받는다

@@ -1,6 +1,7 @@
 name: Backend CI
 
-# 경로 필터를 두지 않는다. 필수 체크로 걸어도 문서만 바꾼 PR이 Pending에 막히지 않게 한다.
+# 워크플로 경로 필터(on.paths)는 두지 않는다. 걸러진 PR은 필수 체크가 Pending에 막힌다.
+# 대신 changes 작업이 바뀐 파일을 보고, 서버가 그대로면 backend · deploy를 건너뛴다. 건너뛴 작업은 필수 체크에서 통과로 친다.
 on:
   pull_request:
   push:
@@ -9,7 +10,27 @@ on:
   workflow_dispatch:
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.diff.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # PR은 base 브랜치와, main push는 직전 커밋과 비교한다. 수동 실행은 비교할 커밋이 없다.
+      # run/fixtures는 서버 테스트가 읽는다. git이 실패하면 바뀐 것으로 본다.
+      - id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before || github.sha }}
+        run: |
+          git diff --quiet "$BASE" HEAD -- BackEnd deploy run/fixtures .github/workflows/backend.yml && changed=false || changed=true
+          echo "backend=$changed" >> "$GITHUB_OUTPUT"
+
   backend:
+    needs: changes
+    # 'false'일 때만 건너뛴다. changes 작업이 실패해도 돈다. 수동 실행은 항상 돈다.
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.changes.outputs.backend != 'false') }}
     runs-on: ubuntu-latest
     defaults:
       run:

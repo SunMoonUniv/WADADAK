@@ -104,7 +104,7 @@ flutter test
 
 - **팀 공용 서버** `https://api.leedohyunn8n.shop`: main의 서버가 자동 배포돼 있어 로컬 서버 없이 실기기로 시험한다. 팀이 회원 · 데이터를 함께 쓴다. 실제 소셜 검증이라 가짜 로그인(`REAL_SOCIAL_LOGIN=false`)으로는 붙지 않는다. 운영 · 상태는 [`deploy/README.md`](../deploy/README.md).
 
-- PR마다 GitHub Actions(`.github/workflows/frontend.yml`, Flutter 3.47.6)가 디자인 시스템과 앱의 `dart analyze` · `flutter test`를 돌린다.
+- `FrontEnd/`가 바뀐 PR마다 GitHub Actions(`.github/workflows/frontend.yml`, Flutter 3.47.6)가 디자인 시스템과 앱의 `dart analyze` · `flutter test`를 돌린다.
 - 로그인 버튼은 카카오 SDK로 실제 로그인한다. 서버도 기본이 실제 검증이라 따로 설정하지 않는다. 에뮬레이터에는 카카오톡이 없어 카카오계정(웹) 로그인 창이 뜬다.
   - **공용 디버그 키 필요**: 팀 공용 `debug.keystore`를 팀 내부 공유처에서 받아 `app/android/app/debug.keystore`에 둔다. 저장소가 공개라 커밋하지 않는다(`.gitignore`). 없으면 각자 PC의 기본 디버그 키로 서명돼 키 해시가 달라 카카오 로그인이 실패한다.
   - 카카오 콘솔에는 공용 디버그 키의 해시만 등록돼 있다. 출시 전에 디버그 키 해시는 빼고 출시용 키 해시만 남긴다.
