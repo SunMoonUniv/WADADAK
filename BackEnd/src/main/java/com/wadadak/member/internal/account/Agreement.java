@@ -45,4 +45,15 @@ public class Agreement extends BaseEntity<UUID> {
             return agreement;
         }).toList();
     }
+
+    /** 프로필 편집(F6)에서 신체 정보 수집 및 이용(선택) 동의를 켜거나 껐다. 바꿀 때마다 한 줄 더 쌓는다. */
+    public static Agreement bodyInfo(UUID memberId, boolean agreed) {
+        Agreement agreement = new Agreement();
+        agreement.id = UuidV7.create();
+        agreement.memberId = memberId;
+        agreement.type = AgreementType.BODY_INFO;
+        agreement.version = AgreementType.BODY_INFO.version;
+        agreement.agreed = agreed;
+        return agreement;
+    }
 }

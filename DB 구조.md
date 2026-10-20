@@ -326,6 +326,7 @@ erDiagram
 | `gender` | `VARCHAR(10)` | O | `MALE`, `FEMALE` |
 | `info_public` | `BOOLEAN` | | 정보 공개. 기본 `true` |
 | `profile_searchable` | `BOOLEAN` | | 프로필 검색 허용. 기본 `true` |
+| `nickname_changed_at` | `TIMESTAMPTZ` | O | 닉네임을 마지막으로 바꾼 시각. 바꾼 날(Asia/Seoul)부터 30일 뒤 00:00에 다시 바꿀 수 있다(MEMBER-010). 가입 때 정한 닉네임은 바꾼 것으로 치지 않아 NULL이다 |
 | `withdrawn_at` | `TIMESTAMPTZ` | O | 탈퇴 시각 |
 | `version` | `BIGINT` | | 낙관적 락 |
 
@@ -334,6 +335,7 @@ erDiagram
 - `members_profile_image_key_uk`: `UNIQUE (profile_image_key)`. 사진 주소에 키가 보이므로, 남의 키를 가져다 쓰면 그 회원이 사진을 바꾸거나 탈퇴할 때 원래 파일이 지워진다. 그래서 키 하나는 회원 하나만 쓴다(MEMBER-008).
 - `members_body_info_ck`: 신체 정보(`birth_year`·`height_cm`·`weight_kg`·`gender`)는 네 값이 모두 있거나 모두 NULL이다. 신체 정보 동의(`BODY_INFO`)를 끄거나 탈퇴하면 모두 비운다.
 - `info_public`·`profile_searchable`은 MY 설정(F4) `PUT /api/v1/members/me/settings`로 바꾼다. `info_public`이 바뀌면 그때의 `version`을 실어 `MemberVisibilityChangedEvent`를 발행한다. 바꾸는 동안 회원 행을 잠가(`SELECT … FOR UPDATE`) 버전 순서대로 이벤트가 나간다.
+- 프로필(닉네임·소개·활동 지역·소속·러닝 경력·사진·신체 정보)은 MY 프로필 편집(F6) `PUT /api/v1/members/me`로 바꾼다. 활동 지역이 바뀌면 `MemberRegionChangedEvent`(이전 지역·`version` 포함)를 발행하고, 바꾸거나 지운 예전 사진 파일은 커밋 뒤 지운다. 신체 정보 동의를 켜거나 끄면 `agreements`에 `BODY_INFO` 행을 한 줄 더 쌓는다.
 - 탈퇴 처리는 아직 없다.
 
 #### `member.agreements` — 약관 동의 이력
