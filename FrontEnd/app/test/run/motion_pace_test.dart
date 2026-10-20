@@ -239,7 +239,7 @@ void main() {
             .at(record.checkpointMs);
         expect(restored.movingMs, recorder.metrics.movingMs);
         expect(restored.distanceM, recorder.metrics.distanceM);
-        expect(record.inputs.first.reason, 'PACE_V2');
+        expect(record.inputs.first.reason, 'PACE_V3');
         expect(record.inputs.last.speedMps, 0);
         final encoded = jsonEncode(
           record.inputs.map((p) => p.toJson()).toList(),

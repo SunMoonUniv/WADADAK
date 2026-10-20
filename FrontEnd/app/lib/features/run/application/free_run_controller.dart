@@ -172,6 +172,9 @@ class FreeRunController extends ChangeNotifier {
       resultStats: run.phase == recording.RunPhase.ended
           ? calculator.resultStats(run.inputs)
           : null,
+      liveElevationGainM: run.phase != recording.RunPhase.ended
+          ? calculator.liveElevationStats(run.inputs).elevationGainM
+          : null,
       voiceNotice: live ? _recording?.voiceNotice : null,
       averageCadence: metrics.averageCadence,
       currentCadence: metrics.currentCadence,

@@ -44,11 +44,12 @@ class RunResultStats {
   static RunResultStats calculate(
     List<recording.RunInput> inputs,
     List<List<recording.RunInput>> segments,
-    List<RunLap> laps,
-  ) {
+    List<RunLap> laps, {
+    bool elevationOnly = false,
+  }) {
     // Old records keep their original distance/time/laps, but new vertical and
     // 30-second stats still require positively confirmed continuous movement.
-    if (inputs.firstOrNull?.reason != 'PACE_V2') {
+    if (!MotionPace.usesMotion(inputs.firstOrNull?.reason)) {
       final motion = MotionPace();
       for (final p in inputs) {
         motion.add(p);
@@ -100,17 +101,19 @@ class RunResultStats {
             (distances[lo + 1] - distances[lo]) * (ms - a) / (b - a);
       }
 
-      for (final p in segment) {
-        // Both ends of each linear piece are candidates for the maximum window.
-        for (final end in [p.elapsedMs, p.elapsedMs + 30000]) {
-          if (end > segment.last.elapsedMs ||
-              end - 30000 < segment.first.elapsedMs) {
-            continue;
-          }
-          final d = distanceAt(end) - distanceAt(end - 30000);
-          if (d > 0) {
-            final pace = 30000 / d;
-            if (bestPace == null || pace < bestPace) bestPace = pace;
+      if (!elevationOnly) {
+        for (final p in segment) {
+          // Both ends of each linear piece are candidates for the maximum window.
+          for (final end in [p.elapsedMs, p.elapsedMs + 30000]) {
+            if (end > segment.last.elapsedMs ||
+                end - 30000 < segment.first.elapsedMs) {
+              continue;
+            }
+            final d = distanceAt(end) - distanceAt(end - 30000);
+            if (d > 0) {
+              final pace = 30000 / d;
+              if (bestPace == null || pace < bestPace) bestPace = pace;
+            }
           }
         }
       }
@@ -196,7 +199,7 @@ class RunResultStats {
 
   static List<int> _gapTimes(List<recording.RunInput> inputs) {
     final result = <int>[];
-    final v2 = inputs.firstOrNull?.reason == 'PACE_V2';
+    final v2 = MotionPace.usesMotion(inputs.firstOrNull?.reason);
     recording.RunInput? previous;
     var paused = false;
     for (final p in inputs) {

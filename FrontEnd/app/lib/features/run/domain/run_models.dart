@@ -90,6 +90,7 @@ class RunSnapshot {
     this.cadenceStatus = '측정 전',
     this.voiceNotice,
     this.resultStats,
+    this.liveElevationGainM,
   }) : inputs = List.unmodifiable(inputs);
 
   final RunState state;
@@ -111,6 +112,7 @@ class RunSnapshot {
   final String cadenceStatus;
   final String? voiceNotice;
   final RunResultStats? resultStats;
+  final double? liveElevationGainM;
   final List<List<RunPoint>> segments;
   bool get hasLocation =>
       segments.any((s) => s.isNotEmpty) ||

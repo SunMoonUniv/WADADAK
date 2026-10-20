@@ -388,6 +388,51 @@ class RunIngestionTest {
         assertThatThrownBy(()->runs.upload(owner,id,new Upload(finalSeq,raw))).isInstanceOf(AppException.class);
     }
 
+    @Test void balancedV3UploadKeepsRawSpikeButStoresCorrectedRouteAndDistance() throws Exception {
+        var fixture=json.readTree(Files.readString(Path.of("../run/fixtures/free_motion_v3.json")));
+        var source=fixture.get("cases").get(0);
+        var raw=new ArrayList<Input>();
+        for(var node:source.get("inputs")) {
+            Input p=json.treeToValue(node,Input.class);
+            raw.add(new Input(p.seq(),p.kind(),p.elapsedMs(),start.plusMillis(p.elapsedMs()),p.location(),p.accuracyM(),
+                p.reason(),p.speedMps(),p.speedAccuracyMps(),p.steps(),p.durationMs(),p.sampleEndMs(),p.altitudeM(),p.altitudeAccuracyM(),p.pressureHpa(),p.pressureAccuracy()));
+        }
+        int last=raw.size()-1;
+        runs.upload(owner,id,new Upload(last,raw));
+        runs.process(id);
+        Result stored=runs.result(owner,id);
+        assertThat(stored.calculationVersion()).isEqualTo("PACE_V3");
+        // The existing movement window leaves the final single interval unconfirmed.
+        assertThat(stored.metrics().distanceM()).isCloseTo(57,within(.001));
+        assertThat(stored.routeSegments().stream().flatMap(List::stream)).doesNotContain(raw.get(10).location());
+        assertThat(db.query("SELECT payload FROM run.inputs WHERE session_id=? ORDER BY stream_seq",
+            (rs,n)->json.readValue(rs.getString(1),Input.class),id)).containsExactlyElementsOf(raw);
+        runs.upload(owner,id,new Upload(last,raw)); runs.process(id);
+        assertThat(runs.result(owner,id)).isEqualTo(stored);
+    }
+
+    @Test void balancedV3HardJumpRemainsSplitAfterUploadStorageAndRetry() throws Exception {
+        var fixture=json.readTree(Files.readString(Path.of("../run/fixtures/free_motion_v3.json")));
+        var raw=new ArrayList<Input>();
+        for(var node:fixture.get("cases").get(1).get("inputs")) {
+            Input p=json.treeToValue(node,Input.class);
+            raw.add(new Input(p.seq(),p.kind(),p.elapsedMs(),start.plusMillis(p.elapsedMs()),p.location(),p.accuracyM(),
+                p.reason(),p.speedMps(),p.speedAccuracyMps(),p.steps(),p.durationMs(),p.sampleEndMs(),p.altitudeM(),p.altitudeAccuracyM(),p.pressureHpa(),p.pressureAccuracy()));
+        }
+        int last=raw.size()-1;
+        runs.upload(owner,id,new Upload(last,raw)); runs.process(id);
+        Result stored=runs.result(owner,id);
+        assertThat(stored.calculationVersion()).isEqualTo("PACE_V3");
+        assertThat(stored.metrics().distanceM()).isCloseTo(54,within(.001));
+        assertThat(stored.routeSegments()).hasSize(2);
+        assertThat(stored.routeSegments().getFirst()).doesNotContain(raw.get(11).location());
+        assertThat(stored.stats().elevationPartial()).isTrue();
+        assertThat(db.query("SELECT payload FROM run.inputs WHERE session_id=? ORDER BY stream_seq",
+            (rs,n)->json.readValue(rs.getString(1),Input.class),id)).containsExactlyElementsOf(raw);
+        runs.upload(owner,id,new Upload(last,raw)); runs.process(id);
+        assertThat(runs.result(owner,id)).isEqualTo(stored);
+    }
+
     @Test void invalidPressureFieldsRollBackBeforeDurableStorage() {
         for (Input p : List.of(
             new Input(1,Kind.BAROMETER,1000,start.plusMillis(1000),null,null,null,null,null,null,null,1000L,null,null,Double.NaN,3),
