@@ -94,14 +94,15 @@ void main() {
       for (final i in [0, 2, 3]) {
         expect(selected(tester, i), unchanged[i]);
       }
-      for (var i = 0; i < 4; i++) {
+      for (var i = 0; i < 5; i++) {
         await tester.tap(slot(1));
         await tester.pump();
+        if (i == 2) expect(selected(tester, 1), '심박수, —');
       }
       expect(selected(tester, 1), unchanged[1]);
       for (final i in [0, 2, 3]) {
         final before = selected(tester, i);
-        for (var tap = 0; tap < 5; tap++) {
+        for (var tap = 0; tap < 6; tap++) {
           await tester.tap(slot(i));
           await tester.pump();
         }
@@ -121,13 +122,13 @@ void main() {
       await tester.pump();
       expect(selected(tester, 0), '시간, 03:40');
       final labels = <String>{};
-      for (var i = 0; i < 5; i++) {
+      for (var i = 0; i < 6; i++) {
         labels.add(selected(tester, 0).split(',').first);
         expect(caption, findsOneWidget);
         await tester.tap(slot(0));
         await tester.pump();
       }
-      expect(labels, {'시간', '거리', '평균 페이스', '현재 페이스', '케이던스'});
+      expect(labels, {'시간', '거리', '평균 페이스', '현재 페이스', '케이던스', '심박수'});
       expect(selected(tester, 0), '시간, 03:40');
       for (final direction in [-700.0, 700.0, 700.0]) {
         await tester.drag(find.byType(PageView), Offset(direction, 0));
@@ -191,7 +192,7 @@ void main() {
         addTearDown(tester.view.reset);
         final capture = GlobalKey();
         await show(tester, snapshot(), capture: capture);
-        for (var i = 0; i < 5; i++) {
+        for (var i = 0; i < 6; i++) {
           await tester.tap(slot(0));
           await tester.pump();
           expect(tester.takeException(), isNull);

@@ -6,7 +6,8 @@ enum RunMetric {
   distance('거리'),
   averagePace('평균 페이스'),
   currentPace('현재 페이스'),
-  cadence('케이던스');
+  cadence('케이던스'),
+  heartRate('심박수');
 
   const RunMetric(this.label);
   final String label;
@@ -22,6 +23,7 @@ enum RunMetric {
     currentPace => _pace(run.currentPaceDisplay),
     cadence =>
       run.currentCadence == null ? '—' : '${run.currentCadence!.round()} spm',
+    heartRate => '—',
   };
 
   static String _pace(double? value) =>
