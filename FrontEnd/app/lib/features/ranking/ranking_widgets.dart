@@ -8,12 +8,12 @@ import '../../core/error_message.dart';
 import '../../routes.dart';
 import 'ranking_state.dart';
 
-/// 천 단위 쉼표. 예: 12,480
-String grouped(int value) => '$value'.replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
+/// 천 단위 쉼표. 예: 12,480 · 1,284.0
+String grouped(num value, [int fractionDigits = 0]) =>
+    value.toStringAsFixed(fractionDigits).replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ',');
 
-/// 누적 · 주 평균은 정수(1,284 km), 이번 주 · 이번 달은 소수 한 자리(48.2 km).
-String km(int meters, {bool whole = false}) =>
-    whole ? '${grouped((meters / 1000).round())} km' : '${(meters / 1000).toStringAsFixed(1)} km';
+/// 거리는 소수 한 자리(1,284.0 km), 주 평균은 정수(38 km).
+String km(int meters, {bool whole = false}) => '${grouped(meters / 1000, whole ? 0 : 1)} km';
 
 /// 이번 주 월요일로 "10월 2주차". 월요일이 그 달의 몇 번째 월요일인지로 센다.
 String weekLabel(DateTime monday) => '${monday.month}월 ${(monday.day + 6) ~/ 7}주차';
