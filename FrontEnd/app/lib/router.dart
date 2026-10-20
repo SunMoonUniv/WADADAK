@@ -22,7 +22,6 @@ import 'features/ranking/region_select_screen.dart';
 import 'features/review/review_form_screen.dart';
 import 'features/review/review_list_screen.dart';
 import 'features/run/presentation/free_run_screen.dart';
-import 'features/run/presentation/run_history_screen.dart';
 import 'features/run/presentation/run_settings_screen.dart';
 import 'main_shell.dart';
 import 'routes.dart';
@@ -81,9 +80,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(routes: [GoRoute(path: Routes.my, builder: (_, _) => const MyPlaceholderTab())]),
         ],
       ),
-      GoRoute(path: Routes.runHistory, builder: (_, _) => const RunHistoryScreen()),
       GoRoute(path: Routes.runSettings, builder: (_, _) => const RunSettingsScreen()),
-      GoRoute(path: '/my/runs/:id', builder: (_, state) => RunRecordScreen(id: state.pathParameters['id']!)),
       // 하단 탭을 덮는 화면
       GoRoute(path: Routes.rankingRegion, builder: (_, _) => const RegionRankingScreen()),
       GoRoute(path: Routes.rankingRegionSelect, builder: (_, _) => const RegionSelectScreen()),
