@@ -78,7 +78,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           ]),
           StatefulShellBranch(routes: [GoRoute(path: Routes.run, builder: (_, _) => const FreeRunScreen())]),
           StatefulShellBranch(routes: [GoRoute(path: Routes.ranking, builder: (_, _) => const RankingScreen())]),
-          StatefulShellBranch(routes: [GoRoute(path: Routes.my, builder: (_, _) => const RunHistoryScreen(myTab: true))]),
+          StatefulShellBranch(routes: [GoRoute(path: Routes.my, builder: (_, _) => const MyPlaceholderTab())]),
         ],
       ),
       GoRoute(path: Routes.runHistory, builder: (_, _) => const RunHistoryScreen()),
