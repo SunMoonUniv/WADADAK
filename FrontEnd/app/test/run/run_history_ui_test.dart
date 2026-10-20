@@ -332,7 +332,7 @@ void main() {
     );
   }
   testWidgets(
-    'history pagination deduplicates and confirmed deletion stays hidden after refresh; settings persist',
+    'history pagination deduplicates and confirmed deletion stays hidden after refresh; settings omit voice controls',
     (tester) async {
       final store = HistoryStore();
       final gps = fake.TestLocation();
@@ -420,11 +420,13 @@ void main() {
       expect(c.remoteRecords.where((r) => r['id'] == 'remote'), isEmpty);
       router.push(Routes.runSettings);
       await tester.pump(const Duration(milliseconds: 500));
-      await tester.tap(find.text('5 km'));
-      await tester.pump();
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 500));
-      expect(store.settings.distanceKm, 5);
+      expect(find.text('러닝 설정'), findsOneWidget);
+      expect(find.text('케이던스'), findsOneWidget);
+      expect(find.text('권한 설정 열기'), findsOneWidget);
+      expect(find.text('음성 안내'), findsNothing);
+      expect(find.text('음성 안내 사용'), findsNothing);
+      expect(find.text('음성 들어보기'), findsNothing);
+      expect(find.text('5 km'), findsNothing);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     },

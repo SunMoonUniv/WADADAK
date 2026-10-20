@@ -5,7 +5,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
-import '../../../core/auth/auth_controller.dart';
 import '../../../routes.dart';
 import '../application/free_run_controller.dart';
 import '../application/run_controller.dart';
@@ -16,8 +15,7 @@ import '../domain/run_models.dart';
 import 'free_run_result_view.dart';
 
 class RunHistoryScreen extends ConsumerStatefulWidget {
-  const RunHistoryScreen({super.key, this.myTab = false});
-  final bool myTab;
+  const RunHistoryScreen({super.key});
   @override
   ConsumerState<RunHistoryScreen> createState() => _RunHistoryScreenState();
 }
@@ -66,8 +64,8 @@ class _RunHistoryScreenState extends ConsumerState<RunHistoryScreen> {
         return Scaffold(
           backgroundColor: WdColors.paper,
           appBar: WdAppBar(
-            title: widget.myTab ? 'MY · 러닝 기록' : '러닝 기록',
-            onBack: widget.myTab ? null : () => Navigator.pop(context),
+            title: '러닝 기록',
+            onBack: () => Navigator.pop(context),
             action: WdAppBarAction.circle(
               WdIcons.settings,
               semanticLabel: '러닝 설정',
@@ -173,16 +171,6 @@ class _RunHistoryScreenState extends ConsumerState<RunHistoryScreen> {
                       onPressed: c.loadingHistory
                           ? null
                           : () => c.loadHistory(more: true),
-                    ),
-                  ),
-                if (widget.myTab)
-                  Padding(
-                    padding: const EdgeInsets.only(top: WdSpace.s32),
-                    child: WdButton(
-                      '로그아웃',
-                      variant: WdButtonVariant.secondary,
-                      onPressed: () =>
-                          ref.read(authControllerProvider.notifier).logout(),
                     ),
                   ),
               ],
