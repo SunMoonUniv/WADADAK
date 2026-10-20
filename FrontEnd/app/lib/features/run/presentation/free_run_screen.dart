@@ -313,12 +313,6 @@ class _Preparation extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: WdSpace.s8),
-                        WdButton(
-                          '내 러닝 기록 보기',
-                          variant: WdButtonVariant.secondary,
-                          onPressed: () => context.push(Routes.runHistory),
-                        ),
-                        const SizedBox(height: WdSpace.s8),
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           spacing: WdSpace.s10,
