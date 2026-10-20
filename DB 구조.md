@@ -313,7 +313,8 @@ erDiagram
 - `members_nickname_uk`: `UNIQUE (lower(nickname))`. 대소문자만 다른 닉네임도 중복으로 본다.
 - `members_profile_image_key_uk`: `UNIQUE (profile_image_key)`. 사진 주소에 키가 보이므로, 남의 키를 가져다 쓰면 그 회원이 사진을 바꾸거나 탈퇴할 때 원래 파일이 지워진다. 그래서 키 하나는 회원 하나만 쓴다(MEMBER-008).
 - `members_body_info_ck`: 신체 정보(`birth_year`·`height_cm`·`weight_kg`·`gender`)는 네 값이 모두 있거나 모두 NULL이다. 신체 정보 동의(`BODY_INFO`)를 끄거나 탈퇴하면 모두 비운다.
-- 탈퇴 처리와 공개·검색 설정을 바꾸는 기능은 아직 없다. 지금은 가입할 때의 기본값만 들어간다.
+- `info_public`·`profile_searchable`은 MY 설정(F4) `PUT /api/v1/members/me/settings`로 바꾼다. `info_public`이 바뀌면 그때의 `version`을 실어 `MemberVisibilityChangedEvent`를 발행한다. 바꾸는 동안 회원 행을 잠가(`SELECT … FOR UPDATE`) 버전 순서대로 이벤트가 나간다.
+- 탈퇴 처리는 아직 없다.
 
 #### `member.agreements` — 약관 동의 이력
 

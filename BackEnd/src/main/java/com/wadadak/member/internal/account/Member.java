@@ -78,6 +78,18 @@ public class Member extends BaseEntity<UUID> {
         return member;
     }
 
+    /**
+     * MY 설정(F4)의 내 정보 공개·프로필 검색 허용을 바꾼다.
+     *
+     * @return 내 정보 공개가 바뀌었으면 {@code true}. 그때만 다른 모듈(ranking 등)에 알린다
+     */
+    public boolean changeSettings(boolean infoPublic, boolean profileSearchable) {
+        boolean visibilityChanged = this.infoPublic != infoPublic;
+        this.infoPublic = infoPublic;
+        this.profileSearchable = profileSearchable;
+        return visibilityChanged;
+    }
+
     public boolean isWithdrawn() {
         return status == Status.WITHDRAWN;
     }

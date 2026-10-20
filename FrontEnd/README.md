@@ -86,7 +86,7 @@ FrontEnd/
       └─ example/                       #   컴포넌트 카탈로그 앱 + 스모크 테스트
 ```
 
-현재 `features/`에는 온보딩·홈·코스·러닝·랭킹·리뷰 폴더가 있다. 별도 `my/` 폴더는 아직 없으며 MY 탭의 기본 기록·러닝 설정은 `run/presentation/`이 담당한다. `run/`은 `application/`·`data/`·`domain/`·`presentation/`으로 측정 제어, 센서/저장, 계산 모델, 화면을 나눈다.
+현재 `features/`에는 온보딩·홈·코스·러닝·랭킹·리뷰 폴더가 있다. 별도 `my/` 폴더는 아직 없으며 러닝 설정은 `run/presentation/`이 담당한다. `run/`은 `application/`·`data/`·`domain/`·`presentation/`으로 측정 제어, 센서/저장, 계산 모델, 화면을 나눈다.
 
 ## 앱 실행
 
@@ -235,13 +235,13 @@ Figma `디자인 · 전체 화면 (와이어프레임 기준)` 페이지의 섹�
 <details>
 <summary>👤 MY · 설정 (0 / 10)</summary>
 
-- [ ] E3 · 마이페이지 (뱃지 · 업적)
-- [ ] I1 · 내 러닝 기록 (히스토리): 기본 목록·상세·삭제·재전송 구현. 유형/월 필터·통계·주간 차트는 MY 협업 후속
+- [ ] E3 · 마이페이지
+- [ ] I1 · 내 러닝 기록 (히스토리): 기록 조회 API(`/api/v1/runs/records`)는 run에 있음. 화면은 MY에서 새로 만든다(run의 임시 목록은 #100에서 제거)
 - [ ] G4 · 내가 등록한 코스 관리
 - [ ] G5 · 내 코스 — 저장한 코스
 - [ ] B7 · 코스 수정
 - [ ] I3 · 다른 러너 프로필
-- [ ] F4 · 설정 — 전체 MY 설정은 후속. 자유 러닝의 음성 안내 설정은 `RunSettingsScreen`으로 별도 연결
+- [ ] F4 · 설정 — 서버 `GET /api/v1/members/me` · `PUT /api/v1/members/me/settings`(공개 여부) 준비됨. 음성 안내는 `runController.saveVoiceSettings`로 기기에 저장
 - [ ] F5 · 설정 선택 시트 (공통)
 - [ ] F6 · 프로필 편집
 - [ ] F7 · 약관 및 정책
