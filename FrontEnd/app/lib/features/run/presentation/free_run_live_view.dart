@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../domain/run_models.dart';
+import '../domain/run_distance_marker.dart';
 import 'run_lap_list.dart';
 import 'run_metric.dart';
 import '../../../core/map/map_view.dart';
@@ -132,7 +133,11 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                   _scroll([
                     SizedBox(
                       height: 434,
-                      child: RunRouteView(run: run, dark: true),
+                      child: RunRouteView(
+                        run: run,
+                        dark: true,
+                        showDistanceMarkers: true,
+                      ),
                     ),
                     Row(
                       spacing: WdSpace.s8,
@@ -325,9 +330,14 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
 
 /// 위치를 수집하기 전에는 시안의 예시 경로를 실제 기록처럼 보여주지 않는다.
 class RunRouteView extends StatelessWidget {
-  const RunRouteView({super.key, required this.run, this.dark = false});
+  const RunRouteView({
+    super.key,
+    required this.run,
+    this.dark = false,
+    this.showDistanceMarkers = false,
+  });
   final RunSnapshot run;
-  final bool dark;
+  final bool dark, showDistanceMarkers;
   @override
   Widget build(BuildContext context) {
     if (!run.hasLocation) return RunRouteEmpty(dark: dark);
@@ -368,6 +378,17 @@ class RunRouteView extends StatelessWidget {
         // Endpoints use the accepted route only, including server-only history.
         // No markers or lines are interpolated across GPS/pause gaps.
         markers: [
+          if (showDistanceMarkers)
+            for (final marker in runDistanceMarkers(run))
+              MapMarker(
+                id: 'run-km-${marker.km}',
+                position: GeoPoint(
+                  marker.point.latitude,
+                  marker.point.longitude,
+                ),
+                imageKey: 'km:${marker.km}',
+                child: WdKmMarker('${marker.km} km'),
+              ),
           if (points.isNotEmpty)
             MapMarker(
               id: 'run-start',
