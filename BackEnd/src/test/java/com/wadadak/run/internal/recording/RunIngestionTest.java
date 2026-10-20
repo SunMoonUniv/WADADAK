@@ -52,6 +52,9 @@ class RunIngestionTest {
     @Autowired RunSessionRepository sessions;
     @Autowired RunRecordRepository records;
     @MockitoBean RunProcessingWorker worker;
+    // run 모듈만 띄우므로 course 모듈의 CourseApi는 없다. 자유 러닝 테스트는 코스를 부르지 않는다
+    @MockitoBean com.wadadak.course.CourseApi courseApi;
+    @MockitoBean CourseRunReleaseWorker courseRunReleaseWorker;
     final UUID owner=UUID.randomUUID(),id=UUID.randomUUID();
     final Instant start=Instant.parse("2026-10-12T00:00:00Z");
     List<Input> inputs;
