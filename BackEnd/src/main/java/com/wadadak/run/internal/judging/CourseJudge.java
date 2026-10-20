@@ -15,7 +15,7 @@ import java.util.Objects;
  * 서버 코스 판정의 입구(정책 제3부 5.1·5.3). 경로 기하 → 윈도우 추적 → 인정 거리 → 완주·리뷰 자격·진행도·코스 시간.
  * 앱의 완주 안내와 상관없이 업로드된 입력만으로 판정한다.
  */
-final class CourseJudge {
+public final class CourseJudge {
 
     /** 완주 거리 조건: 인정 거리 ≥ 전체 × 0.95, 경계 포함(정책 5.3) */
     static final double COMPLETION_RATIO = 0.95;
@@ -29,7 +29,7 @@ final class CourseJudge {
     private static final double EPSILON_M = 1e-6;
 
     /** 판정 사유. 여러 개면 앞의 것 */
-    enum Reason { COMPLETED, START_NOT_CONFIRMED, FINISH_NOT_REACHED, DISTANCE_SHORT }
+    public enum Reason { COMPLETED, START_NOT_CONFIRMED, FINISH_NOT_REACHED, DISTANCE_SHORT }
 
     /**
      * @param ranges               인정 범위(코스상 위치 m)
@@ -40,18 +40,23 @@ final class CourseJudge {
      * @param courseElapsedSeconds 코스 총 소요(정지 포함). 완주면 완주 시점까지, 아니면 구간 종료(SEGMENT_END, 없으면 END)까지
      * @param courseMovingSeconds  코스 달린 시간 = 총 소요 − 그 사이 일시정지
      */
-    record Judgement(List<Range> ranges, double recognizedM, double courseLengthM, double progressPercent,
+    public record Judgement(List<Range> ranges, double recognizedM, double courseLengthM, double progressPercent,
                      boolean completed, Reason reason, Instant completedAt,
                      long courseElapsedSeconds, long courseMovingSeconds, boolean reviewEligible) {
     }
 
     private final JudgingConfig config;
 
+    /** 주행 검증 전 개발용 기준값({@link JudgingConfig#DEFAULTS}) */
+    public CourseJudge() {
+        this(JudgingConfig.DEFAULTS);
+    }
+
     CourseJudge(JudgingConfig config) {
         this.config = config;
     }
 
-    Judgement judge(CourseRouteSnapshot course, List<Input> inputs) {
+    public Judgement judge(CourseRouteSnapshot course, List<Input> inputs) {
         RouteGeometry route = new RouteGeometry(course.route());
         List<Point> points = new CourseTracker(route, config).track(inputs);
         RecognizedDistance recognized = RecognizedDistance.of(points);
