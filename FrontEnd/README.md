@@ -243,7 +243,7 @@ Figma `디자인 · 전체 화면 (와이어프레임 기준)` 페이지의 섹�
 - [ ] I3 · 다른 러너 프로필
 - [ ] F4 · 설정 — 서버 `GET /api/v1/members/me` · `PUT /api/v1/members/me/settings`(공개 여부) 준비됨. 음성 안내는 `runController.saveVoiceSettings`로 기기에 저장
 - [ ] F5 · 설정 선택 시트 (공통)
-- [ ] F6 · 프로필 편집
+- [ ] F6 · 프로필 편집 — 서버 `PUT /api/v1/members/me` · `POST /api/v1/members/me/photo-uploads` 준비됨(닉네임 30일 규칙 MEMBER-010)
 - [ ] F7 · 약관 및 정책
 </details>
 
