@@ -12,10 +12,12 @@ import '../../core/auth/auth_controller.dart';
 import '../../core/error_message.dart';
 import '../../core/region_search.dart';
 import '../../core/upload/photo_uploader.dart';
+import 'birth_year_sheet.dart';
 import 'consent_screen.dart';
 
 /// F2 · 프로필 초기 설정. "시작하기"를 누르면 동의 내용과 함께 가입한다.
 /// 프로필 사진은 선택이다. 고른 사진은 가입할 때 올린다.
+/// 신체 정보도 선택이다. 동의해야 입력할 수 있고, 동의하면 네 값을 모두 넣어야 시작할 수 있다(정책 공통 9).
 class ProfileSetupScreen extends ConsumerStatefulWidget {
   const ProfileSetupScreen({super.key});
 
@@ -31,10 +33,16 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   final _bio = TextEditingController();
   final _region = TextEditingController();
   final _affiliation = TextEditingController();
+  final _birthYearText = TextEditingController();
+  final _height = TextEditingController();
+  final _weight = TextEditingController();
   Region? _selectedRegion;
   RunningExperience? _experience;
   XFile? _photo;
   Uint8List? _photoBytes;
+  bool _bodyAgreed = false;
+  int? _birthYear;
+  Gender? _gender;
 
   /// 서버가 알려 준 닉네임 오류(중복).
   String? _nicknameError;
@@ -46,6 +54,9 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
     _bio.dispose();
     _region.dispose();
     _affiliation.dispose();
+    _birthYearText.dispose();
+    _height.dispose();
+    _weight.dispose();
     super.dispose();
   }
 
@@ -59,8 +70,54 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
     return null;
   }
 
+  /// 동의했고 네 값이 모두 범위 안이면 보낼 신체 정보.
+  BodyInfo? get _bodyInfo {
+    final height = int.tryParse(_height.text.trim());
+    final weight = int.tryParse(_weight.text.trim());
+    if (!_bodyAgreed || _birthYear == null || _gender == null || height == null || weight == null) return null;
+    if (!BodyInfo.isValidHeight(height) || !BodyInfo.isValidWeight(weight)) return null;
+    return BodyInfo(birthYear: _birthYear!, heightCm: height, weightKg: weight, gender: _gender!);
+  }
+
+  /// 키·체중을 넣었는데 범위 밖이면 안내한다.
+  String? get _bodyProblem {
+    bool outOfRange(TextEditingController field, bool Function(int) valid) {
+      final value = int.tryParse(field.text.trim());
+      return field.text.trim().isNotEmpty && (value == null || !valid(value));
+    }
+
+    return outOfRange(_height, BodyInfo.isValidHeight) || outOfRange(_weight, BodyInfo.isValidWeight)
+        ? '키는 100~250cm, 체중은 20~300kg으로 입력해 주세요'
+        : null;
+  }
+
   bool get _ready =>
-      _nicknameValue.isNotEmpty && _nicknameProblem == null && _selectedRegion != null && _experience != null;
+      _nicknameValue.isNotEmpty &&
+      _nicknameProblem == null &&
+      _selectedRegion != null &&
+      _experience != null &&
+      (!_bodyAgreed || _bodyInfo != null);
+
+  /// 동의를 끄면 넣은 신체 정보를 비운다.
+  void _setBodyAgreed(bool agreed) => setState(() {
+        _bodyAgreed = agreed;
+        if (agreed) return;
+        _birthYear = null;
+        _gender = null;
+        _birthYearText.clear();
+        _height.clear();
+        _weight.clear();
+      });
+
+  Future<void> _pickBirthYear() async {
+    final year = await showBirthYearSheet(context, selected: _birthYear);
+    if (year != null) {
+      setState(() {
+        _birthYear = year;
+        _birthYearText.text = '$year년생';
+      });
+    }
+  }
 
   Future<void> _pickRegion() async {
     final region = await RegionPickScreen.open(context);
@@ -102,6 +159,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
             affiliation: _blankToNull(_affiliation.text),
             runningExperience: _experience!,
             photo: _photo,
+            bodyInfo: _bodyInfo,
           );
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -128,6 +186,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
   Widget build(BuildContext context) {
     ref.watch(agreementsProvider); // 동의 값을 가입할 때까지 유지한다.
     final nicknameMessage = _nicknameError ?? _nicknameProblem;
+    final bodyMessage = _bodyAgreed ? _bodyProblem : null;
     final label = WdText.ko16Bold.copyWith(color: WdColors.muted);
     final helper = WdText.raw(12, FontWeight.w400, 18);
 
@@ -199,6 +258,62 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
                       selected: _experience == experience,
                       onTap: () => setState(() => _experience = experience),
                     ),
+                ],
+              ),
+              Text('신체 정보 (선택)', style: label),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                spacing: WdSpace.s12,
+                children: [
+                  WdConsentRow(label: '[선택] 신체 정보 수집 및 이용', checked: _bodyAgreed, onChanged: _setBodyAgreed),
+                  // 동의 전에는 흐리게 두고 입력을 받지 않는다(Figma F2).
+                  IgnorePointer(
+                    ignoring: !_bodyAgreed,
+                    child: Opacity(
+                      opacity: _bodyAgreed ? 1 : 0.4,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        spacing: WdSpace.s12,
+                        children: [
+                          WdTextField(
+                              soft: true, controller: _birthYearText, hintText: '출생연도를 선택하세요', onTap: _pickBirthYear),
+                          Row(
+                            spacing: WdSpace.s8,
+                            children: [
+                              for (final (field, hint, unit) in [(_height, '키 (cm)', 'cm'), (_weight, '체중 (kg)', 'kg')])
+                                Expanded(
+                                  child: WdTextField(
+                                    soft: true,
+                                    controller: field,
+                                    hintText: hint,
+                                    suffixText: unit,
+                                    keyboardType: TextInputType.number,
+                                    maxLength: 3,
+                                    onChanged: (_) => setState(() {}),
+                                  ),
+                                ),
+                            ],
+                          ),
+                          Row(
+                            spacing: WdSpace.s6,
+                            children: [
+                              for (final gender in Gender.values)
+                                WdFilterChip(
+                                  gender.label,
+                                  height: 36,
+                                  selected: _gender == gender,
+                                  onTap: () => setState(() => _gender = gender),
+                                ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Text(
+                    bodyMessage ?? '칼로리 계산에만 쓰고 다른 러너에게 보이지 않아요',
+                    style: helper.copyWith(color: bodyMessage == null ? WdColors.muted : WdColors.warningText),
+                  ),
                 ],
               ),
               Padding(

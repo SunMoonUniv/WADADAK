@@ -78,6 +78,36 @@ enum RunningExperience {
   final String label;
 }
 
+enum Gender {
+  male('MALE', '남성'),
+  female('FEMALE', '여성');
+
+  const Gender(this.apiName, this.label);
+  final String apiName;
+  final String label;
+}
+
+/// 신체 정보(정책 공통 9). 선택 입력이고 네 값은 한 묶음이다. 보내면 신체 정보 수집 및 이용에 동의한 것이다.
+class BodyInfo {
+  const BodyInfo({required this.birthYear, required this.heightCm, required this.weightKg, required this.gender});
+
+  final int birthYear, heightCm, weightKg;
+  final Gender gender;
+
+  /// 고를 수 있는 출생연도, 최근 순. 연도만으로 만 14세 이상이 확실한 해(올해 − 15)부터 100년 전까지. 올해는 Asia/Seoul 기준.
+  static List<int> birthYears(DateTime now) {
+    final thisYear = now.toUtc().add(const Duration(hours: 9)).year;
+    return [for (var year = thisYear - 15; year >= thisYear - 100; year--) year];
+  }
+
+  /// 키 100~250cm, 체중 20~300kg 정수. 서버도 같은 범위를 확인한다.
+  static bool isValidHeight(int cm) => cm >= 100 && cm <= 250;
+  static bool isValidWeight(int kg) => kg >= 20 && kg <= 300;
+
+  Map<String, Object?> toJson() =>
+      {'birthYear': birthYear, 'heightCm': heightCm, 'weightKg': weightKg, 'gender': gender.apiName};
+}
+
 /// 회원 API(`/api/v1/members`). 서버 모듈 prefix 하나에 클라이언트 하나(개발 정책 9장).
 class MemberApiClient {
   MemberApiClient(this._publicDio);
@@ -103,6 +133,7 @@ class MemberApiClient {
     required String? affiliation,
     required RunningExperience runningExperience,
     required String? profileImageKey,
+    required BodyInfo? bodyInfo,
   }) async {
     final data = await callApi(() => _publicDio.post('$_auth/signup', data: {
           'signupToken': signupToken,
@@ -113,6 +144,7 @@ class MemberApiClient {
           'affiliation': affiliation,
           'runningExperience': runningExperience.apiName,
           'profileImageKey': profileImageKey,
+          'bodyInfo': bodyInfo?.toJson(),
         }));
     return AuthTokens.fromJson(data as Map);
   }

@@ -4,6 +4,7 @@ import com.wadadak.common.entity.BaseEntity;
 import com.wadadak.common.entity.UuidV7;
 import com.wadadak.member.internal.social.SocialAccount;
 import com.wadadak.member.internal.social.SocialProvider;
+import jakarta.persistence.Embedded;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
@@ -45,6 +46,10 @@ public class Member extends BaseEntity<UUID> {
     @Enumerated(EnumType.STRING)
     private RunningExperience runningExperience;
 
+    /** 신체 정보. 입력하지 않았으면 {@code null} */
+    @Embedded
+    private BodyInfo bodyInfo;
+
     private boolean infoPublic;
     private boolean profileSearchable;
     private Instant withdrawnAt;
@@ -54,7 +59,8 @@ public class Member extends BaseEntity<UUID> {
 
     /** 가입. 약관 동의는 {@link Agreement}에 따로 남긴다. */
     public static Member join(SocialAccount account, String nickname, String bio, String regionCode,
-                              String affiliation, RunningExperience runningExperience, String profileImageKey) {
+                              String affiliation, RunningExperience runningExperience, String profileImageKey,
+                              BodyInfo bodyInfo) {
         Member member = new Member();
         member.id = UuidV7.create();
         member.status = Status.ACTIVE;
@@ -66,6 +72,7 @@ public class Member extends BaseEntity<UUID> {
         member.affiliation = blankToNull(affiliation);
         member.runningExperience = runningExperience;
         member.profileImageKey = profileImageKey;
+        member.bodyInfo = bodyInfo;
         member.infoPublic = true;
         member.profileSearchable = true;
         return member;

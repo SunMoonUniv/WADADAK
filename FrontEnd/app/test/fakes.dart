@@ -83,6 +83,7 @@ class FakeMemberApi implements MemberApiClient {
     required String? affiliation,
     required RunningExperience runningExperience,
     required String? profileImageKey,
+    required BodyInfo? bodyInfo,
   }) async {
     if (signupError != null) throw signupError!;
     signedUp = {
@@ -94,6 +95,7 @@ class FakeMemberApi implements MemberApiClient {
       'affiliation': affiliation,
       'runningExperience': runningExperience.apiName,
       'profileImageKey': profileImageKey,
+      'bodyInfo': bodyInfo?.toJson(),
     };
     return testTokens;
   }

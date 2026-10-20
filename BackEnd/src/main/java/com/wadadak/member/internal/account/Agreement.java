@@ -33,15 +33,15 @@ public class Agreement extends BaseEntity<UUID> {
     private String version;
     private boolean agreed;
 
-    /** 가입. 모든 항목의 현재 버전에 동의했다. */
-    public static List<Agreement> agreeAll(UUID memberId) {
+    /** 가입. 필수 항목은 모두 현재 버전에 동의했고, 신체 정보(선택)는 {@code bodyInfo}일 때만 동의했다. */
+    public static List<Agreement> signup(UUID memberId, boolean bodyInfo) {
         return Arrays.stream(AgreementType.values()).map(type -> {
             Agreement agreement = new Agreement();
             agreement.id = UuidV7.create();
             agreement.memberId = memberId;
             agreement.type = type;
             agreement.version = type.version;
-            agreement.agreed = true;
+            agreement.agreed = type != AgreementType.BODY_INFO || bodyInfo;
             return agreement;
         }).toList();
     }

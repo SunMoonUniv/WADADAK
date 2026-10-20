@@ -9,6 +9,7 @@ import com.wadadak.event.member.MemberRegionChangedEvent;
 import com.wadadak.member.MemberErrorCode;
 import com.wadadak.member.internal.account.Agreement;
 import com.wadadak.member.internal.account.AgreementRepository;
+import com.wadadak.member.internal.account.BodyInfo;
 import com.wadadak.member.internal.account.Member;
 import com.wadadak.member.internal.account.MemberRepository;
 import com.wadadak.member.internal.social.SocialAccount;
@@ -20,6 +21,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
+import java.time.Year;
 import java.util.List;
 import java.util.UUID;
 
@@ -66,14 +68,19 @@ class AuthService {
         if (regions.findSigungu(request.regionCode()).isEmpty()) {
             throw new AppException(MemberErrorCode.REGION_NOT_FOUND);
         }
+        BodyInfo body = request.bodyInfo();
+        // 연도만으로 만 14세 이상이 확실한 해(올해 − 15)부터 100년 전까지만 받는다(정책 공통 9)
+        if (body != null && !isAllowedBirthYear(body.birthYear())) {
+            throw new AppException(MemberErrorCode.INVALID_BIRTH_YEAR);
+        }
         String photo = request.profileImageKey();
         // 사진 주소에 키가 보여서 남의 사진 키를 가져다 쓸 수 있다. 이 계정이 받은 폼의 키만, 한 번만 받는다(DB 유니크가 마지막 방어)
         if (photo != null && !uploads.claim(PHOTO_MODULE, uploader(account), List.of(photo))) {
             throw new AppException(MemberErrorCode.PROFILE_PHOTO_NOT_FOUND);
         }
         Member member = memberRepository.save(Member.join(account, request.nickname(), request.bio(),
-                request.regionCode(), request.affiliation(), request.runningExperience(), photo));
-        agreementRepository.saveAll(Agreement.agreeAll(member.getId()));
+                request.regionCode(), request.affiliation(), request.runningExperience(), photo, body));
+        agreementRepository.saveAll(Agreement.signup(member.getId(), body != null));
         events.publishEvent(new MemberRegionChangedEvent(UuidV7.create(), clock.instant(), member.getId(),
                 member.getRegionCode(), null, member.getVersion()));
         return issueTokens(member.getId());
@@ -108,6 +115,11 @@ class AuthService {
         refreshTokenRepository.save(new RefreshToken(TokenProvider.hash(refreshToken), memberId, refreshExpiresAt));
         return new TokenResponse(tokenProvider.accessToken(memberId, now), now.plus(TokenProvider.ACCESS_TTL),
                 refreshToken, refreshExpiresAt);
+    }
+
+    private boolean isAllowedBirthYear(int birthYear) {
+        int age = Year.now(clock).getValue() - birthYear;
+        return age >= 15 && age <= 100;
     }
 
     /** 가입 사진 폼을 받는 사람. 가입 전이라 회원 ID 대신 소셜 계정으로 센다. */

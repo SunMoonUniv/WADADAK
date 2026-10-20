@@ -44,6 +44,8 @@ void main() {
 
   Future<void> tap(WidgetTester tester, Finder finder) async {
     await tester.ensureVisible(finder);
+    // 스크롤한 위치가 그려진 뒤에 누른다. 아니면 스크롤 전 위치(하단 버튼 밑)를 누른다.
+    await tester.pumpAndSettle();
     await tester.tap(finder);
     await tester.pumpAndSettle();
   }
@@ -108,6 +110,7 @@ void main() {
       'affiliation': null,
       'runningExperience': 'MONTHS_6',
       'profileImageKey': null,
+      'bodyInfo': null,
     });
     expect(storage.tokens?.refreshToken, testTokens.refreshToken);
     expect(uploader.uploaded, isEmpty);
@@ -141,6 +144,68 @@ void main() {
 
     expect(uploader.uploaded, isEmpty);
     expect(api.signedUp?['profileImageKey'], isNull);
+  });
+
+  testWidgets('body info unlocks after its consent and all four values go into the signup', (tester) async {
+    await startApp(tester);
+    await reachProfile(tester);
+    await fillProfile(tester, '몸러너');
+
+    // 동의 전에는 입력칸을 쓸 수 없다.
+    final birthYear = find.ancestor(of: find.text('출생연도를 선택하세요'), matching: find.byType(TextField));
+    await tester.ensureVisible(birthYear);
+    await tester.pumpAndSettle();
+    await tester.tap(birthYear, warnIfMissed: false);
+    await tester.pumpAndSettle();
+    expect(find.text('만 14세 이상만 고를 수 있어요'), findsNothing);
+
+    await tap(tester, find.text('[선택] 신체 정보 수집 및 이용'));
+    await tap(tester, birthYear);
+    // 목록은 연도만으로 만 14세 이상이 확실한 해부터 시작한다.
+    final latest = BodyInfo.birthYears(DateTime.now()).first;
+    expect(find.text('만 14세 이상만 고를 수 있어요'), findsOneWidget);
+    expect(find.text('${latest + 1}년생'), findsNothing);
+    await tap(tester, find.text('$latest년생'));
+    await tap(tester, find.text('적용'));
+    expect(find.text('$latest년생'), findsOneWidget);
+
+    // 네 값을 모두 넣기 전에는 시작할 수 없다.
+    await tap(tester, find.text('시작하기'));
+    expect(api.signedUp, isNull);
+
+    await tester.enterText(find.ancestor(of: find.text('키 (cm)'), matching: find.byType(TextField)), '175');
+    await tester.enterText(find.ancestor(of: find.text('체중 (kg)'), matching: find.byType(TextField)), '68');
+    await tap(tester, find.text('남성'));
+    await tap(tester, find.text('시작하기'));
+
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(api.signedUp?['bodyInfo'], {'birthYear': latest, 'heightCm': 175, 'weightKg': 68, 'gender': 'MALE'});
+  });
+
+  testWidgets('out-of-range body info blocks the start, and turning the consent off clears it', (tester) async {
+    await startApp(tester);
+    await reachProfile(tester);
+    await fillProfile(tester, '범위러너');
+
+    await tap(tester, find.text('[선택] 신체 정보 수집 및 이용'));
+    await tap(tester, find.ancestor(of: find.text('출생연도를 선택하세요'), matching: find.byType(TextField)));
+    await tap(tester, find.text('${BodyInfo.birthYears(DateTime.now()).first}년생'));
+    await tap(tester, find.text('적용'));
+    await tester.enterText(find.ancestor(of: find.text('키 (cm)'), matching: find.byType(TextField)), '99');
+    await tester.enterText(find.ancestor(of: find.text('체중 (kg)'), matching: find.byType(TextField)), '68');
+    await tap(tester, find.text('여성'));
+
+    expect(find.text('키는 100~250cm, 체중은 20~300kg으로 입력해 주세요'), findsOneWidget);
+    await tap(tester, find.text('시작하기'));
+    expect(api.signedUp, isNull);
+
+    await tap(tester, find.text('[선택] 신체 정보 수집 및 이용'));
+    expect(find.text('키 (cm)'), findsOneWidget);
+    expect(find.text('출생연도를 선택하세요'), findsOneWidget);
+    await tap(tester, find.text('시작하기'));
+
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(api.signedUp?['bodyInfo'], isNull);
   });
 
   testWidgets('cannot start until the nickname follows the rules', (tester) async {
