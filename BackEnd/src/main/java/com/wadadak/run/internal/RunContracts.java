@@ -10,7 +10,26 @@ import java.util.UUID;
 public final class RunContracts {
     private RunContracts() {}
     public enum Kind { START, GPS, PAUSE, RESUME, GAP, SEGMENT_END, END, CADENCE, BAROMETER }
-    public record Prepare(@NotNull Instant startedAt, @Pattern(regexp="FREE") String mode) {}
+    /** 종료 후 업로드 준비. 코스 러닝은 시작 신호를 보낸 세션만 {@code COURSE}로 준비한다 */
+    public record Prepare(@NotNull Instant startedAt, @Pattern(regexp="FREE|COURSE") String mode) {}
+    /** 코스 러닝 준비(C6, 측정 시작 전). 서버가 코스 활성 여부를 확인하고 판정용 경로를 저장한다(정책 D-08) */
+    public record CoursePrepare(@NotNull UUID courseId) {}
+    /** 코스 러닝 시작 신호(카운트다운 끝, 측정 시작). 같은 startedAt 재시도는 한 번만 반영한다 */
+    public record CourseStart(@NotNull Instant startedAt) {}
+    /** 코스 러닝 준비 응답. 앱은 이 경로로 안내하고 기기에 저장한다 */
+    public record CourseSnapshot(UUID sessionId, UUID courseId, String name, List<GeoPoint> route,
+                                 int totalDistanceMeters, long version) {}
+    /**
+     * 서버 코스 판정 결과(정책 제3부 5.1·5.3). 코스 러닝 기록에만 있다.
+     *
+     * @param courseDistanceMeters 코스 전체 거리(코스 등록 값). 랭킹 페이스 계산에 쓴다
+     * @param reason               COMPLETED · START_NOT_CONFIRMED · FINISH_NOT_REACHED · DISTANCE_SHORT
+     * @param progressPercent      진행도 0~100
+     * @param completedAt          미완주면 null
+     */
+    public record CourseOutcome(UUID courseId, long courseVersion, int courseDistanceMeters, boolean completed,
+                                String reason, double recognizedDistanceMeters, double progressPercent, Instant completedAt,
+                                long courseElapsedSeconds, long courseMovingSeconds, boolean reviewEligible) {}
     public record Input(@Min(0) long seq, @NotNull Kind kind, @Min(0) long elapsedMs,
                         @NotNull Instant measuredAt, GeoPoint location, Double accuracyM,
                         @Size(max=40) String reason, Double speedMps, Double speedAccuracyMps, Integer steps, Long durationMs, Long sampleEndMs,
@@ -48,7 +67,12 @@ public final class RunContracts {
     }
     public record Result(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt,
                          String endReason, Metrics metrics, List<List<GeoPoint>> routeSegments, List<Lap> laps,
-                         String policyVersion, String calculationVersion, ResultStats stats) {
+                         String policyVersion, String calculationVersion, ResultStats stats, CourseOutcome course) {
+        /** 자유 러닝 결과: 코스 판정 없음 */
+        public Result(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason,
+                      Metrics metrics, List<List<GeoPoint>> routeSegments, List<Lap> laps, String policyVersion, String calculationVersion, ResultStats stats) {
+            this(id,startedAt,endedAt,registeredAt,endReason,metrics,routeSegments,laps,policyVersion,calculationVersion,stats,null);
+        }
         public Result(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason,
                       Metrics metrics, List<List<GeoPoint>> routeSegments, List<Lap> laps, String policyVersion, String calculationVersion) {
             this(id,startedAt,endedAt,registeredAt,endReason,metrics,routeSegments,laps,policyVersion,calculationVersion,null);
