@@ -18,7 +18,7 @@
 | `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `course_stats`, `course_daily_stats`, `processed_events` |
 | `ranking` | ranking | `course_ranking_entries`, `distance_run_records`, `course_status_copies`, `member_visibility_copies`, `member_region_history`, `withdrawn_members` |
 | `review` | review | `reviews`, `review_photos`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
-| `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members` |
+| `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members`, `course_attempts`, `course_runner_counts` |
 | `common` | common | `region`, `event_publication`, `shedlock`, `photo_uploads`, `flyway_schema_history` |
 
 notification 스키마는 아직 없다. 해당 모듈을 구현할 때 이 문서에 추가한다.
@@ -238,6 +238,9 @@ erDiagram
     run_sessions ||--o| run_records : "id"
     members ||..o{ run_deleted_records : "member_id"
     members ||..o| run_withdrawn_members : "member_id"
+    members ||..o{ run_course_attempts : "member_id"
+    courses ||..o{ run_course_attempts : "course_id"
+    courses ||..o| run_course_runner_counts : "course_id"
     run_records ||..o| course_ranking_entries : "run_record_id"
     run_records ||..o| course_run_records : "run_record_id"
     run_records ||..o| distance_run_records : "run_record_id"
@@ -270,6 +273,23 @@ erDiagram
     run_withdrawn_members {
         UUID member_id PK
         TIMESTAMPTZ withdrawn_at
+    }
+    run_course_attempts {
+        UUID session_id PK "세션 ID (sessions FK 없음)"
+        UUID member_id
+        UUID course_id
+        VARCHAR course_name
+        BIGINT course_version
+        TEXT route_json
+        INTEGER total_distance_meters
+        TIMESTAMPTZ started_at
+        TIMESTAMPTZ started_event_at
+        TIMESTAMPTZ released_at
+        VARCHAR release_reason
+    }
+    run_course_runner_counts {
+        UUID course_id PK
+        BIGINT version
     }
     distance_run_records {
         UUID run_record_id PK
@@ -693,7 +713,7 @@ Flyway가 관리한다. 모든 모듈의 마이그레이션 이력을 여기 한
 
 ### 3.6 run
 
-자유 러닝의 종료 원본 업로드·재계산·기록 조회·삭제를 담당한다. 코스·고스트 테이블은 아직 구현하지 않았다. 아래 테이블은 모두 `created_at`·`updated_at`을 갖는다. 2026-10-14 보완 마이그레이션으로 컬럼을 추가한 기존 행은 마이그레이션 시각을 기본값으로 가지며, 실제 러닝 시각은 `started_at`·결과의 `endedAt`로 구분한다.
+자유 러닝의 종료 원본 업로드·재계산·기록 조회·삭제와 코스 러닝 시도(준비·시작·현재 러너 수·판정)를 담당한다. 고스트 테이블은 아직 구현하지 않았다. 아래 테이블은 모두 `created_at`·`updated_at`을 갖는다. 2026-10-14 보완 마이그레이션으로 컬럼을 추가한 기존 행은 마이그레이션 시각을 기본값으로 가지며, 실제 러닝 시각은 `started_at`·결과의 `endedAt`로 구분한다.
 
 #### `run.sessions` — 종료 기록 수집·처리 상태
 
@@ -710,7 +730,7 @@ Flyway가 관리한다. 모든 모듈의 마이그레이션 이력을 여기 한
 
 #### `run.inputs` — 원본 입력 스트림
 
-PK는 `(session_id, stream_seq)`, `session_id`만 같은 run 스키마 sessions에 FK를 둔다. `payload` TEXT에 START/GPS/PAUSE/RESUME/GAP/END/CADENCE 원본을 저장한다. GPS `measuredAt`은 실제 표본 UTC, `elapsedMs`는 수신 처리의 단조 경과 시각이다. CADENCE의 `sampleEndMs`는 센서 측정 구간의 단조 시각이다. 속도·속도 정확도·걸음 표본을 보존한다.
+PK는 `(session_id, stream_seq)`, `session_id`만 같은 run 스키마 sessions에 FK를 둔다. `payload` TEXT에 START/GPS/PAUSE/RESUME/GAP/SEGMENT_END/END/CADENCE/BAROMETER 원본을 저장한다. GPS `measuredAt`은 실제 표본 UTC, `elapsedMs`는 수신 처리의 단조 경과 시각이다. CADENCE의 `sampleEndMs`는 센서 측정 구간의 단조 시각이다. 속도·속도 정확도·걸음 표본을 보존한다.
 
 #### `run.records` — 서버 확정 결과와 목록 요약
 
@@ -733,6 +753,36 @@ PK는 `(session_id, stream_seq)`, `session_id`만 같은 run 스키마 sessions�
 #### `run.withdrawn_members` — 탈퇴 후 업로드 차단
 
 `member_id` UUID PK, `withdrawn_at` TIMESTAMPTZ. MemberWithdrawnEvent 수신 후 원본·결과를 실제 삭제하고 이후 prepare/upload/처리를 차단한다. 등록된 기록마다 RunRecordDeletedEvent를 발행한다. 이벤트 재수신은 멱등이다.
+
+#### `run.course_attempts` — 코스 러닝 시도 (2026-10-20)
+
+세션 하나의 코스 도전. 준비(C6, 측정 시작 전)에서 만들고 시작 신호로 측정 시작을 남긴다(정책 D-08). 준비 때는 `run.sessions` 행이 없어 FK를 두지 않는다. 기록 삭제·탈퇴 때 함께 지운다.
+
+| 컬럼 | 타입 | 설명 |
+| --- | --- | --- |
+| `session_id` | UUID PK | 앱이 만든 세션 ID. 업로드 뒤 `run.sessions.id`와 같다 |
+| `member_id` | UUID | 소유자 ID. 다른 모듈 FK 없음 |
+| `course_id` | UUID | course 모듈의 코스 ID. FK 없음 |
+| `course_name` | VARCHAR(50) | 준비 때 코스 이름 |
+| `course_version` | BIGINT | 준비 때 코스 `@Version`. 어느 시점 코스로 달렸는지 구분 |
+| `route_json` | TEXT | 판정용 기준 경로(GeoPoint JSON 배열, 첫 점이 출발). 이후 코스가 바뀌어도 이 경로로 판정한다 |
+| `total_distance_meters` | INTEGER | 코스 전체 거리(코스 등록 값). 이벤트 `courseDistanceMeters`·랭킹 페이스에 쓴다 |
+| `started_at` | TIMESTAMPTZ nullable | 측정 시작(시작 신호). null이면 준비만 했다. 종료 업로드의 `COURSE` prepare는 이 값과 같아야 한다 |
+| `started_event_at` | TIMESTAMPTZ nullable | `CourseRunStartedEvent.occurredAt`. 기록 삭제 때 `RunRecordDeletedEvent.startedAt`으로 보내 course가 같은 날짜에서 도전 수를 뺀다 |
+| `released_at` | TIMESTAMPTZ nullable | 현재 러너 수에서 뺀 시각 |
+| `release_reason` | VARCHAR(20) nullable | `SEGMENT_END`(구간 종료 신호) · `UPLOAD`(기록 업로드 완료) · `TIMEOUT`(시작 후 3시간) · `DELETED`(기록 삭제·탈퇴) |
+
+- 현재 러너 수 = `started_at IS NOT NULL AND released_at IS NULL`인 행 수. 코스별 부분 인덱스로 센다. 일시정지 중인 러너도 포함한다(공통 7)
+- 자동 제외 작업(1분마다, ShedLock)은 `started_at` 부분 인덱스로 3시간 지난 행을 찾는다. 3시간은 D-14 남은 결정이라 코드 상수다
+- 판정 결과는 이 테이블이 아니라 `run.records.result_json`의 `course`에 저장한다(아래)
+
+#### `run.course_runner_counts` — 현재 러너 수 이벤트 version
+
+`course_id` UUID PK, `version` BIGINT. 러너 수가 바뀔 때마다 1씩 올려 `CourseActiveRunnersChangedEvent.version`으로 보낸다(수신 측은 큰 version만 반영). 이 행을 먼저 잠그고 수를 세서 같은 코스의 증감을 트랜잭션 순서대로 세운다. 수 자체는 저장하지 않는다.
+
+#### 코스 판정 결과 `course` (2026-10-20)
+
+`run.records.result_json`의 Result에 선택 객체 `course`를 추가한다. 코스 러닝 기록에만 있고 자유 러닝은 없다(null). 필드: `courseId`, `courseVersion`, `courseDistanceMeters`, `completed`, `reason`(`COMPLETED`·`START_NOT_CONFIRMED`·`FINISH_NOT_REACHED`·`DISTANCE_SHORT`), `recognizedDistanceMeters`, `progressPercent`(0~100), `completedAt`, `courseElapsedSeconds`, `courseMovingSeconds`, `reviewEligible`. 처리(`process`) 때 `course_attempts`의 경로 스냅샷으로 판정해 저장하고, `RunSessionEndedEvent`의 코스 필드는 이 값에서 채운다. 테이블 컬럼은 바뀌지 않는다. `summary_json`(목록)에는 넣지 않았다.
 
 #### 기기 SQLite와 서버 DB의 구분
 
