@@ -59,7 +59,7 @@ class RunRecorder {
           kind: RunKind.start,
           elapsedMs: 0,
           measuredAt: run.startedAt,
-          reason: motionFiltering ? 'PACE_V2' : null,
+          reason: motionFiltering ? 'PACE_V3' : null,
         );
         await _persist(() => store.create(run, start));
         run.inputs.add(start);

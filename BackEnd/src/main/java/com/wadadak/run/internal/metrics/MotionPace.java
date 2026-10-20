@@ -6,8 +6,14 @@ import com.wadadak.run.internal.RunContracts.*;
 import java.util.ArrayList;
 import java.util.List;
 
-/** Deterministic PACE_V2 replay, matching the app's confirmed movement filter. */
+/** Versioned motion replay; PACE_V3 rejects isolated speed-inconsistent fixes. */
 final class MotionPace {
+    static boolean usesMotion(String version) {
+        return "PACE_V2".equals(version) || "PACE_V3".equals(version);
+    }
+    private boolean balanced;
+    private Input suspect;
+    private Input rawPrevious;
     double distanceM;
     private long stoppedMs;
     final List<FreeRunCalculator.Travel> travels = new ArrayList<>();
@@ -22,6 +28,55 @@ final class MotionPace {
     private boolean paused, ended;
 
     void add(Input p) {
+        if (ended) return;
+        if (p.kind() == Kind.START) balanced = "PACE_V3".equals(p.reason());
+        if (!balanced || p.kind() == Kind.START || p.kind() == Kind.CADENCE ||
+            p.kind() == Kind.BAROMETER || p.kind() == Kind.SEGMENT_END) {
+            accept(p); return;
+        }
+        if (p.kind() != Kind.GPS || paused) {
+            suspect = null; rawPrevious = null; accept(p); return;
+        }
+        // Check hard boundaries on consecutive RAW fixes before removing outliers.
+        Input raw = rawPrevious;
+        rawPrevious = GpsQuality.good(p) && p.accuracyM() <= 15 ? p : null;
+        long dt = raw == null ? 0 : p.elapsedMs() - raw.elapsedMs();
+        if (!GpsQuality.good(p) || p.accuracyM() > 15 ||
+            (raw != null && (dt <= 0 || dt > GpsQuality.MAX_INTERVAL_MS ||
+                distance(raw,p) * 1000 / dt > GpsQuality.MAX_SPEED_MPS))) {
+            suspect = null;
+            closeStop(previous == null ? null : previous.elapsedMs());
+            resetWindow(); accept(p); return;
+        }
+        Input candidate = suspect;
+        suspect = null;
+        if (candidate != null) {
+            if (previous != null && isolated(previous, candidate, p)) {
+                accept(p); return;
+            }
+            accept(candidate);
+        }
+        if (previous != null && suspectLeg(previous, p)) {
+            suspect = p; return;
+        }
+        accept(p);
+    }
+    private static boolean suspectLeg(Input a, Input b) {
+        long dt = b.elapsedMs() - a.elapsedMs();
+        if (!GpsQuality.good(a) || !GpsQuality.good(b) || a.accuracyM() > 15 || b.accuracyM() > 15 ||
+            dt <= 0 || dt > 3000 || !reliableSpeed(a) || !reliableSpeed(b)) return false;
+        double expected = (a.speedMps() + b.speedMps() + a.speedAccuracyMps() + b.speedAccuracyMps()) * .5 * dt / 1000;
+        return distance(a,b) > expected + Math.max(6, a.accuracyM() + b.accuracyM());
+    }
+    private static boolean isolated(Input a, Input b, Input c) {
+        if (!suspectLeg(b,c) || !GpsQuality.good(c) || !reliableSpeed(c)) return false;
+        long dt = c.elapsedMs() - a.elapsedMs();
+        double direct = distance(a,c);
+        double expected = (a.speedMps() + c.speedMps() + a.speedAccuracyMps() + c.speedAccuracyMps()) * .5 * dt / 1000;
+        return direct <= expected + Math.max(6, a.accuracyM() + c.accuracyM()) &&
+            distance(a,b) + distance(b,c) - direct > Math.max(8, a.accuracyM() + b.accuracyM() + c.accuracyM());
+    }
+    private void accept(Input p) {
         if (ended) return;
         if (p.kind() != Kind.GPS) {
             // 코스 구간 종료(SEGMENT_END)는 코스 판정 경계일 뿐 자유 러닝 이동·정지와 무관하다

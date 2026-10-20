@@ -86,7 +86,7 @@ void main() {
     tick = const Duration(seconds: 60);
     await tester.pump(const Duration(seconds: 1));
     expect(find.text('00:40'), findsOneWidget);
-    expect(find.text('총 소요 01:00'), findsOneWidget);
+    expect(find.text('총 소요 시간 01:00 (정지 시간 포함)'), findsOneWidget);
     await tester.tap(find.text('계속 달리기'));
     await tester.pump();
     tick = const Duration(seconds: 120);

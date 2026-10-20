@@ -10,7 +10,7 @@ import java.util.List;
 public final class RunResultStatsCalculator {
     public static final String VERSION = "RESULT_V3";
     static ResultStats calculate(List<Input> inputs, List<List<Input>> segments, List<Lap> laps) {
-        if (inputs.isEmpty() || !"PACE_V2".equals(inputs.getFirst().reason())) {
+        if (inputs.isEmpty() || !MotionPace.usesMotion(inputs.getFirst().reason())) {
             MotionPace motion = new MotionPace();
             for (Input p : inputs) motion.add(p);
             segments = motion.samples;
@@ -103,7 +103,7 @@ public final class RunResultStatsCalculator {
 
     private static List<Long> gapTimes(List<Input> inputs) {
         List<Long> result = new ArrayList<>();
-        boolean v2 = !inputs.isEmpty() && "PACE_V2".equals(inputs.getFirst().reason()), paused = false;
+        boolean v2 = !inputs.isEmpty() && MotionPace.usesMotion(inputs.getFirst().reason()), paused = false;
         Input previous = null;
         for (Input p : inputs) {
             if (p.kind() == Kind.PAUSE) { paused = true; previous = null; }

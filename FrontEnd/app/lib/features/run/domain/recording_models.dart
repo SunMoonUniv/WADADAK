@@ -188,6 +188,33 @@ class RunMetrics {
 
 /// Incremental calculation shared by live display, recovery and fixture replay.
 class RunCalculator {
+  RunResultStats? _liveElevation;
+  int _liveElevationMs = -3000, _liveElevationSeq = -1;
+  bool _liveElevationPaused = false;
+
+  /// Provisional elevation uses the result filter without the unused pace scan.
+  /// Repeated redraws reuse the value; pause/resume flushes the latest samples.
+  RunResultStats liveElevationStats(List<RunInput> inputs) {
+    if (ended) return resultStats(inputs);
+    final seq = inputs.lastOrNull?.seq ?? -1;
+    if (_liveElevation != null &&
+        (seq == _liveElevationSeq ||
+            (paused == _liveElevationPaused &&
+                lastMs - _liveElevationMs < 3000))) {
+      return _liveElevation!;
+    }
+    _liveElevation = RunResultStats.calculate(
+      inputs,
+      segments,
+      const [],
+      elevationOnly: true,
+    );
+    _liveElevationMs = lastMs;
+    _liveElevationSeq = seq;
+    _liveElevationPaused = paused;
+    return _liveElevation!;
+  }
+
   RunResultStats? _resultStats;
   RunResultStats resultStats(List<RunInput> inputs) {
     if (!ended) {
@@ -270,7 +297,7 @@ class RunCalculator {
   List<RunInput>? _segment;
   void add(RunInput input) {
     if (ended) return;
-    if (input.kind == RunKind.start) _v2 = input.reason == 'PACE_V2';
+    if (input.kind == RunKind.start) _v2 = MotionPace.usesMotion(input.reason);
     if (_v2) _motion.add(input);
     if (!paused) activeMs += input.elapsedMs - lastMs;
     lastMs = input.elapsedMs;

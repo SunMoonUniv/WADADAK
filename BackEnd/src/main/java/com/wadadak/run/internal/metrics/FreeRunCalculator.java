@@ -44,7 +44,7 @@ public final class FreeRunCalculator {
         if (inputs.size() < 2 || inputs.getFirst().kind() != Kind.START ||
             inputs.getFirst().elapsedMs() != 0 || inputs.getLast().kind() != Kind.END) invalid();
         long lastMs = 0, activeMs = 0;
-        boolean v2 = "PACE_V2".equals(inputs.getFirst().reason());
+        boolean v2 = MotionPace.usesMotion(inputs.getFirst().reason());
         MotionPace motion = new MotionPace();
         boolean paused = false, inGap = false;
         double distanceM = 0;

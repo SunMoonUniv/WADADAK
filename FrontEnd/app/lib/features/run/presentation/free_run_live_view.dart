@@ -30,7 +30,7 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
   final _pages = PageController(initialPage: 1);
   int _page = 1;
   final List<RunMetric> _metrics = [
-    RunMetric.moving,
+    RunMetric.active,
     RunMetric.distance,
     RunMetric.averagePace,
     RunMetric.currentPace,
@@ -41,7 +41,7 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.run.sessionId != widget.run.sessionId) {
       _metrics.setAll(0, [
-        RunMetric.moving,
+        RunMetric.active,
         RunMetric.distance,
         RunMetric.averagePace,
         RunMetric.currentPace,
@@ -69,15 +69,24 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
   }
 
   Widget _time({bool editable = false}) {
-    final metric = editable ? _metrics.first : RunMetric.moving;
+    final metric = editable ? _metrics.first : RunMetric.active;
     final content = WdElapsedTime(
       label: metric.label,
       time: metric.value(widget.run),
-      caption: metric == RunMetric.elapsed
-          ? '달린시간 ${formatRunTime(widget.run.active)}'
-          : '총 소요 ${formatRunTime(widget.run.elapsed)}',
     );
-    return editable ? _metricButton(0, content) : content;
+    return Column(
+      children: [
+        editable ? _metricButton(0, content) : content,
+        Text(
+          '총 소요 시간 ${formatRunTime(widget.run.elapsed)} (정지 시간 포함)',
+          style: WdText.raw(
+            13,
+            FontWeight.w400,
+            17,
+          ).copyWith(color: WdColors.runTextSub),
+        ),
+      ],
+    );
   }
 
   @override
@@ -129,7 +138,7 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                       spacing: WdSpace.s8,
                       children: [
                         for (final (label, value) in [
-                          ('이동 시간', formatRunTime(run.movingTime)),
+                          ('시간', formatRunTime(run.active)),
                           ('거리', runDistance(run)),
                           ('평균 페이스', formatRunPace(run.paceSecondsPerKm)),
                           (
@@ -201,11 +210,6 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                           : '편안하게 나만의 속도로 이어가세요.',
                     ),
                     RunLapList(run: run, dark: true, recentOnly: true),
-                    if (paused)
-                      Text(
-                        '일시정지 ${formatRunTime(run.elapsed - run.active)}',
-                        style: WdText.ko13.copyWith(color: WdColors.runTextSub),
-                      ),
                   ]),
                   _scroll([
                     _time(),
@@ -216,7 +220,7 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                       ],
                       [
                         ('현재 페이스', formatRunPace(run.currentPaceDisplay)),
-                        ('이동 시간', formatRunTime(run.movingTime)),
+                        ('시간', formatRunTime(run.active)),
                       ],
                       [('심박수', '—'), ('최고 페이스', '—')],
                       [
@@ -226,7 +230,12 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                               ? '—'
                               : '${run.currentCadence!.round()} spm',
                         ),
-                        ('누적 고도', '—'),
+                        (
+                          '누적 고도',
+                          run.liveElevationGainM == null
+                              ? '—'
+                              : '${run.liveElevationGainM!.round()} m',
+                        ),
                       ],
                     ])
                       Row(
