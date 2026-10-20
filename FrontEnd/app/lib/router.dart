@@ -10,6 +10,7 @@ import 'features/course/create/route_draw_screen.dart';
 import 'features/course/detail/course_detail_screen.dart';
 import 'features/course/detail/course_rankings_screen.dart';
 import 'features/home/course_filter_screen.dart';
+import 'features/home/course_search_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/onboarding/consent_screen.dart';
 import 'features/onboarding/login_screen.dart';
@@ -68,7 +69,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       StatefulShellRoute.indexedStack(
         builder: (_, _, shell) => MainShell(shell: shell),
         branches: [
-          StatefulShellBranch(routes: [GoRoute(path: Routes.home, builder: (_, _) => const HomeScreen())]),
+          StatefulShellBranch(routes: [
+            GoRoute(
+              path: Routes.home,
+              builder: (_, _) => const HomeScreen(),
+              routes: [GoRoute(path: 'search', builder: (_, _) => const CourseSearchScreen())],
+            ),
+          ]),
           StatefulShellBranch(routes: [GoRoute(path: Routes.run, builder: (_, _) => const FreeRunScreen())]),
           StatefulShellBranch(routes: [GoRoute(path: Routes.ranking, builder: (_, _) => const RankingScreen())]),
           StatefulShellBranch(routes: [GoRoute(path: Routes.my, builder: (_, _) => const RunHistoryScreen(myTab: true))]),

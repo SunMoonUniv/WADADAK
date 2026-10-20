@@ -57,6 +57,32 @@ class CourseListCard extends StatelessWidget {
   }
 }
 
+/// 코스 검색 결과 카드(G1-04). Figma G1 카드 모양이다(썸네일 58×58 · 한 줄 `5.2km · 난이도 중 · ★ 4.6 (128)` · 오른쪽 `›`).
+/// 아래 줄은 현재 러너 · 코스 유형인데, 현재 러너는 run이 현재 러너 수 이벤트를 발행하면 붙인다.
+class CourseSearchCard extends StatelessWidget {
+  const CourseSearchCard({super.key, required this.course, this.onTap});
+
+  final CourseListItem course;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) => WdCourseCard(
+        title: course.name,
+        // 리뷰가 없으면 평점은 빠진다. 평점은 전체 기간 값이다(G1-04).
+        lines: [
+          [
+            formatKm(course.distanceMeters),
+            '난이도 ${course.difficulty.label}',
+            ?formatCardRating(course.averageRating, course.reviewCount),
+          ].join(' · '),
+        ],
+        thumbnail: CourseRouteThumbnail(course.route),
+        showChevron: true,
+        tags: [WdTag(course.courseType.label, filled: false)],
+        onTap: onTap,
+      );
+}
+
 /// 카드 썸네일의 코스 경로. 지도 없이 경로만 칸에 맞춰 그린다. 선은 지도 코스 선과 같은 라임 + 잉크 테두리다.
 class CourseRouteThumbnail extends StatelessWidget {
   const CourseRouteThumbnail(this.route, {super.key});

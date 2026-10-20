@@ -31,9 +31,10 @@ class MainShell extends ConsumerWidget {
               ? null
               : WdBottomNav(
                   currentIndex: shell.currentIndex,
+                  // 홈은 다른 탭에서 돌아와도 처음 자리(A2)다. 홈 탭 안에 연 검색(G1)은 닫힌다(FIL-08).
                   onTap: (index) => shell.goBranch(
                     index,
-                    initialLocation: index == shell.currentIndex,
+                    initialLocation: index == shell.currentIndex || index == 0,
                   ),
                 ),
         );

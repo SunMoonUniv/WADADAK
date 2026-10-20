@@ -134,6 +134,7 @@ class WdSearchHeader extends StatelessWidget {
     this.hintText,
     this.onChanged,
     this.onSubmitted,
+    this.autofocus = false,
   });
 
   final TextEditingController controller;
@@ -142,17 +143,28 @@ class WdSearchHeader extends StatelessWidget {
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onSubmitted;
 
+  /// 화면을 열 때 입력란에 커서를 두고 키보드를 띄운다.
+  final bool autofocus;
+
   @override
   Widget build(BuildContext context) {
     final text = WdText.raw(12, FontWeight.w400, 18);
+    void clear() {
+      controller.clear();
+      onChanged?.call('');
+    }
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(WdSpace.s16, WdSpace.s10, WdSpace.s16, WdSpace.s12),
       child: Row(
         spacing: WdSpace.s10,
         children: [
+          // 글자 화살표 · ✕는 읽지 않고 동작 이름만 읽는다. 아래를 빼서 화면 읽기의 누르기도 여기서 받는다.
           Semantics(
             button: true,
             label: '뒤로 가기',
+            excludeSemantics: true,
+            onTap: onBack,
             child: GestureDetector(
               onTap: onBack,
               child: Text('←', style: WdText.raw(19, FontWeight.w500, 19 * 1.4).copyWith(color: WdColors.ink)),
@@ -170,6 +182,7 @@ class WdSearchHeader extends StatelessWidget {
                       controller: controller,
                       onChanged: onChanged,
                       onSubmitted: onSubmitted,
+                      autofocus: autofocus,
                       textInputAction: TextInputAction.search,
                       style: text.copyWith(color: WdColors.ink),
                       cursorColor: WdColors.ink,
@@ -180,11 +193,10 @@ class WdSearchHeader extends StatelessWidget {
                   Semantics(
                     button: true,
                     label: '검색어 지우기',
+                    excludeSemantics: true,
+                    onTap: clear,
                     child: GestureDetector(
-                      onTap: () {
-                        controller.clear();
-                        onChanged?.call('');
-                      },
+                      onTap: clear,
                       child: Text('✕', style: text.copyWith(color: WdColors.muted)),
                     ),
                   ),
