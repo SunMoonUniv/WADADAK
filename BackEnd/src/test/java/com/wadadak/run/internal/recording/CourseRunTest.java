@@ -231,20 +231,35 @@ class CourseRunTest {
     }
 
     @Test
-    void prepareModeMustMatchCourseAttempt() {
+    void uploadPrepareFollowsStoredCourseAttempt() {
         courseRuns.prepare(owner, id, courseId);
 
         // 시작 신호 전
         assertThatThrownBy(() -> runs.prepare(owner, id, new Prepare(startedAt, "COURSE")))
                 .isInstanceOfSatisfying(AppException.class, e -> assertThat(e.getErrorCode()).isEqualTo(RunErrorCode.CONFLICT));
         courseRuns.start(owner, id, startedAt);
-        // 코스 시도가 있는 세션을 자유 러닝으로
-        assertThatThrownBy(() -> runs.prepare(owner, id, new Prepare(startedAt, "FREE")))
+        // 시작 신호와 다른 startedAt
+        assertThatThrownBy(() -> runs.prepare(owner, id, new Prepare(startedAt.plusSeconds(1), "FREE")))
                 .isInstanceOfSatisfying(AppException.class, e -> assertThat(e.getErrorCode()).isEqualTo(RunErrorCode.CONFLICT));
         // 코스 시도가 없는 세션을 코스로
         assertThatThrownBy(() -> runs.prepare(owner, UUID.randomUUID(), new Prepare(startedAt, "COURSE")))
                 .isInstanceOfSatisfying(AppException.class, e -> assertThat(e.getErrorCode()).isEqualTo(RunErrorCode.NOT_FOUND));
+        // 앱이 코스 정보를 잃고 FREE로 준비해도 서버의 코스 시도로 판정한다
+        assertThat(runs.prepare(owner, id, new Prepare(startedAt, "FREE")).processing()).isEqualTo("PREPARED");
         assertThat(runs.prepare(owner, id, new Prepare(startedAt, "COURSE")).processing()).isEqualTo("PREPARED");
+    }
+
+    @Test
+    void freePrepareOfCourseSessionIsStillJudgedAsCourse(AssertablePublishedEvents events) {
+        startCourse();
+        List<Input> inputs = runTo(1000);
+        runs.prepare(owner, id, new Prepare(startedAt, "FREE"));
+        runs.upload(owner, id, new Upload(inputs.size() - 1, inputs));
+        runs.process(id);
+
+        assertThat(runs.result(owner, id).course().completed()).isTrue();
+        assertThat(all(events, RunSessionEndedEvent.class)).singleElement()
+                .satisfies(e -> assertThat(e.courseId()).isEqualTo(courseId));
     }
 
     @Test

@@ -10,7 +10,7 @@ import java.util.UUID;
 public final class RunContracts {
     private RunContracts() {}
     public enum Kind { START, GPS, PAUSE, RESUME, GAP, SEGMENT_END, END, CADENCE, BAROMETER }
-    /** 종료 후 업로드 준비. 코스 러닝은 시작 신호를 보낸 세션만 {@code COURSE}로 준비한다 */
+    /** 종료 후 업로드 준비. 코스 러닝인지는 서버의 코스 시도로 정한다(mode는 FREE·COURSE 아무거나, 시작 신호 세션은 같은 startedAt) */
     public record Prepare(@NotNull Instant startedAt, @Pattern(regexp="FREE|COURSE") String mode) {}
     /** 코스 러닝 준비(C6, 측정 시작 전). 서버가 코스 활성 여부를 확인하고 판정용 경로를 저장한다(정책 D-08) */
     public record CoursePrepare(@NotNull UUID courseId) {}

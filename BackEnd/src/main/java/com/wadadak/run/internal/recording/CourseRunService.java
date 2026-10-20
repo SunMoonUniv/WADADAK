@@ -160,21 +160,22 @@ class CourseRunService {
     }
 
     /**
-     * 종료 업로드 준비({@link RunService#prepare})의 모드 확인. 코스 시도가 있는 세션은 {@code COURSE}로,
-     * 시작 신호 때와 같은 startedAt으로만 준비한다. 없는 세션은 {@code FREE}만.
+     * 종료 업로드 준비({@link RunService#prepare})의 확인. 코스 러닝인지는 서버에 남은 코스 시도로 정한다.
+     * 앱이 재실행돼 코스 정보를 잃고 {@code FREE}로 준비해도 코스 기록으로 판정한다.
+     * 코스 시도가 있으면 시작 신호 때와 같은 startedAt이어야 하고, 없는데 {@code COURSE}면 거부한다.
      */
     public void checkPrepare(UUID owner, UUID id, String mode, Instant startedAt) {
+        if (!"FREE".equals(mode) && !"COURSE".equals(mode)) {
+            throw new AppException(RunErrorCode.INVALID);
+        }
         Optional<CourseAttempt> attempt = attempts.findById(id);
-        if ("FREE".equals(mode)) {
-            if (attempt.isPresent()) {
-                throw new AppException(RunErrorCode.CONFLICT);
+        if (attempt.isEmpty()) {
+            if ("COURSE".equals(mode)) {
+                throw new AppException(RunErrorCode.NOT_FOUND);
             }
             return;
         }
-        if (!"COURSE".equals(mode)) {
-            throw new AppException(RunErrorCode.INVALID);
-        }
-        CourseAttempt course = attempt.orElseThrow(() -> new AppException(RunErrorCode.NOT_FOUND));
+        CourseAttempt course = attempt.get();
         requireOwner(owner, course.getMemberId());
         if (course.getStartedAt() == null || !course.getStartedAt().equals(startedAt)) {
             throw new AppException(RunErrorCode.CONFLICT);
