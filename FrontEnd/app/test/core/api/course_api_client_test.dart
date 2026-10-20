@@ -199,6 +199,63 @@ void main() {
     });
   });
 
+  test('searches courses by name with the sort, the current location and the cursor', () async {
+    final server = _FakeServer({
+      'totalCount': 12,
+      'content': [
+        {
+          'courseId': 'c1',
+          'name': '한강 야경 5K',
+          'distanceMeters': 5210,
+          'difficulty': 'MEDIUM',
+          'tags': <String>[],
+          'courseType': 'GPS',
+          'expiresAt': '2026-11-13T14:59:59Z',
+          'averageRating': 4.6,
+          'reviewCount': 128,
+          'route': [start.toJson(), end.toJson()],
+        },
+      ],
+      'nextCursor': 'next-2',
+    });
+
+    final page = await client(server).searchCourses(
+      query: '한강 야경',
+      sort: CourseListSort.nearest,
+      origin: start,
+      cursor: 'next',
+    );
+
+    expect(server.request.method, 'GET');
+    expect(server.request.path, '/api/v1/courses/search');
+    expect(server.request.queryParameters, {
+      'query': '한강 야경',
+      'sort': 'NEAREST',
+      'lat': start.lat,
+      'lng': start.lng,
+      'cursor': 'next',
+    });
+    expect(page.totalCount, 12);
+    expect(page.courses.single.name, '한강 야경 5K');
+    expect(page.courses.single.averageRating, 4.6);
+    expect(page.courses.single.reviewCount, 128);
+    expect(page.nextCursor, 'next-2');
+
+    // 정렬만 보내면 최신순, 위치 · 커서는 빠진다.
+    await client(server).searchCourses(query: '한강');
+    expect(server.request.queryParameters, {'query': '한강', 'sort': 'LATEST'});
+  });
+
+  test('searches only with two or more letters without spaces', () {
+    expect(CourseApiClient.isSearchable('한강'), isTrue);
+    expect(CourseApiClient.isSearchable('a b'), isTrue);
+    expect(CourseApiClient.isSearchable('한'), isFalse);
+    expect(CourseApiClient.isSearchable(' a  '), isFalse);
+    expect(CourseApiClient.isSearchable(''), isFalse);
+    // 이모지 하나는 한 글자다.
+    expect(CourseApiClient.isSearchable('🏃'), isFalse);
+  });
+
   test('keeps the anchor points a route was made from', () async {
     final server = _FakeServer({
       'route': [start.toJson(), end.toJson()],

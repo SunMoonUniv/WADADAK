@@ -282,6 +282,25 @@ class CourseListPage {
   final String? nextCursor;
 }
 
+/// 코스 검색 결과 한 쪽(G1). 카드는 코스 목록과 같다. 다음 쪽은 [nextCursor]로 받는다.
+@immutable
+class CourseSearchPage {
+  const CourseSearchPage({required this.totalCount, required this.courses, required this.nextCursor});
+
+  factory CourseSearchPage.fromJson(Map<Object?, Object?> json) => CourseSearchPage(
+        totalCount: json['totalCount']! as int,
+        courses: [for (final course in json['content']! as List) CourseListItem.fromJson(course as Map)],
+        nextCursor: json['nextCursor'] as String?,
+      );
+
+  /// 검색어에 걸린 코스 수(`코스 검색 결과 N`, SEA-02). 쪽마다 같은 값이다.
+  final int totalCount;
+  final List<CourseListItem> courses;
+
+  /// 마지막 쪽이면 null.
+  final String? nextCursor;
+}
+
 /// 코스 목록 카드(A2-05 · A6-03). 지도 범위 안 코스(A5 이름표 · 선택 카드)도 이 값이다.
 /// 현재 러너는 run이 현재 러너 수 이벤트를 발행하면 붙인다.
 @immutable
@@ -511,6 +530,31 @@ class CourseApiClient {
           'cursor': ?cursor,
         }));
     return CourseListPage.fromJson(data! as Map);
+  }
+
+  /// 검색어는 공백을 빼고 이만큼 글자가 있어야 검색한다(SEA-01). 서버도 같은 기준으로 거른다.
+  static const minSearchLength = 2;
+
+  /// [query]로 검색할 수 있나. 공백을 빼고 [minSearchLength]글자 이상이다.
+  static bool isSearchable(String query) => query.replaceAll(RegExp(r'\s'), '').runes.length >= minSearchLength;
+
+  /// 이름에 [query]가 들어간 활성 코스 한 쪽(G1, SEA-03). 지도 범위 · A3 필터와 상관없이 전국에서 찾는다.
+  /// 공백 · 대소문자는 보지 않는다. 정렬 · 현재 위치 · 커서는 [listCourses]와 같다.
+  /// [isSearchable]이 아닌 검색어는 COMMON-001이다.
+  Future<CourseSearchPage> searchCourses({
+    required String query,
+    CourseListSort sort = CourseListSort.latest,
+    GeoPoint? origin,
+    String? cursor,
+  }) async {
+    final data = await callApi(() => _dio.get('$_courses/search', queryParameters: {
+          'query': query,
+          'sort': sort.apiName,
+          'lat': ?origin?.lat,
+          'lng': ?origin?.lng,
+          'cursor': ?cursor,
+        }));
+    return CourseSearchPage.fromJson(data! as Map);
   }
 
   static Map<String, Object> _area(GeoPoint southWest, GeoPoint northEast) =>

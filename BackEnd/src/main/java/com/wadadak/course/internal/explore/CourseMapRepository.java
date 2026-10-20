@@ -32,7 +32,8 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 /**
- * 지도 범위 안 코스 조회(A2·A4·A5·A6). 지도·목록·코스 수가 같은 조건을 써야 해서(MAP-07) 조건을 이곳 한 군데에서 만든다.
+ * 지도 범위 안 코스 조회(A2·A4·A5·A6)와 코스 검색(G1). 지도·목록·코스 수가 같은 조건을 써야 해서(MAP-07) 조건을 이곳 한 군데에서 만든다.
+ * 검색은 조건만 다르고 정렬 · 쪽 · 카드는 목록과 같다.
  * 평점 · 리뷰 수는 코스 통계(F11)에서 읽는다. 통계 행이 없는 코스는 리뷰가 없다.
  */
 @Repository
@@ -125,7 +126,28 @@ class CourseMapRepository {
      * @param origin 현재 위치. 가까운순이면 있어야 한다
      */
     CursorSlice<CourseListItem> list(CourseMapRequest request, CourseListSort sort, GeoPoint origin, Cursorable page) {
-        Filter filter = Filter.of(request);
+        return slice(Filter.of(request), sort, origin, page);
+    }
+
+    /**
+     * 이름에 검색어가 들어간 활성 코스 한 쪽과 그 수(G1, SEA-03). 정렬은 [list]와 같다.
+     *
+     * @param key    {@link com.wadadak.course.internal.course.CourseName#key}로 바꾼 검색어
+     * @param origin 현재 위치. 가까운순이면 있어야 한다
+     */
+    CourseSearchResult search(String key, CourseListSort sort, GeoPoint origin, Cursorable page) {
+        Filter filter = Filter.byName(key);
+        // 커서가 잘못됐으면 세기 전에 거른다
+        CursorSlice<CourseListItem> slice = slice(filter, sort, origin, page);
+        Integer total = jdbc.sql("SELECT count(*) FROM %s WHERE %s".formatted(FROM, filter.where()))
+                .params(filter.params())
+                .query(Integer.class)
+                .single();
+        return new CourseSearchResult(total, slice.content(), slice.nextCursor());
+    }
+
+    /** [filter]에 맞는 코스 한 쪽. 정렬은 [list] 설명과 같다. */
+    private CursorSlice<CourseListItem> slice(Filter filter, CourseListSort sort, GeoPoint origin, Cursorable page) {
         CourseListCursor after = CourseListCursor.decode(page.cursor(), sort);
         Map<String, Object> params = new HashMap<>(filter.params());
         params.put("limit", page.size() + 1);
@@ -243,8 +265,16 @@ class CourseMapRepository {
         }
     }
 
-    /** 지도 범위와 필터(FIL-02~05)로 만든 조건. 값이 없는 필터는 걸지 않는다. */
+    /** 코스를 고르는 조건. 지도 범위와 필터(FIL-02~05, 값이 없는 필터는 걸지 않는다)나 검색어로 만든다. */
     private record Filter(String where, Map<String, Object> params) {
+
+        /**
+         * 코스 이름 검색(SEA-03). 이름 키에 [key]가 들어간 활성 코스. LIKE가 아니라 {@code strpos}라서 {@code %} · {@code _}를 따로 막지 않는다.
+         * 부분 문자열이라 인덱스를 타지 않고 활성 코스를 모두 본다.
+         */
+        static Filter byName(String key) {
+            return new Filter("c.status = 'ACTIVE'\n  AND strpos(c.name_key, :nameKey) > 0", Map.of("nameKey", key));
+        }
 
         static Filter of(CourseMapRequest request) {
             List<String> conditions = new ArrayList<>(List.of(

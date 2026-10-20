@@ -382,6 +382,7 @@ erDiagram
 
 - `courses_status_reason_ck`: `ACTIVE`면 `status_reason`·`hidden_at`이 모두 NULL이고, 그 밖의 상태면 둘 다 값이 있다.
 - 지역 코드 3개는 시·도, 시·군·구 단위로 집계할 때 `common.region`을 JOIN하지 않으려고 모두 저장한다.
+- 코스 검색(G1)은 검색어를 `name_key`와 같은 방식으로 바꿔 `strpos(name_key, 검색어 키) > 0`인 활성 코스를 찾는다. 부분 문자열이라 인덱스를 쓰지 않고 활성 코스를 모두 본다. 활성 코스가 많아져 느려지면 `pg_trgm` GIN 인덱스를 검토한다.
 - 인덱스. `creator_id`를 빼면 모두 활성 코스만 대상으로 하는 부분 인덱스다(개발 정책 6.2).
 
 | 인덱스 | 대상 | 조건 | 용도 |
@@ -456,7 +457,8 @@ erDiagram
 | `review_count` | `INTEGER` | | 그날 작성된 리뷰 수. 기본 0 |
 
 - `course_daily_stats_uk`: `UNIQUE (course_id, stat_date)`.
-- 기간 정렬(FIL-09)이 고른 기간의 합을 낸다. 리뷰 수정 · 삭제도 작성일(`createdAt`) 행을 바꾼다(개발 정책 5.6).
+- 기간 정렬(FIL-09, 인기순과 함께 붙인다)이 고른 기간의 합을 낸다. 리뷰 수정 · 삭제도 작성일(`createdAt`) 행을 바꾼다(개발 정책 5.6).
+- 평점순에는 기간을 쓰지 않아(정책 문서 4.1) `rating_sum` · `review_count`는 지금 읽는 곳이 없지만 계속 쌓는다.
 - 증감 · 삭제 규칙은 `course_stats`와 같다.
 
 #### `course.processed_events` — 이벤트 처리 기록

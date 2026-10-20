@@ -298,6 +298,37 @@ class FakeCourseApi implements CourseApiClient {
     return CourseListPage(courses: courses.sublist(from, to), nextCursor: to < courses.length ? '$to' : null);
   }
 
+  /// 검색할 코스. 서버처럼 공백 · 대소문자를 무시하고 이름에 검색어가 들어간 코스를 순서대로 돌려준다(정렬은 보지 않는다).
+  /// [searchPageSize]개씩 쪽을 나누고, 커서는 다음 쪽 첫 위치다.
+  List<CourseListItem> searchable = [];
+  int searchPageSize = 20;
+  ApiException? searchError;
+
+  /// 있으면 끝날 때까지 검색 응답을 미룬다(받는 중 화면).
+  Completer<void>? searchGate;
+  final searchRequests = <({String query, CourseListSort sort, GeoPoint? origin, String? cursor})>[];
+
+  @override
+  Future<CourseSearchPage> searchCourses({
+    required String query,
+    CourseListSort sort = CourseListSort.latest,
+    GeoPoint? origin,
+    String? cursor,
+  }) async {
+    searchRequests.add((query: query, sort: sort, origin: origin, cursor: cursor));
+    await searchGate?.future;
+    if (searchError != null) throw searchError!;
+    final key = _nameKey(query);
+    final courses = [for (final course in searchable) if (_nameKey(course.name).contains(key)) course];
+    final from = cursor == null ? 0 : int.parse(cursor);
+    final to = (from + searchPageSize).clamp(0, courses.length);
+    return CourseSearchPage(
+      totalCount: courses.length,
+      courses: courses.sublist(from, to),
+      nextCursor: to < courses.length ? '$to' : null,
+    );
+  }
+
   static String _nameKey(String name) => name.replaceAll(RegExp(r'\s+'), '').toLowerCase();
 }
 

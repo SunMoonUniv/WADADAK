@@ -9,7 +9,6 @@ import '../../core/api/api_client.dart';
 import '../../core/api/course_api_client.dart';
 import '../../core/error_message.dart';
 import '../../core/map/map_view.dart';
-import '../../core/permissions/device_setup.dart';
 import '../../routes.dart';
 import '../course/course_format.dart';
 import 'course_filter_screen.dart';
@@ -229,25 +228,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// 가까운순 · 내 위치 버튼에 쓸 현재 위치를 받는다. 권한이 없으면 묻는다. 못 받으면 알리고 null이다.
   Future<GeoPoint?> _locate() async {
-    final myLocation = ref.read(myLocationProvider);
-    try {
-      final location = await myLocation.request();
-      if (mounted) setState(() => _myLocation = location);
-      return location;
-    } on DeviceSetupException catch (e) {
-      if (mounted) {
-        final action = e.action;
-        ScaffoldMessenger.of(context)
-          ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(
-            content: Text(e.message),
-            action: action == null
-                ? null
-                : SnackBarAction(label: '설정 열기', onPressed: () => myLocation.openSettings(action).ignore()),
-          ));
-      }
-      return null;
-    }
+    final location = await requestMyLocation(context, ref.read(myLocationProvider));
+    if (location != null && mounted) setState(() => _myLocation = location);
+    return location;
   }
 
   /// 내 위치 버튼(A4-05). 현재 위치를 보이는 지도의 한가운데에 두고 축척 100m로 확대한다. 현재 위치 점을 보이고(점은 위치를 따라 움직인다)
@@ -618,8 +601,8 @@ class _HomeHeader extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(WdSpace.s16, 0, WdSpace.s16, WdSpace.s10),
                 child: WdSearchBar(
                   hintText: '원하는 키워드를 검색하세요',
-                  // 검색 화면(G1)이 생기면 연다. 그때까지 키보드가 뜨지 않게 누르기만 받는다.
-                  onTap: () {},
+                  // 여기서는 입력하지 않고 검색(G1)을 빈 입력으로 연다(SEA-01). 돌아오면 홈 상태는 그대로다.
+                  onTap: () => context.push(Routes.courseSearch),
                 ),
               ),
             ],

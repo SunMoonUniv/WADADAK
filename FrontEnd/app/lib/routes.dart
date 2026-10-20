@@ -7,6 +7,10 @@ abstract final class Routes {
 
   static const home = '/home';
 
+  /// G1 검색 결과(코스 · 지역 · 러너 탭). 홈 탭 안에 쌓아 하단 탭이 보인다(Figma G1). 빈 입력으로 연다(SEA-01).
+  /// 다른 하단 탭에 갔다가 홈으로 돌아오면 닫힌다(FIL-08).
+  static const courseSearch = '/home/search';
+
   /// B3 코스 만들기(경로 그리기). 하단 탭 위에 쌓는다. extra: 홈 지도 위치(`MapCamera`).
   static const courseCreate = '/course/new';
 

@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 
@@ -69,3 +70,24 @@ class MyLocation {
 }
 
 final myLocationProvider = Provider<MyLocation>((ref) => MyLocation());
+
+/// 가까운순 · 내 위치 버튼에 쓸 현재 위치를 권한을 물어서라도 받는다(홈 · 검색 G1).
+/// 못 받으면 스낵바로 알리고(설정을 바꿔야 하면 `설정 열기`) null이다.
+Future<GeoPoint?> requestMyLocation(BuildContext context, MyLocation myLocation) async {
+  try {
+    return await myLocation.request();
+  } on DeviceSetupException catch (e) {
+    if (context.mounted) {
+      final action = e.action;
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text(e.message),
+          action: action == null
+              ? null
+              : SnackBarAction(label: '설정 열기', onPressed: () => myLocation.openSettings(action).ignore()),
+        ));
+    }
+    return null;
+  }
+}
