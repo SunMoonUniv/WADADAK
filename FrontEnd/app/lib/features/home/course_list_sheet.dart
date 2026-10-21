@@ -29,14 +29,16 @@ enum SheetStage {
 /// 시트는 위쪽 제목 줄 · 칩 줄을 끌어 올리고 내린다. 그 아래 목록은 시트가 반이어도 따로 스크롤되고(A2-06),
 /// 끝까지 내리면 다음 쪽을 이어 받는다(A6-04).
 ///
-/// 칩 줄은 `최신순` · `가까운순` · `평점순`(누르면 바로 정렬) · 슬라이더 아이콘(A3 열기)이다. 인기순 · 실시간순은 run이 도전 수 · 현재 러너 수 이벤트를 발행한 뒤 붙인다.
+/// 칩 줄은 `인기순` · `평점순` · `가까운순` · `최신순` · `실시간순`(누르면 바로 정렬) · 슬라이더 아이콘(A3 열기)이다.
+/// 화면이 좁아 다 들어가지 않으면 칩 줄을 옆으로 민다.
 class CourseListSheet extends ConsumerStatefulWidget {
   const CourseListSheet({
     super.key,
     required this.area,
     required this.totalCount,
     this.filter = CourseFilter.none,
-    this.sort = CourseListSort.latest,
+    this.sort = CourseListSort.initial,
+    this.period,
     this.myLocation,
     this.selected,
     required this.stage,
@@ -73,6 +75,9 @@ class CourseListSheet extends ConsumerStatefulWidget {
   /// 지금 걸린 필터(A3). 지도와 같다.
   final CourseFilter filter;
   final CourseListSort sort;
+
+  /// 인기순 기간(FIL-09, A3). 인기순일 때만 있고 목록 순서만 바꾼다. null이면 전체 기간.
+  final CoursePeriod? period;
 
   /// 현재 위치. 가까운순의 기준점이고, 있으면 카드에 출발점까지 거리를 보인다. 가까운순이면 꼭 있다.
   final GeoPoint? myLocation;
@@ -116,7 +121,7 @@ class CourseListSheet extends ConsumerStatefulWidget {
 }
 
 /// 목록을 받은 조건. 다음 쪽도 이 조건으로 받는다.
-typedef _ListQuery = ({MapArea area, CourseFilter filter, CourseListSort sort, GeoPoint? origin});
+typedef _ListQuery = ({MapArea area, CourseFilter filter, CourseListSort sort, CoursePeriod? period, GeoPoint? origin});
 
 class _CourseListSheetState extends ConsumerState<CourseListSheet> {
   /// 칩 30 + 아래 12.
@@ -153,7 +158,13 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
     final area = widget.area;
     if (area == null) return null;
     final nearest = widget.sort == CourseListSort.nearest;
-    return (area: area, filter: widget.filter, sort: widget.sort, origin: nearest ? widget.myLocation : null);
+    return (
+      area: area,
+      filter: widget.filter,
+      sort: widget.sort,
+      period: widget.period,
+      origin: nearest ? widget.myLocation : null,
+    );
   }
 
   @override
@@ -169,7 +180,7 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
     super.dispose();
   }
 
-  /// 범위 · 필터 · 정렬이나 가까운순의 현재 위치가 바뀌면 다시 받는다. 카드 거리만 바뀌면 다시 받지 않는다.
+  /// 범위 · 필터 · 정렬 · 기간이나 가까운순의 현재 위치가 바뀌면 다시 받는다. 카드 거리만 바뀌면 다시 받지 않는다.
   @override
   void didUpdateWidget(CourseListSheet oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -205,6 +216,7 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
         northEast: query.area.northEast,
         filter: query.filter,
         sort: query.sort,
+        period: query.period,
         origin: query.origin,
         cursor: cursor,
       );
@@ -266,21 +278,26 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
                     _header(),
                     if (selected == null)
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(WdSpace.s16, 0, WdSpace.s16, WdSpace.s12),
-                        // Figma A2 Course filters: 간격 8, 끝에 슬라이더 아이콘 칩.
-                        child: Row(
-                          spacing: WdSpace.s8,
-                          children: [
-                            for (final sort in CourseListSort.values)
-                              WdFilterChip(sort.label, selected: widget.sort == sort, onTap: () => widget.onSort?.call(sort)),
-                            // 조건이 걸려 있으면 검정(글자 칩 선택 모양).
-                            WdFilterChip.icon(
-                              WdIcons.sliders,
-                              semanticLabel: CourseListSheet.filterLabel,
-                              selected: !widget.filter.isNone,
-                              onTap: widget.onOpenFilter,
-                            ),
-                          ],
+                        padding: const EdgeInsets.only(bottom: WdSpace.s12),
+                        // 좁은 화면에서는 옆으로 민다. 칩은 화면 끝까지 밀려 나간다.
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          padding: const EdgeInsets.symmetric(horizontal: WdSpace.s16),
+                          // Figma A2 Course filters: 간격 8, 끝에 슬라이더 아이콘 칩.
+                          child: Row(
+                            spacing: WdSpace.s8,
+                            children: [
+                              for (final sort in CourseListSort.values)
+                                WdFilterChip(sort.label, selected: widget.sort == sort, onTap: () => widget.onSort?.call(sort)),
+                              // 조건이나 인기순 기간이 걸려 있으면 검정(글자 칩 선택 모양).
+                              WdFilterChip.icon(
+                                WdIcons.sliders,
+                                semanticLabel: CourseListSheet.filterLabel,
+                                selected: !widget.filter.isNone || widget.period != null,
+                                onTap: widget.onOpenFilter,
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                   ],

@@ -38,6 +38,7 @@ void main() {
     courseType: CourseType.gps,
     averageRating: 4.6,
     reviewCount: 128,
+    activeRunners: 2,
   );
   final bridge = testCourse('한강 다리 왕복 8K', courseId: 'c2', distanceMeters: 8100, difficulty: Difficulty.hard);
   final hill = testCourse('정릉 오르막 4K', courseId: 'c3');
@@ -135,15 +136,20 @@ void main() {
     expect(find.text(CourseSearchScreen.tooShortMessage), findsOneWidget);
 
     await search(tester, '  한강 ');
-    expect(courses.searchRequests.single, (query: '한강', sort: CourseListSort.latest, origin: null, cursor: null));
+    expect(courses.searchRequests.single, (query: '한강', sort: CourseListSort.popular, origin: null, cursor: null));
     expect(find.text('코스 검색 결과 2'), findsOneWidget);
-    expect(find.text('최신순 ▾'), findsOneWidget);
+    expect(find.text('인기순 ▾'), findsOneWidget, reason: '처음은 인기순(FIL-01)');
     expect(cards(tester), ['한강 야경 5K', '한강 다리 왕복 8K']);
-    // Figma G1: 한 줄에 거리 · 난이도 · 평점, 아래 줄은 코스 유형. 리뷰가 없으면 평점이 빠진다.
+    // Figma G1: 한 줄에 거리 · 난이도 · 평점, 아래 줄은 현재 러너 · 코스 유형. 리뷰가 없으면 평점이 빠진다.
     expect(find.text('5.2km · 난이도 중 · ★ 4.6 (128)'), findsOneWidget);
     expect(find.text('8.1km · 난이도 상'), findsOneWidget);
-    expect(find.descendant(of: find.byType(CourseSearchCard).first, matching: find.text('달려서 만든 코스')), findsOneWidget);
-    expect(find.descendant(of: find.byType(CourseSearchCard).last, matching: find.text('그려서 만든 코스')), findsOneWidget);
+    Finder inCard(Finder card, String text) => find.descendant(of: card, matching: find.text(text));
+    final first = find.byType(CourseSearchCard).first, last = find.byType(CourseSearchCard).last;
+    expect(inCard(first, '지금 2명 달리는 중'), findsOneWidget);
+    expect(inCard(first, '달려서 만든 코스'), findsOneWidget);
+    expect(tester.getTopLeft(inCard(first, '지금 2명 달리는 중')).dx, lessThan(tester.getTopLeft(inCard(first, '달려서 만든 코스')).dx));
+    expect(inCard(last, '달리는 러너 없음'), findsOneWidget);
+    expect(inCard(last, '그려서 만든 코스'), findsOneWidget);
     expect(find.textContaining('만료'), findsNothing, reason: 'G1 카드에는 만료 표시가 없다');
   });
 
@@ -192,22 +198,23 @@ void main() {
     await openSearch(tester);
     await search(tester, '한강');
 
-    // `최신순 ▾` 바로 아래에 나머지 정렬이 든 메뉴가 뜨고, 메뉴 안 글자의 왼쪽 끝이 맞는다. 바깥을 누르면 그대로 닫힌다.
-    await tap(tester, find.text('최신순 ▾'));
-    expect(find.text('최신순'), findsNothing);
-    final label = tester.getRect(find.text('최신순 ▾'));
-    final nearest = tester.getRect(find.text('가까운순')), rating = tester.getRect(find.text('평점순'));
-    expect(nearest.top, greaterThan(label.bottom));
-    expect(rating.top, greaterThan(nearest.bottom));
-    expect(nearest.top - label.bottom, lessThan(16), reason: '글자 바로 아래');
-    expect(nearest.top - label.bottom, rating.top - nearest.bottom, reason: '줄 사이가 모두 같다');
-    expect(nearest.left, label.left);
-    expect(rating.left, label.left);
+    // `인기순 ▾` 바로 아래에 나머지 정렬(FIL-01 순서)이 든 메뉴가 뜨고, 메뉴 안 글자의 왼쪽 끝이 맞는다. 바깥을 누르면 그대로 닫힌다.
+    await tap(tester, find.text('인기순 ▾'));
+    expect(find.text('인기순'), findsNothing);
+    final label = tester.getRect(find.text('인기순 ▾'));
+    final rows = [for (final option in ['평점순', '가까운순', '최신순', '실시간순']) tester.getRect(find.text(option))];
+    expect(rows.first.top - label.bottom, lessThan(16), reason: '글자 바로 아래');
+    for (var i = 0; i < rows.length; i++) {
+      final above = i == 0 ? label : rows[i - 1];
+      expect(rows[i].top, greaterThan(above.bottom), reason: '위에서부터 FIL-01 순서');
+      expect(rows[i].top - above.bottom, rows.first.top - label.bottom, reason: '줄 사이가 모두 같다');
+      expect(rows[i].left, label.left);
+    }
     final menu = tester.getRect(find.ancestor(of: find.text('가까운순'), matching: find.byType(DecoratedBox)).first);
-    expect(menu.top, greaterThan(label.bottom), reason: '메뉴는 `최신순 ▾`을 가리지 않는다');
+    expect(menu.top, greaterThan(label.bottom), reason: '메뉴는 `인기순 ▾`을 가리지 않는다');
     expect(menu.left, lessThan(label.left));
     expect(menu.right, greaterThanOrEqualTo(label.right));
-    expect(menu.bottom, greaterThan(rating.bottom));
+    expect(menu.bottom, greaterThan(rows.last.bottom));
     expect(menu.right, lessThanOrEqualTo(tester.view.physicalSize.width / tester.view.devicePixelRatio));
     final nearestText = tester.widget<RichText>(
         find.byWidgetPredicate((widget) => widget is RichText && widget.text.toPlainText() == '가까운순'));
@@ -217,7 +224,7 @@ void main() {
     expect(find.text('가까운순'), findsNothing);
     expect(courses.searchRequests, hasLength(1));
 
-    await tap(tester, find.text('최신순 ▾'));
+    await tap(tester, find.text('인기순 ▾'));
     await tap(tester, find.text('평점순'));
     expect(courses.searchRequests.last, (query: '한강', sort: CourseListSort.rating, origin: null, cursor: null));
     expect(find.text('평점순 ▾'), findsOneWidget);
@@ -231,14 +238,17 @@ void main() {
     await tap(tester, find.text('가까운순 ▾'));
     await tap(tester, find.text('최신순'));
     expect(courses.searchRequests.last, (query: '한강', sort: CourseListSort.latest, origin: null, cursor: null));
+    await tap(tester, find.text('최신순 ▾'));
+    await tap(tester, find.text('실시간순'));
+    expect(courses.searchRequests.last, (query: '한강', sort: CourseListSort.live, origin: null, cursor: null));
 
     // 위치를 못 받으면 알리고 정렬을 그대로 둔다.
     final requests = courses.searchRequests.length;
     location.error = const DeviceSetupException('위치 권한이 필요해요.');
-    await tap(tester, find.text('최신순 ▾'));
+    await tap(tester, find.text('실시간순 ▾'));
     await tap(tester, find.text('가까운순'));
     expect(find.text('위치 권한이 필요해요.'), findsOneWidget);
-    expect(find.text('최신순 ▾'), findsOneWidget);
+    expect(find.text('실시간순 ▾'), findsOneWidget);
     expect(courses.searchRequests, hasLength(requests));
   });
 
@@ -246,12 +256,12 @@ void main() {
     final semantics = tester.ensureSemantics();
     await openSearch(tester);
     await search(tester, '한강');
-    for (final label in ['뒤로 가기', '검색어 지우기', '정렬 최신순']) {
+    for (final label in ['뒤로 가기', '검색어 지우기', '정렬 인기순']) {
       expect(tester.getSemantics(find.bySemanticsLabel(label)), isSemantics(isButton: true, hasTapAction: true),
           reason: label);
     }
-    await tap(tester, find.text('최신순 ▾'));
-    for (final label in ['가까운순', '평점순']) {
+    await tap(tester, find.text('인기순 ▾'));
+    for (final label in ['평점순', '가까운순', '최신순', '실시간순']) {
       expect(tester.getSemantics(find.bySemanticsLabel(label)), isSemantics(isButton: true, hasTapAction: true),
           reason: label);
     }
@@ -263,11 +273,11 @@ void main() {
     await search(tester, '한강');
 
     courses.searchError = const ApiException('COMMON-500', '서버 오류', status: 500);
-    await tap(tester, find.text('최신순 ▾'));
+    await tap(tester, find.text('인기순 ▾'));
     await tap(tester, find.text('평점순'));
 
     expect(cards(tester), ['한강 야경 5K', '한강 다리 왕복 8K']);
-    expect(find.text('최신순 ▾'), findsOneWidget);
+    expect(find.text('인기순 ▾'), findsOneWidget);
     expect(find.text('서버 오류'), findsOneWidget);
   });
 
@@ -282,7 +292,7 @@ void main() {
 
     await tester.drag(find.byType(ListView), const Offset(0, -600));
     await tester.pumpAndSettle();
-    expect(courses.searchRequests.last, (query: '한강', sort: CourseListSort.latest, origin: null, cursor: '5'));
+    expect(courses.searchRequests.last, (query: '한강', sort: CourseListSort.popular, origin: null, cursor: '5'));
     await tester.drag(find.byType(ListView), const Offset(0, -600));
     await tester.pumpAndSettle();
     expect(find.text('한강 코스 7'), findsOneWidget);

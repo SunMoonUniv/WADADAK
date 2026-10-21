@@ -32,6 +32,7 @@ CourseListItem testCourse(
   DateTime? expiresAt,
   double? averageRating,
   int reviewCount = 0,
+  int activeRunners = 0,
 }) =>
     CourseListItem(
       courseId: courseId ?? 'id-$name',
@@ -43,6 +44,7 @@ CourseListItem testCourse(
       expiresAt: expiresAt ?? DateTime.utc(2026, 11, 13, 14, 59, 59),
       averageRating: averageRating,
       reviewCount: reviewCount,
+      activeRunners: activeRunners,
       route: route,
     );
 
@@ -281,7 +283,8 @@ class FakeCourseApi implements CourseApiClient {
     required GeoPoint southWest,
     required GeoPoint northEast,
     CourseFilter filter = CourseFilter.none,
-    CourseListSort sort = CourseListSort.latest,
+    CourseListSort sort = CourseListSort.initial,
+    CoursePeriod? period,
     GeoPoint? origin,
     String? cursor,
   }) async {
@@ -290,6 +293,7 @@ class FakeCourseApi implements CourseApiClient {
       northEast: northEast,
       filter: filter,
       sort: sort,
+      period: period,
       origin: origin,
       cursor: cursor,
     ));
@@ -313,7 +317,7 @@ class FakeCourseApi implements CourseApiClient {
   @override
   Future<CourseSearchPage> searchCourses({
     required String query,
-    CourseListSort sort = CourseListSort.latest,
+    CourseListSort sort = CourseListSort.initial,
     GeoPoint? origin,
     String? cursor,
   }) async {
@@ -339,6 +343,7 @@ typedef ListRequest = ({
   GeoPoint northEast,
   CourseFilter filter,
   CourseListSort sort,
+  CoursePeriod? period,
   GeoPoint? origin,
   String? cursor,
 });

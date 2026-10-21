@@ -21,8 +21,8 @@ class CourseRunBar extends StatelessWidget {
 
   static const firstRunLabel = '첫 번째로 달리기 ▶';
 
-  /// 코스 러닝(C6) · 고스트 대결(C1)이 생길 때까지 버튼을 누르면 알린다.
-  static const notReadyMessage = '코스 러닝은 아직 준비 중이에요.';
+  /// 고스트 대결(C1)이 생길 때까지 `고스트 대결 ▶`을 누르면 알린다.
+  static const ghostNotReadyMessage = '고스트 대결은 아직 준비 중이에요.';
 
   /// 고스트를 고른 랭킹. B1 · B8은 전체 기간, B9 · G3은 고른 기간이다.
   final AsyncValue<CourseRankingSummary> ranking;

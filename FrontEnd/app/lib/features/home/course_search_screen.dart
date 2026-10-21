@@ -19,7 +19,7 @@ import 'my_location.dart';
 /// - 공백을 빼고 2글자 이상 입력한 뒤 키보드의 검색을 누르면 이름에 검색어가 들어간 코스를 전국에서 찾는다(SEA-03).
 ///   ✕는 검색어와 결과를 지운다(G1-01). 최근 검색어는 없다.
 /// - 코스 · 지역 · 러너 탭. 지역(G6) · 러너(G7)는 아직 없어 준비 중이라고 보인다. 탭을 바꿔도 검색어는 그대로다(G1-02).
-/// - 정렬은 홈 목록과 같은 최신순 · 가까운순 · 평점순이다(G1-03). 인기순 · 실시간순은 run 이벤트 뒤에 붙는다. A3 필터는 쓰지 않는다.
+/// - 정렬은 홈 목록과 같은 인기순(처음) · 평점순 · 가까운순 · 최신순 · 실시간순이다(G1-03). A3 필터 · 기간 슬라이더는 쓰지 않는다.
 /// - 카드를 누르면 B1. 돌아오면 검색어 · 결과 · 스크롤이 그대로다(FIL-08).
 class CourseSearchScreen extends ConsumerStatefulWidget {
   const CourseSearchScreen({super.key});
@@ -53,13 +53,13 @@ class _CourseSearchScreenState extends ConsumerState<CourseSearchScreen> with Si
     ..addListener(() => setState(() {}));
   final _list = ScrollController();
 
-  /// `최신순 ▾` 글자. 정렬 목록을 이 바로 아래에 띄운다.
+  /// `인기순 ▾` 글자. 정렬 목록을 이 바로 아래에 띄운다.
   final _sortButton = GlobalKey();
 
   /// 남은 스크롤이 이보다 짧으면 다음 쪽을 받는다.
   static const _loadMoreExtent = 400.0;
 
-  var _sort = CourseListSort.latest;
+  var _sort = CourseListSort.initial;
 
   /// 가까운순의 현재 위치. 가까운순을 고를 때 새로 받는다.
   GeoPoint? _origin;
@@ -196,7 +196,7 @@ class _CourseSearchScreenState extends ConsumerState<CourseSearchScreen> with Si
     _loadMore();
   }
 
-  /// 정렬 고르기(G1-03). `최신순 ▾` 바로 아래에 나머지 정렬이 든 메뉴가 뜨고, 하나를 누르면 바뀐다.
+  /// 정렬 고르기(G1-03). `인기순 ▾` 바로 아래에 나머지 정렬이 든 메뉴가 뜨고, 하나를 누르면 바뀐다.
   /// 바깥 · 뒤로는 그대로 닫는다. 가까운순은 현재 위치를 새로 받은 뒤에 바꾸고, 못 받으면 정렬을 그대로 둔다.
   Future<void> _chooseSort() async {
     final button = _sortButton.currentContext?.findRenderObject() as RenderBox?;
@@ -308,7 +308,7 @@ class _CourseSearchScreenState extends ConsumerState<CourseSearchScreen> with Si
     );
   }
 
-  /// `코스 검색 결과 12` · `최신순 ▾`(Figma G1).
+  /// `코스 검색 결과 12` · `인기순 ▾`(Figma G1).
   Widget _header() => Row(
         children: [
           Expanded(
@@ -357,26 +357,26 @@ class _CourseSearchScreenState extends ConsumerState<CourseSearchScreen> with Si
       );
 }
 
-/// `최신순 ▾` 바로 아래에 띄우는 정렬 메뉴(G1-03). 흰 상자 안에 나머지 정렬이 회색 글씨로 보인다.
-/// 메뉴 안 글자의 왼쪽 끝을 `최신순 ▾`에 맞추고, `최신순 ▾`부터 모든 줄 사이를 12로 같게 둔다.
+/// `인기순 ▾` 바로 아래에 띄우는 정렬 메뉴(G1-03). 흰 상자 안에 나머지 정렬이 회색 글씨로 보인다.
+/// 메뉴 안 글자의 왼쪽 끝을 `인기순 ▾`에 맞추고, `인기순 ▾`부터 모든 줄 사이를 12로 같게 둔다.
 /// 고른 정렬을 돌려준다. 바깥 · 뒤로 닫으면 null이다.
 class _SortMenu extends StatelessWidget {
   const _SortMenu({required this.label, required this.options});
 
-  /// `최신순 ▾`과 같은 글씨.
+  /// `인기순 ▾`과 같은 글씨.
   static final text = WdText.raw(12, FontWeight.w400, 18);
 
-  /// 메뉴 안 글자 옆 여백. 메뉴는 이만큼 `최신순 ▾`보다 왼쪽에서 시작한다.
+  /// 메뉴 안 글자 옆 여백. 메뉴는 이만큼 `인기순 ▾`보다 왼쪽에서 시작한다.
   static const side = WdSpace.s12;
 
-  /// `최신순 ▾`과 메뉴 사이. 메뉴 위 여백 2와 줄 위 여백 6을 더해 첫 줄도 `최신순 ▾`에서 12 떨어진다.
+  /// `인기순 ▾`과 메뉴 사이. 메뉴 위 여백 2와 줄 위 여백 6을 더해 첫 줄도 `인기순 ▾`에서 12 떨어진다.
   static const gap = WdSpace.s4;
   static const _menuPadding = WdSpace.s2;
 
   /// 줄마다 글씨 위아래 여백. 줄 사이는 이 두 배인 12다.
   static const _rowPadding = WdSpace.s6;
 
-  /// 화면에서 `최신순 ▾` 글자가 있는 곳.
+  /// 화면에서 `인기순 ▾` 글자가 있는 곳.
   final Rect label;
   final List<CourseListSort> options;
 
@@ -413,7 +413,7 @@ class _SortMenu extends StatelessWidget {
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: () => Navigator.of(context).pop(sort),
-                        // 메뉴는 적어도 `최신순 ▾`보다 양옆으로 여백만큼 넓다.
+                        // 메뉴는 적어도 `인기순 ▾`보다 양옆으로 여백만큼 넓다.
                         child: Container(
                           constraints: BoxConstraints(minWidth: label.width + side * 2),
                           padding: const EdgeInsets.symmetric(horizontal: side, vertical: _rowPadding),
@@ -429,7 +429,7 @@ class _SortMenu extends StatelessWidget {
       );
 }
 
-/// 정렬 메뉴를 `최신순 ▾` 바로 아래, 메뉴 안 글자가 `최신순 ▾`과 같은 왼쪽 끝에 오게 둔다. 화면을 넘으면 안으로 민다.
+/// 정렬 메뉴를 `인기순 ▾` 바로 아래, 메뉴 안 글자가 `인기순 ▾`과 같은 왼쪽 끝에 오게 둔다. 화면을 넘으면 안으로 민다.
 class _SortMenuLayout extends SingleChildLayoutDelegate {
   const _SortMenuLayout(this.label);
 

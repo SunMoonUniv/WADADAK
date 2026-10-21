@@ -23,8 +23,8 @@ import 'course_run_bar.dart';
 /// B1 코스 상세 — 정보 · B8 리뷰 · B9 랭킹 탭. 코스 정보는 코스 API, 평점 · 리뷰 수 · 러너 평가 · 리뷰는 리뷰 API,
 /// 랭킹 · 고스트는 랭킹 API에서 받는다(B1-01).
 ///
-/// - 이 코스로 달리기(C6) · 고스트 대결(C1)은 아직 없어 누르면 준비 중이라고 알린다.
-/// - 평균 페이스는 코스 API(코스 통계 F11)에서 받는다. 현재 러너는 run의 현재 러너 수 이벤트, 고도 프로필은 GPS 코스 등록(F7)이 생기면 붙인다.
+/// - 이 코스로 달리기는 그 코스를 골라 달리기 탭의 코스 러닝(C6)으로 간다. 고스트 대결(C1)은 아직 없어 누르면 준비 중이라고 알린다.
+/// - 평균 페이스 · 현재 러너는 코스 API(코스 통계 F11)에서 받는다. 고도 프로필은 GPS 코스 등록(F7)이 생기면 붙인다.
 /// - 공유(B1-08)는 공유 링크를 정할 때까지 두지 않는다.
 /// - 비공개 · 삭제된 코스는 열지 않는다(B1-04).
 class CourseDetailScreen extends ConsumerStatefulWidget {
@@ -281,7 +281,7 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
         ranking: _tab == 2 ? ranking : allRanking,
         period: _tab == 2 ? _rankingPeriod : RankingPeriod.all,
         onRun: () => runCourse(context, ref, CourseSelection(course.courseId, course.name)),
-        onGhost: (_) => _notReady(CourseRunBar.notReadyMessage),
+        onGhost: (_) => _notReady(CourseRunBar.ghostNotReadyMessage),
       ),
     );
   }
@@ -317,6 +317,8 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
               top: WdSpace.s12,
               child: WdMapHint('1 km마다 지점 표시 · 총 ${formatKm(course.distanceMeters)}'),
             ),
+            // 현재 러너(B1-01 · HCR-07). Figma B1처럼 지도 오른쪽 아래.
+            Positioned(right: WdSpace.s16, bottom: WdSpace.s12, child: _LiveRunners(course.activeRunners)),
           ],
         ),
       );
@@ -408,3 +410,27 @@ String publicPeriodText(DateTime expiresAt, DateTime now) {
 
 /// 유지 기간 한 구간(등록일 포함 30일, 정책 공통 4).
 const retentionDays = 30;
+
+/// 지도 위 현재 러너(Figma B1 `Live runners`). 흰 바탕 · 점 · `지금 3명 달리는 중`. 1명 이상이면 초록, 0명이면 회색 `달리는 러너 없음`.
+class _LiveRunners extends StatelessWidget {
+  const _LiveRunners(this.count);
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = count > 0 ? WdColors.green : WdColors.muted;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: WdSpace.s10, vertical: WdSpace.s4),
+      decoration: BoxDecoration(color: WdColors.white, borderRadius: BorderRadius.circular(WdRadius.full)),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        spacing: WdSpace.s6,
+        children: [
+          Container(width: 6, height: 6, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+          Text(formatActiveRunners(count), style: WdText.raw(12, FontWeight.w500, 16).copyWith(color: color)),
+        ],
+      ),
+    );
+  }
+}

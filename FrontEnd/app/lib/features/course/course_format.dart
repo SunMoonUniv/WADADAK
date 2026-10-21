@@ -38,5 +38,8 @@ int daysUntilExpiry(DateTime expiresAt, DateTime now) {
   return seoulDate(expiresAt).difference(seoulDate(now)).inDays;
 }
 
+/// 현재 러너(Figma A6 · G1 카드 · B1 `지금 1명 달리는 중`). 0명이면 `달리는 러너 없음`(정책 A6-03).
+String formatActiveRunners(int count) => count > 0 ? '지금 ${formatCount(count)}명 달리는 중' : '달리는 러너 없음';
+
 /// 카드의 만료 표시(Figma A2 · A6 `만료 D-1`). 만료일 당일은 `만료 D-day`.
 String formatExpiry(int daysLeft) => daysLeft <= 0 ? '만료 D-day' : '만료 D-$daysLeft';

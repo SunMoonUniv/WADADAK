@@ -151,11 +151,13 @@ class RetentionTest {
                 + "VALUES (?, 1, 5, now(), now())", expired);
         jdbc.update("INSERT INTO course.course_daily_stats (id, course_id, stat_date, view_count, created_at, updated_at) "
                 + "VALUES (?, ?, DATE '2026-10-20', 3, now(), now())", UUID.randomUUID(), expired);
+        jdbc.update("INSERT INTO course.course_active_runners (course_id, active_count, source_version, created_at, updated_at) "
+                + "VALUES (?, 2, 1, now(), now())", expired);
 
         CLOCK.set(seoul("2026-11-01T00:00:29"));
         scheduler.hideAndDelete();
         assertThat(status(expired)).as("24시간이 안 됐다").isEqualTo("HIDDEN");
-        assertThat(statsRows(expired)).isEqualTo(2);
+        assertThat(statsRows(expired)).isEqualTo(3);
 
         CLOCK.set(seoul("2026-11-01T00:00:30"));
         scheduler.hideAndDelete();
@@ -244,7 +246,9 @@ class RetentionTest {
 
     private long statsRows(UUID courseId) {
         return jdbc.queryForObject("SELECT (SELECT count(*) FROM course.course_stats WHERE course_id = ?) "
-                + "+ (SELECT count(*) FROM course.course_daily_stats WHERE course_id = ?)", Long.class, courseId, courseId);
+                + "+ (SELECT count(*) FROM course.course_daily_stats WHERE course_id = ?) "
+                + "+ (SELECT count(*) FROM course.course_active_runners WHERE course_id = ?)",
+                Long.class, courseId, courseId, courseId);
     }
 
     private long version(UUID courseId) {

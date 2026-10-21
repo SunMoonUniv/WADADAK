@@ -83,6 +83,7 @@ void main() {
           'tags': ['SHADE', 'RIVERSIDE'],
           'courseType': 'GPS',
           'expiresAt': '2026-11-13T14:59:59Z',
+          'activeRunners': 3,
           'route': [start.toJson(), end.toJson()],
         },
       ],
@@ -103,6 +104,7 @@ void main() {
     expect(course.tags, [CourseTag.shade, CourseTag.riverside]);
     expect(course.courseType, CourseType.gps);
     expect(course.expiresAt, DateTime.utc(2026, 11, 13, 14, 59, 59));
+    expect(course.activeRunners, 3);
   });
 
   test('counts the courses in the map area by region', () async {
@@ -160,7 +162,24 @@ void main() {
     final list = _FakeServer({'content': <Object>[], 'nextCursor': null});
     await client(list).listCourses(southWest: southWest, northEast: northEast, filter: filter);
     expect(list.request.path, '/api/v1/courses');
-    expect(list.request.queryParameters, {...area, ...filterQuery, 'sort': 'LATEST'});
+    expect(list.request.queryParameters, {...area, ...filterQuery, 'sort': 'POPULAR'});
+  });
+
+  test('sends the popular period only with the list, moving days before the stats began to that day', () async {
+    const southWest = GeoPoint(37.58, 127.01), northEast = GeoPoint(37.60, 127.03);
+    const area = {'swLat': 37.58, 'swLng': 127.01, 'neLat': 37.60, 'neLng': 127.03};
+    final list = _FakeServer({'content': <Object>[], 'nextCursor': null});
+
+    await client(list).listCourses(
+      southWest: southWest,
+      northEast: northEast,
+      period: CoursePeriod(start: DateTime.utc(2026, 11, 2), end: DateTime.utc(2026, 12, 1)),
+    );
+    expect(list.request.queryParameters, {...area, 'sort': 'POPULAR', 'startDate': '2026-11-02', 'endDate': '2026-12-01'});
+
+    // `전체`(시작일 없음) ~ 1개월 전. 통계를 쌓기 전 날짜는 그 시작일(2026-10-19)로 보낸다.
+    await client(list).listCourses(southWest: southWest, northEast: northEast, period: CoursePeriod(end: DateTime.utc(2026, 9, 19)));
+    expect(list.request.queryParameters, {...area, 'sort': 'POPULAR', 'endDate': '2026-10-19'});
   });
 
   test('sends no filter conditions when nothing is chosen', () async {
@@ -239,11 +258,12 @@ void main() {
     expect(page.courses.single.name, '한강 야경 5K');
     expect(page.courses.single.averageRating, 4.6);
     expect(page.courses.single.reviewCount, 128);
+    expect(page.courses.single.activeRunners, 0, reason: '없으면 0명');
     expect(page.nextCursor, 'next-2');
 
-    // 정렬만 보내면 최신순, 위치 · 커서는 빠진다.
+    // 정렬을 고르지 않으면 인기순, 위치 · 커서는 빠진다.
     await client(server).searchCourses(query: '한강');
-    expect(server.request.queryParameters, {'query': '한강', 'sort': 'LATEST'});
+    expect(server.request.queryParameters, {'query': '한강', 'sort': 'POPULAR'});
   });
 
   test('searches only with two or more letters without spaces', () {

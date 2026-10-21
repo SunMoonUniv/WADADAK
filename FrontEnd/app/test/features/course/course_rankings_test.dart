@@ -152,11 +152,11 @@ void main() {
     expect(find.text(CourseRankingTab.staleMessage), findsNothing);
   });
 
-  testWidgets('tells the run screens are not ready yet', (tester) async {
+  testWidgets('tells ghost racing is not ready yet', (tester) async {
     await openRankings(tester);
 
     await tester.tap(find.text('고스트 대결 ▶'));
     await tester.pumpAndSettle();
-    expect(find.text(CourseRunBar.notReadyMessage), findsOneWidget);
+    expect(find.text(CourseRunBar.ghostNotReadyMessage), findsOneWidget);
   });
 }

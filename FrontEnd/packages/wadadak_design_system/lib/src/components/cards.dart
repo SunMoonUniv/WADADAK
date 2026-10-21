@@ -239,7 +239,7 @@ class WdCourseCard extends StatelessWidget {
   final Widget? thumbnail;
   final Size thumbnailSize;
 
-  /// 보통 `WdTag(.., filled: false)`.
+  /// 보통 `WdTag(.., filled: false)`. [actionLabel]이 없으면 한 줄에 다 들어가지 않을 때 다음 줄로 내린다.
   final List<Widget> tags;
   final bool showChevron;
   final String? actionLabel;
@@ -256,13 +256,13 @@ class WdCourseCard extends StatelessWidget {
         footerGap: actionLabel != null ? 9 : WdSpace.s8,
         footer: tags.isEmpty && actionLabel == null
             ? null
-            : Row(
-                spacing: WdSpace.s6,
-                children: [
-                  ...tags,
-                  if (actionLabel != null) ...[const Spacer(), _link(actionLabel!, onAction)],
-                ],
-              ),
+            : actionLabel == null
+                // 태그만 있으면 한 줄에 다 들어가지 않을 때 다음 줄로 내린다(좁은 화면).
+                ? Wrap(spacing: WdSpace.s6, runSpacing: WdSpace.s4, children: tags)
+                : Row(
+                    spacing: WdSpace.s6,
+                    children: [...tags, const Spacer(), _link(actionLabel!, onAction)],
+                  ),
         onTap: onTap,
       );
 }

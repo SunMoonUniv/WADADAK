@@ -15,7 +15,7 @@
 | 스키마 | 모듈 | 테이블 |
 | --- | --- | --- |
 | `member` | member | `members`, `agreements`, `refresh_tokens`, `region_event_backfill` |
-| `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `course_stats`, `course_daily_stats`, `processed_events` |
+| `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `course_stats`, `course_daily_stats`, `course_active_runners`, `processed_events` |
 | `ranking` | ranking | `course_ranking_entries`, `distance_run_records`, `course_status_copies`, `member_visibility_copies`, `member_region_history`, `withdrawn_members` |
 | `review` | review | `reviews`, `review_photos`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
 | `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members`, `course_attempts`, `course_runner_counts` |
@@ -49,6 +49,7 @@ erDiagram
     courses ||--o{ registration_requests : "course_id"
     courses ||--o| course_stats : "course_id"
     courses ||--o{ course_daily_stats : "course_id"
+    courses ||--o| course_active_runners : "course_id"
     members ||..o{ courses : "creator_id"
     members ||..o{ daily_registration_counts : "member_id"
     members ||..o{ registration_requests : "member_id"
@@ -141,6 +142,7 @@ erDiagram
     }
     course_stats {
         uuid course_id PK "FK"
+        integer challenge_count "도전 수"
         integer completion_count
         bigint completion_seconds "완주 소요시간 합"
         bigint view_count
@@ -151,9 +153,15 @@ erDiagram
         uuid id PK
         uuid course_id FK
         date stat_date "Asia/Seoul"
+        integer challenge_count "시작한 날"
         integer view_count
         integer rating_sum "리뷰 작성일"
         integer review_count "리뷰 작성일"
+    }
+    course_active_runners {
+        uuid course_id PK "FK"
+        integer active_count
+        bigint source_version "run version"
     }
     course_ranking_entries {
         uuid run_record_id PK "run 기록 ID"
@@ -453,6 +461,7 @@ erDiagram
 | 컬럼 | 타입 | NULL | 설명 |
 | --- | --- | --- | --- |
 | `course_id` | `UUID` | | PK, FK → `courses.id` |
+| `challenge_count` | `INTEGER` | | 도전 수(코스 러닝을 실제로 시작한 세션 수). 인기순 1차 기준(FIL-01). 기본 0 |
 | `completion_count` | `INTEGER` | | 서버가 확정한 완주 수. 기본 0 |
 | `completion_seconds` | `BIGINT` | | 그 완주들의 코스 총 소요시간 합(초). 기본 0 |
 | `view_count` | `BIGINT` | | 코스 상세(B1) 조회 수. 인기순 2차 기준(FIL-01). 기본 0 |
@@ -462,9 +471,10 @@ erDiagram
 - 행은 첫 증감 때 `INSERT … ON CONFLICT DO UPDATE SET x = x + EXCLUDED.x`로 만든다. 행이 없는 코스는 모두 0이다.
 - 평균 페이스 = `completion_seconds ÷ completion_count ÷ 코스 거리(km)`, 초/km 정수로 반올림. 정책 용어의 코스 완주 페이스(`코스 총 소요시간 ÷ 코스 전체 거리`)의 평균과 같다. 경로는 바꿀 수 없어(정책 B7) 거리 합계는 두지 않는다.
 - 평점 = `rating_sum ÷ review_count`, 소수 첫째 자리 반올림(리뷰 API와 같은 계산). 리뷰가 없으면 NULL. 목록 · 지도가 `LEFT JOIN`해 평점순 · 최소 평점에 쓴다.
-- 받는 이벤트(개발 정책 5.6): `RunSessionEndedEvent`(코스 완주 +1), `RunRecordDeletedEvent`(완주 기록 −1), `ReviewCreatedEvent` · `ReviewUpdatedEvent` · `ReviewDeletedEvent`(평점 합 · 리뷰 수). 조회 수는 상세 API가 센다.
+- 받는 이벤트(개발 정책 5.6): `CourseRunStartedEvent`(도전 수 +1), `RunSessionEndedEvent`(코스 완주 +1), `RunRecordDeletedEvent`(코스 기록이면 도전 수 −1, 완주 기록이면 완주 −1), `ReviewCreatedEvent` · `ReviewUpdatedEvent` · `ReviewDeletedEvent`(평점 합 · 리뷰 수). 조회 수는 상세 API가 센다.
 - 공개 중(`ACTIVE`)인 코스만 바뀐다. 증감 전에 코스 행을 `FOR SHARE`로 잠가 상태를 본다. 코스가 `DELETED`가 되면 같은 트랜잭션에서 행을 지운다(개발 정책 6.2).
-- 도전 수(인기순)는 run이 `CourseRunStartedEvent`를 발행하면 열을 더한다.
+- 인기순은 `challenge_count` → `view_count` → `review_count` 내림차순, 그다음 최신순(`courses.created_at DESC, id DESC`)이다(정책 문서 4.1 `FIL-01 인기순 · 실시간순`). 행이 없거나 0 아래인 값은 0으로 읽는다.
+- 도전 수 열은 2026-10-20에 더했다. 그 전에 시작한 코스 기록(시작 이벤트를 세지 않은 기록)을 지우면 0 아래로 내려갈 수 있다.
 - 이 테이블을 만든 때(2026-10-19) 전에 쓴 리뷰는 들어 있지 않다(정책 문서 4.1 `F11 코스 통계`). 그 리뷰를 지우면 `rating_sum` · `review_count`가 0 아래로 내려갈 수 있고, 리뷰 수가 0 이하면 평점은 NULL이다.
 
 #### `course.course_daily_stats` — 코스 일별 통계
@@ -474,14 +484,27 @@ erDiagram
 | `id` | `UUID` | | PK |
 | `course_id` | `UUID` | | FK → `courses.id` |
 | `stat_date` | `DATE` | | 날짜(Asia/Seoul) |
+| `challenge_count` | `INTEGER` | | 그날 시작한 코스 러닝 수. 기록을 지우면 시작한 날(`RunRecordDeletedEvent.startedAt`) 행에서 뺀다. 기본 0 |
 | `view_count` | `INTEGER` | | 그날 조회 수. 기본 0 |
 | `rating_sum` | `INTEGER` | | 그날 작성된 리뷰의 별점 합. 기본 0 |
 | `review_count` | `INTEGER` | | 그날 작성된 리뷰 수. 기본 0 |
 
 - `course_daily_stats_uk`: `UNIQUE (course_id, stat_date)`.
-- 기간 정렬(FIL-09, 인기순과 함께 붙인다)이 고른 기간의 합을 낸다. 리뷰 수정 · 삭제도 작성일(`createdAt`) 행을 바꾼다(개발 정책 5.6).
-- 평점순에는 기간을 쓰지 않아(정책 문서 4.1) `rating_sum` · `review_count`는 지금 읽는 곳이 없지만 계속 쌓는다.
+- 기간 인기순(FIL-09)이 고른 기간(두 날짜 포함)의 `challenge_count` · `view_count` · `review_count` 합으로 정렬한다. 코스마다 `course_daily_stats_uk`로 그 기간 행만 더한다. 기간에 행이 없는 코스도 0으로 뒤에 온다. 리뷰 수정 · 삭제도 작성일(`createdAt`) 행을 바꾼다(개발 정책 5.6).
+- 평점순에는 기간을 쓰지 않아(정책 문서 4.1) `rating_sum`은 지금 읽는 곳이 없지만 계속 쌓는다.
 - 증감 · 삭제 규칙은 `course_stats`와 같다.
+
+#### `course.course_active_runners` — 현재 러너 수 복사본
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `course_id` | `UUID` | | PK, FK → `courses.id` |
+| `active_count` | `INTEGER` | | 지금 그 코스를 달리는 러너 수. 0 아래 값은 0으로 둔다 |
+| `source_version` | `BIGINT` | | 마지막으로 반영한 `CourseActiveRunnersChangedEvent.version`(run `course_runner_counts.version`) |
+
+- 상태 복사형(개발 정책 5.4)이라 `processed_events`에 적지 않는다. `INSERT … ON CONFLICT DO UPDATE … WHERE source_version < EXCLUDED.source_version`으로 더 큰 version만 반영해, 늦게 온 예전 값은 버린다.
+- 행이 없는 코스는 0명이다. 실시간순(현재 러너 수 내림차순, 같으면 인기순)과 카드 · B1의 `지금 N명 달리는 중`에 쓴다.
+- 공개 중(`ACTIVE`)인 코스만 바뀐다(`course_stats`처럼 코스 행을 잠가 본다). 코스가 `DELETED`가 되면 같은 트랜잭션에서 행을 지운다.
 
 #### `course.processed_events` — 이벤트 처리 기록
 

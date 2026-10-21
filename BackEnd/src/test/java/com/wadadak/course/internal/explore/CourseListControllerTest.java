@@ -27,7 +27,7 @@ import java.util.stream.Stream;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 
-/** 지도 테스트(위도 33.40~33.53)와 겹치지 않게 위도 33.60부터, 테스트마다 다른 지도 범위를 쓴다. */
+/** 지도 테스트(위도 33.40~33.53) · 상세 테스트(33.70~33.71)와 겹치지 않게 위도 33.60부터, 테스트마다 다른 지도 범위를 쓴다. */
 @ApplicationModuleTest
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
@@ -170,14 +170,102 @@ class CourseListControllerTest {
                 .exchange()).get("totalCount").asInt()).isEqualTo(1);
     }
 
+    /**
+     * 인기순은 도전 수 → 조회 수 → 리뷰 수가 많은 코스부터, 모두 같으면 최신순이다(FIL-01).
+     * 0 아래로 내려간 수(도전 수를 더하기 전 기록을 지운 경우)는 0으로 본다.
+     */
+    @Test
+    void listsPopularFirstByChallengesThenViewsThenReviews() throws Exception {
+        UUID mostChallenged = insert(33.681, 126.301, NOW);
+        UUID moreViews = insert(33.682, 126.302, NOW);
+        UUID moreReviews = insert(33.683, 126.303, NOW);
+        UUID newerSame = insert(33.684, 126.304, NOW.plusSeconds(10));
+        UUID olderSame = insert(33.685, 126.305, NOW.minusSeconds(10));
+        UUID belowZero = insert(33.686, 126.306, NOW);
+        UUID nothing = insert(33.687, 126.307, NOW.plusSeconds(60));
+        stats(mostChallenged, 5, 0, 0);
+        stats(moreViews, 3, 10, 0);
+        stats(moreReviews, 3, 2, 4);
+        stats(newerSame, 3, 2, 1);
+        stats(olderSame, 3, 2, 1);
+        stats(belowZero, -2, 1, 0);
+        String query = "swLat=33.680&swLng=126.300&neLat=33.690&neLng=126.310&sort=POPULAR&size=2";
+
+        assertThat(allPages(query))
+                .containsExactly(mostChallenged, moreViews, moreReviews, newerSame, olderSame, belowZero, nothing);
+    }
+
+    /** 실시간순은 지금 달리는 러너가 많은 코스부터, 같으면 인기순(도전 수 → 조회 수 → 리뷰 수 → 최신순)이다. */
+    @Test
+    void listsLiveByRunnersThenPopularityAndShowsRunnersOnCards() throws Exception {
+        UUID twoRunners = insert(33.741, 126.321, NOW);
+        UUID oneRunnerPopular = insert(33.742, 126.322, NOW);
+        UUID oneRunner = insert(33.743, 126.323, NOW);
+        UUID noneNowPopular = insert(33.744, 126.324, NOW);
+        UUID neverReported = insert(33.745, 126.325, NOW.plusSeconds(60));
+        runners(twoRunners, 2);
+        runners(oneRunnerPopular, 1);
+        runners(oneRunner, 1);
+        runners(noneNowPopular, 0);
+        stats(oneRunnerPopular, 9, 0, 0);
+        stats(oneRunner, 1, 0, 0);
+        stats(noneNowPopular, 20, 0, 0);
+        String area = "swLat=33.740&swLng=126.320&neLat=33.750&neLng=126.330";
+
+        assertThat(allPages(area + "&sort=LIVE&size=2"))
+                .containsExactly(twoRunners, oneRunnerPopular, oneRunner, noneNowPopular, neverReported);
+
+        // 카드 · 지도 범위 안 코스에도 현재 러너 수가 있다. 받은 적이 없으면 0명
+        JsonNode cards = data(list(area + "&sort=LIVE")).get("content");
+        assertThat(cards.get(0).get("activeRunners").asInt()).isEqualTo(2);
+        assertThat(cards.get(4).get("activeRunners").asInt()).isZero();
+        JsonNode map = data(mvc.get().uri("/api/v1/courses/map?" + area).with(jwt()).exchange());
+        map.get("courses").forEach(course -> {
+            if (course.get("courseId").asString().equals(twoRunners.toString())) {
+                assertThat(course.get("activeRunners").asInt()).isEqualTo(2);
+            }
+        });
+    }
+
+    /**
+     * 인기순 기간(FIL-09)은 그 기간(두 날짜 포함)의 도전 수 · 조회 수 · 리뷰 수로 정렬한다.
+     * 기간에 값이 없는 코스도 빠지지 않고 뒤에 오고, 지도 코스 수는 그대로다.
+     */
+    @Test
+    void popularInAPeriodSortsByThatPeriodWithoutDroppingCourses() throws Exception {
+        UUID popularBefore = insert(33.721, 126.301, NOW.plusSeconds(30));
+        UUID twoInPeriod = insert(33.722, 126.302, NOW);
+        UUID oneWithViews = insert(33.723, 126.303, NOW);
+        UUID oneOnEndDay = insert(33.724, 126.304, NOW);
+        UUID nothing = insert(33.725, 126.305, NOW.minusSeconds(30));
+        stats(popularBefore, 100, 0, 0);
+        daily(popularBefore, "2026-10-13", 100, 0, 0);       // 시작일 전날
+        daily(twoInPeriod, "2026-10-14", 2, 0, 0);           // 시작일 당일
+        daily(oneWithViews, "2026-10-15", 1, 5, 0);
+        daily(oneWithViews, "2026-10-17", 50, 0, 0);         // 종료일 다음 날
+        daily(oneOnEndDay, "2026-10-16", 1, 1, 0);           // 종료일 당일
+        String area = "swLat=33.720&swLng=126.300&neLat=33.730&neLng=126.310";
+
+        assertThat(allPages(area + "&sort=POPULAR&size=2&startDate=2026-10-14&endDate=2026-10-16"))
+                .containsExactly(twoInPeriod, oneWithViews, oneOnEndDay, popularBefore, nothing);
+        // 시작일만: 10/16부터 oneWithViews는 50, oneOnEndDay는 1
+        assertThat(ids(data(list(area + "&sort=POPULAR&startDate=2026-10-16"))))
+                .containsExactly(oneWithViews, oneOnEndDay, popularBefore, twoInPeriod, nothing);
+        // 종료일만: 10/13까지는 popularBefore만
+        assertThat(ids(data(list(area + "&sort=POPULAR&endDate=2026-10-13"))).getFirst()).isEqualTo(popularBefore);
+        // 기간이 없으면 누적 통계다
+        assertThat(ids(data(list(area + "&sort=POPULAR"))).getFirst()).isEqualTo(popularBefore);
+        // 기간은 순서만 바꾼다. 지도 코스 수(예상 코스 수)는 그대로다
+        assertThat(data(mvc.get().uri("/api/v1/courses/map?" + area).with(jwt()).exchange()).get("totalCount").asInt())
+                .isEqualTo(5);
+    }
+
     @Test
     void rejectsBadListRequests() {
         String area = "swLat=33.6&swLng=126.3&neLat=33.7&neLng=126.4";
         String latestCursor = CourseListCursor.latest(NOW, UUID.randomUUID()).encode();
 
         assertBadRequest(list(area));
-        // 인기순은 run의 도전 수 이벤트 뒤에 붙는다
-        assertBadRequest(list(area + "&sort=POPULAR"));
         assertBadRequest(list(area + "&sort=NEAREST"));
         assertBadRequest(list(area + "&sort=NEAREST&lat=33.65"));
         assertBadRequest(list(area + "&sort=NEAREST&lat=91&lng=126.35"));
@@ -187,6 +275,23 @@ class CourseListControllerTest {
         assertBadRequest(list("swLat=33.7&swLng=126.3&neLat=33.6&neLng=126.4&sort=LATEST"));
         assertBadRequest(list(area + "&sort=LATEST&minRating=5.1"));
         assertBadRequest(list(area + "&sort=RATING&cursor=" + latestCursor));
+        assertBadRequest(list(area + "&sort=POPULAR&cursor=" + latestCursor));
+        UUID id = UUID.randomUUID();
+        String popularCursor = CourseListCursor.popular(new CourseListCursor.Counts(List.of(3L, 2L, 1L), NOW), id).encode();
+        assertBadRequest(list(area + "&sort=LIVE&cursor=" + popularCursor));
+        assertBadRequest(list(area + "&sort=POPULAR&cursor=" + new CourseListCursor(CourseListSort.POPULAR, "3_2_1", id).encode()));
+        assertBadRequest(list(area + "&sort=POPULAR&cursor="
+                + new CourseListCursor(CourseListSort.POPULAR, "3_-2_1_0", id).encode()));
+        assertBadRequest(list(area + "&sort=LIVE&cursor=" + new CourseListCursor(CourseListSort.LIVE, "1_3_2_1", id).encode()));
+        // 기간은 인기순에만, 시작일 ≤ 종료일
+        assertBadRequest(list(area + "&sort=RATING&startDate=2026-10-01"));
+        assertBadRequest(list(area + "&sort=LIVE&endDate=2026-10-01"));
+        assertBadRequest(list(area + "&sort=POPULAR&startDate=2026-10-02&endDate=2026-10-01"));
+        assertBadRequest(list(area + "&sort=POPULAR&startDate=2026.10.01"));
+        assertThat(list(area + "&sort=POPULAR&startDate=2026-10-01&endDate=2026-10-01")).hasStatusOk();
+        assertThat(list(area + "&sort=POPULAR&cursor=" + popularCursor)).hasStatusOk();
+        assertThat(list(area + "&sort=LIVE&cursor="
+                + CourseListCursor.live(new CourseListCursor.Counts(List.of(0L, 0L, 0L, 0L), NOW), id).encode())).hasStatusOk();
         assertThat(list(area + "&sort=RATING&cursor=" + CourseListCursor.rating(new java.math.BigDecimal("-1"), 0, NOW,
                 UUID.randomUUID()).encode())).hasStatusOk();
         assertThat(list(area + "&sort=LATEST&cursor=" + latestCursor)).hasStatusOk();
@@ -200,6 +305,18 @@ class CourseListControllerTest {
 
     private MvcTestResult list(String query) {
         return mvc.get().uri("/api/v1/courses?" + query).with(jwt()).exchange();
+    }
+
+    /** [query]의 모든 쪽을 커서로 이어 받은 코스 ID */
+    private List<UUID> allPages(String query) throws Exception {
+        List<UUID> all = new ArrayList<>();
+        JsonNode page = data(list(query));
+        all.addAll(ids(page));
+        while (!page.get("nextCursor").isNull()) {
+            page = data(list(query + "&cursor=" + page.get("nextCursor").asString()));
+            all.addAll(ids(page));
+        }
+        return all;
     }
 
     private JsonNode data(MvcTestResult result) throws Exception {
@@ -221,6 +338,25 @@ class CourseListControllerTest {
     private void reviews(UUID course, int ratingSum, int reviewCount) {
         jdbcTemplate.update("INSERT INTO course.course_stats (course_id, rating_sum, review_count, created_at, updated_at) "
                 + "VALUES (?, ?, ?, now(), now())", course, ratingSum, reviewCount);
+    }
+
+    /** 코스 누적 통계에 도전 수 · 조회 수 · 리뷰 수를 바로 넣는다. 평점은 리뷰마다 4점 */
+    private void stats(UUID course, int challenges, int views, int reviews) {
+        jdbcTemplate.update("INSERT INTO course.course_stats (course_id, challenge_count, view_count, rating_sum, review_count, "
+                + "created_at, updated_at) VALUES (?, ?, ?, ?, ?, now(), now())", course, challenges, views, reviews * 4, reviews);
+    }
+
+    /** 코스 일별 통계에 그날의 도전 수 · 조회 수 · 리뷰 수를 바로 넣는다. 평점은 리뷰마다 4점 */
+    private void daily(UUID course, String date, int challenges, int views, int reviews) {
+        jdbcTemplate.update("INSERT INTO course.course_daily_stats (id, course_id, stat_date, challenge_count, view_count, "
+                        + "rating_sum, review_count, created_at, updated_at) VALUES (?, ?, ?::date, ?, ?, ?, ?, now(), now())",
+                UUID.randomUUID(), course, date, challenges, views, reviews * 4, reviews);
+    }
+
+    /** 현재 러너 수 복사본을 바로 넣는다 */
+    private void runners(UUID course, int count) {
+        jdbcTemplate.update("INSERT INTO course.course_active_runners (course_id, active_count, source_version, created_at, "
+                + "updated_at) VALUES (?, ?, 1, now(), now())", course, count);
     }
 
     private UUID insert(double lat, double lng, Instant createdAt) {

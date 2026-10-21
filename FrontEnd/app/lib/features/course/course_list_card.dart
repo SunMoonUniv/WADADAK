@@ -8,8 +8,7 @@ import '../../core/map/geo_point.dart';
 import 'course_format.dart';
 
 /// 코스 목록 카드(A2-05 · A6-03). Figma A6 카드 모양이다(썸네일 64×58 · 오른쪽 `›`).
-///
-/// 현재 러너는 run이 현재 러너 수 이벤트를 발행하면 붙인다.
+/// 아래 줄은 현재 러너(1명 이상이면 초록) · 코스 유형 · 만료 표시다.
 class CourseListCard extends StatelessWidget {
   const CourseListCard({super.key, required this.course, required this.now, this.myLocation, this.onTap});
 
@@ -45,6 +44,7 @@ class CourseListCard extends StatelessWidget {
       thumbnailSize: const Size(64, 58),
       showChevron: true,
       tags: [
+        CourseRunnersTag(course.activeRunners),
         WdTag(course.courseType.label, filled: false),
         WdTag(
           formatExpiry(daysLeft),
@@ -58,7 +58,7 @@ class CourseListCard extends StatelessWidget {
 }
 
 /// 코스 검색 결과 카드(G1-04). Figma G1 카드 모양이다(썸네일 58×58 · 한 줄 `5.2km · 난이도 중 · ★ 4.6 (128)` · 오른쪽 `›`).
-/// 아래 줄은 현재 러너 · 코스 유형인데, 현재 러너는 run이 현재 러너 수 이벤트를 발행하면 붙인다.
+/// 아래 줄은 현재 러너 · 코스 유형이다.
 class CourseSearchCard extends StatelessWidget {
   const CourseSearchCard({super.key, required this.course, this.onTap});
 
@@ -78,9 +78,20 @@ class CourseSearchCard extends StatelessWidget {
         ],
         thumbnail: CourseRouteThumbnail(course.route),
         showChevron: true,
-        tags: [WdTag(course.courseType.label, filled: false)],
+        tags: [CourseRunnersTag(course.activeRunners), WdTag(course.courseType.label, filled: false)],
         onTap: onTap,
       );
+}
+
+/// 카드 아래 줄의 현재 러너(Figma A6 · G1). 1명 이상이면 초록 `지금 N명 달리는 중`, 0명이면 회색 `달리는 러너 없음`.
+class CourseRunnersTag extends StatelessWidget {
+  const CourseRunnersTag(this.count, {super.key});
+
+  final int count;
+
+  @override
+  Widget build(BuildContext context) =>
+      WdTag(formatActiveRunners(count), tone: count > 0 ? WdTone.success : WdTone.neutral, filled: false);
 }
 
 /// 카드 썸네일의 코스 경로. 지도 없이 경로만 칸에 맞춰 그린다. 선은 지도 코스 선과 같은 라임 + 잉크 테두리다.

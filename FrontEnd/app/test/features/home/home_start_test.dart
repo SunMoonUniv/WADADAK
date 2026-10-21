@@ -87,9 +87,13 @@ void main() {
         reason: '시트 위로 보이는 부분의 세로 가운데');
   }
 
-  /// A3에서 코스 유형 `그려서 만든 코스`만 걸어 적용한다.
-  Future<void> filterDrawnCourses(WidgetTester tester) async {
+  /// A3에서 코스 유형 `그려서 만든 코스`만 걸어 적용한다. [period]면 인기순 기간도 `1개월`로 건다.
+  Future<void> filterDrawnCourses(WidgetTester tester, {bool period = false}) async {
     await tap(tester, filterChip());
+    if (period) await tester.tap(find.text('1개월'));
+    // 기간 슬라이더 때문에 코스 유형은 아래로 밀어야 보인다.
+    await tester.scrollUntilVisible(chip('그려서 만든 코스'), 100,
+        scrollable: find.descendant(of: find.byType(CourseFilterScreen), matching: find.byType(Scrollable)).first);
     await tester.tap(chip('그려서 만든 코스'));
     await tester.pump(const Duration(milliseconds: 300));
     await tester.pumpAndSettle();
@@ -158,7 +162,8 @@ void main() {
     final start = courses.mapRequests.last;
     final mapState = tester.state(find.byType(DevMapView));
 
-    await filterDrawnCourses(tester);
+    await filterDrawnCourses(tester, period: true);
+    expect(courses.listRequests.last.period, isNotNull);
     await tap(tester, label('시청 한 바퀴 1K'));
     await moveMap(tester);
     expect(courses.mapRequests.last.northEast.lng, isNot(closeTo(start.northEast.lng, 1e-9)), reason: '지도를 옮겼다');
@@ -169,11 +174,12 @@ void main() {
     await tap(tester, tab('MY'));
     await tap(tester, tab('홈'));
 
-    expect(selected(tester, filterChip()), isFalse, reason: '필터 초기화');
-    expect(selected(tester, chip('최신순')), isTrue);
+    expect(selected(tester, filterChip()), isFalse, reason: '필터 · 기간 초기화');
+    expect(selected(tester, chip('인기순')), isTrue);
     final list = courses.listRequests.last;
     expect(list.filter.isNone, isTrue);
-    expect(list.sort, CourseListSort.latest);
+    expect(list.sort, CourseListSort.popular);
+    expect(list.period, isNull, reason: '기간도 전체로');
     final map = courses.mapRequests.last;
     expect(map.filter.isNone, isTrue);
     expect((map.southWest, map.northEast), (start.southWest, start.northEast), reason: '위치 권한이 없으면 서울시청 · 줌 14');
@@ -191,7 +197,7 @@ void main() {
     await tap(tester, tab('MY'));
     await tap(tester, tab('홈'));
 
-    expect(selected(tester, chip('최신순')), isTrue);
+    expect(selected(tester, chip('인기순')), isTrue);
     expectOpenAt(here);
   });
 

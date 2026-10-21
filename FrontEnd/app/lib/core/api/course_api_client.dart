@@ -181,16 +181,26 @@ class RegionCount {
   final GeoPoint center;
 }
 
-/// 코스 목록 정렬(FIL-01). 인기순 · 실시간순은 run이 도전 수 · 현재 러너 수 이벤트를 발행하면 붙인다.
+/// 코스 목록 정렬(FIL-01). 칩 · 메뉴는 이 순서다(Figma A3). 처음은 [popular]다.
 enum CourseListSort {
-  /// 등록 시각이 늦은 코스부터.
-  latest('LATEST', '최신순'),
+  /// 도전 수(코스 러닝을 실제로 시작한 세션 수)가 많은 코스부터. 같으면 조회 수, 리뷰 수가 많은 코스, 그다음 최신순.
+  /// 기간([CoursePeriod], FIL-09)이 있으면 그 기간의 수로 정하고, 기간에 값이 없는 코스도 빠지지 않고 뒤에 온다.
+  popular('POPULAR', '인기순'),
+
+  /// 전체 기간 평점(카드에 보이는 값)이 높은 코스부터. 같으면 리뷰 수가 많은 코스, 그다음 최신순. 리뷰가 없으면 맨 뒤.
+  rating('RATING', '평점순'),
 
   /// 현재 위치에서 출발점까지 직선 거리가 가까운 코스부터. 현재 위치가 필요하다.
   nearest('NEAREST', '가까운순'),
 
-  /// 전체 기간 평점(카드에 보이는 값)이 높은 코스부터. 같으면 리뷰 수가 많은 코스, 그다음 최신순. 리뷰가 없으면 맨 뒤.
-  rating('RATING', '평점순');
+  /// 등록 시각이 늦은 코스부터.
+  latest('LATEST', '최신순'),
+
+  /// 지금 달리는 러너가 많은 코스부터. 같으면 인기순(전체 기간) 순서다.
+  live('LIVE', '실시간순');
+
+  /// 처음 정렬(FIL-01). 홈 · G1을 처음 열 때 · A3 `초기화`.
+  static const initial = popular;
 
   const CourseListSort(this.apiName, this.label);
   final String apiName;
@@ -266,6 +276,44 @@ class CourseFilter {
       );
 }
 
+/// 인기순 기간(FIL-09, A3 기간 슬라이더). Asia/Seoul 날짜이고 두 날짜를 모두 포함한다. 날짜만 쓰고 시각은 보지 않는다.
+/// 목록 순서만 바꾸고 코스를 빼지 않아, 지도 · 지역별 코스 수 · 예상 코스 수와는 상관없다. 카드 값도 늘 전체 기간이다.
+@immutable
+class CoursePeriod {
+  const CoursePeriod({this.start, required this.end});
+
+  /// 코스 통계(F11)를 쌓기 시작한 날. 그 전 날짜는 데이터가 없어 시작일 · 종료일 모두 이날로 보낸다.
+  /// [start] · [end]는 A3 눈금 날짜 그대로 둬서 다시 열면 핸들이 고른 자리로 돌아온다.
+  static final dataStart = DateTime.utc(2026, 10, 19);
+
+  /// 시작일. null이면 처음부터(A3 `전체`)다.
+  final DateTime? start;
+
+  /// 종료일.
+  final DateTime end;
+
+  Map<String, Object> _query() => {'startDate': ?_date(_fromData(start)), 'endDate': _date(_fromData(end))!};
+
+  /// [dataStart]보다 앞 날짜는 [dataStart]로.
+  static DateTime? _fromData(DateTime? date) => date == null || !date.isBefore(dataStart) ? date : dataStart;
+
+  /// 2026-10-19.
+  static String? _date(DateTime? date) {
+    if (date == null) return null;
+    String two(int value) => value.toString().padLeft(2, '0');
+    return '${date.year}-${two(date.month)}-${two(date.day)}';
+  }
+
+  @override
+  bool operator ==(Object other) => other is CoursePeriod && other.start == start && other.end == end;
+
+  @override
+  int get hashCode => Object.hash(start, end);
+
+  @override
+  String toString() => 'CoursePeriod(${_date(start)} ~ ${_date(end)})';
+}
+
 /// 코스 목록 한 쪽(A2 · A6). 다음 쪽은 [nextCursor]로 받는다.
 @immutable
 class CourseListPage {
@@ -301,8 +349,7 @@ class CourseSearchPage {
   final String? nextCursor;
 }
 
-/// 코스 목록 카드(A2-05 · A6-03). 지도 범위 안 코스(A5 이름표 · 선택 카드)도 이 값이다.
-/// 현재 러너는 run이 현재 러너 수 이벤트를 발행하면 붙인다.
+/// 코스 목록 카드(A2-05 · A6-03). 지도 범위 안 코스(A5 이름표 · 선택 카드)와 검색 결과 카드(G1-04)도 이 값이다.
 @immutable
 class CourseListItem {
   const CourseListItem({
@@ -315,6 +362,7 @@ class CourseListItem {
     required this.expiresAt,
     this.averageRating,
     this.reviewCount = 0,
+    this.activeRunners = 0,
     required this.route,
   });
 
@@ -328,6 +376,7 @@ class CourseListItem {
         expiresAt: DateTime.parse(json['expiresAt']! as String),
         averageRating: (json['averageRating'] as num?)?.toDouble(),
         reviewCount: json['reviewCount'] as int? ?? 0,
+        activeRunners: json['activeRunners'] as int? ?? 0,
         route: [for (final point in json['route']! as List) GeoPoint.fromJson(point as Map)],
       );
 
@@ -347,12 +396,14 @@ class CourseListItem {
   final double? averageRating;
   final int reviewCount;
 
+  /// 지금 그 코스를 달리는 러너 수(카드의 `지금 N명 달리는 중`). 서버가 받은 마지막 값이다.
+  final int activeRunners;
+
   /// 카드 썸네일 · 지도 코스 선. 첫 점 출발, 마지막 점 도착(코스 방향).
   final List<GeoPoint> route;
 }
 
 /// 코스 상세(B1 공통 헤더 · 정보 탭). 평점 · 리뷰 수 · 항목 평가는 리뷰 API에서 받는다.
-/// 현재 러너는 run이 현재 러너 수 이벤트를 발행하면 붙인다.
 @immutable
 class CourseDetail {
   const CourseDetail({
@@ -367,6 +418,7 @@ class CourseDetail {
     required this.expiresAt,
     this.averagePaceSecondsPerKm,
     this.creatorNickname,
+    this.activeRunners = 0,
   });
 
   factory CourseDetail.fromJson(Map<Object?, Object?> json) => CourseDetail(
@@ -384,6 +436,7 @@ class CourseDetail {
         expiresAt: DateTime.parse(json['expiresAt']! as String),
         averagePaceSecondsPerKm: json['averagePaceSecondsPerKm'] as int?,
         creatorNickname: json['creatorNickname'] as String?,
+        activeRunners: json['activeRunners'] as int? ?? 0,
       );
 
   final String courseId;
@@ -409,6 +462,9 @@ class CourseDetail {
 
   /// 등록자 닉네임. 탈퇴했으면 `탈퇴한 사용자`. 서버가 회원 정보를 받지 못하면 null이다.
   final String? creatorNickname;
+
+  /// 지금 그 코스를 달리는 러너 수(B1-01 현재 러너). 서버가 받은 마지막 값이다.
+  final int activeRunners;
 }
 
 /// 오늘(Asia/Seoul) 남은 등록 수. 유형마다 따로 센다.
@@ -511,13 +567,14 @@ class CourseApiClient {
   }
 
   /// 지도 범위 안 코스 목록 한 쪽(A2 · A6). 범위 · 필터는 [mapCourses]와 같다(MAP-07).
-  /// 가까운순은 현재 위치 [origin]이 필요하다.
-  /// 다음 쪽은 앞 쪽의 [CourseListPage.nextCursor]를 [cursor]로 보내고, 범위 · 필터 · 정렬 · 현재 위치는 첫 쪽과 같게 보낸다.
+  /// 가까운순은 현재 위치 [origin]이 필요하다. [period]는 인기순에만 보낸다(FIL-09, 다른 정렬이면 COMMON-001).
+  /// 다음 쪽은 앞 쪽의 [CourseListPage.nextCursor]를 [cursor]로 보내고, 범위 · 필터 · 정렬 · 기간 · 현재 위치는 첫 쪽과 같게 보낸다.
   Future<CourseListPage> listCourses({
     required GeoPoint southWest,
     required GeoPoint northEast,
     CourseFilter filter = CourseFilter.none,
-    CourseListSort sort = CourseListSort.latest,
+    CourseListSort sort = CourseListSort.initial,
+    CoursePeriod? period,
     GeoPoint? origin,
     String? cursor,
   }) async {
@@ -525,6 +582,7 @@ class CourseApiClient {
           ..._area(southWest, northEast),
           ...filter._query(),
           'sort': sort.apiName,
+          ...?period?._query(),
           'lat': ?origin?.lat,
           'lng': ?origin?.lng,
           'cursor': ?cursor,
@@ -543,7 +601,7 @@ class CourseApiClient {
   /// [isSearchable]이 아닌 검색어는 COMMON-001이다.
   Future<CourseSearchPage> searchCourses({
     required String query,
-    CourseListSort sort = CourseListSort.latest,
+    CourseListSort sort = CourseListSort.initial,
     GeoPoint? origin,
     String? cursor,
   }) async {

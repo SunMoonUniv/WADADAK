@@ -10,7 +10,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * 코스 누적 · 일별 통계와 이벤트 처리 기록(개발 정책 5.4 · 5.6). 증감은 원자적 UPSERT라 동시에 와도 값이 사라지지 않는다.
+ * 코스 누적 · 일별 통계, 현재 러너 수 복사본, 이벤트 처리 기록(개발 정책 5.4 · 5.6). 증감은 원자적 UPSERT라 동시에 와도 값이 사라지지 않는다.
  * 행이 없으면 첫 증감 때 만든다. 증감 전에 {@link #lockIfActive}로 공개 중인지 보고 코스 행을 잠근다.
  */
 @Repository
@@ -104,6 +104,54 @@ class CourseStatsRepository {
                 .update();
     }
 
+    /** 도전 수. 누적과 [day](코스 러닝을 시작한 날) 행에 같이 더한다. 기록을 지우면 -1 */
+    void addChallenges(UUID courseId, LocalDate day, int count) {
+        jdbc.sql("""
+                        INSERT INTO course.course_stats AS s (course_id, challenge_count, created_at, updated_at)
+                        VALUES (:courseId, :count, now(), now())
+                        ON CONFLICT (course_id) DO UPDATE
+                            SET challenge_count = s.challenge_count + EXCLUDED.challenge_count, updated_at = now()""")
+                .param("courseId", courseId)
+                .param("count", count)
+                .update();
+        jdbc.sql("""
+                        INSERT INTO course.course_daily_stats AS d (id, course_id, stat_date, challenge_count, created_at, updated_at)
+                        VALUES (:id, :courseId, :day, :count, now(), now())
+                        ON CONFLICT (course_id, stat_date) DO UPDATE
+                            SET challenge_count = d.challenge_count + EXCLUDED.challenge_count, updated_at = now()""")
+                .param("id", UuidV7.create())
+                .param("courseId", courseId)
+                .param("day", day)
+                .param("count", count)
+                .update();
+    }
+
+    /**
+     * 현재 러너 수 복사본(상태 복사형, 개발 정책 5.4). [version]이 저장된 값보다 클 때만 바꾼다.
+     * 늦게 온 예전 값은 버려 순서가 바뀌어 와도 마지막 값이 남는다. 0보다 작은 값은 0으로 둔다.
+     */
+    void setActiveRunners(UUID courseId, int count, long version) {
+        jdbc.sql("""
+                        INSERT INTO course.course_active_runners AS r (course_id, active_count, source_version, created_at, updated_at)
+                        VALUES (:courseId, GREATEST(:count, 0), :version, now(), now())
+                        ON CONFLICT (course_id) DO UPDATE
+                            SET active_count = EXCLUDED.active_count, source_version = EXCLUDED.source_version, updated_at = now()
+                            WHERE r.source_version < EXCLUDED.source_version""")
+                .param("courseId", courseId)
+                .param("count", count)
+                .param("version", version)
+                .update();
+    }
+
+    /** 현재 러너 수. 행이 없으면 0명이다 */
+    int activeRunners(UUID courseId) {
+        return jdbc.sql("SELECT active_count FROM course.course_active_runners WHERE course_id = :courseId")
+                .param("courseId", courseId)
+                .query(Integer.class)
+                .optional()
+                .orElse(0);
+    }
+
     /** 완주 수와 코스 총 소요시간 합. 행이 없으면 비어 있다 */
     Optional<Completions> completions(UUID courseId) {
         return jdbc.sql("SELECT completion_count, completion_seconds FROM course.course_stats WHERE course_id = :courseId")
@@ -112,8 +160,9 @@ class CourseStatsRepository {
                 .optional();
     }
 
-    /** 누적 · 일별 통계 행을 지운다 */
+    /** 누적 · 일별 통계와 현재 러너 수 행을 지운다 */
     void delete(UUID courseId) {
+        jdbc.sql("DELETE FROM course.course_active_runners WHERE course_id = :courseId").param("courseId", courseId).update();
         jdbc.sql("DELETE FROM course.course_daily_stats WHERE course_id = :courseId").param("courseId", courseId).update();
         jdbc.sql("DELETE FROM course.course_stats WHERE course_id = :courseId").param("courseId", courseId).update();
     }

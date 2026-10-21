@@ -63,7 +63,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// 지금 걸린 필터 · 정렬(A3 · 목록 칩). 지도 · 목록이 같은 필터를 쓴다.
   var _filter = CourseFilter.none;
-  var _sort = CourseListSort.latest;
+  var _sort = CourseListSort.initial;
+
+  /// 인기순 기간(A3 기간 슬라이더, FIL-09). 인기순일 때만 있고 목록 순서만 바꾼다. 다른 정렬로 바꾸면 전체로 되돌린다.
+  CoursePeriod? _period;
 
   /// 현재 위치. 가까운순의 기준점이고 카드의 `0.8km 거리`에 쓴다. 위치 권한이 이미 있으면 홈을 열 때 받는다.
   GeoPoint? _myLocation;
@@ -152,7 +155,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void _startOver() {
     setState(() {
       _filter = CourseFilter.none;
-      _sort = CourseListSort.latest;
+      _sort = CourseListSort.initial;
+      _period = null;
       _selected = null;
       _sheetSize = _halfSize;
       _settledStage = SheetStage.half;
@@ -275,10 +279,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   static double _latitude(double y) => (2 * math.atan(math.exp(y)) - math.pi / 2) * 180 / math.pi;
 
   /// 목록 정렬을 바꾼다. 가까운순은 현재 위치를 새로 받은 뒤에 바꾸고, 못 받으면 정렬을 그대로 둔다.
+  /// 기간은 인기순에만 있어 정렬을 바꾸면 전체로 되돌린다(FIL-09).
   Future<void> _sortBy(CourseListSort sort) async {
     if (sort == _sort) return;
     if (sort == CourseListSort.nearest && await _locate() == null) return;
-    if (mounted) setState(() => _sort = sort);
+    if (!mounted) return;
+    setState(() {
+      _sort = sort;
+      _period = null;
+    });
   }
 
   /// A3를 연다(A2-04 · A6-02). `코스 N개 보기`로 돌아오면 지도 · 목록에 적용한다.
@@ -287,11 +296,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (area == null) return;
     final choice = await context.push<CourseFilterChoice>(
       Routes.courseFilter,
-      extra: (filter: _filter, sort: _sort, area: area),
+      extra: (filter: _filter, sort: _sort, period: _period, area: area),
     );
     if (choice == null || !mounted) return;
     _applyFilter(choice.filter);
     await _sortBy(choice.sort);
+    // 가까운순을 고르다 위치를 못 받아 정렬이 그대로면 기간도 그대로 둔다.
+    if (mounted && _sort == choice.sort && _period != choice.period) setState(() => _period = choice.period);
   }
 
   /// [filter]를 지도 · 지역별 코스 수 · 목록에 적용한다.
@@ -531,6 +542,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     totalCount: _totalCount,
                     filter: _filter,
                     sort: _sort,
+                    period: _period,
                     myLocation: _myLocation,
                     selected: selected,
                     stage: stage,
