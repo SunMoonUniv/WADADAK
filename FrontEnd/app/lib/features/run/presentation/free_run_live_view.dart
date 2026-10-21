@@ -22,10 +22,14 @@ class FreeRunLiveView extends StatefulWidget {
     required this.onResume,
     required this.onStop,
     this.course,
+    this.courseNotice,
   });
   final RunSnapshot run;
   final VoidCallback? onPause, onResume, onStop;
   final CourseLive? course;
+
+  /// 코스 구간이 끝나 자유 러닝으로 바뀐 뒤 안내(경로 끝 도착·코스만 종료)
+  final String? courseNotice;
 
   @override
   State<FreeRunLiveView> createState() => _FreeRunLiveViewState();
@@ -119,6 +123,17 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                 style: WdText.ko12.copyWith(color: WdColors.runTextSub),
               ),
             ),
+            if (widget.courseNotice != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: WdSpace.s24,
+                  vertical: WdSpace.s4,
+                ),
+                child: Text(
+                  widget.courseNotice!,
+                  style: WdText.ko12Medium.copyWith(color: WdColors.lime),
+                ),
+              ),
             if (run.voiceNotice != null)
               Padding(
                 padding: const EdgeInsets.symmetric(

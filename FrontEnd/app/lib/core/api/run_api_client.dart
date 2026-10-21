@@ -40,6 +40,11 @@ class RunApiClient {
     ),
   );
 
+  /// ③ 코스 구간 종료 신호(현재 러너 수에서 뺀다). 판정 경계는 기록의 `SEGMENT_END`이고 이 신호는 쓰지 않는다
+  Future<void> segmentEnd(String owner, String id) => callApi(
+    () => dio.post<Object?>('/api/v1/runs/sessions/$id/course/segment-end', options: options(owner)),
+  );
+
   Future<Map<String, dynamic>> upload(
     RunUpload run,
     List<Map<String, dynamic>> inputs,

@@ -80,6 +80,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       canSync: () => !preparing && !recorder.active && !_disposed,
     );
     _changes = recorder.changes.stream.listen((_) {
+      _checkCourseEnd();
       _notify();
       unawaited(_refreshExtras());
     });
@@ -128,6 +129,16 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// 그 코스 러닝의 경로 추적(진행도·남은 거리 안내용, 완주 판정 아님). 앱을 다시 켜면 러닝이 끝나므로 기기에 저장하지 않는다
   CourseTracker? courseTracker;
+
+  /// 코스 구간을 끝낸 사유(`ROUTE_END` 경로 끝 도착·`COURSE_ONLY` 코스만 종료). 이후 같은 세션은 자유 러닝이다(RUN-07·RUN-08)
+  String? courseEndReason;
+
+  /// 경로 끝 도착 감지 오차(m). 서버 끝 도달 오차(30m)가 이보다 넉넉해야 한다(정책 5.3). 주행 검증 전 개발값
+  static const courseArrivalM = 20.0;
+
+  /// 진행 중인 러닝이 아직 코스 구간이다
+  bool get onCourse =>
+      courseRunId != null && run?.id == courseRunId && recorder.active && courseEndReason == null;
   List<LocalRun> records = [];
   List<Map<String, dynamic>> remoteRecords = [];
   String? currentOwner, error, gpsNotice, nextCursor, historyNotice;
@@ -340,6 +351,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       course = start?.course;
       courseRunId = start == null ? null : runId;
       courseTracker = start == null ? null : CourseTracker(RouteGeometry(start.snapshot.route));
+      courseEndReason = null;
       courseStart = null;
       selectedCourse = null;
       currentOwner = member;
@@ -388,6 +400,53 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       if (courseStart != null && !_disposed) _watchStart();
     }));
     _notify();
+  }
+
+  /// 경로 끝 도착(RUN-08): 코스를 따라간 위치가 끝 [courseArrivalM] 안이면 코스 구간을 끝낸다.
+  /// 좌표가 아니라 코스상 위치로 보므로 순환·왕복 코스의 출발점을 끝으로 보지 않는다. 완주는 서버가 판정한다
+  void _checkCourseEnd() {
+    final tracker = courseTracker, current = run;
+    if (!onCourse || tracker == null || current == null || current.phase != RunPhase.running) return;
+    tracker.feed(current.inputs);
+    final position = tracker.positionM;
+    if (position != null && position >= tracker.route.length - courseArrivalM) {
+      unawaited(endCourse('ROUTE_END'));
+    }
+  }
+
+  /// 코스 구간을 끝내고 같은 세션을 자유 러닝으로 잇는다(경로 끝 도착·코스만 종료, RUN-07·RUN-08).
+  /// 기록에 `SEGMENT_END`를 남기고 구간 종료 신호(현재 러너 수)를 보낸다. 신호가 실패해도 서버가 업로드 때 뺀다
+  Future<void> endCourse(String reason) async {
+    final id = courseRunId, member = currentOwner, tracker = courseTracker;
+    if (!onCourse || id == null || member == null) return;
+    courseEndReason = reason;
+    _notify();
+    try {
+      await recorder.segmentEnd(reason);
+    } on Object catch (e) {
+      await _operationError(e);
+      return;
+    }
+    unawaited(() async {
+      try {
+        await api.segmentEnd(member, id);
+      } on Object {
+        // 현재 러너 수는 업로드 도착·3시간 뒤에도 빠진다
+      }
+    }());
+    if (reason == 'ROUTE_END' && tracker != null) {
+      // 측정 시작(START)이 0ms라 구간 종료 시각이 곧 코스 총 소요시간
+      final ms = run?.inputs.where((i) => i.kind == RunKind.segmentEnd).lastOrNull?.elapsedMs ?? 0;
+      unawaited(audioGuide.announce(courseArrivalVoice(ms, tracker.route.length)));
+    }
+  }
+
+  /// AUD-06: 기기에서 잰 코스 총 소요시간(정지 포함)과 그 시간 ÷ 코스 거리 페이스. 결과 화면은 서버 판정 값을 쓴다
+  static String courseArrivalVoice(int elapsedMs, double lengthM) {
+    final seconds = elapsedMs ~/ 1000;
+    final pace = lengthM <= 0 ? 0 : (seconds / (lengthM / 1000)).round();
+    return '코스 끝에 도착했어요. 걸린 시간 ${seconds ~/ 60}분 ${seconds % 60}초, '
+        '평균 페이스 ${pace ~/ 60}분 ${pace % 60}초입니다. 자유 러닝으로 이어서 기록해요.';
   }
 
   /// 측정 전 화면에서 나간다. 고른 코스는 남겨 준비 화면(C6)으로 돌아간다.

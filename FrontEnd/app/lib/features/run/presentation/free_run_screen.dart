@@ -70,6 +70,7 @@ class FreeRunScreen extends ConsumerWidget {
                   _ => FreeRunLiveView(
                     run: run,
                     course: controller.courseLive,
+                    courseNotice: controller.courseNotice,
                     onPause: controller.storageFault ? null : controller.pause,
                     onResume: controller.storageFault
                         ? null
@@ -89,8 +90,10 @@ class FreeRunScreen extends ConsumerWidget {
     FreeRunController controller,
   ) async {
     controller.setEndConfirmation(true);
+    // 코스 구간 중이면 [코스만 종료] [러닝 종료] [취소](RUN-07). Figma 시안이 없어 종료 확인 창에 더했다
+    final onCourse = controller.onCourse;
     try {
-      final confirmed = await showDialog<bool>(
+      final choice = await showDialog<_EndChoice>(
         context: context,
         builder: (context) => Dialog(
           backgroundColor: WdColors.paper,
@@ -106,10 +109,20 @@ class FreeRunScreen extends ConsumerWidget {
                 Text('러닝을 종료할까요?', style: WdText.ko20Bold),
                 const SizedBox(height: WdSpace.s12),
                 Text(
-                  '이번 러닝의 결과를 확인할 수 있어요.',
+                  onCourse
+                      ? '코스만 종료하면 코스 도전을 마치고 같은 기록을 자유 러닝으로 이어서 측정해요.'
+                      : '이번 러닝의 결과를 확인할 수 있어요.',
                   style: WdText.ko13.copyWith(color: WdColors.muted),
                 ),
                 const SizedBox(height: WdSpace.s24),
+                if (onCourse) ...[
+                  WdButton(
+                    '코스만 종료',
+                    variant: WdButtonVariant.secondary,
+                    onPressed: () => Navigator.pop(context, _EndChoice.course),
+                  ),
+                  const SizedBox(height: WdSpace.s8),
+                ],
                 Row(
                   spacing: WdSpace.s8,
                   children: [
@@ -117,13 +130,13 @@ class FreeRunScreen extends ConsumerWidget {
                       child: WdButton(
                         '취소',
                         variant: WdButtonVariant.secondary,
-                        onPressed: () => Navigator.pop(context, false),
+                        onPressed: () => Navigator.pop(context),
                       ),
                     ),
                     Expanded(
                       child: WdButton(
-                        '종료',
-                        onPressed: () => Navigator.pop(context, true),
+                        onCourse ? '러닝 종료' : '종료',
+                        onPressed: () => Navigator.pop(context, _EndChoice.run),
                       ),
                     ),
                   ],
@@ -133,12 +146,16 @@ class FreeRunScreen extends ConsumerWidget {
           ),
         ),
       );
-      if (confirmed == true && context.mounted) await controller.finish();
+      if (!context.mounted) return;
+      if (choice == _EndChoice.course) controller.endCourseOnly();
+      if (choice == _EndChoice.run) await controller.finish();
     } finally {
       controller.setEndConfirmation(false);
     }
   }
 }
+
+enum _EndChoice { course, run }
 
 void _notReady(BuildContext context, String feature) {
   ScaffoldMessenger.of(context)

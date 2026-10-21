@@ -69,6 +69,12 @@ class AudioGuide {
     await _speak(text);
   }
 
+  /// 코스 안내 음성(AUD-06 완주). 음성 안내를 껐으면 재생하지 않는다
+  Future<void> announce(String text) async {
+    if (_closed || !_ready || !settings.enabled) return;
+    await _speak(text);
+  }
+
   Future<void> _speak(String text) async {
     try {
       if (!await output.speak(text)) {

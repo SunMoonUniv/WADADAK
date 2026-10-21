@@ -6,6 +6,7 @@ import 'package:wadadak/core/api/api_client.dart';
 import 'package:wadadak/core/map/map_view.dart';
 import 'package:wadadak/features/run/application/run_controller.dart';
 import 'package:wadadak/features/run/domain/course_run.dart';
+import 'package:wadadak/features/run/domain/recording_models.dart';
 import 'package:wadadak/features/run/presentation/course_start_view.dart';
 import 'package:wadadak/features/run/presentation/free_run_screen.dart';
 
@@ -43,6 +44,10 @@ class CourseApi extends TestApi {
     if (startError != null) throw startError!;
     started.add((owner, id, startedAt));
   }
+
+  final segmentEnds = <String>[];
+  @override
+  Future<void> segmentEnd(String owner, String id) async => segmentEnds.add(id);
 }
 
 void main() {
@@ -173,6 +178,72 @@ void main() {
     controller.selectCourse(const CourseSelection('course-1', '테스트 코스'));
 
     expect(controller.selectedCourse, isNull);
+  });
+
+  Future<void> startCourse() async {
+    await openCourse();
+    await controller.prepareStart();
+  }
+
+  RunInput? segmentEnd() => controller.run!.inputs.where((i) => i.kind == RunKind.segmentEnd).firstOrNull;
+
+  test('reaching the end of the route ends the course segment and keeps recording as a free run (RUN-08)', () async {
+    await startCourse();
+    final runId = controller.run!.id;
+    location.clock += 2000;
+    location.streams.last.add(location.point(36.00995)); // 끝까지 약 6 m
+
+    await until(() => segmentEnd() != null);
+    expect(segmentEnd()!.reason, 'ROUTE_END');
+    expect(controller.courseEndReason, 'ROUTE_END');
+    expect(controller.onCourse, false);
+    expect(controller.recorder.active, true); // 세션은 자유 러닝으로 계속
+    await until(() => api.segmentEnds.isNotEmpty);
+    expect(api.segmentEnds.single, runId);
+
+    location.clock += 2000;
+    location.streams.last.add(location.point(36.0101));
+    await until(() => controller.run!.inputs.where((i) => i.kind == RunKind.gps).length >= 3);
+    expect(controller.run!.inputs.where((i) => i.kind == RunKind.segmentEnd), hasLength(1));
+  });
+
+  test('the start point is not the end even when standing still', () async {
+    await startCourse();
+    location.clock += 2000;
+    location.streams.last.add(location.point(36));
+    await until(() => controller.run!.inputs.where((i) => i.kind == RunKind.gps).length >= 2);
+
+    expect(segmentEnd(), isNull);
+    expect(controller.onCourse, true);
+  });
+
+  test('ending only the course keeps the run paused and records COURSE_ONLY (RUN-07)', () async {
+    await startCourse();
+    await controller.pause();
+    await controller.endCourse('COURSE_ONLY');
+
+    expect(segmentEnd()!.reason, 'COURSE_ONLY');
+    expect(controller.run!.phase, RunPhase.paused);
+    expect(controller.onCourse, false);
+    await until(() => api.segmentEnds.isNotEmpty);
+
+    await controller.endCourse('COURSE_ONLY'); // 두 번 눌러도 한 번만
+    expect(controller.run!.inputs.where((i) => i.kind == RunKind.segmentEnd), hasLength(1));
+  });
+
+  test('a free run has no course segment to end', () async {
+    await controller.prepareStart();
+    await controller.endCourse('COURSE_ONLY');
+
+    expect(segmentEnd(), isNull);
+    expect(api.segmentEnds, isEmpty);
+  });
+
+  test('arrival voice tells the course time and pace measured on the device (AUD-06)', () {
+    expect(
+      RunController.courseArrivalVoice(1627000, 5000),
+      '코스 끝에 도착했어요. 걸린 시간 27분 7초, 평균 페이스 5분 25초입니다. 자유 러닝으로 이어서 기록해요.',
+    );
   });
 
   testWidgets('start point view turns the start button on only inside the radius', (tester) async {
