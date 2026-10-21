@@ -152,7 +152,7 @@ class CourseRunService {
             CourseRouteSnapshot course = new CourseRouteSnapshot(attempt.getCourseId(), attempt.getCourseName(),
                     route(attempt), attempt.getTotalDistanceMeters(), attempt.getCourseVersion());
             CourseJudge.Judgement judgement = judge.judge(course, inputs);
-            return new CourseOutcome(attempt.getCourseId(), attempt.getCourseVersion(), attempt.getTotalDistanceMeters(),
+            return new CourseOutcome(attempt.getCourseId(), attempt.getCourseName(), attempt.getCourseVersion(), attempt.getTotalDistanceMeters(),
                     judgement.completed(), judgement.reason().name(), judgement.recognizedM(), judgement.progressPercent(),
                     judgement.completedAt(), judgement.courseElapsedSeconds(), judgement.courseMovingSeconds(),
                     judgement.reviewEligible());
