@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
+import '../domain/course_run.dart';
 import '../domain/run_models.dart';
 import 'free_run_live_view.dart';
 import 'run_lap_list.dart';
@@ -13,11 +14,15 @@ class FreeRunResultView extends StatelessWidget {
     required this.onConfirm,
     this.onDelete,
     this.history = false,
+    this.pendingCourse,
   });
   final RunSnapshot run;
   final VoidCallback onConfirm;
   final VoidCallback? onDelete;
   final bool history;
+
+  /// 방금 끝낸 코스 러닝의 코스 이름. 서버 판정([RunSnapshot.course])이 오기 전 "판정 대기"로 보인다(D-14)
+  final String? pendingCourse;
 
   @override
   Widget build(BuildContext context) {
@@ -86,13 +91,24 @@ class FreeRunResultView extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     spacing: WdSpace.s3,
                     children: [
-                      Text('자유 러닝', style: WdText.ko16Bold),
+                      Text(
+                        run.course != null || pendingCourse != null ? pendingCourse ?? '코스 러닝' : '자유 러닝',
+                        style: WdText.ko16Bold,
+                      ),
                       Text(
                         startedLabel,
                         style: WdText.ko12.copyWith(color: WdColors.muted),
                       ),
                     ],
                   ),
+                  if (run.course != null)
+                    _CourseVerdict(course: run.course!)
+                  else if (pendingCourse != null)
+                    const WdInfoBanner(
+                      '코스 완주 여부는 기록을 올린 뒤 서버가 판정해요. 판정 대기 중이에요.',
+                      tone: WdBannerTone.warning,
+                      plain: true,
+                    ),
                   WdSurface(
                     radius: WdRadius.r12,
                     padding: const EdgeInsets.symmetric(
@@ -362,5 +378,34 @@ class _RunStatSummary extends StatelessWidget {
           ),
         ),
     ],
+  );
+}
+
+/// 서버 코스 판정(정책 5.1·5.3). 앱은 완주를 판정하지 않고 서버 결과만 보인다.
+class _CourseVerdict extends StatelessWidget {
+  const _CourseVerdict({required this.course});
+  final RunCourseResult course;
+
+  @override
+  Widget build(BuildContext context) => WdSurface(
+    radius: WdRadius.r12,
+    padding: const EdgeInsets.symmetric(horizontal: WdSpace.s14, vertical: WdSpace.s12),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      spacing: WdSpace.s4,
+      children: [
+        Text(course.completed ? '코스 완주' : '코스 미완주', style: WdText.ko16Bold),
+        Text(
+          '진행도 ${course.progressPercent.floor()}% · 코스 ${(course.recognizedDistanceMeters / 1000).toStringAsFixed(2)} km 인정'
+          '${course.completed ? ' · ${formatRunTime(Duration(seconds: course.courseElapsedSeconds))}' : ''}',
+          style: WdText.ko12.copyWith(color: WdColors.muted),
+        ),
+        if (course.shortfall != null) Text(course.shortfall!, style: WdText.ko12.copyWith(color: WdColors.muted)),
+        Text(
+          course.reviewEligible ? '이 코스에 리뷰를 남길 수 있어요.' : '코스를 20% 이상(최소 1km) 달리면 리뷰를 남길 수 있어요.',
+          style: WdText.ko12.copyWith(color: WdColors.muted),
+        ),
+      ],
+    ),
   );
 }

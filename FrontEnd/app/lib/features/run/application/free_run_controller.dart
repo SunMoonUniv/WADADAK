@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../domain/course_run.dart';
 import '../domain/free_run_session.dart';
 import '../domain/run_models.dart';
 import '../domain/run_result_stats.dart';
@@ -47,6 +48,14 @@ class FreeRunController extends ChangeNotifier {
   bool get canCancelStart => _recording?.canCancelStart ?? preparing;
   bool get storageFault => _recording?.storageFault ?? false;
   String? get error => _recording?.error;
+
+  /// 코스 상세에서 고른 코스(F6). 있으면 시작이 코스 러닝이 된다
+  CourseSelection? get selectedCourse => _recording?.selectedCourse;
+  void clearCourse() => _recording?.clearCourse();
+
+  /// [run]이 방금 시작한 코스 러닝이면 그 코스. 서버 판정 전 결과 화면에 "판정 대기"로 보인다
+  CourseSelection? courseOf(RunSnapshot run) =>
+      run.sessionId != null && run.sessionId == _recording?.courseRunId ? _recording?.course : null;
   bool get hasSettingsAction => _recording?.setupAction != null;
   void openSettings() {
     if (_recording != null) unawaited(_recording!.openSettings());

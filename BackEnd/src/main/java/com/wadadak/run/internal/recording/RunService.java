@@ -34,14 +34,15 @@ class RunService {
     private final JsonMapper json;
     private final ApplicationEventPublisher events;
     private final Clock clock;
+    private final CourseRunService courseRuns;
     static final String POLICY_VERSION = "2026-10-14";
     RunService(RunSessionRepository sessions, RunRecordRepository records,
                DeletedRunRecordRepository deletedRecords, WithdrawnRunMemberRepository withdrawnMembers,
                RunInputRepository inputs, RunLocks locks, JsonMapper json,
-               ApplicationEventPublisher events, Clock clock) {
+               ApplicationEventPublisher events, Clock clock, CourseRunService courseRuns) {
         this.sessions=sessions; this.records=records; this.deletedRecords=deletedRecords;
         this.withdrawnMembers=withdrawnMembers; this.inputs=inputs; this.locks=locks;
-        this.json=json; this.events=events; this.clock=clock;
+        this.json=json; this.events=events; this.clock=clock; this.courseRuns=courseRuns;
     }
     private void ensureActiveMember(UUID member) {
         if (withdrawnMembers.existsById(member)) throw new AppException(RunErrorCode.NOT_FOUND);
@@ -55,6 +56,7 @@ class RunService {
             locks.session(id);
             deleteStored(member,id);
         }
+        courseRuns.forgetMember(member); // 업로드 전(세션 없음) 코스 시도
     }
     private RunSession session(UUID owner, UUID id, boolean lock) {
         return (lock ? sessions.findOwnedForUpdate(id,owner) : sessions.findByIdAndMemberId(id,owner))
@@ -74,11 +76,16 @@ class RunService {
         deleted.ifPresent(record -> requireOwner(owner,record.getMemberId()));
         records.findById(id).ifPresent(record -> {
             Result r=json.readValue(record.getResultJson(),Result.class);
-            events.publishEvent(new RunRecordDeletedEvent(UuidV7.create(),clock.instant(),id,owner,null,false,
-                r.metrics().distanceM(),0,r.startedAt(),r.endedAt(),r.registeredAt()));
+            CourseOutcome c=r.course();
+            // 코스 기록이면 도전 수를 더한 시작 이벤트 시각(같은 날짜에서 빼게)과 완주·코스 시간을 담는다
+            events.publishEvent(new RunRecordDeletedEvent(UuidV7.create(),clock.instant(),id,owner,
+                c==null?null:c.courseId(),c!=null&&c.completed(),r.metrics().distanceM(),
+                c==null?0:Math.toIntExact(c.courseElapsedSeconds()),
+                c==null?r.startedAt():courseRuns.startedEventAt(id).orElse(r.startedAt()),r.endedAt(),r.registeredAt()));
             records.delete(record);
         });
         if (deleted.isEmpty()) deletedRecords.save(new DeletedRunRecord(id,owner,clock.instant()));
+        courseRuns.forget(id);
         // Flush JPA child deletions before JDBC removes inputs and JPA removes their parent.
         records.flush();
         inputs.delete(id);
@@ -92,7 +99,8 @@ class RunService {
     @Transactional
     public Status prepare(UUID owner, UUID id, Prepare request) {
         locks.member(owner); ensureActiveMember(owner); locks.session(id); ensureNotDeleted(id);
-        if(request.startedAt()==null || !"FREE".equals(request.mode()) || request.startedAt().isAfter(clock.instant().plusSeconds(300))) invalid();
+        if(request.startedAt()==null || request.startedAt().isAfter(clock.instant().plusSeconds(300))) invalid();
+        courseRuns.checkPrepare(owner,id,request.mode(),request.startedAt()); // COURSE는 시작 신호를 보낸 세션만
         // The advisory ID lock protects first creation and retries, including different owners.
         RunSession s=sessions.findById(id).orElseGet(()->sessions.save(new RunSession(id,owner,request.startedAt())));
         requireOwner(owner,s.getMemberId());
@@ -122,6 +130,8 @@ class RunService {
         sessions.flush();
         inputs.insertBatch(id,pending.values());
         if(s.acceptsInputs()) s.accept(request.finalSeq(),inputs.count(id));
+        // 기록이 다 도착하면 현재 러너 수에서 뺀다(구간 종료 신호가 없었던 경우, 공통 7)
+        if("PROCESSING".equals(s.getProcessing())) courseRuns.releaseOnUpload(id);
         return statusOf(s);
     }
     private static void validate(Input p,long finalSeq) {
@@ -169,7 +179,9 @@ class RunService {
             session.fail("ZERO_DISTANCE"); return;
         }
         Instant registered=clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
-        Result result=new Result(id,session.getStartedAt(),calculation.endedAt(),registered,calculation.endReason(),calculation.metrics(),calculation.segments(),calculation.laps(),POLICY_VERSION,raw.getFirst().reason(),calculation.stats());
+        // 코스 러닝이면 시작 때 저장한 코스 스냅샷으로 서버가 완주·인정 거리·리뷰 자격을 판정한다(정책 5.3)
+        CourseOutcome course=courseRuns.judge(id,raw);
+        Result result=new Result(id,session.getStartedAt(),calculation.endedAt(),registered,calculation.endReason(),calculation.metrics(),calculation.segments(),calculation.laps(),POLICY_VERSION,raw.getFirst().reason(),calculation.stats(),course);
         RunRecord record=records.save(new RunRecord(id,registered,json.writeValueAsString(result),json.writeValueAsString(RecordSummary.from(result))));
         publishRegistration(member.get(),record,result);
         session.complete();
@@ -185,7 +197,7 @@ class RunService {
         // Enrich old results on detail reads; keep stored distance/time/ranking intact.
         ResultStats stats = FreeRunCalculator.calculate(stored.startedAt(), raw).stats();
         return new Result(stored.id(),stored.startedAt(),stored.endedAt(),stored.registeredAt(),stored.endReason(),
-            stored.metrics(),stored.routeSegments(),stored.laps(),stored.policyVersion(),stored.calculationVersion(),stats);
+            stored.metrics(),stored.routeSegments(),stored.laps(),stored.policyVersion(),stored.calculationVersion(),stats,stored.course());
     }
     @Transactional(readOnly=true)
     public CursorSlice<RecordSummary> history(UUID owner, Cursorable page) {
@@ -218,8 +230,12 @@ class RunService {
             publishRegistration(member.get(),record,json.readValue(record.getResultJson(),Result.class)));
     }
     private void publishRegistration(UUID member,RunRecord record,Result result) {
-        events.publishEvent(new RunSessionEndedEvent(UuidV7.create(),result.registeredAt(),result.id(),member,null,false,
-            result.metrics().distanceM(),0,0,0,0,false,null,result.startedAt(),result.endedAt(),result.registeredAt(),result.policyVersion()));
+        CourseOutcome c=result.course(); // 자유 러닝이면 null → 코스 칸은 비운다
+        events.publishEvent(new RunSessionEndedEvent(UuidV7.create(),result.registeredAt(),result.id(),member,
+            c==null?null:c.courseId(),c!=null&&c.completed(),result.metrics().distanceM(),
+            c==null?0:Math.toIntExact(c.courseElapsedSeconds()),c==null?0:c.courseDistanceMeters(),
+            c==null?0:c.recognizedDistanceMeters(),c==null?0:c.progressPercent(),c!=null&&c.reviewEligible(),
+            c==null?null:c.completedAt(),result.startedAt(),result.endedAt(),result.registeredAt(),result.policyVersion()));
         record.markRegistrationPublished();
     }
     private static void invalid() { throw new AppException(RunErrorCode.INVALID); }

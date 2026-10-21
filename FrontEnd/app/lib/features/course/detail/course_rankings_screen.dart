@@ -5,6 +5,8 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../../../core/api/ranking_api_client.dart';
 import '../../ranking/ranking_widgets.dart';
+import '../../run/application/course_run_entry.dart';
+import '../../run/domain/course_run.dart';
 import '../course_format.dart';
 import 'course_ranking_state.dart';
 import 'course_ranking_tab.dart';
@@ -92,7 +94,7 @@ class _CourseRankingsScreenState extends ConsumerState<CourseRankingsScreen> {
       bottomNavigationBar: CourseRunBar(
         ranking: feed.whenData((feed) => feed.summary),
         period: _period,
-        onRun: _notReady,
+        onRun: () => runCourse(context, ref, CourseSelection(widget.courseId, widget.courseName)),
         onGhost: (_) => _notReady(),
       ),
     );

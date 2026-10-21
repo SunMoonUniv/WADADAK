@@ -10,6 +10,8 @@ import '../../../core/api/review_api_client.dart';
 import '../../../core/map/map_view.dart';
 import '../../../routes.dart';
 import '../../review/review_state.dart';
+import '../../run/application/course_run_entry.dart';
+import '../../run/domain/course_run.dart';
 import '../../run/domain/run_models.dart';
 import '../course_format.dart';
 import 'course_empty_card.dart';
@@ -278,7 +280,7 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
       bottomNavigationBar: CourseRunBar(
         ranking: _tab == 2 ? ranking : allRanking,
         period: _tab == 2 ? _rankingPeriod : RankingPeriod.all,
-        onRun: () => _notReady(CourseRunBar.notReadyMessage),
+        onRun: () => runCourse(context, ref, CourseSelection(course.courseId, course.name)),
         onGhost: (_) => _notReady(CourseRunBar.notReadyMessage),
       ),
     );

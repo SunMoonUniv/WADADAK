@@ -136,10 +136,10 @@ void main() {
     await openRanking(tester);
 
     expect(find.text('러너 25명'), findsOneWidget);
-    expect(find.text('1,284 km'), findsOneWidget);
+    expect(find.text('1,284.0 km'), findsOneWidget);
     expect(find.text('이번 주 +48.2 km · 상위 96%'), findsOneWidget);
     expect(find.text('나 (wonehgus)'), findsOneWidget, reason: 'Figma E1');
-    expect(find.text('128 km'), findsOneWidget);
+    expect(find.text('128.0 km'), findsOneWidget);
     expect(find.text('러너4'), findsOneWidget);
     expect(find.text('주 평균 38 km'), findsWidgets);
     expect(find.text('러너24'), findsNothing);

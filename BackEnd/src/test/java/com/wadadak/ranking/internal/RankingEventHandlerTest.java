@@ -20,6 +20,7 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
@@ -120,6 +121,69 @@ class RankingEventHandlerTest {
                 Long.class, member)).isZero();
     }
 
+    @Test
+    void courseCompletionEntersRankingOnceAndFreeOrIncompleteRunsDoNot() {
+        UUID course = UUID.randomUUID();
+        UUID member = UUID.randomUUID();
+        RunSessionEndedEvent completed = courseRun(member, course, true);
+
+        publish(completed);
+        publish(completed);   // 중복
+        publish(courseRun(member, course, false));   // 미완주
+        publish(ended(UUID.randomUUID(), member));   // 자유 러닝
+
+        assertThat(liveEntries(member)).isOne();
+        assertThat(jdbc.queryForObject("""
+                        SELECT count(*) FROM ranking.course_ranking_entries
+                        WHERE run_record_id = ? AND course_id = ? AND course_elapsed_seconds = 300 AND course_distance_meters = 1000
+                          AND completed_at = ? AND registered_at = ?""", Long.class, completed.runRecordId(), course,
+                Timestamp.from(completed.completedAt()), Timestamp.from(completed.registeredAt()))).isOne();
+    }
+
+    @Test
+    void deletedCourseRecordDoesNotComeBackWhicheverEventArrivesFirst() {
+        UUID course = UUID.randomUUID();
+        UUID member = UUID.randomUUID();
+        RunSessionEndedEvent completedFirst = courseRun(member, course, true);
+        RunSessionEndedEvent deletedFirst = courseRun(member, course, true);
+
+        publish(completedFirst);
+        publish(deletion(completedFirst));
+        publish(deletion(completedFirst));   // 중복
+        publish(completedFirst);             // 늦게 온 중복 완주
+        publish(deletion(deletedFirst));     // 삭제가 먼저 온다
+        publish(deletedFirst);
+
+        assertThat(liveEntries(member)).isZero();
+    }
+
+    @Test
+    void hiddenOrDeletedCourseTakesNoCompletion() {
+        UUID hidden = UUID.randomUUID();
+        UUID deleted = UUID.randomUUID();
+        UUID member = UUID.randomUUID();
+        publish(courseStatus(hidden, CourseStatus.HIDDEN, 1));
+        publish(courseStatus(deleted, CourseStatus.DELETED, 2));
+
+        publish(courseRun(member, hidden, true));
+        publish(courseRun(member, deleted, true));
+
+        assertThat(entryCount(hidden)).isZero();
+        assertThat(entryCount(deleted)).isZero();
+    }
+
+    @Test
+    void completionArrivingAfterWithdrawalIsIgnored() {
+        UUID member = UUID.randomUUID();
+        RunSessionEndedEvent completed = courseRun(member, UUID.randomUUID(), true);
+
+        publish(new MemberWithdrawnEvent(UUID.randomUUID(), Instant.now(), member, Instant.now()));
+        publish(completed);
+
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM ranking.course_ranking_entries WHERE member_id = ?",
+                Long.class, member)).isZero();
+    }
+
     private void publish(Object event) {
         transactionTemplate.executeWithoutResult(status -> publisher.publishEvent(event));
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
@@ -151,6 +215,23 @@ class RankingEventHandlerTest {
 
     private boolean visible(UUID memberId) {
         return jdbc.queryForObject("SELECT visible FROM ranking.member_visibility_copies WHERE member_id = ?", Boolean.class, memberId);
+    }
+
+    private long liveEntries(UUID memberId) {
+        return jdbc.queryForObject("SELECT count(*) FROM ranking.course_ranking_entries WHERE member_id = ? AND NOT deleted",
+                Long.class, memberId);
+    }
+
+    /** 코스 러닝 기록. 시각은 DB 정밀도(마이크로초)에 맞춰 고정한다. 미완주면 완주 시각이 없다. */
+    private static RunSessionEndedEvent courseRun(UUID memberId, UUID courseId, boolean completed) {
+        Instant at = Instant.parse("2026-10-14T03:00:00Z");
+        return new RunSessionEndedEvent(UUID.randomUUID(), at, UUID.randomUUID(), memberId, courseId, completed, 1500, 300, 1000,
+                1000, completed ? 100 : 60, true, completed ? at : null, at.minusSeconds(400), at, at.plusSeconds(60), "2026-10-14");
+    }
+
+    private static RunRecordDeletedEvent deletion(RunSessionEndedEvent e) {
+        return new RunRecordDeletedEvent(UUID.randomUUID(), Instant.now(), e.runRecordId(), e.memberId(), e.courseId(),
+                e.completed(), e.distanceMeters(), e.courseElapsedSeconds(), e.startedAt(), e.endedAt(), e.registeredAt());
     }
     private RunSessionEndedEvent ended(UUID record, UUID member) {
         Instant at=Instant.now();
