@@ -1,13 +1,35 @@
 name: Frontend CI
 
-# 경로 필터를 두지 않는다. 필수 체크로 걸어도 서버만 바꾼 PR이 Pending에 막히지 않게 한다.
+# 워크플로 경로 필터(on.paths)는 두지 않는다. 걸러진 PR은 필수 체크가 Pending에 막힌다.
+# 대신 changes 작업이 바뀐 파일을 보고, 앱이 그대로면 frontend를 건너뛴다. 건너뛴 작업은 필수 체크에서 통과로 친다.
 on:
   pull_request:
   push:
     branches: [main]
 
 jobs:
+  changes:
+    name: 변경 감지
+    runs-on: ubuntu-latest
+    outputs:
+      frontend: ${{ steps.diff.outputs.frontend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # PR은 base 브랜치와, main push는 직전 커밋과 비교한다.
+      # run/fixtures는 앱 테스트가 읽는다. git이 실패하면 바뀐 것으로 본다.
+      - id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          git diff --quiet "$BASE" HEAD -- FrontEnd run/fixtures .github/workflows/frontend.yml && changed=false || changed=true
+          echo "frontend=$changed" >> "$GITHUB_OUTPUT"
+
   frontend:
+    needs: changes
+    # 'false'일 때만 건너뛴다. changes 작업이 실패해도 돈다.
+    if: ${{ !cancelled() && needs.changes.outputs.frontend != 'false' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
