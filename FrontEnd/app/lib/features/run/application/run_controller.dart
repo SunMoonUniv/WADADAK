@@ -11,6 +11,7 @@ import '../../../core/auth/token_storage.dart';
 import '../../../core/api/run_api_client.dart';
 import '../data/run_local_store.dart';
 import '../../../core/location/location_service.dart';
+import '../../../core/map/geo_point.dart';
 import '../../../core/permissions/device_setup.dart';
 import '../../../core/time/monotonic_clock.dart';
 import '../domain/run_location_policy.dart';
@@ -116,6 +117,10 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   /// 코스 상세에서 고른 코스. 다음 시작을 코스 러닝으로 한다(F6)
   CourseSelection? selectedCourse;
 
+  /// 코스 러닝 준비를 마치고 측정 전(RCR-01). 지도에 출발점까지 안내하고 반경 안에서만 시작한다
+  CourseStart? courseStart;
+  StreamSubscription<Position>? _approach;
+
   /// 마지막으로 시작한 코스 러닝의 코스와 세션 ID. 결과 화면의 "서버 판정 대기"에 쓴다
   CourseSelection? course;
   String? courseRunId;
@@ -154,6 +159,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         final member = await owner();
         if (member == currentOwner) return;
         cancelStart();
+        cancelCourseStart();
         currentOwner = null;
         records = [];
         remoteRecords = [];
@@ -212,7 +218,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// 코스 러닝으로 시작할 코스를 고른다. 진행 중인 러닝이 있으면 바꾸지 않는다(RUN-05)
   void selectCourse(CourseSelection selection) {
-    if (recorder.active || preparing) return;
+    if (recorder.active || preparing || courseStart != null) return;
     selectedCourse = selection;
     error = null;
     _notify();
@@ -236,6 +242,8 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// 자유 러닝은 카운트다운 뒤 측정. 코스 러닝은 두 번 부른다(RCR-01):
+  /// 처음은 준비까지 하고 측정 전([courseStart])에 멈추고, 출발점 반경 안에서 다시 부르면 카운트다운 뒤 측정.
   Future<void> prepareStart() async {
     if (preparing || recorder.active || storageFault || _disposed) return;
     await bindOwner();
@@ -246,10 +254,12 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       _notify();
       return;
     }
+    final start = courseStart;
+    if (start != null && !start.nearStart) return;
     final generation = ++_generation;
     // 코스 러닝은 세션 ID를 먼저 만들어 서버 준비·시작 신호와 기록에 같은 ID를 쓴다
-    final selection = selectedCourse;
-    final runId = const Uuid().v7();
+    final selection = start == null ? selectedCourse : null;
+    final runId = start?.runId ?? const Uuid().v7();
     preparing = true;
     error = null;
     setupAction = null;
@@ -274,9 +284,15 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       }
       if (selection != null) {
         // 코스 공개 여부 확인과 판정용 경로 저장. 실패하면 시작하지 않는다(D-08)
-        await _courseCall(() => api.prepareCourse(member, runId, selection.courseId));
+        final snapshot = CourseSnapshot.fromJson(
+          await _courseCall(() => api.prepareCourse(member, runId, selection.courseId)),
+        );
         if (generation != _generation || _disposed) return;
+        courseStart = CourseStart(runId, selection, snapshot, GeoPoint(position.latitude, position.longitude));
+        _watchStart();
+        return;
       }
+      await _stopWatchingStart();
       _latest = position;
       _lastFixAt = _utcNow();
       _gapOpen = false;
@@ -306,7 +322,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         return;
       }
       final startedAt = _utcNow();
-      if (selection != null) {
+      if (start != null) {
         // 시작 신호(도전 수·현재 러너 수). 기록의 시작 시각과 같은 값을 보내야 업로드가 코스 기록으로 맞는다
         await _courseCall(() => api.startCourse(member, runId, startedAt));
         if (generation != _generation || _disposed || await owner() != member) {
@@ -317,8 +333,9 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       countdown = null;
       _notify();
       await recorder.start(runId, member, startedAt);
-      course = selection;
-      courseRunId = selection == null ? null : runId;
+      course = start?.course;
+      courseRunId = start == null ? null : runId;
+      courseStart = null;
       selectedCourse = null;
       currentOwner = member;
       if (_disposed || await owner() != member) {
@@ -351,6 +368,8 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       if (!recorder.active && locationToken != null) {
         await _stopLocation(expectedToken: locationToken);
       }
+      // 코스 러닝 시작이 실패하면 측정 전으로 돌아가 다시 출발점을 안내한다
+      if (!recorder.active && courseStart != null && !_disposed) _watchStart();
       _notify();
     }
   }
@@ -360,8 +379,48 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     ++_generation;
     countdown = null;
     preparing = false;
-    unawaited(_stopLocation());
+    unawaited(_stopLocation().then((_) {
+      if (courseStart != null && !_disposed) _watchStart();
+    }));
     _notify();
+  }
+
+  /// 측정 전 화면에서 나간다. 고른 코스는 남겨 준비 화면(C6)으로 돌아간다.
+  /// 서버에 남은 준비만 한 시도는 지우지 않는다(서버 연결 문서 7장)
+  void cancelCourseStart() {
+    if (preparing || courseStart == null) return;
+    courseStart = null;
+    unawaited(_stopWatchingStart());
+    _notify();
+  }
+
+  /// 측정 전 현재 위치. 측정하지 않으므로 기록 중 알림 없이 화면이 켜진 동안만 받는다
+  void _watchStart() {
+    if (_approach != null) return;
+    _approach = location
+        .positions(
+          settings: AndroidSettings(
+            forceLocationManager: true,
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 0,
+            intervalDuration: const Duration(seconds: 1),
+          ),
+        )
+        .listen(
+          (p) {
+            final start = courseStart;
+            if (start == null || _disposed) return;
+            start.position = GeoPoint(p.latitude, p.longitude);
+            _notify();
+          },
+          onError: (Object e) => unawaited(_operationError(e)),
+        );
+  }
+
+  Future<void> _stopWatchingStart() async {
+    final subscription = _approach;
+    _approach = null;
+    await subscription?.cancel();
   }
 
   int _startLocation() {
@@ -969,6 +1028,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     ++_generation;
     _timer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
+    await _stopWatchingStart();
     await _stopLocation();
     await _extrasJob;
     await _stopExtras();

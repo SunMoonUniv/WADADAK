@@ -259,11 +259,25 @@ class _LinesPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
 
     for (final (style, points) in lines) {
-      final path = Path()..addPolygon(points, false);
-      canvas
-        ..drawPath(path, stroke(style.outlineColor, style.width + style.outlineWidth * 2))
-        ..drawPath(path, stroke(style.color, style.width));
+      final path = _dashed(Path()..addPolygon(points, false), style.dash);
+      if (style.outlineWidth > 0) canvas.drawPath(path, stroke(style.outlineColor, style.width + style.outlineWidth * 2));
+      canvas.drawPath(path, stroke(style.color, style.width));
     }
+  }
+
+  /// [dash]의 선·빈칸 길이대로 잘라 낸 선. 비면 그대로.
+  static Path _dashed(Path path, List<int> dash) {
+    if (dash.isEmpty) return path;
+    final dashed = Path();
+    for (final metric in path.computeMetrics()) {
+      var at = 0.0;
+      for (var i = 0; at < metric.length; i++) {
+        final length = dash[i % dash.length].toDouble();
+        if (i.isEven) dashed.addPath(metric.extractPath(at, at + length), Offset.zero);
+        at += length;
+      }
+    }
+    return dashed;
   }
 
   @override

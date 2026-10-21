@@ -53,6 +53,10 @@ class FreeRunController extends ChangeNotifier {
   CourseSelection? get selectedCourse => _recording?.selectedCourse;
   void clearCourse() => _recording?.clearCourse();
 
+  /// 코스 러닝 측정 전(RCR-01). 있으면 출발점 안내 지도를 보인다
+  CourseStart? get courseStart => _recording?.courseStart;
+  void cancelCourseStart() => _recording?.cancelCourseStart();
+
   /// [run]이 방금 시작한 코스 러닝이면 그 코스. 서버 판정 전 결과 화면에 "판정 대기"로 보인다
   CourseSelection? courseOf(RunSnapshot run) =>
       run.sessionId != null && run.sessionId == _recording?.courseRunId ? _recording?.course : null;
