@@ -9,6 +9,7 @@ on:
 
 jobs:
   changes:
+    name: 변경 감지
     runs-on: ubuntu-latest
     outputs:
       frontend: ${{ steps.diff.outputs.frontend }}
