@@ -107,6 +107,47 @@ void main() {
     expect(course.activeRunners, 3);
   });
 
+  test('asks only for the current runners of the shown courses (home one-minute refresh)', () async {
+    final server = _FakeServer([
+      {'courseId': 'c1', 'activeRunners': 3},
+      {'courseId': 'c2', 'activeRunners': 0},
+    ]);
+
+    final runners = await client(server).activeRunners(['c1', 'c2', 'hidden']);
+
+    expect(server.request.method, 'GET');
+    expect(server.request.path, '/api/v1/courses/active-runners');
+    // 서버는 같은 이름을 여러 번 받는다(courseIds=c1&courseIds=c2 …).
+    expect(server.request.uri.query, 'courseIds=c1&courseIds=c2&courseIds=hidden');
+    // 비공개 · 없는 코스는 서버가 뺀다.
+    expect(runners, {'c1': 3, 'c2': 0});
+  });
+
+  test('copies a card with only the current runners changed', () {
+    final course = CourseListItem(
+      courseId: 'c1',
+      name: '성북천 벚꽃길 3K',
+      distanceMeters: 3412,
+      difficulty: Difficulty.easy,
+      tags: const [CourseTag.shade],
+      courseType: CourseType.gps,
+      expiresAt: DateTime.utc(2026, 11, 13, 14, 59, 59),
+      averageRating: 4.5,
+      reviewCount: 2,
+      route: const [start, end],
+    );
+
+    final latest = course.withActiveRunners(5);
+
+    expect(latest.activeRunners, 5);
+    expect(
+      (latest.courseId, latest.name, latest.distanceMeters, latest.difficulty, latest.tags, latest.courseType),
+      (course.courseId, course.name, course.distanceMeters, course.difficulty, course.tags, course.courseType),
+    );
+    expect((latest.expiresAt, latest.averageRating, latest.reviewCount, latest.route),
+        (course.expiresAt, course.averageRating, course.reviewCount, course.route));
+  });
+
   test('counts the courses in the map area by region', () async {
     final server = _FakeServer({
       'totalCount': 3,

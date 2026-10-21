@@ -503,7 +503,7 @@ erDiagram
 | `source_version` | `BIGINT` | | 마지막으로 반영한 `CourseActiveRunnersChangedEvent.version`(run `course_runner_counts.version`) |
 
 - 상태 복사형(개발 정책 5.4)이라 `processed_events`에 적지 않는다. `INSERT … ON CONFLICT DO UPDATE … WHERE source_version < EXCLUDED.source_version`으로 더 큰 version만 반영해, 늦게 온 예전 값은 버린다.
-- 행이 없는 코스는 0명이다. 실시간순(현재 러너 수 내림차순, 같으면 인기순)과 카드 · B1의 `지금 N명 달리는 중`에 쓴다.
+- 행이 없는 코스는 0명이다. 실시간순(현재 러너 수 내림차순, 같으면 인기순)과 카드 · B1의 `지금 N명 달리는 중`, 홈 카드의 1분 갱신(`GET /api/v1/courses/active-runners`, 공통 7 · HCR-05)에 쓴다.
 - 공개 중(`ACTIVE`)인 코스만 바뀐다(`course_stats`처럼 코스 행을 잠가 본다). 코스가 `DELETED`가 되면 같은 트랜잭션에서 행을 지운다.
 
 #### `course.processed_events` — 이벤트 처리 기록

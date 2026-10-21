@@ -72,9 +72,12 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
     final changedLines = lines.values
         .where((line) {
           final shown = _shownLines[line.id];
-          return shown == null || shown.style != line.style || !listEquals(shown.points, line.points);
+          return shown == null ||
+              shown.style != line.style ||
+              shown.priority != line.priority ||
+              !listEquals(shown.points, line.points);
         })
-        .map((line) => MapLine(id: line.id, points: List.of(line.points), style: line.style))
+        .map((line) => MapLine(id: line.id, points: List.of(line.points), style: line.style, priority: line.priority))
         .toList();
     // 같은 id로 다시 올리면 SDK가 이전 것을 바꿔 끼운다.
     if (changedLines.isNotEmpty) await controller.addOverlayAll({for (final line in changedLines) _path(line)});
@@ -92,6 +95,8 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
           shown.position == marker.position &&
           shown.look == marker.look &&
           shown.anchor == marker.anchor &&
+          shown.priority == marker.priority &&
+          shown.hideWhenCollided == marker.hideWhenCollided &&
           (shown.onTap == null) == (marker.onTap == null)) {
         continue;
       }
@@ -102,7 +107,9 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
         position: _latLng(marker.position),
         icon: image,
         anchor: NPoint(marker.anchor.dx, marker.anchor.dy),
-      );
+        // 겹치면 z 순서가 높은 마커가 남는다.
+        isHideCollidedMarkers: marker.hideWhenCollided,
+      )..setZIndex(marker.priority);
       // 누른 때의 최신 onTap을 부른다. onTap이 없으면 누름이 지도로 간다(B3 점 찍기).
       if (marker.onTap != null) overlay.setOnTapListener((_) => _shownMarkers[marker.id]?.onTap?.call());
       added.add(overlay);
@@ -114,6 +121,9 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
   static NOverlayType _type(MapLine line) =>
       line.style.dash.isEmpty ? NOverlayType.pathOverlay : NOverlayType.polylineOverlay;
 
+  /// 모양 순서대로 겹치고, 같은 모양이면 priority가 큰 선이 위에 온다.
+  static int _layer(MapLine line) => line.style.index * MapLine.maxPriority + line.priority;
+
   // 점선은 경로 오버레이가 못 그려 선 오버레이로 그린다. 경로 오버레이와 같은 층에 둬 모양 순서대로 겹친다.
   NAddableOverlay _path(MapLine line) => line.style.dash.isEmpty
       ? (NPathOverlay(
@@ -124,7 +134,7 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
           color: line.style.color,
           outlineWidth: line.style.outlineWidth,
           outlineColor: line.style.outlineColor,
-        )..setZIndex(line.style.index))
+        )..setZIndex(_layer(line)))
       : (NPolylineOverlay(
           id: line.id,
           coords: line.points.map(_latLng).toList(),
@@ -133,7 +143,7 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
           pattern: line.style.dash,
         )
           ..setGlobalZIndex(-100000)
-          ..setZIndex(line.style.index));
+          ..setZIndex(_layer(line)));
 
   Future<NOverlayImage> _image(MapMarker marker) => _images[marker.look] ??= switch (marker) {
         MapMarker(:final icon?) => _iconImage(icon),

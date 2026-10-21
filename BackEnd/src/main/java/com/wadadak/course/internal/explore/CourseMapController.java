@@ -23,7 +23,8 @@ class CourseMapController {
                     + "지도에서 코스를 고르면(A5) 바로 카드로 보이고, 이름표의 평점도 여기서 읽는다(averageRating). "
                     + "필터(FIL-02~05)를 주면 조건에 맞는 코스만 센다. minRating은 전체 기간 평점(소수 첫째 자리 반올림)이 "
                     + "그 값 이상인 코스만 남기고, 리뷰가 없는 코스는 뺀다. "
-                    + "코스는 최대 100개, 최근 등록순. 좌표 범위를 벗어났거나 남서쪽 끝이 북동쪽 끝보다 크거나 거리 하한이 상한보다 크면 COMMON-001.")
+                    + "코스는 최대 100개, 인기순(전체 기간: 도전 수 → 조회 수 → 리뷰 수가 많은 순, 그다음 최근 등록순 · ID순). "
+                    + "앱은 이름표가 겹치면 앞 코스를 보인다(MAP-03). 좌표 범위를 벗어났거나 남서쪽 끝이 북동쪽 끝보다 크거나 거리 하한이 상한보다 크면 COMMON-001.")
     @GetMapping
     ApiResult<CourseMap> find(@ParameterObject @Valid CourseMapRequest request) {
         return ApiResult.success(courseMapRepository.find(request.requireValid()));

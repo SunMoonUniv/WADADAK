@@ -11,6 +11,7 @@ import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/map/dev_map_view.dart';
 import 'package:wadadak/core/map/map_view.dart';
 import 'package:wadadak/core/permissions/device_setup.dart';
+import 'package:wadadak/features/home/course_list_sheet.dart';
 import 'package:wadadak/features/home/my_location.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
 import 'package:wadadak/main.dart';
@@ -104,6 +105,45 @@ void main() {
 
     expect(find.widgetWithText(WdMapCourseLabel, '한강 야경 5K · ★4.6'), findsOneWidget);
     expect(find.widgetWithText(WdMapCourseLabel, '정릉 오르막 4K'), findsOneWidget, reason: '리뷰가 없으면 이름만');
+  });
+
+  testWidgets('puts the more popular course on top and hides the labels it covers (MAP-03)', (tester) async {
+    // 서버가 인기순으로 준다. 정릉이 더 인기 있다.
+    courses
+      ..onMap = [jeongneung, seongbukcheon]
+      ..regions = [seongbuk, mapo];
+    await openHome(tester);
+
+    expect([for (final line in map(tester).lines) (line.id, line.priority)], [('course-c2', 2), ('course-c1', 1)],
+        reason: '인기 있는 코스 경로가 위에 그려진다');
+    expect(
+      [for (final label in map(tester).markers) (label.id, label.priority, label.hideWhenCollided)],
+      [('course-c2', 2, true), ('course-c1', 1, true)],
+      reason: '이름표가 겹치면 인기 있는 코스 이름표만 보인다',
+    );
+
+    // 지역별 배지는 겹쳐도 숨기지 않는다.
+    await zoomTo(tester, 12);
+    expect(map(tester).markers, isNotEmpty);
+    expect(map(tester).markers.any((badge) => badge.hideWhenCollided), isFalse);
+  });
+
+  testWidgets('waits with the current runners while another bottom tab is shown (공통 7)', (tester) async {
+    courses
+      ..onMap = [seongbukcheon]
+      ..listed = [seongbukcheon];
+    await openHome(tester);
+
+    await tester.tap(find.descendant(of: find.byType(WdBottomNav), matching: find.text('MY')));
+    await tester.pumpAndSettle();
+    await tester.pump(CourseListSheet.runnersRefreshInterval);
+    await tester.pump();
+    expect(courses.runnerRequests, isEmpty);
+
+    // 목록은 탭을 떠날 때 처음부터 다시 받아 두었다(FIL-08). 돌아오면 그사이 지난 1분 몫을 바로 묻는다.
+    await tester.tap(find.descendant(of: find.byType(WdBottomNav), matching: find.text('홈')));
+    await tester.pumpAndSettle();
+    expect(courses.runnerRequests.single, ['c1']);
   });
 
   testWidgets('loads again for the new area when the map stops moving', (tester) async {

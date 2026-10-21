@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -31,6 +32,10 @@ enum SheetStage {
 ///
 /// 칩 줄은 `인기순` · `평점순` · `가까운순` · `최신순` · `실시간순`(누르면 바로 정렬) · 슬라이더 아이콘(A3 열기)이다.
 /// 화면이 좁아 다 들어가지 않으면 칩 줄을 옆으로 민다.
+///
+/// 카드가 보이는 동안(반 · 전체 보기, 앱이 앞에 있고 홈 위에 다른 화면이 없을 때) [runnersRefreshInterval]마다
+/// 카드의 현재 러너 수만 새로 받는다(공통 7 · HCR-05). 목록 순서 · 스크롤은 그대로라
+/// 실시간순 순서는 지도를 움직이거나 정렬을 바꿔 목록을 다시 받을 때 바뀐다.
 class CourseListSheet extends ConsumerStatefulWidget {
   const CourseListSheet({
     super.key,
@@ -56,6 +61,9 @@ class CourseListSheet extends ConsumerStatefulWidget {
 
   /// 제목 줄 높이. 피크일 때 이만큼만 보인다.
   static const peekHeight = 60.0;
+
+  /// 현재 러너 수를 다시 받는 주기(공통 7 `홈은 1분마다 조회`).
+  static const runnersRefreshInterval = Duration(minutes: 1);
 
   static const loadFailedMessage = '코스를 불러오지 못했어요. 네트워크를 확인하고 다시 시도해 주세요.';
   static const emptyMessage = '이 지역에 등록된 코스가 없어요';
@@ -153,6 +161,18 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
   /// 가장 최근에 받기 시작한 조건.
   _ListQuery? _requested;
 
+  /// 1분 갱신으로 받은 현재 러너 수(courseId → 러너 수). 카드에 받아 둔 값보다 새것이라 이 값을 보인다.
+  /// 목록 쪽을 새로 받으면 그 쪽 코스의 값은 버린다(목록 값이 더 새것). 지도에서 고른 코스(A5)는 목록에 없어도 남는다.
+  var _runners = const <String, int>{};
+  late final Timer _runnersTimer;
+  late final AppLifecycleListener _lifecycle;
+
+  /// 홈이 보이는지. 다른 하단 탭에 있거나 위에 다른 화면(B1 · A3 · G1 등)을 열면 꺼진다.
+  var _onScreen = true;
+
+  /// 카드가 안 보이는 동안 갱신 때를 지나쳤다. 다시 보이면 바로 받는다.
+  var _runnersMissed = false;
+
   /// 지금 보여야 할 목록의 조건. 지도가 처음 멈추기 전이면 null.
   _ListQuery? get _query {
     final area = widget.area;
@@ -172,12 +192,76 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
     super.initState();
     final query = _query;
     if (query != null) _load(query);
+    _runnersTimer = Timer.periodic(CourseListSheet.runnersRefreshInterval, (_) => _refreshRunners());
+    _lifecycle = AppLifecycleListener(onResume: _shownAgain);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // 하단 탭이 바뀌거나 위에 연 화면이 다 덮으면 꺼진다(go_router 탭 · Navigator가 가려진 화면의 TickerMode를 끈다).
+    final onScreen = TickerMode.valuesOf(context).enabled;
+    final cameBack = onScreen && !_onScreen;
+    _onScreen = onScreen;
+    if (cameBack) _shownAgain();
   }
 
   @override
   void dispose() {
+    _runnersTimer.cancel();
+    _lifecycle.dispose();
     _list.dispose();
     super.dispose();
+  }
+
+  /// 카드가 보이는지. 피크(제목 줄만)이거나 홈이 가려졌거나 앱이 뒤로 가면 안 보인다.
+  bool get _visible =>
+      _onScreen &&
+      widget.stage != SheetStage.peek &&
+      (WidgetsBinding.instance.lifecycleState ?? AppLifecycleState.resumed) == AppLifecycleState.resumed;
+
+  /// 카드가 다시 보이거나 앱으로 돌아왔다. 가려진 동안 갱신 때를 지나쳤으면 바로 받는다.
+  void _shownAgain() {
+    if (_runnersMissed) _refreshRunners();
+  }
+
+  /// 보이는 카드(받은 목록 · 지도에서 고른 코스)의 현재 러너 수만 새로 받는다(공통 7 · HCR-05). 순서 · 스크롤은 그대로다.
+  /// 카드가 안 보이면 받지 않고 다시 보일 때 받는다. 실패하면 다음 갱신까지 받아 둔 값을 둔다(QST-02).
+  Future<void> _refreshRunners() async {
+    if (!_visible) {
+      _runnersMissed = true;
+      return;
+    }
+    _runnersMissed = false;
+    final ids = {...?_courses?.map((course) => course.courseId), ?widget.selected?.courseId}.toList();
+    if (ids.isEmpty) return;
+    final api = ref.read(courseApiClientProvider);
+    final runners = <String, int>{};
+    try {
+      for (var start = 0; start < ids.length; start += CourseApiClient.maxRunnerCourses) {
+        final end = math.min(start + CourseApiClient.maxRunnerCourses, ids.length);
+        runners.addAll(await api.activeRunners(ids.sublist(start, end)));
+      }
+    } on ApiException {
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _runners = {..._runners, ...runners});
+  }
+
+  /// [page]를 새로 받았다. 그 코스들은 1분 갱신 값보다 목록 값이 새것이다.
+  void _forgetRunnersOf(List<CourseListItem> page) {
+    final ids = {for (final course in page) course.courseId};
+    _runners = {
+      for (final MapEntry(:key, :value) in _runners.entries)
+        if (!ids.contains(key)) key: value,
+    };
+  }
+
+  /// [course]에 1분 갱신으로 받은 현재 러너 수를 넣는다.
+  CourseListItem _latest(CourseListItem course) {
+    final runners = _runners[course.courseId];
+    return runners == null || runners == course.activeRunners ? course : course.withActiveRunners(runners);
   }
 
   /// 범위 · 필터 · 정렬 · 기간이나 가까운순의 현재 위치가 바뀌면 다시 받는다. 카드 거리만 바뀌면 다시 받지 않는다.
@@ -186,6 +270,7 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
     super.didUpdateWidget(oldWidget);
     final query = _query;
     if (query != null && query != _requested) _load(query);
+    if (oldWidget.stage == SheetStage.peek && widget.stage != SheetStage.peek) _shownAgain();
   }
 
   /// [query]의 첫 쪽을 받는다.
@@ -204,6 +289,7 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
         _listed = query;
         _loadingMore = false;
         _moreFailed = false;
+        _forgetRunnersOf(page.courses);
       });
     } on ApiException {
       if (!mounted || request != _request) return;
@@ -235,6 +321,7 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
         _courses = [...?_courses, ...page.courses];
         _nextCursor = page.nextCursor;
         _loadingMore = false;
+        _forgetRunnersOf(page.courses);
       });
     } on ApiException {
       if (!mounted || request != _request) return;
@@ -342,7 +429,7 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
                           itemCount: courses.length,
                           separatorBuilder: (_, _) => const SizedBox(height: WdSpace.s12),
                           itemBuilder: (_, index) => CourseListCard(
-                            course: courses[index],
+                            course: _latest(courses[index]),
                             now: now,
                             myLocation: widget.myLocation,
                             onTap: () => widget.onOpenCourse?.call(courses[index]),

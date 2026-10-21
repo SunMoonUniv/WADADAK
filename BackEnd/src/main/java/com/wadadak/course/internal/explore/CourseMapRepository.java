@@ -35,7 +35,7 @@ import java.util.stream.IntStream;
 
 /**
  * 지도 범위 안 코스 조회(A2·A4·A5·A6)와 코스 검색(G1). 지도·목록·코스 수가 같은 조건을 써야 해서(MAP-07) 조건을 이곳 한 군데에서 만든다.
- * 검색은 조건만 다르고 정렬 · 쪽 · 카드는 목록과 같다.
+ * 검색은 조건만 다르고 정렬 · 쪽 · 카드는 목록과 같다. 홈 카드의 현재 러너 1분 갱신(공통 7)도 카드와 같은 값을 여기서 읽는다.
  * 평점 · 리뷰 수 · 도전 수 · 조회 수는 코스 통계(F11), 현재 러너는 현재 러너 수 복사본에서 읽는다. 행이 없는 코스는 모두 0이다.
  */
 @Repository
@@ -44,6 +44,9 @@ class CourseMapRepository {
 
     /** 한 번에 지도로 보내는 코스 수. 축척 500m부터 개별 코스를 보이므로(MAP-02) 화면 하나에는 넉넉하다 */
     static final int MAX_COURSES = 100;
+
+    /** 현재 러너 수를 한 번에 물을 수 있는 코스 수 */
+    static final int MAX_RUNNER_COURSES = 100;
 
     /** 특별·광역·특별자치시. 시 단위에서 통째로 하나로 센다. 시·도 코드 앞 2자리 → 짧은 이름 */
     private static final Map<String, String> METRO_CITIES = Map.of(
@@ -86,19 +89,40 @@ class CourseMapRepository {
     private final JdbcClient jdbc;
     private final RegionDirectory regionDirectory;
 
+    /**
+     * 범위 안 코스 수와 그중 [MAX_COURSES]개. 인기순(전체 기간, 도전 수 → 조회 수 → 리뷰 수 → 최신 → ID)으로 고르고 그 순서로 준다.
+     * 앱은 이름표가 겹치면 앞 코스를 보인다(MAP-03).
+     */
     CourseMap find(CourseMapRequest request) {
         Filter filter = Filter.of(request);
+        String popular = countKeys(CourseListSort.POPULAR, "s").stream().map(key -> key + " DESC").collect(Collectors.joining(", "));
         List<Row> rows = jdbc.sql("""
                         SELECT %s, count(*) OVER () AS total
                         FROM %s
                         WHERE %s
-                        ORDER BY c.created_at DESC, c.id DESC
-                        LIMIT :limit""".formatted(LIST_COLUMNS, FROM, filter.where()))
+                        ORDER BY %s, c.created_at DESC, c.id DESC
+                        LIMIT :limit""".formatted(LIST_COLUMNS, FROM, filter.where(), popular))
                 .params(filter.params())
                 .param("limit", MAX_COURSES)
                 .query((rs, rowNum) -> new Row(rs.getInt("total"), item(rs)))
                 .list();
         return new CourseMap(rows.isEmpty() ? 0 : rows.getFirst().total(), rows.stream().map(Row::course).toList());
+    }
+
+    /**
+     * [ids] 중 공개 중인 코스의 현재 러너 수(공통 7 · HCR-05 홈 1분 갱신). 카드의 {@code activeRunners}와 같은 값이다.
+     * 없거나 공개 중이 아닌 코스는 빠진다. 코스 ID순.
+     */
+    List<CourseActiveRunners> activeRunners(Set<UUID> ids) {
+        return jdbc.sql("""
+                        SELECT c.id, %s AS active_runners
+                        FROM course.courses c
+                        LEFT JOIN course.course_active_runners r ON r.course_id = c.id
+                        WHERE c.status = 'ACTIVE' AND c.id IN (:ids)
+                        ORDER BY c.id""".formatted(count("r", "active_count")))
+                .param("ids", ids)
+                .query((rs, rowNum) -> new CourseActiveRunners(rs.getObject("id", UUID.class), rs.getInt("active_runners")))
+                .list();
     }
 
     /** 범위 안 코스를 출발점 지역별로 센다(A4-01). 코스가 많은 지역부터. */
