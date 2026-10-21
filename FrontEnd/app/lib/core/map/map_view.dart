@@ -150,11 +150,17 @@ class MapCamera {
 /// 화면이 같은 [points] 목록에 점을 이어 붙여 다시 넘겨도 된다(러닝 주행선).
 @immutable
 class MapLine {
-  const MapLine({required this.id, required this.points, this.style = MapLineStyle.course});
+  const MapLine({required this.id, required this.points, this.style = MapLineStyle.course, this.priority = 0})
+      : assert(priority >= 0 && priority < maxPriority);
 
   final String id;
   final List<GeoPoint> points;
   final MapLineStyle style;
+
+  /// 같은 [style]끼리 겹치면 클수록 위에 그린다(홈의 인기순 위 코스, MAP-03). 0 ~ [maxPriority] 전이다.
+  final int priority;
+
+  static const maxPriority = 1000;
 }
 
 /// 선 모양. 쓰는 곳마다 나눠 두어 한 곳의 색을 바꿔도 다른 곳은 그대로다. 겹치면 뒤에 적힌 모양이 위에 그려진다.
@@ -203,12 +209,21 @@ class MapMarker {
     required Widget this.child,
     required String this.imageKey,
     this.anchor = center,
+    this.priority = 0,
+    this.hideWhenCollided = false,
     this.onTap,
   }) : icon = null;
 
   /// 디자인 시스템 아이콘 표지(경로 작성점 [WdIcons.routePoint] 등).
-  const MapMarker.icon({required this.id, required this.position, required WdIcons this.icon, this.anchor = center, this.onTap})
-      : child = null,
+  const MapMarker.icon({
+    required this.id,
+    required this.position,
+    required WdIcons this.icon,
+    this.anchor = center,
+    this.priority = 0,
+    this.hideWhenCollided = false,
+    this.onTap,
+  })  : child = null,
         imageKey = null;
 
   /// 표지 가운데가 [position]에 온다.
@@ -227,6 +242,13 @@ class MapMarker {
 
   /// 표지에서 [position]에 놓을 지점. (0, 0) 왼쪽 위 ~ (1, 1) 오른쪽 아래.
   final Offset anchor;
+
+  /// 겹치면 클수록 위에 보인다.
+  final int priority;
+
+  /// 다른 표지와 겹치면 [priority]가 작은 쪽을 숨긴다(홈 코스 이름표, MAP-03). 지도를 넓혀 겹침이 풀리면 다시 보인다.
+  /// 네이버 지도의 겹친 마커 숨기기다. 개발용 지도는 숨기지 않고 [priority]로 위아래만 정한다.
+  final bool hideWhenCollided;
   final VoidCallback? onTap;
 
   /// 지도에 올린 그림을 다시 만들어야 하는지 가리는 값.

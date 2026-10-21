@@ -185,12 +185,13 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
                 children: [
                   Positioned.fill(
                     child: CustomPaint(painter: _LinesPainter([
-                      // 뒤에 적힌 모양이 위에 오게 모양 순서대로 그린다.
-                      for (final line in [...map.lines]..sort((a, b) => a.style.index - b.style.index))
+                      // 뒤에 적힌 모양이 위에 오게 모양 순서대로, 같은 모양은 priority가 작은 것부터 그린다.
+                      for (final line in _drawOrder(map.lines, (line) => line.style.index * MapLine.maxPriority + line.priority))
                         if (line.points.length >= 2) (line.style, line.points.map(_toScreen).toList()),
                     ])),
                   ),
-                  for (final marker in map.markers) _marker(marker),
+                  // priority가 큰 표지가 위에 온다. 겹친 표지를 숨기지는 않는다(hideWhenCollided는 네이버 지도만).
+                  for (final marker in _drawOrder(map.markers, (marker) => marker.priority)) _marker(marker),
                   if (_showingAppLocation && map.myLocation != null) _myLocation(map.myLocation!),
                   Positioned(
                     left: WdSpace.s8,
@@ -203,6 +204,16 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
           ),
         );
       });
+
+  /// [items]를 [layer]가 작은 것부터(먼저 그려 아래에 깔린다). 같으면 넘겨받은 순서다.
+  static List<T> _drawOrder<T>(List<T> items, int Function(T item) layer) {
+    final ordered = items.indexed.toList()
+      ..sort((a, b) {
+        final byLayer = layer(a.$2) - layer(b.$2);
+        return byLayer != 0 ? byLayer : a.$1 - b.$1;
+      });
+    return [for (final (_, item) in ordered) item];
+  }
 
   Widget _marker(MapMarker marker) {
     final position = _toScreen(marker.position);

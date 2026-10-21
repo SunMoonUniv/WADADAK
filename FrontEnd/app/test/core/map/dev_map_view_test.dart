@@ -148,6 +148,26 @@ void main() {
     expect(taps, hasLength(1));
   });
 
+  testWidgets('puts a marker with a higher priority on top, and the later one when equal', (tester) async {
+    final tapped = <String>[];
+    MapMarker marker(String id, {int priority = 0}) => MapMarker(
+          id: id,
+          position: MapView.seoulCityHall,
+          child: const WdKmMarker('1 km'),
+          imageKey: 'km:1',
+          priority: priority,
+          onTap: () => tapped.add(id),
+        );
+
+    await show(tester, markers: [marker('popular', priority: 2), marker('other', priority: 1)]);
+    await tester.tapAt(const Offset(200, 400));
+    expect(tapped, ['popular']);
+
+    await show(tester, markers: [marker('first'), marker('second')]);
+    await tester.tapAt(const Offset(200, 400));
+    expect(tapped, ['popular', 'second']);
+  });
+
   testWidgets('follows the app location until the camera moves for another reason', (tester) async {
     final location = ValueNotifier<GeoPoint?>(null);
     addTearDown(location.dispose);

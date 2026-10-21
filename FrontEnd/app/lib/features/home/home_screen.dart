@@ -20,6 +20,7 @@ import 'my_location.dart';
 /// 지도는 축척에 따라 범위 안 코스(경로 · 이름표, A5)나 지역별 코스 수 배지(A4)를 보인다(MAP-02).
 /// 목록 시트는 지도와 같은 범위의 코스이고(MAP-07), 끌어서 피크(A4 · A5) · 반(A2) · 전체(A6, 배너 밑까지)에 멈춘다.
 /// 지도에서 코스 이름표를 누르면 그 코스만 남기고 목록에도 그 코스만 보인다(MAP-03 선택). 지도의 다른 곳을 누르면 풀린다.
+/// 이름표가 겹치면 인기순 위 코스의 이름표만 보이고, 경로는 모두 그리되 인기순 위 코스를 위에 그린다(MAP-03 겹침).
 /// 필터(A3)를 걸면 지도 · 지역별 코스 수 · 목록이 모두 그 조건의 코스만 보인다(A2-04).
 /// 검색 화면(G1) 연결은 F2 다음 단계에서 붙인다.
 /// 확대·축소 버튼은 두지 않는다(정책 MAP-02, 제스처로 한다).
@@ -43,6 +44,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   MapCamera? _camera;
 
   /// 지금 지도 범위 안 코스. 출발점이 범위 안에 있는 코스다(MAP-04). 축척 500m부터 보인다.
+  /// 서버가 인기순(전체 기간)으로 준다. 앞 코스일수록 겹칠 때 위에 보인다(MAP-03).
   List<CourseListItem> _courses = const [];
 
   /// 지도에서 고른 코스(MAP-03). 고르는 동안 지도 · 목록에 이 코스만 보이고, 지도를 움직이거나 축소해도 그대로다.
@@ -457,12 +459,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 minZoom: _minZoom,
                 padding: _mapPadding,
                 // 고른 코스가 있으면 그 코스만 보인다. 축척이 500m보다 넓어져도 지역별 배지로 바꾸지 않는다(MAP-03).
+                // 앞 코스(인기순 위)일수록 priority가 커서 경로가 위에 그려진다.
                 lines: [
-                  for (final course in shown) MapLine(id: 'course-${course.courseId}', points: course.route),
+                  for (final (index, course) in shown.indexed)
+                    MapLine(id: 'course-${course.courseId}', points: course.route, priority: shown.length - index),
                 ],
                 markers: [
                   // 이름표 아래 가운데가 출발점에 온다. 고른 코스는 배경이 파랗다. 리뷰가 있으면 평점을 붙인다(Figma A5).
-                  for (final course in shown)
+                  // 이름표가 겹치면 인기순 위 코스의 이름표만 보이고, 숨은 코스도 목록에는 있다(MAP-03).
+                  for (final (index, course) in shown.indexed)
                     MapMarker(
                       id: 'course-${course.courseId}',
                       position: course.route.first,
@@ -470,6 +475,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                       imageKey: 'course-label:${formatMapLabel(course.name, course.averageRating)}'
                           '${selected != null ? ':selected' : ''}',
                       anchor: MapMarker.bottom,
+                      priority: shown.length - index,
+                      hideWhenCollided: true,
                       onTap: () => _select(course),
                     ),
                   // 배지 가운데가 그 지역 코스 출발점들의 가운데에 온다(A4-01). 누르면 한 단계 확대한다(A4-06).

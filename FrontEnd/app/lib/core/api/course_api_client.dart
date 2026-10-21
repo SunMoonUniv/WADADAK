@@ -401,6 +401,21 @@ class CourseListItem {
 
   /// 카드 썸네일 · 지도 코스 선. 첫 점 출발, 마지막 점 도착(코스 방향).
   final List<GeoPoint> route;
+
+  /// 현재 러너 수만 [activeRunners]로 바꾼 카드(홈 1분 갱신, 공통 7 · HCR-05).
+  CourseListItem withActiveRunners(int activeRunners) => CourseListItem(
+        courseId: courseId,
+        name: name,
+        distanceMeters: distanceMeters,
+        difficulty: difficulty,
+        tags: tags,
+        courseType: courseType,
+        expiresAt: expiresAt,
+        averageRating: averageRating,
+        reviewCount: reviewCount,
+        activeRunners: activeRunners,
+        route: route,
+      );
 }
 
 /// 코스 상세(B1 공통 헤더 · 정보 탭). 평점 · 리뷰 수 · 항목 평가는 리뷰 API에서 받는다.
@@ -613,6 +628,19 @@ class CourseApiClient {
           'cursor': ?cursor,
         }));
     return CourseSearchPage.fromJson(data! as Map);
+  }
+
+  /// 한 번에 현재 러너 수를 물을 수 있는 코스 수. 서버도 같은 기준으로 거른다.
+  static const maxRunnerCourses = 100;
+
+  /// [courseIds](1 ~ [maxRunnerCourses]개) 중 공개 중인 코스의 현재 러너 수(courseId → 러너 수). 홈 카드의 1분 갱신에 쓴다(공통 7 · HCR-05).
+  /// 값은 카드의 [CourseListItem.activeRunners]와 같다. 없거나 공개 중이 아닌 코스는 빠진다.
+  Future<Map<String, int>> activeRunners(List<String> courseIds) async {
+    final data = await callApi(() => _dio.get('$_courses/active-runners', queryParameters: {'courseIds': courseIds}));
+    return {
+      for (final course in (data! as List).cast<Map<Object?, Object?>>())
+        course['courseId']! as String: course['activeRunners']! as int,
+    };
   }
 
   static Map<String, Object> _area(GeoPoint southWest, GeoPoint northEast) =>

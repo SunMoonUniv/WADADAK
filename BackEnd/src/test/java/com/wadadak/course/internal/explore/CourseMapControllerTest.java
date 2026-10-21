@@ -100,19 +100,38 @@ class CourseMapControllerTest {
     }
 
     @Test
-    void sendsAtMost100NewestCoursesButCountsAll() throws Exception {
+    void sendsAtMost100MostPopularCoursesButCountsAll() throws Exception {
         List<UUID> oldestFirst = new ArrayList<>();
         for (int i = 0; i <= CourseMapRepository.MAX_COURSES; i++) {
             oldestFirst.add(insert(33.445, 126.300 + i * 0.00005, 1_000, "EASY", "{}", "CUSTOM", NOW.plusSeconds(i)));
         }
+        // 가장 오래된 코스가 가장 인기 있다. 나머지는 통계가 없어 최신순이다
+        stats(oldestFirst.getFirst(), 1, 0, 0);
 
         JsonNode data = data(find("swLat=33.440&swLng=126.299&neLat=33.450&neLng=126.310"));
 
         assertThat(data.get("totalCount").asInt()).isEqualTo(101);
         List<UUID> sent = ids(data);
         assertThat(sent).hasSize(100);
-        assertThat(sent.getFirst()).isEqualTo(oldestFirst.getLast());
-        assertThat(sent).doesNotContain(oldestFirst.getFirst());
+        assertThat(sent.subList(0, 2)).containsExactly(oldestFirst.getFirst(), oldestFirst.getLast());
+        // 인기순 맨 뒤(통계가 없는 코스 중 가장 오래된 코스)가 빠진다
+        assertThat(sent).doesNotContain(oldestFirst.get(1));
+    }
+
+    @Test
+    void sendsCoursesInPopularOrderSoTheAppShowsTheTopLabelWhenLabelsOverlap() throws Exception {
+        UUID oneChallenge = insert(33.451, 126.301, 1_000, "EASY", "{}", "CUSTOM", NOW);
+        UUID manyViews = insert(33.452, 126.302, 1_000, "EASY", "{}", "CUSTOM", NOW.plusSeconds(1));
+        UUID manyReviews = insert(33.453, 126.303, 1_000, "EASY", "{}", "CUSTOM", NOW.plusSeconds(2));
+        UUID newest = insert(33.454, 126.304, 1_000, "EASY", "{}", "CUSTOM", NOW.plusSeconds(4));
+        UUID older = insert(33.455, 126.305, 1_000, "EASY", "{}", "CUSTOM", NOW.plusSeconds(3));
+        stats(oneChallenge, 1, 0, 0);
+        stats(manyViews, 0, 50, 0);
+        stats(manyReviews, 0, 0, 9);
+
+        // 인기순(MAP-03): 도전 수 → 조회 수 → 리뷰 수, 그다음 최신순
+        assertThat(ids("swLat=33.450&swLng=126.300&neLat=33.460&neLng=126.310"))
+                .containsExactly(oneChallenge, manyViews, manyReviews, newest, older);
     }
 
     @Test
@@ -229,6 +248,12 @@ class CourseMapControllerTest {
 
     private static void assertBadRequest(MvcTestResult result) {
         assertThat(result).hasStatus(HttpStatus.BAD_REQUEST).bodyJson().extractingPath("$.code").isEqualTo("COMMON-001");
+    }
+
+    /** 코스 누적 통계에 도전 수 · 조회 수 · 리뷰 수를 바로 넣는다. 평점은 리뷰마다 4점 */
+    private void stats(UUID course, int challenges, int views, int reviews) {
+        jdbcTemplate.update("INSERT INTO course.course_stats (course_id, challenge_count, view_count, rating_sum, review_count, "
+                + "created_at, updated_at) VALUES (?, ?, ?, ?, ?, now(), now())", course, challenges, views, reviews * 4, reviews);
     }
 
     private UUID insert(double lat, double lng) {

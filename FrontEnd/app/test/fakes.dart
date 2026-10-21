@@ -335,6 +335,20 @@ class FakeCourseApi implements CourseApiClient {
     );
   }
 
+  /// 1분 갱신(공통 7 · HCR-05)에 돌려줄 현재 러너 수(courseId → 러너 수). 여기 없는 코스는 서버처럼 응답에서 빠진다.
+  Map<String, int> runners = {};
+  ApiException? runnersError;
+
+  /// 현재 러너 수를 물은 코스 ID들. 요청마다 하나다.
+  final runnerRequests = <List<String>>[];
+
+  @override
+  Future<Map<String, int>> activeRunners(List<String> courseIds) async {
+    runnerRequests.add(courseIds);
+    if (runnersError != null) throw runnersError!;
+    return {for (final id in courseIds) id: ?runners[id]};
+  }
+
   static String _nameKey(String name) => name.replaceAll(RegExp(r'\s+'), '').toLowerCase();
 }
 
