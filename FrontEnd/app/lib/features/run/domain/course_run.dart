@@ -1,7 +1,10 @@
 /// 코스 러닝(F6) 앱 쪽 모델. 서버 API는 `run/코스 러닝 서버 연결 - 2026-10-20.md`.
 library;
 
+import 'dart:math' as math;
+
 import '../../../core/map/geo_point.dart';
+import 'course_tracker.dart';
 
 /// 코스 상세에서 고른 코스. 달리기 탭에서 시작하면 서버 준비·시작 신호를 거쳐 코스 러닝이 된다.
 class CourseSelection {
@@ -41,6 +44,34 @@ class CourseStart {
   GeoPoint get start => snapshot.route.first;
   double get distanceToStartM => position.distanceTo(start);
   bool get nearStart => distanceToStartM <= radiusM;
+}
+
+/// 달리는 중 코스 안내(Figma C4 코스·C4-1). 앱 추적값이라 서버 판정과 조금 다를 수 있고, 완주는 판정하지 않는다.
+class CourseLive {
+  CourseLive(this.name, this.tracker);
+  final String name;
+  final CourseTracker tracker;
+
+  List<GeoPoint> get route => tracker.route.route;
+  double get lengthM => tracker.route.length;
+
+  /// 코스 진행도 0~1 = 인정 거리 ÷ 전체(정책 용어 "코스 진행도")
+  double get progress => math.min(1, tracker.recognizedM / lengthM);
+
+  /// 남은 거리(m) = 전체 − 지금 코스상 위치. 코스에 아직 못 올라왔으면 전체
+  double get remainingM => math.max(0, lengthM - (tracker.positionM ?? 0));
+
+  /// 다음 km 지점까지, 마지막 km를 지나면 도착까지. 예: "3 km 지점까지 590 m"
+  String get nextTarget {
+    final position = tracker.positionM ?? 0;
+    final km = position ~/ 1000 + 1;
+    return lengthM - km * 1000 > 1e-6 // 끝이 딱 km 지점이면 부동소수 오차로 넘지 않게
+        ? '$km km 지점까지 ${formatMeters(km * 1000 - position)}'
+        : '도착까지 ${formatMeters(lengthM - position)}';
+  }
+
+  static String formatMeters(double meters) =>
+      meters < 1000 ? '${meters.round()} m' : '${(meters / 1000).toStringAsFixed(2)} km';
 }
 
 /// 서버 코스 판정(`Result.course`). 코스 러닝 기록에만 있다.

@@ -21,6 +21,7 @@ import 'course_run_entry.dart';
 import '../data/run_device.dart';
 import '../domain/run_voice.dart';
 import '../domain/course_run.dart';
+import '../domain/course_tracker.dart';
 import '../domain/recording_models.dart';
 import 'run_recorder.dart';
 import 'run_sync_worker.dart';
@@ -124,6 +125,9 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   /// 마지막으로 시작한 코스 러닝의 코스와 세션 ID. 결과 화면의 "서버 판정 대기"에 쓴다
   CourseSelection? course;
   String? courseRunId;
+
+  /// 그 코스 러닝의 경로 추적(진행도·남은 거리 안내용, 완주 판정 아님). 앱을 다시 켜면 러닝이 끝나므로 기기에 저장하지 않는다
+  CourseTracker? courseTracker;
   List<LocalRun> records = [];
   List<Map<String, dynamic>> remoteRecords = [];
   String? currentOwner, error, gpsNotice, nextCursor, historyNotice;
@@ -335,6 +339,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       await recorder.start(runId, member, startedAt);
       course = start?.course;
       courseRunId = start == null ? null : runId;
+      courseTracker = start == null ? null : CourseTracker(RouteGeometry(start.snapshot.route));
       courseStart = null;
       selectedCourse = null;
       currentOwner = member;

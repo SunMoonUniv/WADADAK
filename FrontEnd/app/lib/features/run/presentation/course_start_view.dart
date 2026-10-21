@@ -63,7 +63,7 @@ class CourseStartView extends StatelessWidget {
                 spacing: WdSpace.s12,
                 children: [
                   Text(
-                    near ? '출발점이에요' : '출발점까지 ${_distance(start.distanceToStartM)}',
+                    near ? '출발점이에요' : '출발점까지 ${CourseLive.formatMeters(start.distanceToStartM)}',
                     style: WdText.ko22Bold.copyWith(color: WdColors.white),
                   ),
                   Text(
@@ -83,7 +83,4 @@ class CourseStartView extends StatelessWidget {
       ),
     );
   }
-
-  static String _distance(double meters) =>
-      meters < 1000 ? '${meters.round()} m' : '${(meters / 1000).toStringAsFixed(1)} km';
 }

@@ -69,6 +69,7 @@ class FreeRunScreen extends ConsumerWidget {
                   ),
                   _ => FreeRunLiveView(
                     run: run,
+                    course: controller.courseLive,
                     onPause: controller.storageFault ? null : controller.pause,
                     onResume: controller.storageFault
                         ? null

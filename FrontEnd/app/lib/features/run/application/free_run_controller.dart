@@ -53,6 +53,14 @@ class FreeRunController extends ChangeNotifier {
   CourseSelection? get selectedCourse => _recording?.selectedCourse;
   void clearCourse() => _recording?.clearCourse();
 
+  /// 진행 중인 코스 러닝의 안내(C4 코스). 코스 러닝이 아니면 null
+  CourseLive? get courseLive {
+    final recording = _recording, run = _recording?.run, tracker = _recording?.courseTracker;
+    if (recording == null || run == null || tracker == null || run.id != recording.courseRunId) return null;
+    tracker.feed(run.inputs);
+    return CourseLive(recording.course!.name, tracker);
+  }
+
   /// 코스 러닝 측정 전(RCR-01). 있으면 출발점 안내 지도를 보인다
   CourseStart? get courseStart => _recording?.courseStart;
   void cancelCourseStart() => _recording?.cancelCourseStart();

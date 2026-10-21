@@ -106,6 +106,7 @@ void main() {
     expect(api.started.single.$3, run.startedAt);
     expect(controller.courseRunId, run.id);
     expect(controller.course?.name, '테스트 코스');
+    expect(controller.courseTracker?.route.route.first, const GeoPoint(36, 127)); // 준비 응답 경로로 진행도를 따라간다
     expect(controller.courseStart, isNull);
     expect(controller.selectedCourse, isNull);
   });
