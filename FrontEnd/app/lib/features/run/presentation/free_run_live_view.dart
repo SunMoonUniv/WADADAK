@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
+import '../domain/course_run.dart';
 import '../domain/run_models.dart';
 import '../domain/run_distance_marker.dart';
 import 'run_lap_list.dart';
@@ -12,6 +13,7 @@ String runDistance(RunSnapshot run) => run.hasLocation
     : '—';
 
 /// Figma H4-1 / C4 / C4-2. 지도 · 기본 지표 · 전체 지표를 좌우로 넘긴다.
+/// 코스 러닝이면 [course]로 코스 경로·km 표지·진행도·남은 거리를 더한다(Figma C4 코스·C4-1).
 class FreeRunLiveView extends StatefulWidget {
   const FreeRunLiveView({
     super.key,
@@ -19,9 +21,15 @@ class FreeRunLiveView extends StatefulWidget {
     required this.onPause,
     required this.onResume,
     required this.onStop,
+    this.course,
+    this.courseNotice,
   });
   final RunSnapshot run;
   final VoidCallback? onPause, onResume, onStop;
+  final CourseLive? course;
+
+  /// 코스 구간이 끝나 자유 러닝으로 바뀐 뒤 안내(경로 끝 도착·코스만 종료)
+  final String? courseNotice;
 
   @override
   State<FreeRunLiveView> createState() => _FreeRunLiveViewState();
@@ -93,6 +101,7 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
   @override
   Widget build(BuildContext context) {
     final run = widget.run;
+    final course = widget.course;
     final paused = run.state == RunState.paused;
     return Scaffold(
       backgroundColor: WdColors.runBackground,
@@ -100,8 +109,8 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
         child: Column(
           children: [
             WdRunHeader(
-              title: '자유 러닝',
-              subtitle: '자유 러닝',
+              title: course?.name ?? '자유 러닝',
+              subtitle: course == null ? '자유 러닝' : '코스 러닝',
               badge: paused ? '일시정지' : '기록 중',
             ),
             Padding(
@@ -114,6 +123,17 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                 style: WdText.ko12.copyWith(color: WdColors.runTextSub),
               ),
             ),
+            if (widget.courseNotice != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: WdSpace.s24,
+                  vertical: WdSpace.s4,
+                ),
+                child: Text(
+                  widget.courseNotice!,
+                  style: WdText.ko12Medium.copyWith(color: WdColors.lime),
+                ),
+              ),
             if (run.voiceNotice != null)
               Padding(
                 padding: const EdgeInsets.symmetric(
@@ -137,6 +157,7 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                         run: run,
                         dark: true,
                         showDistanceMarkers: true,
+                        course: course,
                       ),
                     ),
                     Row(
@@ -167,8 +188,15 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                           ),
                       ],
                     ),
+                    if (course != null)
+                      WdRemainingDistance(
+                        leading: '남은 거리 ${CourseLive.formatMeters(course.remainingM)}',
+                        trailing: '코스 진행 ${(course.progress * 100).round()}%',
+                        progress: course.progress,
+                        dark: true,
+                      ),
                     Text(
-                      '자유 러닝 · ${run.gpsStatus}',
+                      '${course == null ? '자유 러닝' : course.nextTarget} · ${run.gpsStatus}',
                       style: WdText.ko13.copyWith(color: WdColors.runTextSub),
                     ),
                   ]),
@@ -215,6 +243,12 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                           : '편안하게 나만의 속도로 이어가세요.',
                     ),
                     RunLapList(run: run, dark: true, recentOnly: true),
+                    if (course != null)
+                      WdCourseProgress(
+                        progress: course.progress,
+                        leading: course.nextTarget,
+                        trailing: '총 ${(course.lengthM / 1000).toStringAsFixed(1)} km',
+                      ),
                   ]),
                   _scroll([
                     _time(),
@@ -335,11 +369,16 @@ class RunRouteView extends StatelessWidget {
     required this.run,
     this.dark = false,
     this.showDistanceMarkers = false,
+    this.course,
   });
   final RunSnapshot run;
   final bool dark, showDistanceMarkers;
+
+  /// 코스 러닝이면 코스 경로(주행선 아래)·코스 출발점·코스 km 표지를 그린다. km 표지는 주행 거리 대신 코스 기준이다
+  final CourseLive? course;
   @override
   Widget build(BuildContext context) {
+    final course = this.course;
     if (!run.hasLocation) return RunRouteEmpty(dark: dark);
     final location =
         run.inputs.reversed
@@ -366,6 +405,8 @@ class RunRouteView extends StatelessWidget {
         myLocationSource: MyLocationSource.app,
         myLocation: GeoPoint(location.latitude, location.longitude),
         lines: [
+          if (course != null)
+            MapLine(id: 'course', points: course.route, style: MapLineStyle.runCourse),
           for (var index = 0; index < run.segments.length; index++)
             MapLine(
               id: 'run-$index',
@@ -378,7 +419,21 @@ class RunRouteView extends StatelessWidget {
         // Endpoints use the accepted route only, including server-only history.
         // No markers or lines are interpolated across GPS/pause gaps.
         markers: [
-          if (showDistanceMarkers)
+          if (course != null) ...[
+            for (final (km, point) in course.tracker.route.kilometres())
+              MapMarker(
+                id: 'course-km-$km',
+                position: point,
+                imageKey: 'km:$km',
+                child: WdKmMarker('$km km'),
+              ),
+            MapMarker(
+              id: 'course-start',
+              position: course.route.first,
+              child: const WdCourseStartDot(),
+              imageKey: 'course-start',
+            ),
+          ] else if (showDistanceMarkers)
             for (final marker in runDistanceMarkers(run))
               MapMarker(
                 id: 'run-km-${marker.km}',
@@ -389,7 +444,7 @@ class RunRouteView extends StatelessWidget {
                 imageKey: 'km:${marker.km}',
                 child: WdKmMarker('${marker.km} km'),
               ),
-          if (points.isNotEmpty)
+          if (points.isNotEmpty && course == null)
             MapMarker(
               id: 'run-start',
               position: points.first,

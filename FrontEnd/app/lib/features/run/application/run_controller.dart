@@ -11,6 +11,7 @@ import '../../../core/auth/token_storage.dart';
 import '../../../core/api/run_api_client.dart';
 import '../data/run_local_store.dart';
 import '../../../core/location/location_service.dart';
+import '../../../core/map/geo_point.dart';
 import '../../../core/permissions/device_setup.dart';
 import '../../../core/time/monotonic_clock.dart';
 import '../domain/run_location_policy.dart';
@@ -20,6 +21,7 @@ import 'course_run_entry.dart';
 import '../data/run_device.dart';
 import '../domain/run_voice.dart';
 import '../domain/course_run.dart';
+import '../domain/course_tracker.dart';
 import '../domain/recording_models.dart';
 import 'run_recorder.dart';
 import 'run_sync_worker.dart';
@@ -78,6 +80,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       canSync: () => !preparing && !recorder.active && !_disposed,
     );
     _changes = recorder.changes.stream.listen((_) {
+      _checkCourseEnd();
       _notify();
       unawaited(_refreshExtras());
     });
@@ -116,9 +119,26 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   /// 코스 상세에서 고른 코스. 다음 시작을 코스 러닝으로 한다(F6)
   CourseSelection? selectedCourse;
 
+  /// 코스 러닝 준비를 마치고 측정 전(RCR-01). 지도에 출발점까지 안내하고 반경 안에서만 시작한다
+  CourseStart? courseStart;
+  StreamSubscription<Position>? _approach;
+
   /// 마지막으로 시작한 코스 러닝의 코스와 세션 ID. 결과 화면의 "서버 판정 대기"에 쓴다
   CourseSelection? course;
   String? courseRunId;
+
+  /// 그 코스 러닝의 경로 추적(진행도·남은 거리 안내용, 완주 판정 아님). 앱을 다시 켜면 러닝이 끝나므로 기기에 저장하지 않는다
+  CourseTracker? courseTracker;
+
+  /// 코스 구간을 끝낸 사유(`ROUTE_END` 경로 끝 도착·`COURSE_ONLY` 코스만 종료). 이후 같은 세션은 자유 러닝이다(RUN-07·RUN-08)
+  String? courseEndReason;
+
+  /// 경로 끝 도착 감지 오차(m). 서버 끝 도달 오차(30m)가 이보다 넉넉해야 한다(정책 5.3). 주행 검증 전 개발값
+  static const courseArrivalM = 20.0;
+
+  /// 진행 중인 러닝이 아직 코스 구간이다
+  bool get onCourse =>
+      courseRunId != null && run?.id == courseRunId && recorder.active && courseEndReason == null;
   List<LocalRun> records = [];
   List<Map<String, dynamic>> remoteRecords = [];
   String? currentOwner, error, gpsNotice, nextCursor, historyNotice;
@@ -154,6 +174,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         final member = await owner();
         if (member == currentOwner) return;
         cancelStart();
+        cancelCourseStart();
         currentOwner = null;
         records = [];
         remoteRecords = [];
@@ -212,7 +233,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// 코스 러닝으로 시작할 코스를 고른다. 진행 중인 러닝이 있으면 바꾸지 않는다(RUN-05)
   void selectCourse(CourseSelection selection) {
-    if (recorder.active || preparing) return;
+    if (recorder.active || preparing || courseStart != null) return;
     selectedCourse = selection;
     error = null;
     _notify();
@@ -236,6 +257,8 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// 자유 러닝은 카운트다운 뒤 측정. 코스 러닝은 두 번 부른다(RCR-01):
+  /// 처음은 준비까지 하고 측정 전([courseStart])에 멈추고, 출발점 반경 안에서 다시 부르면 카운트다운 뒤 측정.
   Future<void> prepareStart() async {
     if (preparing || recorder.active || storageFault || _disposed) return;
     await bindOwner();
@@ -246,10 +269,12 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       _notify();
       return;
     }
+    final start = courseStart;
+    if (start != null && !start.nearStart) return;
     final generation = ++_generation;
     // 코스 러닝은 세션 ID를 먼저 만들어 서버 준비·시작 신호와 기록에 같은 ID를 쓴다
-    final selection = selectedCourse;
-    final runId = const Uuid().v7();
+    final selection = start == null ? selectedCourse : null;
+    final runId = start?.runId ?? const Uuid().v7();
     preparing = true;
     error = null;
     setupAction = null;
@@ -274,9 +299,15 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       }
       if (selection != null) {
         // 코스 공개 여부 확인과 판정용 경로 저장. 실패하면 시작하지 않는다(D-08)
-        await _courseCall(() => api.prepareCourse(member, runId, selection.courseId));
+        final snapshot = CourseSnapshot.fromJson(
+          await _courseCall(() => api.prepareCourse(member, runId, selection.courseId)),
+        );
         if (generation != _generation || _disposed) return;
+        courseStart = CourseStart(runId, selection, snapshot, GeoPoint(position.latitude, position.longitude));
+        _watchStart();
+        return;
       }
+      await _stopWatchingStart();
       _latest = position;
       _lastFixAt = _utcNow();
       _gapOpen = false;
@@ -306,7 +337,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         return;
       }
       final startedAt = _utcNow();
-      if (selection != null) {
+      if (start != null) {
         // 시작 신호(도전 수·현재 러너 수). 기록의 시작 시각과 같은 값을 보내야 업로드가 코스 기록으로 맞는다
         await _courseCall(() => api.startCourse(member, runId, startedAt));
         if (generation != _generation || _disposed || await owner() != member) {
@@ -317,8 +348,11 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       countdown = null;
       _notify();
       await recorder.start(runId, member, startedAt);
-      course = selection;
-      courseRunId = selection == null ? null : runId;
+      course = start?.course;
+      courseRunId = start == null ? null : runId;
+      courseTracker = start == null ? null : CourseTracker(RouteGeometry(start.snapshot.route));
+      courseEndReason = null;
+      courseStart = null;
       selectedCourse = null;
       currentOwner = member;
       if (_disposed || await owner() != member) {
@@ -351,6 +385,8 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       if (!recorder.active && locationToken != null) {
         await _stopLocation(expectedToken: locationToken);
       }
+      // 코스 러닝 시작이 실패하면 측정 전으로 돌아가 다시 출발점을 안내한다
+      if (!recorder.active && courseStart != null && !_disposed) _watchStart();
       _notify();
     }
   }
@@ -360,8 +396,95 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     ++_generation;
     countdown = null;
     preparing = false;
-    unawaited(_stopLocation());
+    unawaited(_stopLocation().then((_) {
+      if (courseStart != null && !_disposed) _watchStart();
+    }));
     _notify();
+  }
+
+  /// 경로 끝 도착(RUN-08): 코스를 따라간 위치가 끝 [courseArrivalM] 안이면 코스 구간을 끝낸다.
+  /// 좌표가 아니라 코스상 위치로 보므로 순환·왕복 코스의 출발점을 끝으로 보지 않는다. 완주는 서버가 판정한다
+  void _checkCourseEnd() {
+    final tracker = courseTracker, current = run;
+    if (!onCourse || tracker == null || current == null || current.phase != RunPhase.running) return;
+    tracker.feed(current.inputs);
+    final position = tracker.positionM;
+    if (position != null && position >= tracker.route.length - courseArrivalM) {
+      unawaited(endCourse('ROUTE_END'));
+    }
+  }
+
+  /// 코스 구간을 끝내고 같은 세션을 자유 러닝으로 잇는다(경로 끝 도착·코스만 종료, RUN-07·RUN-08).
+  /// 기록에 `SEGMENT_END`를 남기고 구간 종료 신호(현재 러너 수)를 보낸다. 신호가 실패해도 서버가 업로드 때 뺀다
+  Future<void> endCourse(String reason) async {
+    final id = courseRunId, member = currentOwner, tracker = courseTracker;
+    if (!onCourse || id == null || member == null) return;
+    courseEndReason = reason;
+    _notify();
+    try {
+      await recorder.segmentEnd(reason);
+    } on Object catch (e) {
+      await _operationError(e);
+      return;
+    }
+    unawaited(() async {
+      try {
+        await api.segmentEnd(member, id);
+      } on Object {
+        // 현재 러너 수는 업로드 도착·3시간 뒤에도 빠진다
+      }
+    }());
+    if (reason == 'ROUTE_END' && tracker != null) {
+      // 측정 시작(START)이 0ms라 구간 종료 시각이 곧 코스 총 소요시간
+      final ms = run?.inputs.where((i) => i.kind == RunKind.segmentEnd).lastOrNull?.elapsedMs ?? 0;
+      unawaited(audioGuide.announce(courseArrivalVoice(ms, tracker.route.length)));
+    }
+  }
+
+  /// AUD-06: 기기에서 잰 코스 총 소요시간(정지 포함)과 그 시간 ÷ 코스 거리 페이스. 결과 화면은 서버 판정 값을 쓴다
+  static String courseArrivalVoice(int elapsedMs, double lengthM) {
+    final seconds = elapsedMs ~/ 1000;
+    final pace = lengthM <= 0 ? 0 : (seconds / (lengthM / 1000)).round();
+    return '코스 끝에 도착했어요. 걸린 시간 ${seconds ~/ 60}분 ${seconds % 60}초, '
+        '평균 페이스 ${pace ~/ 60}분 ${pace % 60}초입니다. 자유 러닝으로 이어서 기록해요.';
+  }
+
+  /// 측정 전 화면에서 나간다. 고른 코스는 남겨 준비 화면(C6)으로 돌아간다.
+  /// 서버에 남은 준비만 한 시도는 지우지 않는다(서버 연결 문서 7장)
+  void cancelCourseStart() {
+    if (preparing || courseStart == null) return;
+    courseStart = null;
+    unawaited(_stopWatchingStart());
+    _notify();
+  }
+
+  /// 측정 전 현재 위치. 측정하지 않으므로 기록 중 알림 없이 화면이 켜진 동안만 받는다
+  void _watchStart() {
+    if (_approach != null) return;
+    _approach = location
+        .positions(
+          settings: AndroidSettings(
+            forceLocationManager: true,
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 0,
+            intervalDuration: const Duration(seconds: 1),
+          ),
+        )
+        .listen(
+          (p) {
+            final start = courseStart;
+            if (start == null || _disposed) return;
+            start.position = GeoPoint(p.latitude, p.longitude);
+            _notify();
+          },
+          onError: (Object e) => unawaited(_operationError(e)),
+        );
+  }
+
+  Future<void> _stopWatchingStart() async {
+    final subscription = _approach;
+    _approach = null;
+    await subscription?.cancel();
   }
 
   int _startLocation() {
@@ -969,6 +1092,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     ++_generation;
     _timer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
+    await _stopWatchingStart();
     await _stopLocation();
     await _extrasJob;
     await _stopExtras();

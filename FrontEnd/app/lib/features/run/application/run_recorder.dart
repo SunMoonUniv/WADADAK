@@ -249,6 +249,16 @@ class RunRecorder {
     );
     _autoResume.reset();
   });
+  /// 코스 구간 종료(F6). 서버는 이 입력 전까지로 코스를 판정한다. 세션은 같은 상태로 계속된다
+  Future<void> segmentEnd(String reason) => _serial(() async {
+    if (!active) return;
+    final ms = await _elapsed();
+    await _commit(
+      [_input(RunKind.segmentEnd, ms, reason: reason)],
+      current!.phase,
+      ms,
+    );
+  });
   Future<void> end({String reason = 'USER'}) => _serial(() async {
     if (!active) return;
     if (reason == 'USER' && current!.phase != RunPhase.paused) {

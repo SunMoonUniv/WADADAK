@@ -13,6 +13,7 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 import '../application/free_run_controller.dart';
 import '../domain/course_run.dart';
 import '../domain/run_models.dart';
+import 'course_start_view.dart';
 import 'free_run_live_view.dart';
 import 'free_run_result_view.dart';
 
@@ -27,8 +28,10 @@ class FreeRunScreen extends ConsumerWidget {
       listenable: controller,
       builder: (context, _) {
         final run = controller.snapshot;
+        final courseStart = controller.courseStart;
         final dark =
             controller.preparing ||
+            courseStart != null ||
             run.state == RunState.running ||
             run.state == RunState.paused;
         return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -37,11 +40,18 @@ class FreeRunScreen extends ConsumerWidget {
               ? _Countdown(
                   value: controller.countdown,
                   gpsStatus: controller.gpsStatus,
+                  course: (courseStart?.course ?? controller.selectedCourse)?.name,
                   onCancel: controller.canCancelStart
                       ? controller.cancelStart
                       : null,
                 )
               : switch (run.state) {
+                  RunState.ready when courseStart != null => CourseStartView(
+                    start: courseStart,
+                    onStart: controller.prepareStart,
+                    onCancel: controller.cancelCourseStart,
+                    error: controller.error,
+                  ),
                   RunState.ready => _Preparation(
                     onStart: controller.prepareStart,
                     error: controller.error,
@@ -59,6 +69,8 @@ class FreeRunScreen extends ConsumerWidget {
                   ),
                   _ => FreeRunLiveView(
                     run: run,
+                    course: controller.courseLive,
+                    courseNotice: controller.courseNotice,
                     onPause: controller.storageFault ? null : controller.pause,
                     onResume: controller.storageFault
                         ? null
@@ -78,8 +90,10 @@ class FreeRunScreen extends ConsumerWidget {
     FreeRunController controller,
   ) async {
     controller.setEndConfirmation(true);
+    // 코스 구간 중이면 [코스만 종료] [러닝 종료] [취소](RUN-07). Figma 시안이 없어 종료 확인 창에 더했다
+    final onCourse = controller.onCourse;
     try {
-      final confirmed = await showDialog<bool>(
+      final choice = await showDialog<_EndChoice>(
         context: context,
         builder: (context) => Dialog(
           backgroundColor: WdColors.paper,
@@ -95,10 +109,20 @@ class FreeRunScreen extends ConsumerWidget {
                 Text('러닝을 종료할까요?', style: WdText.ko20Bold),
                 const SizedBox(height: WdSpace.s12),
                 Text(
-                  '이번 러닝의 결과를 확인할 수 있어요.',
+                  onCourse
+                      ? '코스만 종료하면 코스 도전을 마치고 같은 기록을 자유 러닝으로 이어서 측정해요.'
+                      : '이번 러닝의 결과를 확인할 수 있어요.',
                   style: WdText.ko13.copyWith(color: WdColors.muted),
                 ),
                 const SizedBox(height: WdSpace.s24),
+                if (onCourse) ...[
+                  WdButton(
+                    '코스만 종료',
+                    variant: WdButtonVariant.secondary,
+                    onPressed: () => Navigator.pop(context, _EndChoice.course),
+                  ),
+                  const SizedBox(height: WdSpace.s8),
+                ],
                 Row(
                   spacing: WdSpace.s8,
                   children: [
@@ -106,13 +130,13 @@ class FreeRunScreen extends ConsumerWidget {
                       child: WdButton(
                         '취소',
                         variant: WdButtonVariant.secondary,
-                        onPressed: () => Navigator.pop(context, false),
+                        onPressed: () => Navigator.pop(context),
                       ),
                     ),
                     Expanded(
                       child: WdButton(
-                        '종료',
-                        onPressed: () => Navigator.pop(context, true),
+                        onCourse ? '러닝 종료' : '종료',
+                        onPressed: () => Navigator.pop(context, _EndChoice.run),
                       ),
                     ),
                   ],
@@ -122,12 +146,16 @@ class FreeRunScreen extends ConsumerWidget {
           ),
         ),
       );
-      if (confirmed == true && context.mounted) await controller.finish();
+      if (!context.mounted) return;
+      if (choice == _EndChoice.course) controller.endCourseOnly();
+      if (choice == _EndChoice.run) await controller.finish();
     } finally {
       controller.setEndConfirmation(false);
     }
   }
 }
+
+enum _EndChoice { course, run }
 
 void _notReady(BuildContext context, String feature) {
   ScaffoldMessenger.of(context)
@@ -357,7 +385,10 @@ class _Preparation extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: WdSpace.s8),
-                        _HoldToStart(onStart: onStart),
+                        RunHoldToStart(
+                          label: course == null ? '자유 러닝 시작' : '코스 러닝 시작',
+                          onStart: onStart,
+                        ),
                         const SizedBox(height: WdSpace.s8),
                         Center(
                           child: Text(
@@ -378,16 +409,20 @@ class _Preparation extends StatelessWidget {
   );
 }
 
-/// Figma 1453:4617 — 3초 카운트다운. OS 상태바는 SafeArea로 처리한다.
+/// Figma 1453:4617 — 3초 카운트다운. 코스 러닝은 H1(1453:4591): 머리말이 코스 이름. OS 상태바는 SafeArea로 처리한다.
 class _Countdown extends StatelessWidget {
   const _Countdown({
     required this.value,
     required this.onCancel,
     required this.gpsStatus,
+    this.course,
   });
   final int? value;
   final VoidCallback? onCancel;
   final String gpsStatus;
+
+  /// 코스 러닝이면 코스 이름
+  final String? course;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -395,7 +430,11 @@ class _Countdown extends StatelessWidget {
     body: SafeArea(
       child: Column(
         children: [
-          const WdRunHeader(title: '자유 러닝', subtitle: '자유 러닝', badge: '준비'),
+          WdRunHeader(
+            title: course ?? '자유 러닝',
+            subtitle: course == null ? '자유 러닝' : '코스 러닝',
+            badge: '준비',
+          ),
           Expanded(
             child: LayoutBuilder(
               builder: (context, constraints) => SingleChildScrollView(
@@ -418,7 +457,7 @@ class _Countdown extends StatelessWidget {
                             vertical: WdSpace.s6,
                           ),
                           child: Text(
-                            '자유 러닝',
+                            course == null ? '자유 러닝' : '코스 러닝',
                             style: WdText.ko12Medium.copyWith(
                               color: WdColors.lime,
                             ),
@@ -484,16 +523,28 @@ class _Countdown extends StatelessWidget {
   );
 }
 
-class _HoldToStart extends StatefulWidget {
-  const _HoldToStart({required this.onStart});
-  final VoidCallback onStart;
+/// 1초 누르면 시작(RUN-04). [onStart]가 null이면 비활성(코스 러닝 출발점 밖, RCR-01).
+class RunHoldToStart extends StatefulWidget {
+  const RunHoldToStart({super.key, required this.onStart, this.label = '자유 러닝 시작'});
+  final VoidCallback? onStart;
+  final String label;
   @override
-  State<_HoldToStart> createState() => _HoldToStartState();
+  State<RunHoldToStart> createState() => _RunHoldToStartState();
 }
 
-class _HoldToStartState extends State<_HoldToStart> {
+class _RunHoldToStartState extends State<RunHoldToStart> {
   Timer? _hold;
   int? _pointer;
+
+  @override
+  void didUpdateWidget(RunHoldToStart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 누르는 중에 비활성이 되면(출발점 반경을 벗어남) 시작하지 않는다
+    if (widget.onStart == null && _pointer != null) {
+      _hold?.cancel();
+      _pointer = null;
+    }
+  }
   void _release(PointerEvent event) {
     if (!mounted || _pointer != event.pointer) return;
     _hold?.cancel();
@@ -509,20 +560,22 @@ class _HoldToStartState extends State<_HoldToStart> {
   @override
   Widget build(BuildContext context) => Semantics(
     button: true,
+    enabled: widget.onStart != null,
     label: '1초 눌러 러닝 시작',
     onLongPress: widget.onStart,
     excludeSemantics: true,
     child: Listener(
       onPointerDown: (event) {
-        if (_pointer != null) return;
+        final onStart = widget.onStart;
+        if (_pointer != null || onStart == null) return;
         setState(() => _pointer = event.pointer);
-        _hold = Timer(const Duration(seconds: 1), widget.onStart);
+        _hold = Timer(const Duration(seconds: 1), onStart);
       },
       onPointerUp: _release,
       onPointerCancel: _release,
       child: WdButton(
-        _pointer == null ? '자유 러닝 시작' : '누르고 있어 주세요',
-        onPressed: () {},
+        _pointer == null ? widget.label : '누르고 있어 주세요',
+        onPressed: widget.onStart == null ? null : () {},
       ),
     ),
   );

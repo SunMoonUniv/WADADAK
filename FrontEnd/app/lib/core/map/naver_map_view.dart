@@ -61,9 +61,11 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
     if (controller == null || !mounted) return;
 
     final lines = {for (final line in widget.map.lines) if (line.points.length >= 2) line.id: line};
-    for (final id in _shownLines.keys.where((id) => !lines.containsKey(id)).toList()) {
-      await controller.deleteOverlay(NOverlayInfo(type: NOverlayType.pathOverlay, id: id));
-      _shownLines.remove(id);
+    // 점선은 다른 종류(polyline)라 같은 id로 바꿔 끼워지지 않는다. 실선↔점선으로 바뀌면 지우고 다시 올린다.
+    for (final id in _shownLines.keys
+        .where((id) => lines[id]?.style.dash.isEmpty != _shownLines[id]!.style.dash.isEmpty)
+        .toList()) {
+      await controller.deleteOverlay(NOverlayInfo(type: _type(_shownLines.remove(id)!), id: id));
     }
     // 화면이 같은 목록에 점을 이어 붙여도(러닝 주행선) 비교되게 점을 복사해 두고, 그 복사본을 올린다.
     // 올리기를 기다린 뒤에 복사하면 그사이 붙은 점이 올라간 것으로 기록돼 다음 반영이 빠진다.
@@ -109,15 +111,29 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
     _shownMarkers.addAll(markers);
   }
 
-  NPathOverlay _path(MapLine line) => NPathOverlay(
-        id: line.id,
-        // SDK는 List만 보낼 수 있다(지연 Iterable은 ArgumentError).
-        coords: line.points.map(_latLng).toList(),
-        width: line.style.width,
-        color: line.style.color,
-        outlineWidth: line.style.outlineWidth,
-        outlineColor: line.style.outlineColor,
-      )..setZIndex(line.style.index);
+  static NOverlayType _type(MapLine line) =>
+      line.style.dash.isEmpty ? NOverlayType.pathOverlay : NOverlayType.polylineOverlay;
+
+  // 점선은 경로 오버레이가 못 그려 선 오버레이로 그린다. 경로 오버레이와 같은 층에 둬 모양 순서대로 겹친다.
+  NAddableOverlay _path(MapLine line) => line.style.dash.isEmpty
+      ? (NPathOverlay(
+          id: line.id,
+          // SDK는 List만 보낼 수 있다(지연 Iterable은 ArgumentError).
+          coords: line.points.map(_latLng).toList(),
+          width: line.style.width,
+          color: line.style.color,
+          outlineWidth: line.style.outlineWidth,
+          outlineColor: line.style.outlineColor,
+        )..setZIndex(line.style.index))
+      : (NPolylineOverlay(
+          id: line.id,
+          coords: line.points.map(_latLng).toList(),
+          width: line.style.width,
+          color: line.style.color,
+          pattern: line.style.dash,
+        )
+          ..setGlobalZIndex(-100000)
+          ..setZIndex(line.style.index));
 
   Future<NOverlayImage> _image(MapMarker marker) => _images[marker.look] ??= switch (marker) {
         MapMarker(:final icon?) => _iconImage(icon),

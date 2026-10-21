@@ -166,9 +166,18 @@ enum MapLineStyle {
   runCourse(color: WdColors.white, outlineColor: WdColors.ink, width: 6, outlineWidth: 2),
 
   /// 러닝 화면의 실제 주행선(자유·코스 러닝·고스트 대결). 라임 선 + 잉크 테두리(Figma H4-1). 코스선 위에 그려진다.
-  track(color: WdColors.lime, outlineColor: WdColors.ink, width: 6, outlineWidth: 2);
+  track(color: WdColors.lime, outlineColor: WdColors.ink, width: 6, outlineWidth: 2),
 
-  const MapLineStyle({required this.color, required this.outlineColor, required this.width, required this.outlineWidth});
+  /// 러닝 화면의 안내 점선. 내 위치에서 코스 출발점까지(RCR-01)·가장 가까운 경로 지점까지(Figma C4-3). 테두리 없다.
+  guide(color: WdColors.white, outlineColor: WdColors.ink, width: 2, outlineWidth: 0, dash: [6, 4]);
+
+  const MapLineStyle({
+    required this.color,
+    required this.outlineColor,
+    required this.width,
+    required this.outlineWidth,
+    this.dash = const [],
+  });
 
   final Color color;
   final Color outlineColor;
@@ -176,6 +185,9 @@ enum MapLineStyle {
 
   /// 선 양옆에 한 번씩 붙는 테두리 두께.
   final double outlineWidth;
+
+  /// 점선의 [선, 빈칸, ...] 길이(dp). 비면 실선.
+  final List<int> dash;
 }
 
 /// 지도 위 표지.

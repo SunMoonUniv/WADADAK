@@ -53,6 +53,34 @@ class FreeRunController extends ChangeNotifier {
   CourseSelection? get selectedCourse => _recording?.selectedCourse;
   void clearCourse() => _recording?.clearCourse();
 
+  /// 진행 중인 코스 러닝의 안내(C4 코스). 코스 러닝이 아니면 null
+  CourseLive? get courseLive {
+    final recording = _recording, run = _recording?.run, tracker = _recording?.courseTracker;
+    if (recording == null || run == null || tracker == null || !recording.onCourse) return null;
+    tracker.feed(run.inputs);
+    return CourseLive(recording.course!.name, tracker);
+  }
+
+  /// 아직 코스 구간이다. 종료를 고르면 [코스만 종료]도 보인다(RUN-07)
+  bool get onCourse => _recording?.onCourse ?? false;
+
+  /// 코스만 종료: 코스 도전을 미완주로 마감하고 같은 세션을 자유 러닝으로 잇는다. 일시정지는 그대로다
+  void endCourseOnly() {
+    final recording = _recording;
+    if (recording != null) unawaited(recording.endCourse('COURSE_ONLY'));
+  }
+
+  /// 코스 구간을 끝내고 자유 러닝으로 바뀐 뒤의 안내
+  String? get courseNotice => switch (_recording?.courseEndReason) {
+    'ROUTE_END' => '코스 끝에 도착했어요. 자유 러닝으로 이어서 기록해요.',
+    'COURSE_ONLY' => '코스만 종료했어요. 자유 러닝으로 이어서 기록해요.',
+    _ => null,
+  };
+
+  /// 코스 러닝 측정 전(RCR-01). 있으면 출발점 안내 지도를 보인다
+  CourseStart? get courseStart => _recording?.courseStart;
+  void cancelCourseStart() => _recording?.cancelCourseStart();
+
   /// [run]이 방금 시작한 코스 러닝이면 그 코스. 서버 판정 전 결과 화면에 "판정 대기"로 보인다
   CourseSelection? courseOf(RunSnapshot run) =>
       run.sessionId != null && run.sessionId == _recording?.courseRunId ? _recording?.course : null;
