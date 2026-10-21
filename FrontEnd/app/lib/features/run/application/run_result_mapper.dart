@@ -1,3 +1,4 @@
+import '../domain/course_run.dart';
 import '../domain/run_lap.dart';
 import '../domain/run_models.dart';
 import '../domain/run_result_stats.dart';
@@ -49,5 +50,8 @@ RunSnapshot remoteRunSnapshot(
     averageCadence: (m['averageCadence'] as num?)?.toDouble(),
     cadenceCoverageMs: ms('cadenceCoverageMs'),
     cadenceStatus: m['averageCadence'] == null ? '측정 없음' : '측정 완료',
+    course: json['course'] is Map
+        ? RunCourseResult.fromJson((json['course'] as Map).cast<String, dynamic>())
+        : null,
   );
 }

@@ -21,6 +21,25 @@ class RunApiClient {
       options: options(run.owner),
     ),
   );
+
+  /// 코스 러닝 준비(C6, 측정 시작 전). 코스 공개 여부를 확인하고 판정용 경로 스냅샷을 받는다(정책 D-08).
+  Future<Map<String, dynamic>> prepareCourse(String owner, String id, String courseId) => _map(
+    () => dio.put<Object?>(
+      '/api/v1/runs/sessions/$id/course',
+      data: {'courseId': courseId},
+      options: options(owner),
+    ),
+  );
+
+  /// 코스 러닝 시작 신호(카운트다운 끝). [startedAt]은 기록의 시작 시각과 같아야 업로드 준비가 맞는다.
+  Future<void> startCourse(String owner, String id, DateTime startedAt) => callApi(
+    () => dio.post<Object?>(
+      '/api/v1/runs/sessions/$id/course/start',
+      data: {'startedAt': startedAt.toUtc().toIso8601String()},
+      options: options(owner),
+    ),
+  );
+
   Future<Map<String, dynamic>> upload(
     RunUpload run,
     List<Map<String, dynamic>> inputs,

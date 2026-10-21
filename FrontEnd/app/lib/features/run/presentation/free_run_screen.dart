@@ -11,6 +11,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../application/free_run_controller.dart';
+import '../domain/course_run.dart';
 import '../domain/run_models.dart';
 import 'free_run_live_view.dart';
 import 'free_run_result_view.dart';
@@ -48,10 +49,13 @@ class FreeRunScreen extends ConsumerWidget {
                         ? controller.openSettings
                         : null,
                     recent: controller.recent,
+                    course: controller.selectedCourse,
+                    onClearCourse: controller.clearCourse,
                   ),
                   RunState.finished => FreeRunResultView(
                     run: run,
                     onConfirm: controller.newRun,
+                    pendingCourse: controller.courseOf(run)?.name,
                   ),
                   _ => FreeRunLiveView(
                     run: run,
@@ -137,11 +141,17 @@ class _Preparation extends StatelessWidget {
     this.error,
     this.onSettings,
     this.recent,
+    this.course,
+    this.onClearCourse,
   });
   final VoidCallback onStart;
   final String? error;
   final VoidCallback? onSettings;
   final RunSnapshot? recent;
+
+  /// 코스 상세에서 고른 코스(F6). 있으면 시작이 코스 러닝이다
+  final CourseSelection? course;
+  final VoidCallback? onClearCourse;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -165,10 +175,16 @@ class _Preparation extends StatelessWidget {
           ),
           child: WdSegmentedControl(
             items: const ['자유 러닝', '코스 러닝', '고스트 대결'],
-            selectedIndex: 0,
+            selectedIndex: course == null ? 0 : 1,
             onChanged: (index) {
-              if (index != 0) {
-                _notReady(context, index == 1 ? '코스 러닝' : '고스트 대결');
+              if (index == 0) {
+                onClearCourse?.call();
+              } else if (index == 1 && course == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('코스 상세에서 이 코스로 달리기를 눌러 코스를 골라 주세요.')),
+                );
+              } else if (index == 2) {
+                _notReady(context, '고스트 대결');
               }
             },
           ),
@@ -195,6 +211,9 @@ class _Preparation extends StatelessWidget {
                             WdButton('권한 설정 열기', onPressed: onSettings),
                           const SizedBox(height: WdSpace.s12),
                         ],
+                        if (course != null) ...[
+                          _CourseIntro(course: course!),
+                        ] else ...[
                         Text('오늘은, 발길이 닿는 대로.', style: WdText.ko22Bold),
                         const SizedBox(height: WdSpace.s4),
                         Text(
@@ -242,6 +261,7 @@ class _Preparation extends StatelessWidget {
                             ],
                           ),
                         ),
+                        ],
                         const SizedBox(height: WdSpace.s8),
                         WdSurface(
                           color: WdColors.dark,
@@ -505,5 +525,30 @@ class _HoldToStartState extends State<_HoldToStart> {
         onPressed: () {},
       ),
     ),
+  );
+}
+
+/// 코스 상세에서 고른 코스(F6). 시작하면 서버가 코스 공개 여부를 확인하고(연결 필요, D-08) 업로드 후 완주를 판정한다.
+class _CourseIntro extends StatelessWidget {
+  const _CourseIntro({required this.course});
+  final CourseSelection course;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Text(course.name, style: WdText.ko22Bold),
+      const SizedBox(height: WdSpace.s4),
+      Text(
+        '출발점에서 시작해 코스를 따라 끝까지 달려 보세요.',
+        style: WdText.ko12.copyWith(color: WdColors.muted),
+      ),
+      const SizedBox(height: WdSpace.s8),
+      const WdInfoBanner(
+        '코스 러닝은 시작할 때 인터넷 연결이 필요해요. 완주 여부는 기록을 올린 뒤 서버가 판정해요.',
+        tone: WdBannerTone.warning,
+        plain: true,
+      ),
+    ],
   );
 }

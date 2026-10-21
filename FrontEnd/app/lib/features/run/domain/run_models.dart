@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'course_run.dart';
 import 'run_lap.dart';
 import 'run_result_stats.dart';
 
@@ -91,7 +92,11 @@ class RunSnapshot {
     this.voiceNotice,
     this.resultStats,
     this.liveElevationGainM,
+    this.course,
   }) : inputs = List.unmodifiable(inputs);
+
+  /// 서버 코스 판정. 코스 러닝 기록을 서버가 처리한 뒤에만 있다
+  final RunCourseResult? course;
 
   final RunState state;
   final String? sessionId;

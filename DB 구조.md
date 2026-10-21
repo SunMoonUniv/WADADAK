@@ -770,7 +770,7 @@ PK는 `(session_id, stream_seq)`, `session_id`만 같은 run 스키마 sessions�
 | `course_version` | BIGINT | 준비 때 코스 `@Version`. 어느 시점 코스로 달렸는지 구분 |
 | `route_json` | TEXT | 판정용 기준 경로(GeoPoint JSON 배열, 첫 점이 출발). 이후 코스가 바뀌어도 이 경로로 판정한다 |
 | `total_distance_meters` | INTEGER | 코스 전체 거리(코스 등록 값). 이벤트 `courseDistanceMeters`·랭킹 페이스에 쓴다 |
-| `started_at` | TIMESTAMPTZ nullable | 측정 시작(시작 신호). null이면 준비만 했다. 종료 업로드의 `COURSE` prepare는 이 값과 같아야 한다 |
+| `started_at` | TIMESTAMPTZ nullable | 측정 시작(시작 신호). null이면 준비만 했다. 종료 업로드 prepare(mode와 상관없이)는 이 값과 같아야 하고, 이 행이 있으면 코스 기록으로 판정한다 |
 | `started_event_at` | TIMESTAMPTZ nullable | `CourseRunStartedEvent.occurredAt`. 기록 삭제 때 `RunRecordDeletedEvent.startedAt`으로 보내 course가 같은 날짜에서 도전 수를 뺀다 |
 | `released_at` | TIMESTAMPTZ nullable | 현재 러너 수에서 뺀 시각 |
 | `release_reason` | VARCHAR(20) nullable | `SEGMENT_END`(구간 종료 신호) · `UPLOAD`(기록 업로드 완료) · `TIMEOUT`(시작 후 3시간) · `DELETED`(기록 삭제·탈퇴) |

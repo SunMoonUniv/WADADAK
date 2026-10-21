@@ -16,8 +16,10 @@ import '../../../core/time/monotonic_clock.dart';
 import '../domain/run_location_policy.dart';
 import '../data/run_audio_output.dart';
 import 'audio_guide.dart';
+import 'course_run_entry.dart';
 import '../data/run_device.dart';
 import '../domain/run_voice.dart';
+import '../domain/course_run.dart';
 import '../domain/recording_models.dart';
 import 'run_recorder.dart';
 import 'run_sync_worker.dart';
@@ -38,6 +40,12 @@ final runControllerProvider = Provider<RunController>((ref) {
       unawaited(controller.accountChanged());
     }
   });
+  // 코스 상세의 `이 코스로 달리기`(F6). 받아 가고 비워 같은 코스를 다시 골라도 다시 받는다
+  ref.listen(selectedCourseProvider, (_, next) {
+    if (next == null) return;
+    controller.selectCourse(next);
+    Future.microtask(() => ref.read(selectedCourseProvider.notifier).select(null));
+  }, fireImmediately: true);
   ref.onDispose(controller.dispose);
   unawaited(controller.bindOwner());
   return controller;
@@ -104,6 +112,13 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   final AppLifecycleState? Function() _lifecycleState;
   late final StreamSubscription<void> _changes;
   StreamSubscription<Position>? _gps;
+
+  /// 코스 상세에서 고른 코스. 다음 시작을 코스 러닝으로 한다(F6)
+  CourseSelection? selectedCourse;
+
+  /// 마지막으로 시작한 코스 러닝의 코스와 세션 ID. 결과 화면의 "서버 판정 대기"에 쓴다
+  CourseSelection? course;
+  String? courseRunId;
   List<LocalRun> records = [];
   List<Map<String, dynamic>> remoteRecords = [];
   String? currentOwner, error, gpsNotice, nextCursor, historyNotice;
@@ -195,6 +210,32 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> accountChanged() => bindOwner();
 
+  /// 코스 러닝으로 시작할 코스를 고른다. 진행 중인 러닝이 있으면 바꾸지 않는다(RUN-05)
+  void selectCourse(CourseSelection selection) {
+    if (recorder.active || preparing) return;
+    selectedCourse = selection;
+    error = null;
+    _notify();
+  }
+
+  void clearCourse() {
+    if (preparing) return;
+    selectedCourse = null;
+    _notify();
+  }
+
+  /// 코스 러닝 서버 연결(D-08). 끊겨 있으면 시작하지 않고 연결 실패를 알린다
+  Future<T> _courseCall<T>(Future<T> Function() call) async {
+    try {
+      return await call();
+    } on ApiException catch (e) {
+      if (e.code == ApiException.network) {
+        throw const DeviceSetupException('인터넷에 연결되지 않아 코스 러닝을 시작할 수 없어요. 연결을 확인하고 다시 시도해 주세요.');
+      }
+      rethrow;
+    }
+  }
+
   Future<void> prepareStart() async {
     if (preparing || recorder.active || storageFault || _disposed) return;
     await bindOwner();
@@ -206,6 +247,9 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
     final generation = ++_generation;
+    // 코스 러닝은 세션 ID를 먼저 만들어 서버 준비·시작 신호와 기록에 같은 ID를 쓴다
+    final selection = selectedCourse;
+    final runId = const Uuid().v7();
     preparing = true;
     error = null;
     setupAction = null;
@@ -227,6 +271,11 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       if (generation != _generation || _disposed) return;
       if (_lifecycleState() != AppLifecycleState.resumed) {
         throw const DeviceSetupException('앱으로 돌아온 뒤 러닝을 시작해 주세요.');
+      }
+      if (selection != null) {
+        // 코스 공개 여부 확인과 판정용 경로 저장. 실패하면 시작하지 않는다(D-08)
+        await _courseCall(() => api.prepareCourse(member, runId, selection.courseId));
+        if (generation != _generation || _disposed) return;
       }
       _latest = position;
       _lastFixAt = _utcNow();
@@ -256,10 +305,21 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       if (generation != _generation || _disposed || await owner() != member) {
         return;
       }
+      final startedAt = _utcNow();
+      if (selection != null) {
+        // 시작 신호(도전 수·현재 러너 수). 기록의 시작 시각과 같은 값을 보내야 업로드가 코스 기록으로 맞는다
+        await _courseCall(() => api.startCourse(member, runId, startedAt));
+        if (generation != _generation || _disposed || await owner() != member) {
+          return;
+        }
+      }
       _committing = true;
       countdown = null;
       _notify();
-      await recorder.start(const Uuid().v7(), member, _utcNow());
+      await recorder.start(runId, member, startedAt);
+      course = selection;
+      courseRunId = selection == null ? null : runId;
+      selectedCourse = null;
       currentOwner = member;
       if (_disposed || await owner() != member) {
         await recorder.end(reason: 'ACCOUNT_CHANGED');
