@@ -518,9 +518,9 @@ erDiagram
 
 - `course_ranking_entries_course_id_idx`: `(course_id)`, 삭제되지 않은 행만
 - `course_ranking_entries_member_id_idx`: `(member_id)`
-- 기록을 지우면 행을 지우지 않고 `deleted`만 켠다. 삭제 이벤트가 완주 이벤트보다 먼저 처리돼도 완주 저장이 PK 충돌로 무시돼 되살아나지 않는다.
+- `RunSessionEndedEvent` 중 코스 완주 기록만 넣는다(`ON CONFLICT DO NOTHING`). 숨김·삭제된 코스(`course_status_copies`에 행이 있음)와 탈퇴 회원의 완주는 넣지 않는다.
+- 기록을 지우면(`RunRecordDeletedEvent`) 행을 지우지 않고 `deleted`만 켠다. 삭제 이벤트에는 코스 거리·완주 시각이 없어 삭제 표시 행을 먼저 만들 수 없으므로, 같은 트랜잭션에서 쓰는 `distance_run_records`의 삭제 표시를 쓴다. 삭제가 완주보다 먼저 처리됐으면 완주를 `deleted`가 켜진 채로 넣어 되살아나지 않는다.
 - 코스가 삭제되면 그 코스의 행을 모두 지운다.
-- 행을 쌓는 run 완주·삭제 이벤트 처리는 아직 없다(run 이벤트 계약 대기).
 
 #### `ranking.course_status_copies` — 코스 상태 복사본
 
@@ -571,7 +571,7 @@ erDiagram
 
 #### `ranking.distance_run_records` — 기록별 누적 거리 집계 원천 복사본
 
-`RunSessionEndedEvent`·`RunRecordDeletedEvent`를 받아 자기 스키마에 보관한다. 자유 러닝도 포함한다. 누적 거리 랭킹(F12)이 이 표를 회원마다 더해 순위를 매긴다.
+`RunSessionEndedEvent`·`RunRecordDeletedEvent`를 받아 자기 스키마에 보관한다. 자유 러닝도 포함한다. 누적 거리 랭킹(F12)이 이 표를 회원마다 더해 순위를 매긴다. 코스 랭킹 엔트리도 이 표의 `deleted`를 삭제 표시로 쓴다.
 
 | 컬럼 | 타입 | 설명 |
 | --- | --- | --- |
