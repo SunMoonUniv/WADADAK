@@ -13,6 +13,7 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 import '../application/free_run_controller.dart';
 import '../domain/course_run.dart';
 import '../domain/run_models.dart';
+import 'course_deviation_alert.dart';
 import 'course_start_view.dart';
 import 'free_run_live_view.dart';
 import 'free_run_result_view.dart';
@@ -40,7 +41,8 @@ class FreeRunScreen extends ConsumerWidget {
               ? _Countdown(
                   value: controller.countdown,
                   gpsStatus: controller.gpsStatus,
-                  course: (courseStart?.course ?? controller.selectedCourse)?.name,
+                  course:
+                      (courseStart?.course ?? controller.selectedCourse)?.name,
                   onCancel: controller.canCancelStart
                       ? controller.cancelStart
                       : null,
@@ -67,17 +69,24 @@ class FreeRunScreen extends ConsumerWidget {
                     onConfirm: controller.newRun,
                     pendingCourse: controller.courseOf(run)?.name,
                   ),
-                  _ => FreeRunLiveView(
-                    run: run,
-                    course: controller.courseLive,
-                    courseNotice: controller.courseNotice,
-                    onPause: controller.storageFault ? null : controller.pause,
-                    onResume: controller.storageFault
-                        ? null
-                        : controller.resume,
-                    onStop: controller.storageFault
-                        ? null
-                        : () => _confirmStop(context, controller),
+                  _ => CourseDeviationAlert(
+                    open: controller.deviationAlert,
+                    onConfirm: controller.acknowledgeDeviation,
+                    onMute: controller.muteDeviation,
+                    child: FreeRunLiveView(
+                      run: run,
+                      course: controller.courseLive,
+                      courseNotice: controller.courseNotice,
+                      onPause: controller.storageFault
+                          ? null
+                          : controller.pause,
+                      onResume: controller.storageFault
+                          ? null
+                          : controller.resume,
+                      onStop: controller.storageFault
+                          ? null
+                          : () => _confirmStop(context, controller),
+                    ),
                   ),
                 },
         );
@@ -209,7 +218,9 @@ class _Preparation extends StatelessWidget {
                 onClearCourse?.call();
               } else if (index == 1 && course == null) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('코스 상세에서 이 코스로 달리기를 눌러 코스를 골라 주세요.')),
+                  const SnackBar(
+                    content: Text('코스 상세에서 이 코스로 달리기를 눌러 코스를 골라 주세요.'),
+                  ),
                 );
               } else if (index == 2) {
                 _notReady(context, '고스트 대결');
@@ -242,53 +253,54 @@ class _Preparation extends StatelessWidget {
                         if (course != null) ...[
                           _CourseIntro(course: course!),
                         ] else ...[
-                        Text('오늘은, 발길이 닿는 대로.', style: WdText.ko22Bold),
-                        const SizedBox(height: WdSpace.s4),
-                        Text(
-                          '코스 제한 없이 나만의 속도로 달려보세요.',
-                          style: WdText.ko12.copyWith(color: WdColors.muted),
-                        ),
-                        const SizedBox(height: WdSpace.s8),
-                        const WdInfoBanner(
-                          '자유 러닝은 코스 기록 · 랭킹 · 고스트 대결에 반영되지 않아요.',
-                          tone: WdBannerTone.warning,
-                          plain: true,
-                        ),
-                        const SizedBox(height: WdSpace.s8),
-                        WdSurface(
-                          height: 96,
-                          padding: const EdgeInsets.all(WdSpace.s12),
-                          child: Row(
-                            spacing: WdSpace.s12,
-                            children: [
-                              // 피그마 원본 26×24 아이콘. 탭의 21×21 러닝 아이콘과 별개다.
-                              SvgPicture.asset(
-                                'assets/run/free_run.svg',
-                                width: 26,
-                                height: 24,
-                              ),
-                              Expanded(
-                                child: Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  spacing: WdSpace.s3,
-                                  children: [
-                                    Text(
-                                      '정해진 길 없이, 자유롭게',
-                                      style: WdText.ko16Bold,
-                                    ),
-                                    Text(
-                                      '시간과 거리, 페이스를 함께 기록해요',
-                                      style: WdText.ko12.copyWith(
-                                        color: WdColors.muted,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                          Text('오늘은, 발길이 닿는 대로.', style: WdText.ko22Bold),
+                          const SizedBox(height: WdSpace.s4),
+                          Text(
+                            '코스 제한 없이 나만의 속도로 달려보세요.',
+                            style: WdText.ko12.copyWith(color: WdColors.muted),
                           ),
-                        ),
+                          const SizedBox(height: WdSpace.s8),
+                          const WdInfoBanner(
+                            '자유 러닝은 코스 기록 · 랭킹 · 고스트 대결에 반영되지 않아요.',
+                            tone: WdBannerTone.warning,
+                            plain: true,
+                          ),
+                          const SizedBox(height: WdSpace.s8),
+                          WdSurface(
+                            height: 96,
+                            padding: const EdgeInsets.all(WdSpace.s12),
+                            child: Row(
+                              spacing: WdSpace.s12,
+                              children: [
+                                // 피그마 원본 26×24 아이콘. 탭의 21×21 러닝 아이콘과 별개다.
+                                SvgPicture.asset(
+                                  'assets/run/free_run.svg',
+                                  width: 26,
+                                  height: 24,
+                                ),
+                                Expanded(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    spacing: WdSpace.s3,
+                                    children: [
+                                      Text(
+                                        '정해진 길 없이, 자유롭게',
+                                        style: WdText.ko16Bold,
+                                      ),
+                                      Text(
+                                        '시간과 거리, 페이스를 함께 기록해요',
+                                        style: WdText.ko12.copyWith(
+                                          color: WdColors.muted,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ],
                         const SizedBox(height: WdSpace.s8),
                         WdSurface(
@@ -525,7 +537,11 @@ class _Countdown extends StatelessWidget {
 
 /// 1초 누르면 시작(RUN-04). [onStart]가 null이면 비활성(코스 러닝 출발점 밖, RCR-01).
 class RunHoldToStart extends StatefulWidget {
-  const RunHoldToStart({super.key, required this.onStart, this.label = '자유 러닝 시작'});
+  const RunHoldToStart({
+    super.key,
+    required this.onStart,
+    this.label = '자유 러닝 시작',
+  });
   final VoidCallback? onStart;
   final String label;
   @override
@@ -545,6 +561,7 @@ class _RunHoldToStartState extends State<RunHoldToStart> {
       _pointer = null;
     }
   }
+
   void _release(PointerEvent event) {
     if (!mounted || _pointer != event.pointer) return;
     _hold?.cancel();

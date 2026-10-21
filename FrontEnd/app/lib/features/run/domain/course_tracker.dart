@@ -69,6 +69,21 @@ class RouteGeometry {
     return distinct;
   }
 
+  /// 경로 전체에서 가장 가까운 지점과 그 거리(m). 이탈 안내용(정책 6장 "코스 경로선까지의 최단거리").
+  /// 판정과 달리 직전 위치를 보지 않는다: 어느 구간이든 경로 가까이 있으면 이탈이 아니다
+  ({double d, GeoPoint point}) nearest(double lat, double lng) {
+    final p = toLocal(lat, lng);
+    var best = project(p, 0);
+    for (var i = 1; i < _vertices.length - 1; i++) {
+      final c = project(p, i);
+      if (c.d < best.d) best = c;
+    }
+    final span = _cumulative[best.segment + 1] - _cumulative[best.segment];
+    final t = span == 0 ? 0.0 : (best.s - _cumulative[best.segment]) / span;
+    final a = route[best.segment], b = route[best.segment + 1];
+    return (d: best.d, point: GeoPoint(a.lat + (b.lat - a.lat) * t, a.lng + (b.lng - a.lng) * t));
+  }
+
   /// 출발점부터 1km마다의 경로 위 지점(지도 거리 표지, 안내용). 평면이 위도·경도에 선형이라 위도·경도로 보간한다.
   List<(int, GeoPoint)> kilometres() {
     final markers = <(int, GeoPoint)>[];

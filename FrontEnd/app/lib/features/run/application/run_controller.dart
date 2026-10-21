@@ -22,6 +22,7 @@ import '../data/run_device.dart';
 import '../domain/run_voice.dart';
 import '../domain/course_run.dart';
 import '../domain/course_tracker.dart';
+import '../domain/route_guidance.dart';
 import '../domain/recording_models.dart';
 import 'run_recorder.dart';
 import 'run_sync_worker.dart';
@@ -81,6 +82,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     );
     _changes = recorder.changes.stream.listen((_) {
       _checkCourseEnd();
+      _guide();
       _notify();
       unawaited(_refreshExtras());
     });
@@ -129,6 +131,9 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// 그 코스 러닝의 경로 추적(진행도·남은 거리 안내용, 완주 판정 아님). 앱을 다시 켜면 러닝이 끝나므로 기기에 저장하지 않는다
   CourseTracker? courseTracker;
+
+  /// 그 코스 러닝의 이탈 안내(6·7장). 안내 전용이고 판정에는 영향이 없다
+  RouteGuidance? routeGuidance;
 
   /// 코스 구간을 끝낸 사유(`ROUTE_END` 경로 끝 도착·`COURSE_ONLY` 코스만 종료). 이후 같은 세션은 자유 러닝이다(RUN-07·RUN-08)
   String? courseEndReason;
@@ -350,7 +355,9 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       await recorder.start(runId, member, startedAt);
       course = start?.course;
       courseRunId = start == null ? null : runId;
-      courseTracker = start == null ? null : CourseTracker(RouteGeometry(start.snapshot.route));
+      final geometry = start == null ? null : RouteGeometry(start.snapshot.route);
+      courseTracker = geometry == null ? null : CourseTracker(geometry);
+      routeGuidance = geometry == null ? null : RouteGuidance(geometry);
       courseEndReason = null;
       courseStart = null;
       selectedCourse = null;
@@ -412,6 +419,41 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     if (position != null && position >= tracker.route.length - courseArrivalM) {
       unawaited(endCourse('ROUTE_END'));
     }
+  }
+
+  /// 이탈 안내(6·7장): 새 입력으로 이탈·복귀를 판단해 음성을 내고 팝업 상태를 바꾼다. 코스 구간이 끝나면 멈추고 팝업을 닫는다
+  void _guide() {
+    final guidance = routeGuidance, current = run;
+    if (guidance == null || current == null) return;
+    if (!onCourse) {
+      guidance.alertOpen = false;
+      return;
+    }
+    for (final cue in guidance.feed(current.inputs)) {
+      switch (cue) {
+        case GuidanceCue.candidate:
+          unawaited(audioGuide.announce('코스에서 벗어나고 있어요'));
+        case GuidanceCue.alert:
+          unawaited(audioGuide.announce('코스를 벗어났어요'));
+        case GuidanceCue.dismiss:
+          break;
+      }
+    }
+  }
+
+  /// 이탈 팝업을 띄울 때(7.1). 진동은 팝업과 함께 화면이 낸다
+  bool get deviationAlert => onCourse && (routeGuidance?.alertOpen ?? false);
+
+  /// 이탈 팝업 [확인]: 이탈이 이어지면 30초 뒤 다시 안내한다
+  void acknowledgeDeviation() {
+    routeGuidance?.acknowledge(recorder.elapsedMs);
+    _notify();
+  }
+
+  /// 이탈 팝업 [다시 표시하지 않음]: 이번 러닝 끝까지 이탈 팝업·진동·음성을 끈다
+  void muteDeviation() {
+    routeGuidance?.mute();
+    _notify();
   }
 
   /// 코스 구간을 끝내고 같은 세션을 자유 러닝으로 잇는다(경로 끝 도착·코스만 종료, RUN-07·RUN-08).
