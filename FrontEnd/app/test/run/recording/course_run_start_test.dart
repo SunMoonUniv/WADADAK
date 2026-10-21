@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:wadadak/core/api/api_client.dart';
 import 'package:wadadak/core/map/map_view.dart';
@@ -237,6 +238,50 @@ void main() {
 
     expect(segmentEnd(), isNull);
     expect(api.segmentEnds, isEmpty);
+  });
+
+  test('running off the course raises the deviation alert and confirm closes it (7.1·7.2)', () async {
+    await startCourse();
+    var gps = 1;
+    Future<void> move(double eastM) async {
+      location.clock += 2000;
+      location.streams.last.add(Position(
+        latitude: 36.0001,
+        longitude: 127 + eastM / 90063, // 위도 36°에서 경도 1° ≈ 90 km
+        timestamp: location.utc,
+        accuracy: 3,
+        altitude: 0,
+        altitudeAccuracy: 0,
+        heading: 0,
+        headingAccuracy: 0,
+        speed: 0,
+        speedAccuracy: 0,
+      ));
+      gps++;
+      await until(() => controller.run!.inputs.where((i) => i.kind == RunKind.gps).length >= gps);
+    }
+
+    for (var east = 5.0; east <= 40; east += 5) {
+      await move(east); // 2초에 5 m씩 동쪽으로
+    }
+    expect(controller.deviationAlert, false); // 후보만
+    for (var i = 0; i < 6; i++) {
+      await move(40);
+    }
+
+    expect(controller.deviationAlert, true);
+    expect(controller.routeGuidance!.distanceM, closeTo(40, 1));
+    controller.acknowledgeDeviation();
+    expect(controller.deviationAlert, false);
+    expect(controller.recorder.active, true); // 안내 중에도 측정은 계속
+  });
+
+  test('deviation alerts stop once the course segment ends', () async {
+    await startCourse();
+    await controller.pause();
+    await controller.endCourse('COURSE_ONLY');
+
+    expect(controller.deviationAlert, false);
   });
 
   test('arrival voice tells the course time and pace measured on the device (AUD-06)', () {

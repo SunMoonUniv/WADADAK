@@ -58,8 +58,13 @@ class FreeRunController extends ChangeNotifier {
     final recording = _recording, run = _recording?.run, tracker = _recording?.courseTracker;
     if (recording == null || run == null || tracker == null || !recording.onCourse) return null;
     tracker.feed(run.inputs);
-    return CourseLive(recording.course!.name, tracker);
+    return CourseLive(recording.course!.name, tracker, recording.routeGuidance);
   }
+
+  /// 이탈 안내 팝업 "코스를 벗어났어요"를 띄울 때(7.1)
+  bool get deviationAlert => _recording?.deviationAlert ?? false;
+  void acknowledgeDeviation() => _recording?.acknowledgeDeviation();
+  void muteDeviation() => _recording?.muteDeviation();
 
   /// 아직 코스 구간이다. 종료를 고르면 [코스만 종료]도 보인다(RUN-07)
   bool get onCourse => _recording?.onCourse ?? false;

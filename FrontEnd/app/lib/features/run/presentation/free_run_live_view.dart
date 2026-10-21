@@ -111,7 +111,11 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
             WdRunHeader(
               title: course?.name ?? '자유 러닝',
               subtitle: course == null ? '자유 러닝' : '코스 러닝',
-              badge: paused ? '일시정지' : '기록 중',
+              badge: paused
+                  ? '일시정지'
+                  : course?.offRoute == true
+                  ? '경로 이탈'
+                  : '기록 중',
             ),
             Padding(
               padding: const EdgeInsets.symmetric(
@@ -196,7 +200,7 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                         dark: true,
                       ),
                     Text(
-                      '${course == null ? '자유 러닝' : course.nextTarget} · ${run.gpsStatus}',
+                      '${course == null ? '자유 러닝' : course.deviation != null ? '코스에서 ${CourseLive.formatMeters(course.deviation!.d)} 벗어났어요' : course.nextTarget} · ${run.gpsStatus}',
                       style: WdText.ko13.copyWith(color: WdColors.runTextSub),
                     ),
                   ]),
@@ -407,6 +411,13 @@ class RunRouteView extends StatelessWidget {
         lines: [
           if (course != null)
             MapLine(id: 'course', points: course.route, style: MapLineStyle.runCourse),
+          // C4-3: 벗어났으면 내 위치에서 가장 가까운 경로 지점까지 점선
+          if (course?.deviation case final deviation?)
+            MapLine(
+              id: 'to-route',
+              points: [GeoPoint(location.latitude, location.longitude), deviation.point],
+              style: MapLineStyle.guide,
+            ),
           for (var index = 0; index < run.segments.length; index++)
             MapLine(
               id: 'run-$index',

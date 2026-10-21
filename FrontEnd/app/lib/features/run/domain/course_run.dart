@@ -5,6 +5,7 @@ import 'dart:math' as math;
 
 import '../../../core/map/geo_point.dart';
 import 'course_tracker.dart';
+import 'route_guidance.dart';
 
 /// 코스 상세에서 고른 코스. 달리기 탭에서 시작하면 서버 준비·시작 신호를 거쳐 코스 러닝이 된다.
 class CourseSelection {
@@ -48,9 +49,20 @@ class CourseStart {
 
 /// 달리는 중 코스 안내(Figma C4 코스·C4-1). 앱 추적값이라 서버 판정과 조금 다를 수 있고, 완주는 판정하지 않는다.
 class CourseLive {
-  CourseLive(this.name, this.tracker);
+  CourseLive(this.name, this.tracker, [this.guidance]);
   final String name;
   final CourseTracker tracker;
+  final RouteGuidance? guidance;
+
+  /// 이탈 확정(머리말 "경로 이탈")
+  bool get offRoute => guidance?.state == GuidanceState.off;
+
+  /// 이탈 후보·확정이면 경로까지 거리와 가장 가까운 경로 지점(Figma C4-3 점선). 아니면 null
+  ({double d, GeoPoint point})? get deviation {
+    final g = guidance, d = g?.distanceM, point = g?.nearestPoint;
+    if (g == null || g.state == GuidanceState.onRoute || d == null || point == null) return null;
+    return (d: d, point: point);
+  }
 
   List<GeoPoint> get route => tracker.route.route;
   double get lengthM => tracker.route.length;
