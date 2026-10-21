@@ -765,7 +765,7 @@ PK는 `(session_id, stream_seq)`, `session_id`만 같은 run 스키마 sessions�
 | `id` | UUID PK/FK | sessions ID와 같은 기록 ID |
 | `registered_at` | TIMESTAMPTZ | 최초 서버 등록 시각. 재전송으로 바꾸지 않음 |
 | `result_json` | TEXT | 상세 경로·랩·시간·거리·케이던스·정책/계산 버전 |
-| `summary_json` | TEXT | 목록용 RecordSummary. 경로·랩 없음 |
+| `summary_json` | TEXT | 목록용 RecordSummary. 경로·랩 없음. 코스 러닝이면 `course` 요약(아래) |
 | `registration_published` | BOOLEAN | 등록 이벤트의 동일 트랜잭션 발행 완료 표시 |
 
 목록은 `summary_json`만 읽는다. `(registered_at DESC, id DESC)` 인덱스를 사용하고 공통 Cursorable/CursorSlice 계약을 따른다. summary는 이미 저장된 결과에서 생성하며 거리 계산을 소급 변경하지 않는다. 새 결과의 정책 버전은 사용자 승인 날짜 `2026-10-14`, 계산 버전은 START의 `PACE_V2` 등이다. 과거 저장 결과에 없는 버전은 새 버전으로 소급 표기하지 않는다.
@@ -808,7 +808,7 @@ PK는 `(session_id, stream_seq)`, `session_id`만 같은 run 스키마 sessions�
 
 #### 코스 판정 결과 `course` (2026-10-20)
 
-`run.records.result_json`의 Result에 선택 객체 `course`를 추가한다. 코스 러닝 기록에만 있고 자유 러닝은 없다(null). 필드: `courseId`, `courseVersion`, `courseDistanceMeters`, `completed`, `reason`(`COMPLETED`·`START_NOT_CONFIRMED`·`FINISH_NOT_REACHED`·`DISTANCE_SHORT`), `recognizedDistanceMeters`, `progressPercent`(0~100), `completedAt`, `courseElapsedSeconds`, `courseMovingSeconds`, `reviewEligible`. 처리(`process`) 때 `course_attempts`의 경로 스냅샷으로 판정해 저장하고, `RunSessionEndedEvent`의 코스 필드는 이 값에서 채운다. 테이블 컬럼은 바뀌지 않는다. `summary_json`(목록)에는 넣지 않았다.
+`run.records.result_json`의 Result에 선택 객체 `course`를 추가한다. 코스 러닝 기록에만 있고 자유 러닝은 없다(null). 필드: `courseId`, `courseName`(준비 때 저장한 달릴 때의 이름), `courseVersion`, `courseDistanceMeters`, `completed`, `reason`(`COMPLETED`·`START_NOT_CONFIRMED`·`FINISH_NOT_REACHED`·`DISTANCE_SHORT`), `recognizedDistanceMeters`, `progressPercent`(0~100), `completedAt`, `courseElapsedSeconds`, `courseMovingSeconds`, `reviewEligible`. 처리(`process`) 때 `course_attempts`의 경로 스냅샷으로 판정해 저장하고, `RunSessionEndedEvent`의 코스 필드는 이 값에서 채운다. 테이블 컬럼은 바뀌지 않는다. `summary_json`(목록 RecordSummary)에는 MY I1 카드용 요약 `course` = `courseId`·`courseName`·`completed`·`progressPercent`·`reviewEligible`만 넣는다(자유 러닝은 null). 이 요약·`courseName` 전에 저장된 코스 기록은 `V20261021_2000__run_record_summary_course.sql`이 `course_attempts.course_name`으로 채운다.
 
 #### 기기 SQLite와 서버 DB의 구분
 
