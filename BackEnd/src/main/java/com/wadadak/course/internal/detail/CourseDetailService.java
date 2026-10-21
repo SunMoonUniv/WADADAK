@@ -50,7 +50,8 @@ class CourseDetailService {
         return new CourseDetail(course.getId(), course.getName(), course.getCourseType(), course.getDifficulty(),
                 course.getTags().stream().sorted().toList(), course.getDistanceMeters(), route,
                 routeService.distanceMarkers(route), course.getExpiresAt(),
-                courseStats.averagePaceSecondsPerKm(courseId, course.getDistanceMeters()), nickname(course.getCreatorId()));
+                courseStats.averagePaceSecondsPerKm(courseId, course.getDistanceMeters()), nickname(course.getCreatorId()),
+                courseStats.activeRunners(courseId));
     }
 
     /** 조회 수는 정렬 보조 값이라, 세지 못해도 상세는 그대로 돌려준다. */

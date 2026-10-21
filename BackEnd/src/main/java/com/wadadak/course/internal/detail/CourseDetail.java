@@ -12,7 +12,6 @@ import java.util.UUID;
 
 /**
  * 코스 상세(B1 공통 헤더 · 정보 탭). 평점 · 리뷰 수 · 항목 평가는 리뷰 API가 준다.
- * 현재 러너는 run이 현재 러너 수 이벤트를 발행하면 붙인다.
  *
  * @param tags            FIL-04 순서
  * @param route           첫 점이 출발점이다(코스 방향)
@@ -20,6 +19,7 @@ import java.util.UUID;
  * @param expiresAt       공개 만료 시각(만료일 23:59:59 Asia/Seoul). 완주로 연장되면 바뀐다(B1-04)
  * @param averagePaceSecondsPerKm 코스 평균 페이스(초/km). 모든 완주의 코스 완주 페이스 평균. 완주가 없으면 {@code null}
  * @param creatorNickname 등록자 닉네임. 탈퇴했으면 `탈퇴한 사용자`(정책 공통 4). 회원 정보를 받지 못하면 {@code null}
+ * @param activeRunners   지금 그 코스를 달리는 러너 수(B1-01 현재 러너). run이 보낸 마지막 값이고, 받은 적이 없으면 0
  */
 record CourseDetail(
         UUID courseId,
@@ -32,5 +32,6 @@ record CourseDetail(
         List<DistanceMarker> distanceMarkers,
         Instant expiresAt,
         Integer averagePaceSecondsPerKm,
-        String creatorNickname) {
+        String creatorNickname,
+        int activeRunners) {
 }

@@ -9,7 +9,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.util.UUID;
 
-/** 코스 상세(조회 수 · 평균 페이스)와 만료 배치(삭제)가 쓰는 코스 통계(F11). */
+/** 코스 상세(조회 수 · 평균 페이스 · 현재 러너)와 만료 배치(삭제)가 쓰는 코스 통계(F11). */
 @Service
 @RequiredArgsConstructor
 public class CourseStatsService {
@@ -39,7 +39,13 @@ public class CourseStatsService {
                 .orElse(null);
     }
 
-    /** 코스가 삭제(DELETED)되면 그 코스의 누적 · 일별 통계를 지운다(개발 정책 6.2). 상태를 바꾸는 트랜잭션 안에서 부른다 */
+    /** 지금 그 코스를 달리는 러너 수(B1-01 현재 러너). run이 보낸 마지막 값이고, 받은 적이 없으면 0이다 */
+    @Transactional(readOnly = true)
+    public int activeRunners(UUID courseId) {
+        return stats.activeRunners(courseId);
+    }
+
+    /** 코스가 삭제(DELETED)되면 그 코스의 누적 · 일별 통계와 현재 러너 수를 지운다(개발 정책 6.2). 상태를 바꾸는 트랜잭션 안에서 부른다 */
     @Transactional
     public void deleteFor(UUID courseId) {
         stats.delete(courseId);

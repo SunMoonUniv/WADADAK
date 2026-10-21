@@ -23,7 +23,7 @@ typedef CourseRankingsArgs = ({String courseName, RankingPeriod period});
 ///   기간을 바꿔 받는 동안에는 보이던 순위를 그대로 둔다(B9와 같다).
 /// - 러너 줄은 I3(다른 러너 프로필)가 생길 때까지 누를 수 없어 Figma의 `러너를 탭하면 프로필 ›`도 두지 않는다.
 ///   내 줄은 늘 누를 수 없다(G3-03).
-/// - 이 코스로 달리기(C6) · 고스트 대결(C1)은 그 화면이 생길 때까지 누르면 준비 중이라고 알린다.
+/// - 이 코스로 달리기는 그 코스를 골라 달리기 탭의 코스 러닝(C6)으로 간다. 고스트 대결(C1)은 그 화면이 생길 때까지 누르면 준비 중이라고 알린다.
 class CourseRankingsScreen extends ConsumerStatefulWidget {
   const CourseRankingsScreen({super.key, required this.courseId, required this.courseName, required this.period});
 
@@ -44,7 +44,7 @@ class _CourseRankingsScreenState extends ConsumerState<CourseRankingsScreen> {
   void _notReady() {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text(CourseRunBar.notReadyMessage)));
+      ..showSnackBar(const SnackBar(content: Text(CourseRunBar.ghostNotReadyMessage)));
   }
 
   @override

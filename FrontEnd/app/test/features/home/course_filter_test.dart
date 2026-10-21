@@ -12,6 +12,7 @@ import 'package:wadadak/core/permissions/device_setup.dart';
 import 'package:wadadak/features/course/course_format.dart';
 import 'package:wadadak/features/home/course_filter_screen.dart';
 import 'package:wadadak/features/home/course_list_sheet.dart';
+import 'package:wadadak/features/home/course_period_scale.dart';
 import 'package:wadadak/features/home/my_location.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
 import 'package:wadadak/main.dart';
@@ -75,6 +76,16 @@ void main() {
   Finder chip(String label) => find.widgetWithText(WdFilterChip, label);
   bool selected(WidgetTester tester, Finder chip) => tester.widget<WdFilterChip>(chip).selected;
 
+  /// A3 아래쪽 칩은 기간 슬라이더 때문에 화면 밖에 있을 수 있어 보이게 민 뒤 누른다.
+  Future<void> tapChip(WidgetTester tester, String label) async {
+    await tester.scrollUntilVisible(chip(label), 100,
+        scrollable: find.descendant(of: find.byType(CourseFilterScreen), matching: find.byType(Scrollable)).first);
+    await tester.tap(chip(label));
+  }
+
+  /// A3 거리 슬라이더. 인기순이면 위에 기간 슬라이더도 있다.
+  Finder distanceSlider() => find.byType(RangeSlider).last;
+
   /// 목록 칩 줄 끝 슬라이더 아이콘 칩(Figma A2).
   Finder filterChip() => find.byWidgetPredicate((widget) => widget is WdFilterChip && widget.icon == WdIcons.sliders);
 
@@ -110,26 +121,38 @@ void main() {
 
   testWidgets('shows only the conditions that work now and counts the courses in the visible map area', (tester) async {
     await openHome(tester);
-    expect([selected(tester, chip('최신순')), selected(tester, chip('가까운순')), selected(tester, filterChip())], [true, false, false]);
+    expect([selected(tester, chip('인기순')), selected(tester, chip('최신순')), selected(tester, filterChip())], [true, false, false]);
     expect(find.widgetWithText(WdFilterChip, '필터'), findsNothing, reason: 'Figma A2처럼 글자 대신 슬라이더 아이콘');
     final home = courses.mapRequests.last;
 
     await openFilter(tester);
 
-    for (final title in ['정렬', '거리', '난이도', '최소 평점', '코스 태그', '코스 유형']) {
-      expect(find.text(title), findsOneWidget);
+    // Figma A3 순서의 정렬 5종, 처음은 인기순(FIL-01). 인기순이라 기간 슬라이더(FIL-09)가 보인다.
+    expect(
+      [
+        for (final chip in tester.widgetList<WdFilterChip>(
+            find.descendant(of: find.byType(CourseFilterScreen), matching: find.byType(WdFilterChip))))
+          chip.label,
+      ].take(5),
+      ['인기순', '평점순', '가까운순', '최신순', '실시간순'],
+    );
+    expect(selected(tester, chip('인기순')), isTrue);
+    for (final label in ['1년', '1개월', '오늘']) {
+      expect(find.text(label), findsOneWidget);
     }
-    expect(find.text('평점순'), findsOneWidget);
-    // 인기순 · 실시간순은 run의 도전 수 · 현재 러너 수 이벤트 뒤에, 기간 슬라이더는 다음 단계에 붙인다.
-    for (final hidden in ['인기순', '실시간순', '1개월']) {
-      expect(find.text(hidden), findsNothing);
-    }
-    expect(selected(tester, chip('최신순')), isTrue);
+    expect(find.byType(RangeSlider), findsNWidgets(2), reason: '기간 · 거리');
     expect(find.text('1 km  ~  20 km+'), findsOneWidget);
     expect(applyLabel(tester), '코스 3개 보기');
     final count = courses.mapRequests.last;
     expect((count.southWest, count.northEast), (home.southWest, home.northEast), reason: '홈에 보이는 지도 범위로 센다');
     expect(count.filter.isNone, isTrue);
+
+    // 아래로 밀면 나머지 조건이 보인다.
+    for (final title in ['정렬', '거리', '난이도', '최소 평점', '코스 태그', '코스 유형']) {
+      await tester.scrollUntilVisible(find.text(title), 100,
+          scrollable: find.descendant(of: find.byType(CourseFilterScreen), matching: find.byType(Scrollable)).first);
+      expect(find.text(title), findsOneWidget);
+    }
   });
 
   testWidgets('counts again about 300ms after the last change and applies only with the button', (tester) async {
@@ -137,7 +160,7 @@ void main() {
     await openFilter(tester);
     final before = courses.mapRequests.length;
 
-    await tester.tap(chip('상'));
+    await tapChip(tester, '상');
     await tester.pump();
     await tester.tap(chip('하'));
     await tester.pump(const Duration(milliseconds: 200));
@@ -162,7 +185,7 @@ void main() {
   testWidgets('drops the changes when going back', (tester) async {
     await openHome(tester);
     await openFilter(tester);
-    await tester.tap(chip('트랙'));
+    await tapChip(tester, '트랙');
     await waitForCount(tester);
 
     await tester.tap(find.byWidgetPredicate((widget) => widget is WdIcon && widget.icon == WdIcons.back));
@@ -177,8 +200,8 @@ void main() {
   testWidgets('keeps the applied conditions when opened again and resets them all with 초기화', (tester) async {
     await openHome(tester);
     await openFilter(tester);
-    await tester.tap(chip('평지'));
-    await tester.tap(chip('그려서 만든 코스'));
+    await tapChip(tester, '평지');
+    await tapChip(tester, '그려서 만든 코스');
     await waitForCount(tester);
     await apply(tester);
 
@@ -186,14 +209,15 @@ void main() {
     expect(selected(tester, chip('평지')), isTrue, reason: 'A3를 다시 열어도 걸린 조건 그대로(FIL-08)');
     expect(applyLabel(tester), '코스 1개 보기');
 
-    await tester.tap(chip('★4.0+'));
+    await tapChip(tester, '★4.0+');
+    await tapChip(tester, '최신순');
     await tester.tap(find.text('초기화'));
     await waitForCount(tester);
 
     expect(selected(tester, chip('평지')), isFalse);
     expect(selected(tester, chip('★4.0+')), isFalse, reason: '최소 평점도 전체로');
     expect(selected(tester, chip('전체').last), isTrue, reason: '코스 유형 전체');
-    expect(selected(tester, chip('최신순')), isTrue);
+    expect(selected(tester, chip('인기순')), isTrue, reason: '정렬도 처음(인기순)으로');
     expect(courses.mapRequests.last.filter.isNone, isTrue, reason: '기본 조건으로 다시 센다(A3-05)');
     expect(applyLabel(tester), '코스 3개 보기');
     expect(courses.listRequests.last.filter, isNot(CourseFilter.none), reason: '버튼을 누르기 전에는 홈에 적용하지 않는다');
@@ -207,7 +231,9 @@ void main() {
     await openHome(tester);
     await openFilter(tester);
     // 핸들 가운데가 트랙 양 끝이다. 1 · 5 · 10 · 20km+가 같은 간격이다.
-    final slider = tester.getRect(find.byType(RangeSlider));
+    await tester.ensureVisible(distanceSlider());
+    await tester.pumpAndSettle();
+    final slider = tester.getRect(distanceSlider());
     final left = slider.left + 8, width = slider.width - 16, y = slider.center.dy;
 
     // 최소를 3km(1~5km 구간의 가운데)로.
@@ -234,7 +260,7 @@ void main() {
 
     // 난이도: 하나를 고르면 `전체`가 풀리고, 모두 풀면 `전체`로 돌아간다(FIL-03).
     expect(selected(tester, allDifficulties), isTrue);
-    await tester.tap(chip('하'));
+    await tapChip(tester, '하');
     await tester.pump();
     expect([selected(tester, allDifficulties), selected(tester, chip('하'))], [false, true]);
     await tester.tap(chip('하'));
@@ -246,11 +272,11 @@ void main() {
     expect([selected(tester, allDifficulties), selected(tester, chip('중'))], [true, false]);
 
     // 코스 태그: 모두 가진 코스만(FIL-04).
-    await tester.tap(chip('오르막'));
-    await tester.tap(chip('야간 조명'));
+    await tapChip(tester, '오르막');
+    await tapChip(tester, '야간 조명');
     // 코스 유형: 하나만(FIL-05).
-    await tester.tap(chip('그려서 만든 코스'));
-    await tester.tap(chip('달려서 만든 코스'));
+    await tapChip(tester, '그려서 만든 코스');
+    await tapChip(tester, '달려서 만든 코스');
     await waitForCount(tester);
 
     expect([selected(tester, allTypes), selected(tester, chip('그려서 만든 코스'))], [false, false]);
@@ -276,15 +302,15 @@ void main() {
     await tester.pumpAndSettle();
     expect(courses.listRequests.last.sort, CourseListSort.rating);
     expect(courses.listRequests.last.origin, isNull, reason: '평점순은 현재 위치가 필요 없다');
-    expect([selected(tester, chip('최신순')), selected(tester, chip('평점순'))], [false, true]);
+    expect([selected(tester, chip('인기순')), selected(tester, chip('평점순'))], [false, true]);
 
     // A3 최소 평점: 하나만 고른다(FIL-03).
     await openFilter(tester);
     expect(selected(tester, chip('평점순')), isTrue);
     final allRatings = chip('전체').at(1);
     expect(selected(tester, allRatings), isTrue);
-    await tester.tap(chip('★3.0+'));
-    await tester.tap(chip('★4.5+'));
+    await tapChip(tester, '★3.0+');
+    await tapChip(tester, '★4.5+');
     await waitForCount(tester);
     expect([selected(tester, allRatings), selected(tester, chip('★3.0+')), selected(tester, chip('★4.5+'))],
         [false, false, true]);
@@ -298,12 +324,70 @@ void main() {
     expect(selected(tester, filterChip()), isTrue, reason: '조건이 걸려 있다');
   });
 
+  /// FIL-09: 기간 슬라이더는 인기순일 때만 보이고 목록 순서만 바꾼다. 코스를 빼지 않아 예상 코스 수 · 지도는 그대로다.
+  testWidgets('the popular period changes only the list order and goes back to 전체 with another sort', (tester) async {
+    await openHome(tester);
+    await openFilter(tester);
+    final scale = CoursePeriodScale.at(DateTime.now());
+    final counted = courses.mapRequests.length;
+    expect(find.text(scale.format(0, scale.last)), findsOneWidget, reason: '처음은 전체 ~ 오늘');
+
+    // `1개월`을 누르면 그 눈금부터 오늘까지. 수는 다시 세지 않는다.
+    await tester.tap(find.text('1개월'));
+    await waitForCount(tester);
+    expect(find.text(scale.format(scale.oneMonth, scale.last)), findsOneWidget);
+    expect(courses.mapRequests, hasLength(counted), reason: '기간은 코스를 빼지 않는다');
+    expect(applyLabel(tester), '코스 3개 보기');
+
+    await apply(tester);
+    final period = scale.period(scale.oneMonth, scale.last);
+    expect(courses.listRequests.last.sort, CourseListSort.popular);
+    expect(courses.listRequests.last.period, period);
+    expect(courses.mapRequests, hasLength(counted), reason: '지도 · 코스 수는 다시 받지 않는다');
+    expect(selected(tester, filterChip()), isTrue, reason: '전체 ~ 오늘이 아니면 검정');
+
+    // 다시 열면 고른 기간 그대로. 다른 정렬을 고르면 슬라이더가 숨고, 인기순으로 돌아오면 다시 보인다.
+    await openFilter(tester);
+    expect(find.text(scale.format(scale.oneMonth, scale.last)), findsOneWidget);
+    await tester.tap(chip('평점순'));
+    await tester.pump();
+    expect(find.text('1개월'), findsNothing);
+    expect(find.byType(RangeSlider), findsOneWidget, reason: '거리 슬라이더만');
+    await tester.tap(chip('인기순'));
+    await tester.pump();
+    expect(find.text(scale.format(scale.oneMonth, scale.last)), findsOneWidget);
+
+    // 평점순으로 적용하면 기간은 전체로.
+    await tester.tap(chip('평점순'));
+    await tester.pump();
+    await apply(tester);
+    expect(courses.listRequests.last.sort, CourseListSort.rating);
+    expect(courses.listRequests.last.period, isNull);
+    expect(selected(tester, filterChip()), isFalse);
+
+    // 인기순으로 기간을 다시 걸고, 목록 칩으로 정렬을 바꾸면 기간은 전체로 돌아간다.
+    await openFilter(tester);
+    await tester.tap(chip('인기순'));
+    await tester.pump();
+    await tester.tap(find.text('오늘'));
+    await tester.pump();
+    await apply(tester);
+    expect(courses.listRequests.last.period, scale.period(scale.last, scale.last), reason: '오늘 하루');
+    await tester.tap(chip('최신순'));
+    await tester.pumpAndSettle();
+    await tester.tap(chip('인기순'));
+    await tester.pumpAndSettle();
+    expect(courses.listRequests.last.sort, CourseListSort.popular);
+    expect(courses.listRequests.last.period, isNull);
+    expect(selected(tester, filterChip()), isFalse);
+  });
+
   testWidgets('tells when the courses cannot be counted, and retries', (tester) async {
     await openHome(tester);
     await openFilter(tester);
 
     courses.mapError = const ApiException(ApiException.network, '네트워크에 연결할 수 없어요.');
-    await tester.tap(chip('하'));
+    await tapChip(tester, '하');
     await waitForCount(tester);
     expect(find.text(CourseFilterScreen.countFailedMessage), findsOneWidget);
     expect(applyLabel(tester), '코스 보기');
@@ -323,7 +407,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(location.requests, 1, reason: '가까운순을 고를 때 위치를 받는다');
-    expect([selected(tester, chip('최신순')), selected(tester, chip('가까운순'))], [false, true]);
+    expect([selected(tester, chip('인기순')), selected(tester, chip('가까운순'))], [false, true]);
     final list = courses.listRequests.last;
     expect(list.sort, CourseListSort.nearest);
     expect(list.origin, here);
@@ -344,7 +428,7 @@ void main() {
 
     expect(find.text('0.8km 거리'), findsWidgets);
     expect(location.requests, 0, reason: '권한을 묻지 않는다');
-    expect(courses.listRequests.last.sort, CourseListSort.latest);
+    expect(courses.listRequests.last.sort, CourseListSort.popular);
   });
 
   testWidgets('keeps the sort and tells what to do when the location is not available', (tester) async {
@@ -354,8 +438,8 @@ void main() {
     await tester.tap(chip('가까운순'));
     await tester.pumpAndSettle();
 
-    expect(selected(tester, chip('최신순')), isTrue, reason: '정렬은 그대로');
-    expect(courses.listRequests.every((request) => request.sort == CourseListSort.latest), isTrue);
+    expect(selected(tester, chip('인기순')), isTrue, reason: '정렬은 그대로');
+    expect(courses.listRequests.every((request) => request.sort == CourseListSort.popular), isTrue);
     expect(find.text('위치 권한을 허용해 주세요.'), findsOneWidget);
     await tester.tap(find.text('설정 열기'));
     await tester.pumpAndSettle();
@@ -364,12 +448,12 @@ void main() {
     // A3에서 가까운순과 조건을 함께 고르면 조건만 적용한다.
     await openFilter(tester);
     await tester.tap(chip('가까운순'));
-    await tester.tap(chip('평지'));
+    await tapChip(tester, '평지');
     await waitForCount(tester);
     await apply(tester);
     expect(courses.listRequests.last.filter, const CourseFilter(tags: {CourseTag.flat}));
-    expect(courses.listRequests.last.sort, CourseListSort.latest);
-    expect(selected(tester, chip('최신순')), isTrue);
+    expect(courses.listRequests.last.sort, CourseListSort.popular);
+    expect(selected(tester, chip('인기순')), isTrue);
   });
 
   testWidgets('tells when no course matches the filter and resets it', (tester) async {
@@ -378,7 +462,7 @@ void main() {
       ..listed = [flat3k];
     await openHome(tester);
     await openFilter(tester);
-    await tester.tap(chip('상'));
+    await tapChip(tester, '상');
     await waitForCount(tester);
     expect(applyLabel(tester), '코스 0개 보기');
     await apply(tester);
@@ -400,7 +484,7 @@ void main() {
   testWidgets('counts the regions with the same filter when zoomed out', (tester) async {
     await openHome(tester);
     await openFilter(tester);
-    await tester.tap(chip('트랙'));
+    await tapChip(tester, '트랙');
     await waitForCount(tester);
     await apply(tester);
 

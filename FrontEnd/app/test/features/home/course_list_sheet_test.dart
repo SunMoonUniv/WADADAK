@@ -34,6 +34,7 @@ void main() {
     List<CourseTag> tags = const [CourseTag.shade, CourseTag.riverside],
     CourseType courseType = CourseType.custom,
     int daysLeft = 20,
+    int activeRunners = 0,
   }) =>
       CourseListItem(
         courseId: 'id-$name',
@@ -43,6 +44,7 @@ void main() {
         tags: tags,
         courseType: courseType,
         expiresAt: DateTime.utc(2026, 10, 14 + daysLeft, 14, 59, 59),
+        activeRunners: activeRunners,
         route: const [GeoPoint(37.5666, 126.9784), GeoPoint(37.5700, 126.9800), GeoPoint(37.5690, 126.9830)],
       );
 
@@ -74,11 +76,11 @@ void main() {
 
   setUp(() => courses = FakeCourseApi());
 
-  testWidgets('lists the latest courses in the map area on the half sheet', (tester) async {
+  testWidgets('lists the popular courses in the map area on the half sheet', (tester) async {
     courses
       ..onMap = [testCourse('지도 코스', courseId: 'm', route: const [MapView.seoulCityHall, GeoPoint(37.57, 126.98)])]
       ..listed = [
-        course('성북천 벚꽃길 3K', daysLeft: 1),
+        course('성북천 벚꽃길 3K', daysLeft: 1, activeRunners: 1),
         course('한강 야경 5K', distanceMeters: 5249, difficulty: Difficulty.medium, tags: const [CourseTag.flat],
             courseType: CourseType.gps),
       ];
@@ -87,7 +89,15 @@ void main() {
     expect(sheetTitle('지금 달리기 좋은 코스 1'), findsOneWidget, reason: 'Figma A6처럼 제목 뒤에 지도에 보이는 코스 수');
     expect(find.text('코스 1개'), findsNothing, reason: '지도 왼쪽 위 코스 수는 두지 않는다');
     expect(sheetTitle('전체 보기'), findsOneWidget);
-    expect(find.widgetWithText(WdFilterChip, '최신순'), findsOneWidget);
+    // Figma A3 순서의 정렬 칩, 처음은 인기순(FIL-01).
+    expect(
+      [for (final chip in tester.widgetList<WdFilterChip>(find.byType(WdFilterChip))) chip.label],
+      ['인기순', '평점순', '가까운순', '최신순', '실시간순', null],
+    );
+    expect(tester.widget<WdFilterChip>(find.widgetWithText(WdFilterChip, '인기순')).selected, isTrue);
+    for (final label in ['인기순', '실시간순']) {
+      expect(find.widgetWithText(WdFilterChip, label).hitTestable(), findsOneWidget, reason: '$label 칩이 화면 안에 보인다');
+    }
 
     final [first, second] = tester.widgetList<CourseListCard>(find.byType(CourseListCard)).toList();
     expect(first.course.name, '성북천 벚꽃길 3K');
@@ -99,12 +109,17 @@ void main() {
     expect(find.text('달려서 만든 코스'), findsOneWidget);
     expect(tester.widget<WdTag>(find.widgetWithText(WdTag, '만료 D-1')).tone, WdTone.warning);
     expect(tester.widget<WdTag>(find.widgetWithText(WdTag, '만료 D-20')).tone, WdTone.neutral);
+    // Figma A6 카드 아래 줄 첫 칸: 현재 러너. 1명 이상이면 초록, 0명이면 회색 `달리는 러너 없음`.
+    expect(tester.widget<WdTag>(find.widgetWithText(WdTag, '지금 1명 달리는 중')).tone, WdTone.success);
+    expect(tester.widget<WdTag>(find.widgetWithText(WdTag, '달리는 러너 없음')).tone, WdTone.neutral);
+    expect(tester.getTopLeft(find.text('지금 1명 달리는 중')).dx, lessThan(tester.getTopLeft(find.text('그려서 만든 코스')).dx));
 
-    // 지도와 같은 범위, 최신순(MAP-07).
+    // 지도와 같은 범위, 인기순(MAP-07). 기간은 없다(전체).
     final list = courses.listRequests.single;
     final map = courses.mapRequests.single;
     expect((list.southWest, list.northEast), (map.southWest, map.northEast));
-    expect(list.sort, CourseListSort.latest);
+    expect(list.sort, CourseListSort.popular);
+    expect(list.period, isNull);
     expect(list.cursor, isNull);
   });
 

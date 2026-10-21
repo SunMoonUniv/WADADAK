@@ -18,11 +18,12 @@ class CourseDetailController {
     private final CourseDetailService courseDetailService;
 
     @Operation(summary = "코스 상세 (B1)",
-            description = "이름 · 유형 · 난이도 · 태그(FIL-04 순서) · 거리 · 경로(첫 점이 출발점) · 1km 표지 · 공개 만료 시각 · 평균 페이스 · 등록자 닉네임. "
+            description = "이름 · 유형 · 난이도 · 태그(FIL-04 순서) · 거리 · 경로(첫 점이 출발점) · 1km 표지 · 공개 만료 시각 · 평균 페이스 · "
+                    + "등록자 닉네임 · 현재 러너 수(activeRunners, 지금 그 코스를 달리는 러너 수). "
                     + "등록자가 탈퇴했으면 닉네임은 `탈퇴한 사용자`, 회원 정보를 받지 못하면 null. "
                     + "평균 페이스(averagePaceSecondsPerKm)는 모든 완주의 코스 완주 페이스 평균(초/km)이고 완주가 없으면 null. "
                     + "열 때마다 조회 수(인기순 2차 기준)를 1 늘린다. "
-                    + "평점 · 리뷰 수 · 항목 평가는 리뷰 API(/api/v1/reviews/summary), 현재 러너는 run의 현재 러너 수 이벤트 뒤에 붙는다. "
+                    + "평점 · 리뷰 수 · 항목 평가는 리뷰 API(/api/v1/reviews/summary)가 준다. "
                     + "없는 코스 COURSE-001(404), 비공개 · 삭제된 코스 COURSE-002(409), 잘못된 ID COMMON-001.")
     @GetMapping("/{courseId}")
     ApiResult<CourseDetail> detail(@PathVariable UUID courseId) {

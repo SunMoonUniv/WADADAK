@@ -29,12 +29,14 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
+import java.util.function.IntFunction;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 /**
  * 지도 범위 안 코스 조회(A2·A4·A5·A6)와 코스 검색(G1). 지도·목록·코스 수가 같은 조건을 써야 해서(MAP-07) 조건을 이곳 한 군데에서 만든다.
  * 검색은 조건만 다르고 정렬 · 쪽 · 카드는 목록과 같다.
- * 평점 · 리뷰 수는 코스 통계(F11)에서 읽는다. 통계 행이 없는 코스는 리뷰가 없다.
+ * 평점 · 리뷰 수 · 도전 수 · 조회 수는 코스 통계(F11), 현재 러너는 현재 러너 수 복사본에서 읽는다. 행이 없는 코스는 모두 0이다.
  */
 @Repository
 @RequiredArgsConstructor
@@ -55,8 +57,22 @@ class CourseMapRepository {
     private static final Set<String> GWANGJU_DISTRICTS = Set.of(
             "1221000000", "1224000000", "1227000000", "1230000000", "1233000000");
 
-    /** 코스와 코스 통계. 조건 · 열은 코스를 {@code c}, 통계를 {@code s}로 부른다. */
-    private static final String FROM = "course.courses c LEFT JOIN course.course_stats s ON s.course_id = c.id";
+    /** 코스 · 코스 통계 · 현재 러너 수. 조건 · 열은 코스를 {@code c}, 통계를 {@code s}, 현재 러너 수를 {@code r}로 부른다. */
+    private static final String FROM = """
+            course.courses c
+            LEFT JOIN course.course_stats s ON s.course_id = c.id
+            LEFT JOIN course.course_active_runners r ON r.course_id = c.id""";
+
+    /**
+     * 인기순 기간(FIL-09)의 도전 수 · 조회 수 · 리뷰 수. 코스마다 일별 통계를 기간만큼 더한다. 기간에 행이 없으면 모두 NULL(0)이다.
+     * 기간 조건은 [periodCondition]이 채운다. 코스마다 (course_id, stat_date) 유니크 인덱스로 찾는다.
+     */
+    private static final String PERIOD_JOIN = """
+
+            LEFT JOIN LATERAL (SELECT sum(d.challenge_count) AS challenge_count, sum(d.view_count) AS view_count,
+                                      sum(d.review_count) AS review_count
+                               FROM course.course_daily_stats d
+                               WHERE d.course_id = c.id%s) p ON true""";
 
     /** 전체 기간 평점. 리뷰 API처럼 소수 첫째 자리로 반올림한다. 리뷰가 없으면 NULL */
     private static final String RATING = "CASE WHEN s.review_count > 0 THEN round(s.rating_sum::numeric / s.review_count, 1) END";
@@ -64,7 +80,8 @@ class CourseMapRepository {
     /** 목록 카드(지도 범위 안 코스도 같다)에 쓰는 열과 커서용 등록 시각. */
     private static final String LIST_COLUMNS = """
             c.id, c.name, c.distance_meters, c.difficulty, c.tags, c.course_type, c.expires_at, ST_AsBinary(c.route) AS route,
-            c.created_at, %s AS average_rating, GREATEST(coalesce(s.review_count, 0), 0) AS review_count""".formatted(RATING);
+            c.created_at, %s AS average_rating, %s AS review_count, %s AS active_runners""".formatted(
+            RATING, count("s", "review_count"), count("r", "active_count"));
 
     private final JdbcClient jdbc;
     private final RegionDirectory regionDirectory;
@@ -120,13 +137,16 @@ class CourseMapRepository {
 
     /**
      * 범위 안 코스 목록 한 쪽(A2 · A6). 조건은 지도 · 지역별 코스 수와 같다(MAP-07).
-     * 최신순은 등록 시각이 늦은 코스부터, 가까운순은 [origin]에서 출발점까지 가까운 코스부터, 평점순은 평점이 높은 코스부터
-     * (같으면 리뷰 수가 많은 코스, 그다음 최신순, 리뷰가 없으면 맨 뒤)다. 정렬 값이 모두 같으면 ID순.
+     * 인기순은 도전 수 · 조회 수 · 리뷰 수가 많은 코스부터, 평점순은 평점이 높은 코스부터(같으면 리뷰 수가 많은 코스, 리뷰가 없으면 맨 뒤),
+     * 가까운순은 [origin]에서 출발점까지 가까운 코스부터, 최신순은 등록 시각이 늦은 코스부터, 실시간순은 러너가 많은 코스부터(같으면 인기순)다.
+     * 인기순 · 평점순 · 실시간순은 앞 기준이 모두 같으면 최신순이고, 정렬 값이 모두 같으면 ID순.
      *
+     * @param period 인기순 기간(FIL-09). 있으면 그 기간의 수로 정렬하고 코스는 빼지 않는다. null이면 전체 기간
      * @param origin 현재 위치. 가까운순이면 있어야 한다
      */
-    CursorSlice<CourseListItem> list(CourseMapRequest request, CourseListSort sort, GeoPoint origin, Cursorable page) {
-        return slice(Filter.of(request), sort, origin, page);
+    CursorSlice<CourseListItem> list(CourseMapRequest request, CourseListSort sort, CourseListPeriod period, GeoPoint origin,
+                                     Cursorable page) {
+        return slice(Filter.of(request), sort, period, origin, page);
     }
 
     /**
@@ -138,7 +158,7 @@ class CourseMapRepository {
     CourseSearchResult search(String key, CourseListSort sort, GeoPoint origin, Cursorable page) {
         Filter filter = Filter.byName(key);
         // 커서가 잘못됐으면 세기 전에 거른다
-        CursorSlice<CourseListItem> slice = slice(filter, sort, origin, page);
+        CursorSlice<CourseListItem> slice = slice(filter, sort, null, origin, page);
         Integer total = jdbc.sql("SELECT count(*) FROM %s WHERE %s".formatted(FROM, filter.where()))
                 .params(filter.params())
                 .query(Integer.class)
@@ -146,8 +166,9 @@ class CourseMapRepository {
         return new CourseSearchResult(total, slice.content(), slice.nextCursor());
     }
 
-    /** [filter]에 맞는 코스 한 쪽. 정렬은 [list] 설명과 같다. */
-    private CursorSlice<CourseListItem> slice(Filter filter, CourseListSort sort, GeoPoint origin, Cursorable page) {
+    /** [filter]에 맞는 코스 한 쪽. 정렬 · 기간은 [list] 설명과 같다. */
+    private CursorSlice<CourseListItem> slice(Filter filter, CourseListSort sort, CourseListPeriod period, GeoPoint origin,
+                                              Cursorable page) {
         CourseListCursor after = CourseListCursor.decode(page.cursor(), sort);
         Map<String, Object> params = new HashMap<>(filter.params());
         params.put("limit", page.size() + 1);
@@ -203,6 +224,33 @@ class CourseMapRepository {
                         WHERE (l.rating_key, l.review_count, l.created_at, l.id)
                               < (:afterRating, :afterReviews, :afterCreatedAt, :afterId)""");
             }
+            case POPULAR, LIVE -> {
+                // 기간(인기순만)이 있으면 일별 통계를 기간만큼 더한 수(p), 없으면 누적 통계(s)다.
+                String from = period == null ? FROM : FROM + PERIOD_JOIN.formatted(periodCondition(period, params));
+                List<String> keys = countKeys(sort, period == null ? "s" : "p");
+                if (after != null) {
+                    CourseListCursor.Counts counts = after.counts(keys.size());
+                    for (int i = 0; i < keys.size(); i++) {
+                        params.put("after" + i, counts.counts().get(i));
+                    }
+                    params.put("afterCreatedAt", OffsetDateTime.ofInstant(counts.createdAt(), ZoneOffset.UTC));
+                }
+                // sort_0, sort_1 … 순으로 비교한다. 모두 내림차순이라 행 비교 하나로 다음 쪽을 자른다.
+                String columns = joined(keys.size(), i -> keys.get(i) + " AS sort_" + i);
+                String order = joined(keys.size(), i -> "l.sort_" + i + " DESC");
+                String afterRow = """
+
+                        WHERE (%s, l.created_at, l.id)
+                              < (%s, :afterCreatedAt, :afterId)""".formatted(
+                        joined(keys.size(), i -> "l.sort_" + i), joined(keys.size(), i -> ":after" + i));
+                yield """
+                        SELECT *
+                        FROM (SELECT %s, %s
+                              FROM %s
+                              WHERE %s) l%s
+                        ORDER BY %s, l.created_at DESC, l.id DESC
+                        LIMIT :limit""".formatted(LIST_COLUMNS, columns, from, filter.where(), after == null ? "" : afterRow, order);
+            }
         };
         List<ListRow> rows = jdbc.sql(sql).params(params).query((rs, rowNum) -> listRow(rs, sort)).list();
         if (rows.size() <= page.size()) {
@@ -222,7 +270,7 @@ class CourseMapRepository {
         return new CourseListItem(rs.getObject("id", UUID.class), rs.getString("name"), rs.getInt("distance_meters"),
                 Difficulty.valueOf(rs.getString("difficulty")), tags, CourseType.valueOf(rs.getString("course_type")),
                 rs.getObject("expires_at", OffsetDateTime.class).toInstant(), rating == null ? null : rating.doubleValue(),
-                rs.getInt("review_count"), points(rs.getBytes("route")));
+                rs.getInt("review_count"), rs.getInt("active_runners"), points(rs.getBytes("route")));
     }
 
     private static ListRow listRow(ResultSet rs, CourseListSort sort) throws SQLException {
@@ -233,8 +281,61 @@ class CourseMapRepository {
             case NEAREST -> CourseListCursor.nearest(rs.getDouble("distance"), id);
             case RATING -> CourseListCursor.rating(rs.getBigDecimal("rating_key"), item.reviewCount(),
                     rs.getObject("created_at", OffsetDateTime.class).toInstant(), id);
+            case POPULAR -> CourseListCursor.popular(counts(rs, CourseListCursor.POPULAR_COUNTS), id);
+            case LIVE -> CourseListCursor.live(counts(rs, CourseListCursor.LIVE_COUNTS), id);
         };
         return new ListRow(item, cursor);
+    }
+
+    /** 인기순 · 실시간순 줄의 정렬 값(sort_0 …)과 등록 시각. */
+    private static CourseListCursor.Counts counts(ResultSet rs, int size) throws SQLException {
+        List<Long> counts = new ArrayList<>();
+        for (int i = 0; i < size; i++) {
+            counts.add(rs.getLong("sort_" + i));
+        }
+        return new CourseListCursor.Counts(counts, rs.getObject("created_at", OffsetDateTime.class).toInstant());
+    }
+
+    /**
+     * 인기순 · 실시간순 정렬 값(앞에서부터 비교). 인기순은 도전 수 · 조회 수 · 리뷰 수(FIL-01),
+     * 실시간순은 러너 수 다음 인기순과 같다. [stats]는 누적(s)이나 기간 합(p) 별칭이다.
+     */
+    private static List<String> countKeys(CourseListSort sort, String stats) {
+        List<String> keys = new ArrayList<>();
+        if (sort == CourseListSort.LIVE) {
+            keys.add(count("r", "active_count"));
+        }
+        keys.add(count(stats, "challenge_count"));
+        keys.add(count(stats, "view_count"));
+        keys.add(count(stats, "review_count"));
+        return keys;
+    }
+
+    /**
+     * [alias]의 [column] 수. 행이 없으면 0이다. 도전 수를 세기 전(2026-10-20 도전 수 열을 더하기 전)에 시작한 기록을 지우면
+     * 0 아래로 내려갈 수 있어 0으로 본다.
+     */
+    private static String count(String alias, String column) {
+        return "GREATEST(coalesce(%s.%s, 0), 0)".formatted(alias, column);
+    }
+
+    /** 0 … [size]-1 마다 [part]를 쉼표로 잇는다. */
+    private static String joined(int size, IntFunction<String> part) {
+        return IntStream.range(0, size).mapToObj(part).collect(Collectors.joining(", "));
+    }
+
+    /** 일별 통계(별칭 d)의 기간 조건. 두 날짜 모두 포함한다(FIL-09). */
+    private static String periodCondition(CourseListPeriod period, Map<String, Object> params) {
+        StringBuilder condition = new StringBuilder();
+        if (period.startDate() != null) {
+            condition.append(" AND d.stat_date >= :periodStart");
+            params.put("periodStart", period.startDate());
+        }
+        if (period.endDate() != null) {
+            condition.append(" AND d.stat_date <= :periodEnd");
+            params.put("periodEnd", period.endDate());
+        }
+        return condition.toString();
     }
 
     /**

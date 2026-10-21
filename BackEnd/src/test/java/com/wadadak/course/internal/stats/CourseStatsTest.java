@@ -4,6 +4,8 @@ import com.wadadak.TestcontainersConfiguration;
 import com.wadadak.event.review.ReviewCreatedEvent;
 import com.wadadak.event.review.ReviewDeletedEvent;
 import com.wadadak.event.review.ReviewUpdatedEvent;
+import com.wadadak.event.run.CourseActiveRunnersChangedEvent;
+import com.wadadak.event.run.CourseRunStartedEvent;
 import com.wadadak.event.run.RunRecordDeletedEvent;
 import com.wadadak.event.run.RunSessionEndedEvent;
 import com.wadadak.member.MemberApi;
@@ -28,7 +30,10 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
 
-/** 완주 · 기록 삭제 · 리뷰 이벤트로 코스 통계가 늘고 준다(개발 정책 5.4 · 5.6). 시각은 Asia/Seoul = UTC+9로 적는다. */
+/**
+ * 코스 러닝 시작 · 완주 · 기록 삭제 · 리뷰 이벤트로 코스 통계가 늘고 줄고, 현재 러너 수 이벤트로 복사본이 바뀐다(개발 정책 5.4 · 5.6).
+ * 시각은 Asia/Seoul = UTC+9로 적는다.
+ */
 @ApplicationModuleTest
 @ActiveProfiles("test")
 @Import(TestcontainersConfiguration.class)
@@ -73,6 +78,51 @@ class CourseStatsTest {
 
         assertThat(stats(course)).containsEntry("completion_count", 1).containsEntry("completion_seconds", 1_800L);
         assertThat(courseStats.averagePaceSecondsPerKm(course, 5_000)).isEqualTo(360);
+    }
+
+    @Test
+    void challengesCountEachStartOnceAndRecordDeletionTakesThemBackOnTheStartDay() {
+        UUID course = insert("ACTIVE", 3_000);
+        Instant lateNight = seoul("2026-10-10T23:50:00"); // 서울 10/10, UTC로는 10/10 14:50
+        CourseRunStartedEvent first = started(course, lateNight);
+
+        receive(first);
+        receive(first); // 같은 시작을 다시 받아도 한 번만 센다(개발 정책 5.4)
+        receive(started(course, seoul("2026-10-11T00:10:00")));
+        receive(started(course, seoul("2026-10-11T07:00:00")));
+        assertThat(stats(course)).containsEntry("challenge_count", 3);
+        assertThat(daily(course, LocalDate.of(2026, 10, 10))).containsEntry("challenge_count", 1);
+        assertThat(daily(course, LocalDate.of(2026, 10, 11))).containsEntry("challenge_count", 2);
+
+        // 다음 날 지워도 시작한 날(10/10)에서 뺀다. 완주와 상관없이 코스 기록이면 뺀다(개발 정책 5.6)
+        RunRecordDeletedEvent deleted = deleted(UUID.randomUUID(), course, false, 1_200, lateNight, seoul("2026-10-12T09:00:00"));
+        receive(deleted);
+        receive(deleted);
+        receive(deleted(UUID.randomUUID(), course, true, 1_500, seoul("2026-10-11T07:00:00"), seoul("2026-10-12T09:00:00")));
+        receive(deleted(UUID.randomUUID(), null, false, 1_000, lateNight, seoul("2026-10-12T09:00:00"))); // 자유 러닝
+
+        assertThat(stats(course)).containsEntry("challenge_count", 1);
+        assertThat(daily(course, LocalDate.of(2026, 10, 10))).containsEntry("challenge_count", 0);
+        assertThat(daily(course, LocalDate.of(2026, 10, 11))).containsEntry("challenge_count", 1);
+        assertThat(daily(course, LocalDate.of(2026, 10, 12))).as("지운 날 행은 없다").isEmpty();
+    }
+
+    /** 현재 러너 수는 더 큰 version만 남는다. 늦게 온 예전 값 · 같은 version은 버린다(개발 정책 5.4 상태 복사형) */
+    @Test
+    void activeRunnersKeepTheNewestVersion() {
+        UUID course = insert("ACTIVE", 3_000);
+        assertThat(courseStats.activeRunners(course)).as("받은 적이 없으면 0명").isZero();
+
+        receive(runners(course, 3, 2));
+        receive(runners(course, 5, 1));
+        receive(runners(course, 9, 2));
+        assertThat(courseStats.activeRunners(course)).isEqualTo(3);
+
+        receive(runners(course, 0, 3));
+        assertThat(courseStats.activeRunners(course)).isZero();
+
+        receive(runners(course, -1, 4));
+        assertThat(courseStats.activeRunners(course)).as("0보다 작은 값은 0").isZero();
     }
 
     @Test
@@ -122,12 +172,15 @@ class CourseStatsTest {
         UUID hidden = insert("HIDDEN", 3_000);
 
         receive(ended(hidden, true, 1_000));
+        receive(started(hidden, Instant.now()));
+        receive(runners(hidden, 2, 1));
         receive(new ReviewCreatedEvent(UUID.randomUUID(), Instant.now(), UUID.randomUUID(), hidden, 5, Instant.now()));
         courseStats.recordView(hidden);
 
         assertThat(jdbc.queryForObject("SELECT count(*) FROM course.course_stats WHERE course_id = ?", Long.class, hidden))
                 .isZero();
         assertThat(courseStats.averagePaceSecondsPerKm(hidden, 3_000)).isNull();
+        assertThat(courseStats.activeRunners(hidden)).isZero();
     }
 
     private void receive(Object event) {
@@ -149,8 +202,23 @@ class CourseStatsTest {
 
     private static RunRecordDeletedEvent deleted(UUID recordId, UUID courseId, boolean completed, int elapsedSeconds) {
         Instant now = Instant.now();
-        return new RunRecordDeletedEvent(UUID.randomUUID(), now, recordId, UUID.randomUUID(), courseId, completed, 5_000,
-                elapsedSeconds, now.minusSeconds(elapsedSeconds), now, now);
+        return deleted(recordId, courseId, completed, elapsedSeconds, now.minusSeconds(elapsedSeconds), now);
+    }
+
+    /** @param startedAt 도전 수를 더한 코스 러닝 시작 시각 */
+    private static RunRecordDeletedEvent deleted(UUID recordId, UUID courseId, boolean completed, int elapsedSeconds,
+                                                 Instant startedAt, Instant deletedAt) {
+        Instant endedAt = startedAt.plusSeconds(elapsedSeconds);
+        return new RunRecordDeletedEvent(UUID.randomUUID(), deletedAt, recordId, UUID.randomUUID(), courseId, completed, 5_000,
+                elapsedSeconds, startedAt, endedAt, endedAt);
+    }
+
+    private static CourseRunStartedEvent started(UUID courseId, Instant startedAt) {
+        return new CourseRunStartedEvent(UUID.randomUUID(), startedAt, UUID.randomUUID(), courseId, UUID.randomUUID());
+    }
+
+    private static CourseActiveRunnersChangedEvent runners(UUID courseId, int count, long version) {
+        return new CourseActiveRunnersChangedEvent(UUID.randomUUID(), Instant.now(), courseId, count, version);
     }
 
     private Map<String, Object> stats(UUID course) {

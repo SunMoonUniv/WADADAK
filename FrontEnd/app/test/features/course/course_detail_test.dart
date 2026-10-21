@@ -36,7 +36,7 @@ void main() {
 
   const route = [GeoPoint(37.5666, 126.9784), GeoPoint(37.5700, 126.9800), GeoPoint(37.5750, 126.9850)];
 
-  CourseDetail detail({String? nickname = '러닝왕김', DateTime? expiresAt, int? pace}) => CourseDetail(
+  CourseDetail detail({String? nickname = '러닝왕김', DateTime? expiresAt, int? pace, int activeRunners = 0}) => CourseDetail(
         courseId: 'c1',
         name: '한강 야경 5K',
         courseType: CourseType.custom,
@@ -48,6 +48,7 @@ void main() {
         expiresAt: expiresAt ?? DateTime.utc(2026, 11, 13, 14, 59, 59),
         averagePaceSecondsPerKm: pace,
         creatorNickname: nickname,
+        activeRunners: activeRunners,
       );
 
   /// Figma B9: 312명 중 나 24위(27:14 · 5′14″/km · 09.08 · 상위 8%), 1위 24:12, 평균 28:40. 공개 고스트는 1위.
@@ -182,6 +183,25 @@ void main() {
         reason: '공유 링크를 정할 때까지 공유는 두지 않는다');
   });
 
+  testWidgets('shows the runners on the course now at the bottom right of the map (Figma B1 Live runners)', (tester) async {
+    courses.details = {'c1': detail(activeRunners: 3)};
+    await openDetail(tester);
+
+    final map = tester.getRect(find.byType(MapView));
+    final badge = tester.getRect(text('지금 3명 달리는 중'));
+    expect(map.contains(badge.center), isTrue);
+    expect(badge.center.dx, greaterThan(map.center.dx), reason: '오른쪽');
+    expect(badge.center.dy, greaterThan(map.center.dy), reason: '아래');
+    expect(tester.widget<Text>(text('지금 3명 달리는 중')).style?.color, WdColors.green);
+  });
+
+  testWidgets('tells nobody is running the course now (B1-01)', (tester) async {
+    await openDetail(tester);
+
+    expect(text('달리는 러너 없음'), findsOneWidget);
+    expect(tester.widget<Text>(text('달리는 러너 없음')).style?.color, WdColors.muted);
+  });
+
   testWidgets('tells nobody has run it yet when there is no review (Figma B1-1)', (tester) async {
     reviews.result = reviewSummary();
     await openDetail(tester);
@@ -218,7 +238,7 @@ void main() {
     expect((picked?.courseId, picked?.name), ('c1', '한강 야경 5K'));
     await tester.tap(text('고스트 대결 ▶'));
     await tester.pumpAndSettle();
-    expect(snackBar(tester), CourseRunBar.notReadyMessage);
+    expect(snackBar(tester), CourseRunBar.ghostNotReadyMessage);
   });
 
   testWidgets('does not open the public period sheet (B11) from the period notice', (tester) async {

@@ -106,6 +106,17 @@ class CourseDetailControllerTest {
         assertThat(detail.get("creatorNickname").isNull()).isTrue();
     }
 
+    /** 현재 러너 수(B1-01). 받은 적이 없으면 0명이다 */
+    @Test
+    void showsTheActiveRunners() throws Exception {
+        UUID course = insert(UUID.randomUUID(), "ACTIVE");
+        assertThat(data(detail(course)).get("activeRunners").asInt()).isZero();
+
+        jdbcTemplate.update("INSERT INTO course.course_active_runners (course_id, active_count, source_version, created_at, "
+                + "updated_at) VALUES (?, 3, 1, now(), now())", course);
+        assertThat(data(detail(course)).get("activeRunners").asInt()).isEqualTo(3);
+    }
+
     /** 열 때마다 조회 수가 늘고(누적 · 오늘 날짜), 완주가 있으면 평균 페이스를 준다(F11) */
     @Test
     void countsViewsAndShowsTheAveragePace() throws Exception {
