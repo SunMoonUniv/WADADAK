@@ -33,17 +33,27 @@ const _course = {
   'reviewEligible': true,
 };
 
-/// 서버 기록: 코스 완주 · 코스 62% · 자유 러닝.
+/// 서버 기록 두 페이지. 첫 페이지: 코스 완주 · 코스 62% · 자유 러닝(이번 주 월~수), 다음 페이지: 9월 자유 러닝.
 class _HistoryApi extends fake.TestApi {
+  final cursors = <String?>[];
+
   @override
-  Future<Map<String, dynamic>> history(String owner, {String? cursor}) async => {
-    'content': [
-      _summary('run-course', '2026-10-14T03:00:00Z', course: _course),
-      _summary('run-half', '2026-10-13T03:00:00Z', course: {..._course, 'courseId': 'course-2', 'courseName': '성북천 벚꽃길 3K', 'completed': false, 'progressPercent': 62.4}),
-      _summary('run-free', '2026-10-12T03:00:00Z'),
-    ],
-    'nextCursor': null,
-  };
+  Future<Map<String, dynamic>> history(String owner, {String? cursor}) async {
+    cursors.add(cursor);
+    return cursor == null
+        ? {
+            'content': [
+              _summary('run-course', '2026-10-14T03:00:00Z', course: _course),
+              _summary('run-half', '2026-10-13T03:00:00Z', course: {..._course, 'courseId': 'course-2', 'courseName': '성북천 벚꽃길 3K', 'completed': false, 'progressPercent': 62.4}),
+              _summary('run-free', '2026-10-12T03:00:00Z'),
+            ],
+            'nextCursor': 'next',
+          }
+        : {
+            'content': [_summary('run-september', '2026-09-20T03:00:00Z')],
+            'nextCursor': null,
+          };
+  }
 }
 
 /// 기기 저장소. 테스트에서 실제 DB를 열지 않도록 목록 · 삭제 · 음성 설정을 메모리로 바꾼다.
@@ -120,6 +130,7 @@ void main() {
 
   late _LocalStore store;
   late _ReviewApi reviews;
+  late _HistoryApi history;
 
   /// I1을 띄운다. 코스 상세(B1) · 기록 상세는 이름만 보이는 화면으로 바꿔 어디로 갔는지만 본다.
   Future<void> openHistory(WidgetTester tester) async {
@@ -128,7 +139,7 @@ void main() {
       ..devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final gps = fake.TestLocation();
-    final c = RunController(store, gps, _HistoryApi(), () async => 'alice', automaticTicks: false, nowMs: gps.nowMs);
+    final c = RunController(store, gps, history, () async => 'alice', automaticTicks: false, nowMs: gps.nowMs);
     final ui = FreeRunController.recording(c);
     addTearDown(() {
       ui.dispose();
@@ -136,7 +147,8 @@ void main() {
     });
     final router = GoRouter(
       routes: [
-        GoRoute(path: '/', builder: (_, _) => const MyRunHistoryScreen()),
+        // 오늘은 2026-10-15(목)이다
+        GoRoute(path: '/', builder: (_, _) => MyRunHistoryScreen(now: () => DateTime(2026, 10, 15, 12))),
         GoRoute(path: '/course/:id', builder: (_, state) => Text('B1 ${state.pathParameters['id']}')),
         GoRoute(path: '/my/record/:id', builder: (_, state) => Text('기록 ${state.pathParameters['id']}')),
         GoRoute(path: Routes.reviewForm, builder: (_, state) => ReviewFormScreen(args: state.extra! as ReviewFormArgs)),
@@ -159,9 +171,14 @@ void main() {
 
   Finder cardOf(String title) => find.ancestor(of: find.text(title), matching: find.byType(RunRecordCard));
 
+  /// 의미 라벨로 찾는다(막대 · 화살표는 글자가 없다).
+  Finder labeled(String label) =>
+      find.byWidgetPredicate((widget) => widget is Semantics && widget.properties.label == label);
+
   setUp(() {
     store = _LocalStore();
     reviews = _ReviewApi();
+    history = _HistoryApi();
   });
 
   testWidgets('I1 shows course and free run cards with their results', (tester) async {
@@ -172,10 +189,66 @@ void main() {
     expect(find.descendant(of: cardOf('한강 야경 5K'), matching: find.text('10.14 (수)')), findsOneWidget);
     expect(find.descendant(of: cardOf('한강 야경 5K'), matching: find.text('완주')), findsOneWidget);
     expect(find.descendant(of: cardOf('성북천 벚꽃길 3K'), matching: find.text('62% 주행')), findsOneWidget);
-    expect(find.descendant(of: cardOf('자유 러닝'), matching: find.text('기록')), findsOneWidget);
+    expect(find.descendant(of: cardOf('자유 러닝'), matching: find.text('기록')), findsNWidgets(2));
     // 코스 러닝에만 버튼이 있다
     expect(find.text('리뷰 쓰기'), findsNWidgets(2));
     expect(find.descendant(of: cardOf('자유 러닝'), matching: find.text('리뷰 쓰기')), findsNothing);
+  });
+
+  testWidgets('I1 loads every page to count this month, this week and the tabs', (tester) async {
+    await openHistory(tester);
+
+    expect(history.cursors, [null, 'next']);
+    expect(find.text('전체 4'), findsOneWidget);
+    expect(find.text('2026년 10월'), findsOneWidget);
+    // 10월 기록 3개: 5.21km × 3, 움직인 시간 합 ÷ 거리 합
+    expect(find.text('이번 달 거리'), findsOneWidget);
+    expect(find.text('15.6 km'), findsOneWidget);
+    expect(find.text('3회'), findsOneWidget);
+    expect(find.text('5′14″'), findsOneWidget);
+    // 이번 주(10/12 월 ~ 10/18 일)
+    expect(labeled('월 5.2km'), findsOneWidget);
+    expect(labeled('수 5.2km'), findsOneWidget);
+    expect(labeled('목 0.0km'), findsOneWidget);
+  });
+
+  testWidgets('month arrows change only the summary', (tester) async {
+    await openHistory(tester);
+
+    await tester.tap(labeled('이전 달'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('2026년 9월'), findsOneWidget);
+    expect(find.text('9월 거리'), findsOneWidget);
+    expect(find.text('5.2 km'), findsOneWidget);
+    expect(find.text('1회'), findsOneWidget);
+    // 차트는 이번 주, 목록은 전체 그대로다
+    expect(labeled('월 5.2km'), findsOneWidget);
+    expect(find.text('한강 야경 5K'), findsOneWidget);
+    // 첫 기록이 9월이라 더 앞으로는 못 간다
+    await tester.tap(labeled('이전 달'));
+    await tester.pumpAndSettle();
+    expect(find.text('2026년 9월'), findsOneWidget);
+
+    await tester.tap(labeled('다음 달'));
+    await tester.pumpAndSettle();
+    expect(find.text('2026년 10월'), findsOneWidget);
+  });
+
+  testWidgets('type tabs filter the summary, chart and list', (tester) async {
+    await openHistory(tester);
+
+    await tester.tap(find.text('코스 러닝'));
+    await tester.pumpAndSettle();
+    expect(find.text('코스 러닝 2'), findsOneWidget);
+    expect(find.text('10.4 km'), findsOneWidget);
+    expect(cardOf('자유 러닝'), findsNothing);
+    expect(labeled('월 0.0km'), findsOneWidget);
+
+    await tester.tap(find.text('고스트 대결'));
+    await tester.pumpAndSettle();
+    expect(find.text('고스트 대결 0'), findsOneWidget);
+    expect(find.text('아직 고스트 대결 기록이 없어요.'), findsOneWidget);
   });
 
   testWidgets('a run still on the device waits for sync', (tester) async {
@@ -210,7 +283,7 @@ void main() {
   testWidgets('a card opens the record', (tester) async {
     await openHistory(tester);
 
-    await tester.tap(find.text('자유 러닝'));
+    await tester.tap(cardOf('자유 러닝').first);
     await tester.pumpAndSettle();
 
     expect(find.text('기록 run-free'), findsOneWidget);

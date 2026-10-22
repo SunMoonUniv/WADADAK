@@ -31,6 +31,7 @@ class RunHistoryRow {
     required this.startedAt,
     required this.distanceMeters,
     required this.elapsed,
+    required this.moving,
     required this.paceSecondsPerKm,
     required this.syncState,
     this.course,
@@ -40,6 +41,9 @@ class RunHistoryRow {
   final DateTime startedAt;
   final double distanceMeters;
   final Duration elapsed;
+
+  /// 움직인 시간. 여러 기록의 평균 페이스를 낼 때 쓴다(일시정지 · 정지 제외).
+  final Duration moving;
   final double? paceSecondsPerKm;
 
   /// `synced`면 서버에 저장됐다. 그 밖에는 기기에만 있다(정책 D-14 "동기화 대기").
@@ -89,7 +93,62 @@ RunHistoryRow _row(String id, DateTime startedAt, Map<String, dynamic> metrics, 
       startedAt: startedAt,
       distanceMeters: (metrics['distanceM'] as num? ?? 0).toDouble(),
       elapsed: Duration(milliseconds: (metrics['elapsedMs'] as num? ?? 0).toInt()),
+      moving: Duration(milliseconds: (metrics['movingMs'] as num? ?? metrics['elapsedMs'] as num? ?? 0).toInt()),
       paceSecondsPerKm: (metrics['paceSecondsPerKm'] as num?)?.toDouble(),
       syncState: syncState,
       course: course,
     );
+
+/// I1 유형 탭. 아직 올리지 않은 기록은 코스 판정 전이라 전체에만 보인다.
+enum RunType {
+  all('전체'),
+  free('자유 러닝'),
+  course('코스 러닝'),
+  // 고스트 대결(F9)이 생기면 기록에 대결 정보가 붙는다. 그때까지 비어 있다
+  ghost('고스트 대결');
+
+  const RunType(this.label);
+
+  final String label;
+
+  bool includes(RunHistoryRow row) => switch (this) {
+    RunType.all => true,
+    RunType.free => row.synced && row.course == null,
+    RunType.course => row.course != null,
+    RunType.ghost => false,
+  };
+}
+
+/// 한 달 요약(I1 위 3칸). [paceSecondsPerKm]은 움직인 시간 합 ÷ 거리 합이라, 기록마다의 페이스를 평균 낸 것과 다르다.
+typedef MonthSummary = ({double distanceMeters, int runs, double? paceSecondsPerKm});
+
+/// [month]의 해 · 달(기기 시간대)에 시작한 기록을 더한다.
+MonthSummary monthSummary(Iterable<RunHistoryRow> rows, DateTime month) {
+  var meters = 0.0, runs = 0;
+  var moving = Duration.zero;
+  for (final row in rows) {
+    final t = row.startedAt.toLocal();
+    if (t.year != month.year || t.month != month.month) continue;
+    meters += row.distanceMeters;
+    moving += row.moving;
+    runs++;
+  }
+  return (
+    distanceMeters: meters,
+    runs: runs,
+    paceSecondsPerKm: meters > 0 ? moving.inMilliseconds / meters : null,
+  );
+}
+
+/// [today]가 든 주(월~일, 기기 시간대)의 요일별 거리(m). 0이 월요일이다.
+List<double> weekDistances(Iterable<RunHistoryRow> rows, DateTime today) {
+  final day = DateTime(today.year, today.month, today.day);
+  final monday = day.subtract(Duration(days: day.weekday - 1));
+  final meters = List.filled(7, 0.0);
+  for (final row in rows) {
+    final t = row.startedAt.toLocal();
+    final index = DateTime(t.year, t.month, t.day).difference(monday).inDays;
+    if (index >= 0 && index < 7) meters[index] += row.distanceMeters;
+  }
+  return meters;
+}

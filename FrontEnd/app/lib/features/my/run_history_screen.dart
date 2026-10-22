@@ -13,91 +13,251 @@ import 'run_history_rows.dart';
 
 /// I1 · 내 러닝 기록. MY에서 연다(하단 탭이 보인다, Figma I1).
 ///
-/// 지금은 "최근 기록" 목록만 있다. 유형 탭 · 월 요약 · 주간 주행 거리 · 필터는 다음에 붙인다.
+/// 위에서부터 유형 탭 · 달 이동과 그 달 요약 · 이번 주 주행 거리 · 최근 기록이다(2026-10-22 사용자 결정).
+/// - 유형 탭은 아래 전부(요약 · 차트 · 목록)에 적용한다. 고스트 대결 탭은 고스트(F9)가 생길 때까지 비어 있다.
+/// - `‹ ›`로 달을 바꾸면 요약 3칸만 바뀐다. 주간 차트는 늘 이번 주, 목록은 늘 전체 최근 순이다.
+/// - Figma의 `필터` 버튼은 거를 조건이 정해지지 않아 두지 않는다.
+///
+/// 요약 · 차트 · 탭 개수를 세려고 내 기록을 끝까지 받는다(기록 API는 페이지로만 준다).
 /// 코스 러닝 카드의 [코스 상세]는 B1, [리뷰 쓰기]는 리뷰 진입(`openReviewWriter`)으로 간다.
 /// 기록 데이터(기기 · 서버 · 동기화 · 삭제)는 달리기 담당의 `runController`를 그대로 쓴다.
 class MyRunHistoryScreen extends ConsumerStatefulWidget {
-  const MyRunHistoryScreen({super.key});
+  const MyRunHistoryScreen({super.key, this.now = DateTime.now});
+
+  /// 오늘. 테스트에서 날짜를 고정한다.
+  final DateTime Function() now;
 
   @override
   ConsumerState<MyRunHistoryScreen> createState() => _MyRunHistoryScreenState();
 }
 
 class _MyRunHistoryScreenState extends ConsumerState<MyRunHistoryScreen> {
+  late final RunController _runs;
+  var _type = RunType.all;
+
+  /// 요약을 보는 달(1일). 처음은 이번 달이다.
+  late DateTime _month = DateTime(widget.now().year, widget.now().month);
+
   @override
   void initState() {
     super.initState();
+    _runs = ref.read(runControllerProvider)..addListener(_loadRest);
     Future.microtask(() async {
-      final c = ref.read(runControllerProvider);
-      await c.bindOwner();
-      if (mounted) unawaited(c.loadHistory());
+      await _runs.bindOwner();
+      if (!mounted) return;
+      await _runs.loadHistory();
+      _loadRest();
     });
   }
 
+  @override
+  void dispose() {
+    _runs.removeListener(_loadRest);
+    super.dispose();
+  }
+
+  /// 한 페이지를 받을 때마다 다음 페이지를 이어 받는다. 실패하면 멈추고 배너로 다시 받게 한다.
+  void _loadRest() {
+    if (!mounted || _runs.loadingHistory || _runs.nextCursor == null || _runs.historyNotice != null) return;
+    unawaited(_runs.loadHistory(more: true));
+  }
+
   Future<void> _refresh() async {
-    final c = ref.read(runControllerProvider);
-    await c.sync(manual: true);
-    await c.loadHistory();
+    await _runs.sync(manual: true);
+    await _runs.loadHistory();
   }
 
   @override
-  Widget build(BuildContext context) {
-    final c = ref.watch(runControllerProvider);
-    return ListenableBuilder(
-      listenable: c,
-      builder: (context, _) {
-        final rows = runHistoryRows(local: c.records, remote: c.remoteRecords, deletedIds: c.deletedIds);
-        return Scaffold(
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: _runs,
+    builder: (context, _) {
+      final all = runHistoryRows(local: _runs.records, remote: _runs.remoteRecords, deletedIds: _runs.deletedIds);
+      final rows = all.where(_type.includes).toList();
+      final today = widget.now();
+      final thisMonth = DateTime(today.year, today.month);
+      // 가장 오래된 기록이 있는 달까지만 뒤로 갈 수 있다
+      final firstMonth = all.isEmpty
+          ? thisMonth
+          : DateTime(all.last.startedAt.toLocal().year, all.last.startedAt.toLocal().month);
+      final summary = monthSummary(rows, _month);
+      return DefaultTabController(
+        length: RunType.values.length,
+        child: Scaffold(
           backgroundColor: WdColors.paper,
           appBar: WdAppBar(title: '내 기록', onBack: () => context.pop()),
-          body: RefreshIndicator(
-            color: WdColors.ink,
-            onRefresh: _refresh,
-            child: NotificationListener<ScrollNotification>(
-              // 끝에서 400px 안으로 내려오면 이전 기록을 더 받는다
-              onNotification: (notification) {
-                if (notification.metrics.extentAfter < 400 &&
-                    notification is ScrollUpdateNotification &&
-                    notification.metrics.axisDirection == AxisDirection.down) {
-                  unawaited(c.loadHistory(more: true));
-                }
-                return false;
-              },
-              child: ListView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(WdSpace.s24, WdSpace.s20, WdSpace.s24, WdSpace.s24),
-                children: [
-                  Text('최근 기록', style: WdText.ko16Bold.copyWith(color: WdColors.ink)),
-                  if (c.historyNotice != null) ...[
-                    const SizedBox(height: WdSpace.s12),
-                    const WdInfoBanner('서버 기록을 불러오지 못했어요. 기기에 저장된 기록은 볼 수 있어요.', tone: WdBannerTone.warning),
-                    TextButton(
-                      onPressed: c.loadingHistory ? null : () => c.loadHistory(),
-                      child: const Text('다시 불러오기'),
-                    ),
-                  ],
-                  if (rows.isEmpty && !c.loadingHistory)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: WdSpace.s56),
-                      child: Center(
-                        child: Text(
-                          '아직 러닝 기록이 없어요. 첫 러닝을 시작해 보세요.',
-                          style: WdText.label12.copyWith(color: WdColors.muted),
+          body: Column(
+            children: [
+              DecoratedBox(
+                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: WdColors.line))),
+                child: WdTabBar(
+                  // 고른 탭에만 개수를 붙인다(Figma "전체 42")
+                  tabs: [for (final t in RunType.values) t == _type ? '${t.label} ${rows.length}' : t.label],
+                  onTap: (index) => setState(() => _type = RunType.values[index]),
+                ),
+              ),
+              Expanded(
+                child: RefreshIndicator(
+                  color: WdColors.ink,
+                  onRefresh: _refresh,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    padding: const EdgeInsets.fromLTRB(WdSpace.s24, WdSpace.s20, WdSpace.s24, WdSpace.s24),
+                    children: [
+                      _MonthHeader(
+                        month: _month,
+                        onPrevious: _month.isAfter(firstMonth)
+                            ? () => setState(() => _month = DateTime(_month.year, _month.month - 1))
+                            : null,
+                        onNext: _month.isBefore(thisMonth)
+                            ? () => setState(() => _month = DateTime(_month.year, _month.month + 1))
+                            : null,
+                      ),
+                      const SizedBox(height: WdSpace.s12),
+                      WdStatSummary([
+                        (
+                          _month == thisMonth ? '이번 달 거리' : '${_month.month}월 거리',
+                          '${(summary.distanceMeters / 1000).toStringAsFixed(1)} km',
                         ),
+                        ('러닝', '${summary.runs}회'),
+                        ('평균 페이스', formatRunPace(summary.paceSecondsPerKm)),
+                      ]),
+                      const SizedBox(height: WdSpace.s24),
+                      Text('주간 주행 거리', style: _heading),
+                      const SizedBox(height: WdSpace.s12),
+                      _WeekChart(meters: weekDistances(rows, today), todayIndex: today.weekday - 1),
+                      const SizedBox(height: WdSpace.s24),
+                      Text('최근 기록', style: _heading),
+                      if (_runs.historyNotice != null) ...[
+                        const SizedBox(height: WdSpace.s12),
+                        const WdInfoBanner('서버 기록을 불러오지 못했어요. 기기에 저장된 기록은 볼 수 있어요.', tone: WdBannerTone.warning),
+                        TextButton(
+                          onPressed: _runs.loadingHistory ? null : () => _runs.loadHistory(more: _runs.nextCursor != null),
+                          child: const Text('다시 불러오기'),
+                        ),
+                      ],
+                      if (rows.isEmpty && !_runs.loadingHistory)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: WdSpace.s32),
+                          child: Center(
+                            child: Text(_emptyText, style: WdText.label12.copyWith(color: WdColors.muted)),
+                          ),
+                        ),
+                      for (final row in rows) ...[const SizedBox(height: WdSpace.s12), RunRecordCard(row)],
+                      if (_runs.loadingHistory)
+                        const Padding(
+                          padding: EdgeInsets.all(WdSpace.s16),
+                          child: Center(child: CircularProgressIndicator(color: WdColors.ink)),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
+  );
+
+  static final _heading = WdText.ko16Bold.copyWith(color: WdColors.ink);
+
+  String get _emptyText => switch (_type) {
+    RunType.all => '아직 러닝 기록이 없어요. 첫 러닝을 시작해 보세요.',
+    RunType.free => '아직 자유 러닝 기록이 없어요.',
+    RunType.course => '아직 코스 러닝 기록이 없어요.',
+    RunType.ghost => '아직 고스트 대결 기록이 없어요.',
+  };
+}
+
+/// "2026년 9월" + ‹ ›. 이번 달보다 뒤나 첫 기록보다 앞으로는 못 간다(버튼이 흐려진다).
+class _MonthHeader extends StatelessWidget {
+  const _MonthHeader({required this.month, required this.onPrevious, required this.onNext});
+
+  final DateTime month;
+  final VoidCallback? onPrevious, onNext;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      Expanded(child: Text('${month.year}년 ${month.month}월', style: WdText.ko16Bold.copyWith(color: WdColors.ink))),
+      _arrow('‹', '이전 달', onPrevious),
+      _arrow('›', '다음 달', onNext),
+    ],
+  );
+
+  static Widget _arrow(String glyph, String label, VoidCallback? onTap) => Semantics(
+    button: true,
+    label: label,
+    excludeSemantics: true,
+    child: InkWell(
+      onTap: onTap,
+      customBorder: const CircleBorder(),
+      child: SizedBox.square(
+        dimension: 32,
+        child: Center(
+          child: Text(
+            glyph,
+            style: WdText.raw(18, FontWeight.w400, 24).copyWith(color: onTap == null ? WdColors.line : WdColors.muted),
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+/// 이번 주(월~일) 요일별 주행 거리 막대. 오늘 막대만 진하다(Figma I1).
+class _WeekChart extends StatelessWidget {
+  const _WeekChart({required this.meters, required this.todayIndex});
+
+  final List<double> meters;
+  final int todayIndex;
+
+  static const _days = ['월', '화', '수', '목', '금', '토', '일'];
+  static const _height = 64.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final most = meters.fold(0.0, (a, b) => a > b ? a : b);
+    return Column(
+      spacing: WdSpace.s6,
+      children: [
+        SizedBox(
+          height: _height,
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            spacing: WdSpace.s6,
+            children: [
+              for (var i = 0; i < 7; i++)
+                Expanded(
+                  child: Semantics(
+                    label: '${_days[i]} ${(meters[i] / 1000).toStringAsFixed(1)}km',
+                    child: Container(
+                      // 거리가 있으면 가장 긴 날 대비 높이, 없으면 막대 없음
+                      height: most == 0 || meters[i] == 0 ? 0 : (_height * meters[i] / most).clamp(6.0, _height),
+                      decoration: BoxDecoration(
+                        color: i == todayIndex ? WdColors.ink : WdColors.soft,
+                        borderRadius: BorderRadius.circular(WdRadius.r8),
                       ),
                     ),
-                  for (final row in rows) ...[const SizedBox(height: WdSpace.s12), RunRecordCard(row)],
-                  if (c.loadingHistory)
-                    const Padding(
-                      padding: EdgeInsets.all(WdSpace.s16),
-                      child: Center(child: CircularProgressIndicator(color: WdColors.ink)),
-                    ),
-                ],
-              ),
-            ),
+                  ),
+                ),
+            ],
           ),
-        );
-      },
+        ),
+        Row(
+          spacing: WdSpace.s6,
+          children: [
+            for (final day in _days)
+              Expanded(
+                child: Text(
+                  day,
+                  textAlign: TextAlign.center,
+                  style: WdText.label12.copyWith(color: WdColors.muted),
+                ),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }
