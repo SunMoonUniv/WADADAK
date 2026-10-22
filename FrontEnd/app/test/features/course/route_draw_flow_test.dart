@@ -225,7 +225,7 @@ void main() {
 
     await tap(tester, find.text('내가 달려서 등록'));
     await tap(tester, find.text('방식 변경'));
-    expect(find.text('준비 중인 화면이에요'), findsOneWidget);
+    expect(find.text('직접 달린 경로가 그대로 코스가 돼요'), findsOneWidget, reason: 'B5 내가 달려서 등록');
 
     await tap(tester, find.text('경로 그리기'));
     expect(summary(tester, '찍은 점'), '0');

@@ -26,6 +26,9 @@ String formatMonthDay(DateTime time) {
 /// 오늘 사용자 지정 코스를 이미 등록했을 때 B3 · B4에 보이는 안내.
 const customQuotaUsedUpMessage = '오늘은 그려서 만든 코스를 이미 등록했어요. 내일 다시 만들 수 있어요.';
 
+/// 오늘 GPS 기록으로 만든 코스를 3개 모두 등록했을 때 B5에 보이는 안내. Figma 숨은 배너(1453:4052) 문구 그대로다.
+const gpsQuotaUsedUpMessage = 'GPS 기록으로 등록하는 코스는 하루 합산 3개까지 등록할 수 있습니다. 오늘 이미 3개를 등록했다면 내일 다시 시도해 주세요.';
+
 /// 공개 만료까지 남은 날(Asia/Seoul 날짜 기준). 만료일 당일이 0이다.
 ///
 /// [expiresAt]은 만료일 23:59:59(Asia/Seoul)다. 한국은 서머타임이 없어 UTC+9로 날짜를 센다.

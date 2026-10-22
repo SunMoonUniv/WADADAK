@@ -8,18 +8,24 @@ import '../../../core/api/course_api_client.dart';
 import '../../../core/error_message.dart';
 import '../../../core/map/map_view.dart';
 import '../../../routes.dart';
+import '../../run/application/free_run_controller.dart';
+import '../../run/domain/run_models.dart';
 import '../course_format.dart';
 import '../course_public_period_sheet.dart';
+import 'gps_course_intro.dart';
 import 'route_draft.dart';
 
 /// B3 코스 만들기 — 경로 그리기. 지도를 탭해 입력점을 찍으면 서버가 순서대로 직선으로 이어 최종 경로를 만든다.
 ///
-/// 생성 방식 탭의 `내가 달려서 등록`(B5, Figma 프레임 이름은 B4)은 F7에서 만든다. 지금은 자리만 있다.
+/// 생성 방식 탭의 `내가 달려서 등록`은 B5다. 달리기를 시작하거나(C5) 지난 기록에서 고른다(B6).
 class RouteDrawScreen extends ConsumerStatefulWidget {
   const RouteDrawScreen({super.key, this.camera});
 
   /// 홈에서 보던 지도 위치(A2-07). 없으면 기본 위치에서 시작한다.
   final MapCamera? camera;
+
+  /// B6(내 기록에서 코스 등록)를 만들기 전까지 B5 `내 기록에서 코스 올리기`가 보이는 안내(4.1 B5-04).
+  static const recordsNotReadyMessage = '내 기록에서 코스 올리기는 준비 중이에요.';
 
   @override
   ConsumerState<RouteDrawScreen> createState() => _RouteDrawScreenState();
@@ -38,6 +44,9 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
   /// 오늘 사용자 지정 코스를 더 등록할 수 없다. 한도를 받아 오지 못하면 막지 않는다(등록할 때 서버가 다시 확인한다).
   var _quotaUsedUp = false;
 
+  /// 오늘 GPS 기록으로 만든 코스를 3개 모두 등록했다. B5의 두 버튼을 막는다(4.1 B5 · 공통 3 GPS 한도 소진).
+  var _gpsQuotaUsedUp = false;
+
   @override
   void initState() {
     super.initState();
@@ -47,7 +56,11 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
   Future<void> _loadQuota() async {
     try {
       final quota = await ref.read(courseApiClientProvider).registrationQuota();
-      if (mounted) setState(() => _quotaUsedUp = quota.custom.remaining <= 0);
+      if (!mounted) return;
+      setState(() {
+        _quotaUsedUp = quota.custom.remaining <= 0;
+        _gpsQuotaUsedUp = quota.gps.remaining <= 0;
+      });
     } on ApiException {
       // 막지 않고 둔다.
     }
@@ -77,13 +90,36 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
                 Expanded(child: _map()),
                 _summary(),
               ] else
-                Expanded(
-                  child: Center(child: Text('준비 중인 화면이에요', style: WdText.body13.copyWith(color: WdColors.muted))),
-                ),
+                Expanded(child: GpsCourseIntro(quotaUsedUp: _gpsQuotaUsedUp)),
             ],
           ),
+          bottomNavigationBar: _method == _Method.run ? _runBar() : null,
         ),
       );
+
+  /// B5 아래 두 버튼. 위의 1px 선도 Figma(1453:4054) 그대로다. 오늘 GPS 한도를 다 썼으면 둘 다 막는다.
+  Widget _runBar() => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const ColoredBox(color: WdColors.map, child: SizedBox(width: double.infinity, height: WdSpace.s1)),
+          WdBottomBar.dual(
+            secondary: WdButton(
+              '내 기록에서 코스 올리기',
+              variant: WdButtonVariant.secondary,
+              onPressed: _gpsQuotaUsedUp ? null : () => _notify(RouteDrawScreen.recordsNotReadyMessage),
+            ),
+            primary: WdButton('달리기 시작하기', onPressed: _gpsQuotaUsedUp ? null : _startRun),
+          ),
+        ],
+      );
+
+  /// 달리기 탭의 C5 자유 러닝 준비로 간다(B5-03). 코스 상세에서 골라 둔 코스가 남아 있으면 비워 자유 러닝이 되게 한다.
+  /// 자유 러닝 준비 화면이 아닐 때(카운트다운 · 코스 출발 확인 · 달리는 중 · 결과)는 건드리지 않고 그 화면을 보인다(RUN-05).
+  void _startRun() {
+    final run = ref.read(freeRunControllerProvider);
+    if (!run.preparing && run.courseStart == null && run.snapshot.state == RunState.ready) run.clearCourse();
+    context.go(Routes.run);
+  }
 
   Widget _map() => Stack(
         children: [
