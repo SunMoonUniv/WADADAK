@@ -34,6 +34,12 @@ abstract final class Routes {
   static const run = '/run';
   static const ranking = '/ranking';
   static const my = '/my';
+
+  /// I1 내 러닝 기록. MY 탭 안에 쌓아 하단 탭이 보인다(Figma I1).
+  static const myRecords = '/my/records';
+
+  /// I1에서 고른 기록 하나(달리기 결과 화면을 기록 보기로). 하단 탭을 덮는다.
+  static String myRecord(String id) => '/my/record/${Uri.encodeComponent(id)}';
   static const runSettings = '/my/run-settings';
 
   /// I5 · 지역 주간 전체 순위

@@ -12,6 +12,8 @@ import 'features/course/detail/course_rankings_screen.dart';
 import 'features/home/course_filter_screen.dart';
 import 'features/home/course_search_screen.dart';
 import 'features/home/home_screen.dart';
+import 'features/my/run_history_screen.dart';
+import 'features/my/run_record_screen.dart';
 import 'features/onboarding/consent_screen.dart';
 import 'features/onboarding/login_screen.dart';
 import 'features/onboarding/permission_screen.dart';
@@ -77,10 +79,20 @@ final routerProvider = Provider<GoRouter>((ref) {
           ]),
           StatefulShellBranch(routes: [GoRoute(path: Routes.run, builder: (_, _) => const FreeRunScreen())]),
           StatefulShellBranch(routes: [GoRoute(path: Routes.ranking, builder: (_, _) => const RankingScreen())]),
-          StatefulShellBranch(routes: [GoRoute(path: Routes.my, builder: (_, _) => const MyPlaceholderTab())]),
+          StatefulShellBranch(routes: [
+            GoRoute(
+              path: Routes.my,
+              builder: (_, _) => const MyPlaceholderTab(),
+              routes: [GoRoute(path: 'records', builder: (_, _) => const MyRunHistoryScreen())],
+            ),
+          ]),
         ],
       ),
       GoRoute(path: Routes.runSettings, builder: (_, _) => const RunSettingsScreen()),
+      GoRoute(
+        path: '/my/record/:id',
+        builder: (_, state) => MyRunRecordScreen(id: state.pathParameters['id']!),
+      ),
       // 하단 탭을 덮는 화면
       GoRoute(path: Routes.rankingRegion, builder: (_, _) => const RegionRankingScreen()),
       GoRoute(path: Routes.rankingRegionSelect, builder: (_, _) => const RegionSelectScreen()),
