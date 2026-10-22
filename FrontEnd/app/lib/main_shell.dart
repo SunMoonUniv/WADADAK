@@ -7,6 +7,7 @@ import 'core/auth/auth_controller.dart';
 import 'features/home/home_tab_exits.dart';
 import 'features/run/application/free_run_controller.dart';
 import 'features/run/domain/run_models.dart';
+import 'routes.dart';
 
 /// 하단 탭 4개(홈 · 달리기 · 랭킹 · MY). 탭마다 자기 화면 기록을 유지한다.
 /// 홈은 다른 탭에 갔다 오면 탐색 상태를 처음으로 되돌린다(FIL-08, [HomeTabExits]).
@@ -72,17 +73,23 @@ class PlaceholderTab extends StatelessWidget {
   );
 }
 
-/// MY 탭 담당(F13)이 실제 화면을 만들 때까지 로그아웃만 둔다.
+/// MY 탭. E3 마이페이지를 만들 때까지 내 러닝 기록(I1)으로 가는 버튼과 로그아웃만 둔다.
 class MyPlaceholderTab extends ConsumerWidget {
   const MyPlaceholderTab({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => PlaceholderTab(
     title: 'MY',
-    action: WdButton(
-      '로그아웃',
-      variant: WdButtonVariant.secondary,
-      onPressed: () => ref.read(authControllerProvider.notifier).logout(),
+    action: Column(
+      spacing: WdSpace.s12,
+      children: [
+        WdButton('내 러닝 기록', onPressed: () => context.push(Routes.myRecords)),
+        WdButton(
+          '로그아웃',
+          variant: WdButtonVariant.secondary,
+          onPressed: () => ref.read(authControllerProvider.notifier).logout(),
+        ),
+      ],
     ),
   );
 }
