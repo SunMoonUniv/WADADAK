@@ -22,12 +22,13 @@ public final class RunContracts {
     /**
      * 서버 코스 판정 결과(정책 제3부 5.1·5.3). 코스 러닝 기록에만 있다.
      *
+     * @param courseName           달릴 때의 코스 이름(준비 때 스냅샷). 이후 코스 이름이 바뀌어도 기록에는 이 이름을 보인다
      * @param courseDistanceMeters 코스 전체 거리(코스 등록 값). 랭킹 페이스 계산에 쓴다
      * @param reason               COMPLETED · START_NOT_CONFIRMED · FINISH_NOT_REACHED · DISTANCE_SHORT
      * @param progressPercent      진행도 0~100
      * @param completedAt          미완주면 null
      */
-    public record CourseOutcome(UUID courseId, long courseVersion, int courseDistanceMeters, boolean completed,
+    public record CourseOutcome(UUID courseId, String courseName, long courseVersion, int courseDistanceMeters, boolean completed,
                                 String reason, double recognizedDistanceMeters, double progressPercent, Instant completedAt,
                                 long courseElapsedSeconds, long courseMovingSeconds, boolean reviewEligible) {}
     public record Input(@Min(0) long seq, @NotNull Kind kind, @Min(0) long elapsedMs,
@@ -94,13 +95,24 @@ public final class RunContracts {
     }
     public record Lap(int number, double distanceM, long movingMs, long elapsedMs, boolean complete, Double paceSecondsPerKm) {}
     public record Deleted(UUID id, boolean deleted) {}
+    /** 기록 목록 한 줄의 코스 요약(MY I1 카드 제목·완주·진행도·리뷰 쓰기·코스 상세). 자유 러닝이면 목록의 {@code course}가 null */
+    public record CourseSummary(UUID courseId, String courseName, boolean completed, double progressPercent, boolean reviewEligible) {
+        public static CourseSummary from(CourseOutcome course) {
+            return course == null ? null : new CourseSummary(course.courseId(), course.courseName(), course.completed(),
+                    course.progressPercent(), course.reviewEligible());
+        }
+    }
     public record RecordSummary(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt,
-                                String endReason, Metrics metrics, ResultStats stats) {
+                                String endReason, Metrics metrics, ResultStats stats, CourseSummary course) {
+        public RecordSummary(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason, Metrics metrics, ResultStats stats) {
+            this(id,startedAt,endedAt,registeredAt,endReason,metrics,stats,null);
+        }
         public RecordSummary(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason, Metrics metrics) {
             this(id,startedAt,endedAt,registeredAt,endReason,metrics,null);
         }
         public static RecordSummary from(Result result) {
-            return new RecordSummary(result.id(),result.startedAt(),result.endedAt(),result.registeredAt(),result.endReason(),result.metrics(),result.stats());
+            return new RecordSummary(result.id(),result.startedAt(),result.endedAt(),result.registeredAt(),result.endReason(),result.metrics(),result.stats(),
+                    CourseSummary.from(result.course()));
         }
     }
 }

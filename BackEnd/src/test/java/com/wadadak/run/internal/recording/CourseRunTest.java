@@ -3,6 +3,7 @@ package com.wadadak.run.internal.recording;
 import com.wadadak.TestcontainersConfiguration;
 import com.wadadak.common.exception.AppException;
 import com.wadadak.common.geo.GeoPoint;
+import com.wadadak.common.paging.Cursorable;
 import com.wadadak.course.CourseApi;
 import com.wadadak.course.CourseErrorCode;
 import com.wadadak.course.CourseRouteSnapshot;
@@ -16,12 +17,14 @@ import com.wadadak.run.internal.RunContracts.CourseSnapshot;
 import com.wadadak.run.internal.RunContracts.Input;
 import com.wadadak.run.internal.RunContracts.Kind;
 import com.wadadak.run.internal.RunContracts.Prepare;
+import com.wadadak.run.internal.RunContracts.RecordSummary;
 import com.wadadak.run.internal.RunContracts.Upload;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
@@ -30,6 +33,8 @@ import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
@@ -228,6 +233,48 @@ class CourseRunTest {
             assertThat(e.startedAt()).isEqualTo(startEventAt);
         });
         assertThat(db.queryForObject("SELECT count(*) FROM run.course_attempts", Long.class)).isZero();
+    }
+
+    @Test
+    void recordListCarriesCourseSummaryAndFreeRunHasNone() {
+        startCourse();
+        uploadAndProcess(runTo(1000));
+        UUID free = UUID.randomUUID();
+        List<Input> inputs = runTo(300);
+        runs.prepare(owner, free, new Prepare(startedAt, "FREE"));
+        runs.upload(owner, free, new Upload(inputs.size() - 1, inputs));
+        runs.process(free);
+
+        assertThat(runs.result(owner, id).course().courseName()).isEqualTo("테스트 코스");
+        List<RecordSummary> list = runs.history(owner, new Cursorable(null, 20)).content();
+        assertThat(list).filteredOn(r -> r.id().equals(id)).singleElement().satisfies(r -> {
+            assertThat(r.course().courseId()).isEqualTo(courseId);
+            assertThat(r.course().courseName()).isEqualTo("테스트 코스");
+            assertThat(r.course().completed()).isTrue();
+            assertThat(r.course().progressPercent()).isCloseTo(100, within(0.1));
+            assertThat(r.course().reviewEligible()).isTrue();
+        });
+        assertThat(list).filteredOn(r -> r.id().equals(free)).singleElement()
+                .satisfies(r -> assertThat(r.course()).isNull());
+    }
+
+    @Test
+    void migrationFillsCourseSummaryOfRecordsStoredBefore() throws IOException {
+        startCourse();
+        uploadAndProcess(runTo(500));
+        // 이 변경 전 저장 모양: 목록에 course 없음, 상세 course에 이름 없음
+        db.update("UPDATE run.records SET summary_json = (summary_json::jsonb - 'course')::text,"
+                + " result_json = (result_json::jsonb #- '{course,courseName}')::text WHERE id = ?", id);
+        assertThat(runs.history(owner, new Cursorable(null, 20)).content().getFirst().course()).isNull();
+
+        db.execute(new ClassPathResource("db/migration/run/V20261021_2000__run_record_summary_course.sql")
+                .getContentAsString(StandardCharsets.UTF_8));
+
+        RecordSummary summary = runs.history(owner, new Cursorable(null, 20)).content().getFirst();
+        assertThat(summary.course().courseName()).isEqualTo("테스트 코스");
+        assertThat(summary.course().completed()).isFalse();
+        assertThat(summary.course().progressPercent()).isCloseTo(50, within(0.6));
+        assertThat(runs.result(owner, id).course().courseName()).isEqualTo("테스트 코스");
     }
 
     @Test
