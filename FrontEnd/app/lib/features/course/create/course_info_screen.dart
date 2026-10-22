@@ -12,7 +12,7 @@ import '../../../core/error_message.dart';
 import '../../../core/map/map_view.dart';
 import '../course_format.dart';
 
-/// B4 코스 정보 입력 & 등록(Figma 프레임 이름은 B5).
+/// B4 코스 정보 입력 & 등록.
 ///
 /// 위 지도에는 서버가 만든 최종 경로와 1km 거리 표지만 보인다(B4-01). 입력점은 보이지 않는다.
 /// 등록 성공 팝업을 닫으면 등록한 코스를 결과로 돌려주며 닫힌다. B3가 그 결과로 홈에 돌아간다(B4-07).
