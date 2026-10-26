@@ -86,6 +86,17 @@ class CourseModuleTests {
         }
     }
 
+    @Test
+    void checksGpsGapsWithRuleVersion() {
+        // 북쪽으로 달리다 끊김. 약 10m 뒤에서 다시 잡히면 잇고, 약 100m 동쪽에서 잡히면 방향이 달라 잇지 않는다
+        List<GeoPoint> before = List.of(new GeoPoint(37.5000, 127.1000), new GeoPoint(37.5005, 127.1000));
+        List<GeoPoint> near = List.of(new GeoPoint(37.50059, 127.1000), new GeoPoint(37.5010, 127.1000));
+        List<GeoPoint> east = List.of(new GeoPoint(37.5005, 127.10114), new GeoPoint(37.5005, 127.1020));
+
+        assertThat(courseApi.checkGpsGaps(List.of(before, near))).isEqualTo(new GpsGapCheck(true, "GPS_GAP_V1"));
+        assertThat(courseApi.checkGpsGaps(List.of(before, east))).isEqualTo(new GpsGapCheck(false, "GPS_GAP_V1"));
+    }
+
     private Course save(String name) {
         return courseRepository.saveAndFlush(Course.registerCustom(UUID.randomUUID(), name, Difficulty.MEDIUM, Set.of(),
                 CourseGeometry.lineString(ROUTE), 1441, "1171010100", Instant.parse("2026-11-06T14:59:59Z")));
