@@ -209,6 +209,7 @@ class _CourseSelectScreenState extends ConsumerState<CourseSelectScreen> {
               variant: WdButtonVariant.secondary,
               onPressed: () {
                 ref.read(runControllerProvider).clearCourse();
+                ref.read(courseTabProvider.notifier).set(false);
                 context.pop();
               },
             ),

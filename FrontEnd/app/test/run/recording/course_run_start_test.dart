@@ -310,13 +310,19 @@ void main() {
       ),
     );
 
+    // C11 출발점 이동
     await show(const GeoPoint(35.999, 127));
-    expect(find.text('출발점까지 111 m'), findsOneWidget);
+    expect(find.text('출발점으로 이동해 주세요'), findsOneWidget);
+    expect(find.text('111'), findsOneWidget);
+    expect(find.text('준비'), findsOneWidget);
     expect(find.text('한강 야경 5K'), findsOneWidget);
     expect(tester.widget<RunHoldToStart>(find.byType(RunHoldToStart)).onStart, isNull);
 
+    // C12 출발점 도착
     await show(const GeoPoint(36.0001, 127));
-    expect(find.text('출발점이에요'), findsOneWidget);
+    expect(find.text('출발점에 도착했어요'), findsOneWidget);
+    expect(find.text('11'), findsOneWidget);
+    expect(find.text('시작 가능'), findsOneWidget);
     expect(tester.widget<RunHoldToStart>(find.byType(RunHoldToStart)).onStart, isNotNull);
   });
 }
