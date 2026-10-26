@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
+import '../application/course_run_entry.dart';
 import '../application/free_run_controller.dart';
 import '../domain/course_run.dart';
 import '../domain/run_models.dart';
@@ -26,6 +27,7 @@ class FreeRunScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.watch(freeRunControllerProvider);
+    final courseTab = ref.watch(courseTabProvider);
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
@@ -63,6 +65,8 @@ class FreeRunScreen extends ConsumerWidget {
                         : null,
                     recent: controller.recent,
                     course: controller.selectedCourse,
+                    courseMode: controller.selectedCourse != null || courseTab,
+                    onCourseTab: ref.read(courseTabProvider.notifier).set,
                     onClearCourse: controller.clearCourse,
                   ),
                   RunState.finished => FreeRunResultView(
@@ -180,6 +184,8 @@ class _Preparation extends StatelessWidget {
     this.onSettings,
     this.recent,
     this.course,
+    this.courseMode = false,
+    this.onCourseTab,
     this.onClearCourse,
   });
   final VoidCallback onStart;
@@ -189,6 +195,10 @@ class _Preparation extends StatelessWidget {
 
   /// 코스 상세에서 고른 코스(F6). 있으면 시작이 코스 러닝이다
   final CourseSelection? course;
+
+  /// `코스 러닝` 탭(C6). 코스를 아직 안 골랐으면 [course]가 null이고 시작할 수 없다(RUN-03)
+  final bool courseMode;
+  final ValueChanged<bool>? onCourseTab;
   final VoidCallback? onClearCourse;
 
   @override
@@ -213,12 +223,13 @@ class _Preparation extends StatelessWidget {
           ),
           child: WdSegmentedControl(
             items: const ['자유 러닝', '코스 러닝', '고스트 대결'],
-            selectedIndex: course == null ? 0 : 1,
+            selectedIndex: courseMode ? 1 : 0,
             onChanged: (index) {
               if (index == 0) {
                 onClearCourse?.call();
-              } else if (index == 1 && course == null) {
-                context.push(Routes.runCourseSelect); // C8: 코스를 고른다(RUN-03)
+                onCourseTab?.call(false);
+              } else if (index == 1) {
+                onCourseTab?.call(true);
               } else if (index == 2) {
                 _notReady(context, '고스트 대결');
               }
@@ -247,8 +258,8 @@ class _Preparation extends StatelessWidget {
                             WdButton('권한 설정 열기', onPressed: onSettings),
                           const SizedBox(height: WdSpace.s12),
                         ],
-                        if (course != null) ...[
-                          CourseRunPrep(course: course!),
+                        if (courseMode) ...[
+                          CourseRunPrep(course: course),
                         ] else ...[
                           Text('오늘은, 발길이 닿는 대로.', style: WdText.ko22Bold),
                           const SizedBox(height: WdSpace.s4),
@@ -395,13 +406,13 @@ class _Preparation extends StatelessWidget {
                         ),
                         const SizedBox(height: WdSpace.s8),
                         RunHoldToStart(
-                          label: course == null ? '자유 러닝 시작' : '코스 러닝 시작',
-                          onStart: onStart,
+                          label: courseMode ? '코스 러닝 시작' : '자유 러닝 시작',
+                          onStart: courseMode && course == null ? null : onStart,
                         ),
                         const SizedBox(height: WdSpace.s8),
                         Center(
                           child: Text(
-                            '1초 길게 눌러 시작',
+                            courseMode && course == null ? '코스를 고르면 시작할 수 있어요' : '1초 길게 눌러 시작',
                             style: WdText.ko12.copyWith(color: WdColors.muted),
                           ),
                         ),

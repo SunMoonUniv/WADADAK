@@ -23,10 +23,34 @@ final runCourseDetailProvider = FutureProvider.autoDispose.family<CourseDetail, 
 /// 고스트 대결 준비(C1)도 같은 부품(WdSelectedCourseCard · WdRecordCard)을 쓴다.
 class CourseRunPrep extends ConsumerWidget {
   const CourseRunPrep({super.key, required this.course});
-  final CourseSelection course;
+
+  /// 고른 코스. `코스 러닝` 탭에서 아직 안 골랐으면 null이고 C8로 고르게 한다(RUN-03)
+  final CourseSelection? course;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final course = this.course;
+    if (course == null) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('익숙한 코스, 새로운 기록.', style: WdText.ko22Bold),
+          const SizedBox(height: WdSpace.s4),
+          Text('달릴 코스를 골라 주세요.', style: WdText.ko12.copyWith(color: WdColors.muted)),
+          const SizedBox(height: WdSpace.s8),
+          GestureDetector(
+            onTap: () => context.push(Routes.runCourseSelect),
+            child: WdSelectedCourseCard(
+              title: '코스를 골라 주세요',
+              meta: '최근 달린 코스 · 내 주변 · 검색',
+              status: '',
+              changeLabel: '선택',
+              onChange: () => context.push(Routes.runCourseSelect),
+            ),
+          ),
+        ],
+      );
+    }
     final id = course.courseId;
     final detail = ref.watch(runCourseDetailProvider(id)).value;
     final rating = ref.watch(reviewSummaryProvider(id)).value?.averageRating;
