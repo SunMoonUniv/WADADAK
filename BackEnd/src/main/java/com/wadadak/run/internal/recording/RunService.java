@@ -72,6 +72,7 @@ class RunService {
     }
     private Deleted deleteStored(UUID owner, UUID id) {
         sessions.findMemberId(id).ifPresent(member -> requireOwner(owner,member));
+        courseRuns.requireOwnerIfPresent(owner, id);
         var deleted=deletedRecords.findById(id);
         deleted.ifPresent(record -> requireOwner(owner,record.getMemberId()));
         records.findById(id).ifPresent(record -> {

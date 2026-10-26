@@ -18,7 +18,7 @@
 | `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `course_stats`, `course_daily_stats`, `course_active_runners`, `processed_events` |
 | `ranking` | ranking | `course_ranking_entries`, `distance_run_records`, `course_status_copies`, `member_visibility_copies`, `member_region_history`, `withdrawn_members` |
 | `review` | review | `reviews`, `review_photos`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
-| `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members`, `course_attempts`, `course_runner_counts` |
+| `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members`, `course_attempts`, `course_runner_counts`, `ghost_starts`, `ghost_start_playbacks` |
 | `common` | common | `region`, `event_publication`, `shedlock`, `photo_uploads`, `flyway_schema_history` |
 
 notification 스키마는 아직 없다. 해당 모듈을 구현할 때 이 문서에 추가한다.
@@ -739,7 +739,7 @@ Flyway가 관리한다. 모든 모듈의 마이그레이션 이력을 여기 한
 
 ### 3.6 run
 
-자유 러닝의 종료 원본 업로드·재계산·기록 조회·삭제와 코스 러닝 시도(준비·시작·현재 러너 수·판정)를 담당한다. 고스트 테이블은 아직 구현하지 않았다. 아래 테이블은 모두 `created_at`·`updated_at`을 갖는다. 2026-10-14 보완 마이그레이션으로 컬럼을 추가한 기존 행은 마이그레이션 시각을 기본값으로 가지며, 실제 러닝 시각은 `started_at`·결과의 `endedAt`로 구분한다.
+자유 러닝의 종료 원본 업로드·재계산·기록 조회·삭제와 코스 러닝 시도(준비·시작·현재 러너 수·판정), 내 고스트 시작 승인·상대 고정을 담당한다. 아래 테이블은 모두 `created_at`·`updated_at`을 갖는다. 2026-10-14 보완 마이그레이션으로 컬럼을 추가한 기존 행은 마이그레이션 시각을 기본값으로 가지며, 실제 러닝 시각은 `started_at`·결과의 `endedAt`로 구분한다.
 
 #### `run.sessions` — 종료 기록 수집·처리 상태
 
@@ -805,6 +805,17 @@ PK는 `(session_id, stream_seq)`, `session_id`만 같은 run 스키마 sessions�
 #### `run.course_runner_counts` — 현재 러너 수 이벤트 version
 
 `course_id` UUID PK, `version` BIGINT. 러너 수가 바뀔 때마다 1씩 올려 `CourseActiveRunnersChangedEvent.version`으로 보낸다(수신 측은 큰 version만 반영). 이 행을 먼저 잠그고 수를 세서 같은 코스의 증감을 트랜잭션 순서대로 세운다. 수 자체는 저장하지 않는다.
+
+#### `run.ghost_starts` · `run.ghost_start_playbacks` — 내 고스트 시작 승인 (2026-10-26)
+
+`V20261026_2000__run_ghost_starts.sql`로 추가한다. 기존 코스 준비의 `course_attempts.session_id` 하나에 승인 하나를 저장한다. 업로드 전에는 `sessions`가 없으므로 `ghost_starts.session_id`는 같은 run 스키마 `course_attempts`에 FK/ON DELETE CASCADE, 상세 `ghost_start_playbacks.session_id`는 승인에 FK/ON DELETE CASCADE다. 기존 데이터 변경·타 스키마 참조는 없다.
+
+- 승인: `session_id` UUID PK, `source_record_id` UUID(인덱스·FK 없음), `started_at`/`approved_at`/`course_validated_at` TIMESTAMPTZ, `approval_version`/`playback_version`/`source_policy_version`/`source_calculation_version` VARCHAR(40), `source_elapsed_seconds`/`source_duration_ms` BIGINT. 코스 ID/경로/회원은 기존 시도에 보존하고 중복 복사하지 않는다. 원본 상대 삭제는 이미 승인된 대결을 지우지 않는다.
+- 상세: `session_id` UUID PK, `playback_json` TEXT. 총 소요 ms·코스 누적 위치·정지/공백의 파생 자료이며 상대 GPS 원본 스트림·회원 프로필은 저장하지 않는다.
+- 기존 회원→세션 잠금으로 시작/삭제/탈퇴를 직렬화한다. 승인·상세·기존 코스 시작/집계 이벤트는 같은 트랜잭션. 동일 요청 재전송은 승인/재생 자료를 그대로 읽고 새 이벤트를 내지 않는다.
+- 본인 대결 삭제·회원 탈퇴는 시도 삭제를 통해 두 테이블을 함께 정리한다. 요약의 최소 비교 시간/버전과 상세를 분리했다. **서버 최종 승패 확정 후 30일 상세 정리**는 후속 승패/보존 구현에 연결하며 시작일 기준으로 먼저 지우지 않는다. 이번 단계는 최종 승패를 확정하거나 만료 작업을 실행하지 않는다.
+
+계약과 경합 기준은 [고스트 시작 승인 계약](<run/고스트 시작 승인 계약 v1 - 2026-10-26.md>) 참조.
 
 #### 코스 판정 결과 `course` (2026-10-20)
 

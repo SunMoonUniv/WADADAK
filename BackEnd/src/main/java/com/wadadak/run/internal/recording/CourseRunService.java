@@ -187,6 +187,11 @@ class CourseRunService {
         return attempts.findById(id).map(CourseAttempt::getStartedEventAt);
     }
 
+    /** Deletion also covers prepared/started attempts which have no upload session yet. Caller holds ID lock. */
+    void requireOwnerIfPresent(UUID owner, UUID id) {
+        attempts.findMemberId(id).ifPresent(member -> requireOwner(owner, member));
+    }
+
     /** 기록 삭제: 아직 러너 수에 있으면 빼고 시도를 지운다. 호출하는 쪽이 잠금을 갖고 있다 */
     public void forget(UUID id) {
         attempts.findById(id).ifPresent(attempt -> {
