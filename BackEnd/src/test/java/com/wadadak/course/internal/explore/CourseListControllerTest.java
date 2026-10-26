@@ -1,6 +1,7 @@
 package com.wadadak.course.internal.explore;
 
 import com.wadadak.TestcontainersConfiguration;
+import com.wadadak.course.internal.course.CourseName;
 import com.wadadak.member.MemberApi;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -119,6 +120,31 @@ class CourseListControllerTest {
         data(mvc.get().uri("/api/v1/courses/map?" + area).with(jwt()).exchange())
                 .get("courses").forEach(course -> mapped.add(UUID.fromString(course.get("courseId").asString())));
         assertThat(mapped).isEqualTo(listed);
+    }
+
+    /** G6에서 고른 검색어 · 지역(SEA-04 · SEA-07)은 목록 · 지도 · 지역별 코스 수에 같이 걸린다. */
+    @Test
+    void narrowsToTheSearchWordAndRegionPickedInG6() throws Exception {
+        String word = UUID.randomUUID().toString().replace("-", "").substring(0, 8);
+        UUID picked = insertNamed("한강 " + word + " 야경", 33.761, 126.301, "1156000000");
+        // 검색어는 같지만 다른 지역, 같은 지역이지만 다른 이름
+        insertNamed("한강 " + word, 33.762, 126.302, "1114000000");
+        insertNamed("여의도 코스", 33.763, 126.303, "1156000000");
+        String area = "swLat=33.760&swLng=126.300&neLat=33.770&neLng=126.310";
+        String picks = "&query=" + word.toUpperCase(java.util.Locale.ROOT) + "&regionCode=1156000000";
+
+        assertThat(ids(data(list(area + picks + "&sort=LATEST")))).containsExactly(picked);
+        JsonNode map = data(mvc.get().uri("/api/v1/courses/map?" + area + picks).with(jwt()).exchange());
+        assertThat(map.get("totalCount").asInt()).isEqualTo(1);
+        assertThat(map.get("courses").get(0).get("courseId").asString()).isEqualTo(picked.toString());
+        JsonNode regions = data(mvc.get().uri("/api/v1/courses/map/regions?" + area + picks + "&level=DISTRICT").with(jwt()).exchange());
+        assertThat(regions.get("totalCount").asInt()).isEqualTo(1);
+        // 검색어만, 지역만 걸 수도 있다
+        assertThat(ids(data(list(area + "&query=" + word + "&sort=LATEST")))).hasSize(2);
+        assertThat(ids(data(list(area + "&regionCode=1156000000&sort=LATEST")))).hasSize(2);
+
+        assertBadRequest(list(area + "&query=a&sort=LATEST"));
+        assertBadRequest(list(area + "&regionCode=1156&sort=LATEST"));
     }
 
     /**
@@ -361,6 +387,23 @@ class CourseListControllerTest {
 
     private UUID insert(double lat, double lng, Instant createdAt) {
         return insert(lat, lng, createdAt, "EASY", 1_000, "{}", "CUSTOM");
+    }
+
+    /** 이름과 출발점 지역을 정한 코스. 이름 키는 등록과 같게 만든다. 좌표와 지역 코드가 맞지 않아도 된다. */
+    private UUID insertNamed(String name, double lat, double lng, String sigunguCode) {
+        UUID id = UUID.randomUUID();
+        jdbcTemplate.update("""
+                        INSERT INTO course.courses (id, creator_id, course_type, name, name_key, difficulty, tags, route,
+                                                    distance_meters, start_point, emd_code, sigungu_code, sido_code, status,
+                                                    expires_at, version, created_at, updated_at)
+                        VALUES (?, ?, 'CUSTOM', ?, ?, 'EASY', '{}', ST_GeomFromText(?, 4326), 1000, ST_GeogFromText(?),
+                                ?, ?, ?, 'ACTIVE', ?, 0, ?, ?)""",
+                id, UUID.randomUUID(), CourseName.display(name), CourseName.key(name),
+                "LINESTRING(%s %s, %s %s)".formatted(lng, lat, lng, lat + 0.01),
+                "SRID=4326;POINT(%s %s)".formatted(lng, lat),
+                sigunguCode.substring(0, 5) + "10100", sigunguCode, sigunguCode.substring(0, 2) + "00000000",
+                Timestamp.from(NOW.plusSeconds(30 * 24 * 3600)), Timestamp.from(NOW), Timestamp.from(NOW));
+        return id;
     }
 
     /** 출발점에서 북쪽으로 약 1.1km 가는 코스를 바로 넣는다. 거리 값은 확인용이라 실제 경로 길이와 다를 수 있다. 만료는 등록 30일 뒤. */

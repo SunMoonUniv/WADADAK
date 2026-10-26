@@ -115,13 +115,62 @@ class CourseSearchControllerTest {
     }
 
     @Test
+    void countsMatchingCoursesByStartRegionWithTheirBounds() throws Exception {
+        String word = word();
+        // 영등포구 둘, 서울 중구 · 수원시 장안구 · 서울 강서구 하나씩. 이름에 검색어가 없거나 숨긴 코스는 세지 않는다
+        insertIn("1156000000", "한강 " + word + " 야경", 37.52, 126.93);
+        insertIn("1156000000", word + " 여의도", 37.53, 126.90);
+        insertIn("1114000000", "청계 " + word, 37.56, 126.99);
+        insertIn("4111100000", "장안 " + word, 37.30, 127.01);
+        insertIn("1150000000", "마곡 " + word, 37.56, 126.83);
+        insertIn("1156000000", "다른 말 코스", 37.52, 126.91);
+        UUID hidden = insertIn("1121500000", "광진 " + word, 37.54, 127.08);
+        jdbcTemplate.update("UPDATE course.courses SET status = 'HIDDEN', status_reason = 'EXPIRED', hidden_at = now() WHERE id = ?",
+                hidden);
+
+        // 코스가 많은 지역부터, 같으면 지역 코드순. 전국에 같은 이름이 있는 중구 · 강서구는 시·도를 붙인다
+        JsonNode data = data(regions(word.toUpperCase(Locale.ROOT)));
+        assertThat(regionCounts(data))
+                .containsExactly("영등포구 2", "서울특별시 중구 1", "서울특별시 강서구 1", "수원시 장안구 1");
+        JsonNode yeongdeungpo = data.get("regions").get(0);
+        assertThat(yeongdeungpo.get("code").asString()).isEqualTo("1156000000");
+        // 걸린 코스 출발점의 범위
+        assertThat(yeongdeungpo.get("southWest").get("lat").asDouble()).isEqualTo(37.52);
+        assertThat(yeongdeungpo.get("southWest").get("lng").asDouble()).isEqualTo(126.90);
+        assertThat(yeongdeungpo.get("northEast").get("lat").asDouble()).isEqualTo(37.53);
+        assertThat(yeongdeungpo.get("northEast").get("lng").asDouble()).isEqualTo(126.93);
+
+        assertThat(data(regions("없는" + word)).get("regions").isEmpty()).isTrue();
+    }
+
+    @Test
+    void rejectsBadRegionSearches() {
+        assertBadRequest(mvc.get().uri("/api/v1/courses/search/regions").with(jwt()).exchange());
+        assertBadRequest(regions(" a "));
+        assertBadRequest(regions("가".repeat(101)));
+    }
+
+    @Test
     void needsLogin() {
         assertThat(mvc.get().uri("/api/v1/courses/search?sort=LATEST").param("query", "한강").exchange())
+                .hasStatus(HttpStatus.UNAUTHORIZED);
+        assertThat(mvc.get().uri("/api/v1/courses/search/regions").param("query", "한강").exchange())
                 .hasStatus(HttpStatus.UNAUTHORIZED);
     }
 
     private MvcTestResult search(String query, String rest) {
         return mvc.get().uri("/api/v1/courses/search?" + rest).param("query", query).with(jwt()).exchange();
+    }
+
+    private MvcTestResult regions(String query) {
+        return mvc.get().uri("/api/v1/courses/search/regions").param("query", query).with(jwt()).exchange();
+    }
+
+    /** "이름 개수" 목록. */
+    private static List<String> regionCounts(JsonNode data) {
+        List<String> counts = new ArrayList<>();
+        data.get("regions").forEach(region -> counts.add(region.get("name").asString() + " " + region.get("count").asInt()));
+        return counts;
     }
 
     private JsonNode data(MvcTestResult result) throws Exception {
@@ -150,18 +199,28 @@ class CourseSearchControllerTest {
                 + "VALUES (?, ?, ?, now(), now())", course, ratingSum, reviewCount);
     }
 
-    /** 출발점에서 북쪽으로 약 1.1km 가는 코스를 바로 넣는다. 이름 키는 등록과 같게 만든다. 만료는 등록 30일 뒤. */
     private UUID insert(String name, double lat, double lng, Instant createdAt) {
+        return insert(name, lat, lng, createdAt, "5011000000");
+    }
+
+    /** 출발점이 [sigunguCode] 지역이라고 적힌 코스. 좌표와 지역 코드가 맞지 않아도 된다. */
+    private UUID insertIn(String sigunguCode, String name, double lat, double lng) {
+        return insert(name, lat, lng, NOW, sigunguCode);
+    }
+
+    /** 출발점에서 북쪽으로 약 1.1km 가는 코스를 바로 넣는다. 이름 키는 등록과 같게 만든다. 만료는 등록 30일 뒤. */
+    private UUID insert(String name, double lat, double lng, Instant createdAt, String sigunguCode) {
         UUID id = UUID.randomUUID();
         jdbcTemplate.update("""
                         INSERT INTO course.courses (id, creator_id, course_type, name, name_key, difficulty, tags, route,
                                                     distance_meters, start_point, emd_code, sigungu_code, sido_code, status,
                                                     expires_at, version, created_at, updated_at)
                         VALUES (?, ?, 'CUSTOM', ?, ?, 'EASY', '{}', ST_GeomFromText(?, 4326), 1000, ST_GeogFromText(?),
-                                '5011010100', '5011000000', '5000000000', 'ACTIVE', ?, 0, ?, ?)""",
+                                ?, ?, ?, 'ACTIVE', ?, 0, ?, ?)""",
                 id, UUID.randomUUID(), CourseName.display(name), CourseName.key(name),
                 "LINESTRING(%s %s, %s %s)".formatted(lng, lat, lng, lat + 0.01),
                 "SRID=4326;POINT(%s %s)".formatted(lng, lat),
+                sigunguCode.substring(0, 5) + "10100", sigunguCode, sigunguCode.substring(0, 2) + "00000000",
                 Timestamp.from(createdAt.plusSeconds(30 * 24 * 3600)), Timestamp.from(createdAt), Timestamp.from(createdAt));
         return id;
     }

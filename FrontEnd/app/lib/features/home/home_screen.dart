@@ -22,9 +22,16 @@ import 'my_location.dart';
 /// 지도에서 코스 이름표를 누르면 그 코스만 남기고 목록에도 그 코스만 보인다(MAP-03 선택). 지도의 다른 곳을 누르면 풀린다.
 /// 이름표가 겹치면 인기순 위 코스의 이름표만 보이고, 경로는 모두 그리되 인기순 위 코스를 위에 그린다(MAP-03 겹침).
 /// 필터(A3)를 걸면 지도 · 지역별 코스 수 · 목록이 모두 그 조건의 코스만 보인다(A2-04).
-/// 검색 화면(G1) 연결은 F2 다음 단계에서 붙인다.
+/// 검색창을 누르면 검색(G1 · G6)을 연다. G6에서 지역을 고르면 A3 필터를 처음으로 되돌리고, 지도를 그 지역의 걸린 코스가
+/// 반 시트 위로 모두 보이게 옮겨 지도와 목록을 함께 보인다(A2). 지도 · 지역별 코스 수 · 목록에 고른 검색어 · 지역이 걸려
+/// G6 수와 같다(SEA-04). 이 조건은 검색창 `← 한강 · 영등포구 ✕`와 목록 제목 `영등포구 ‘한강’ 코스 12`에 보이고, `필터 초기화` · 다른 하단 탭으로 풀린다.
+/// ✕는 다른 하단 탭에 갔다 온 것처럼 홈을 처음 연 모습으로 되돌린다.
+/// 구 단위 배지를 누르면 그 구의 필터에 맞는 코스가 모두 보이게 지도를 맞추고, 그 자리에서는 축척과 상관없이 코스 이름표로 보인다(A4-06).
 /// 확대·축소 버튼은 두지 않는다(정책 MAP-02, 제스처로 한다).
 /// 다른 하단 탭으로 떠나면 탐색 상태를 처음으로 되돌려 둔다(FIL-08, [HomeTabExits]).
+/// 지도 카메라 자리(중심 · 줌).
+typedef _Spot = ({GeoPoint center, double zoom});
+
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key, this.now = DateTime.now});
 
@@ -70,6 +77,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// 인기순 기간(A3 기간 슬라이더, FIL-09). 인기순일 때만 있고 목록 순서만 바꾼다. 다른 정렬로 바꾸면 전체로 되돌린다.
   CoursePeriod? _period;
 
+  /// G6에서 고른 검색어 · 지역(SEA-04 · SEA-07). 지도 · 지역별 코스 수 · 목록에 필터와 함께 건다.
+  CourseSearchPick? _pick;
+
+  /// 구 배지를 눌러 그 구의 코스가 모두 보이게 맞춘 자리(A4-06). 지도가 이 자리에 있는 동안은 축척과 상관없이 코스 이름표로 보인다.
+  /// 지도를 다른 자리로 움직이면 풀린다.
+  _Spot? _coursesSpot;
+
   /// 현재 위치. 가까운순의 기준점이고 카드의 `0.8km 거리`에 쓴다. 위치 권한이 이미 있으면 홈을 열 때 받는다.
   GeoPoint? _myLocation;
 
@@ -97,8 +111,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// 지도가 보이는 마지막 단계(피크 · 반). 전체 보기(A6)는 이 단계에서 보이던 범위를 그대로 쓴다.
   var _mapStage = SheetStage.half;
 
-  /// 시트 아래 지도 영역 높이. 화면을 그릴 때 정한다.
+  /// 시트 아래 지도 영역 높이 · 너비. 화면을 그릴 때 정한다.
   var _mapHeight = 0.0;
+  var _mapWidth = 0.0;
+
+  /// G6에서 고른 지역의 코스를 지도에 맞출 때 출발점과 보이는 지도 가장자리 사이 여백. 이름표는 출발점 위 가운데에 붙어
+  /// 양옆은 보통 길이(160쯤) 이름표의 반, 위는 이름표 높이만큼 더 둔다. 더 긴 이름표는 가장자리에서 잘릴 수 있다.
+  static const _fitPadding =
+      EdgeInsets.fromLTRB(WdSpace.s56 + WdSpace.s24, WdSpace.s56, WdSpace.s56 + WdSpace.s24, WdSpace.s24);
 
   /// 시트 처음 크기. 지도와 목록이 반씩이다(A2).
   static const _halfSize = 0.5;
@@ -152,22 +172,38 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     super.dispose();
   }
 
-  /// 다른 하단 탭으로 떠났다(FIL-08). 필터 · 정렬 · 고른 코스 · 시트 · 목록 스크롤을 처음으로 되돌리고 지도를 홈을 여는 자리로 옮겨 둔다.
-  /// 홈이 가려져 있는 동안 하므로 지도가 움직이는 모습은 보이지 않는다.
-  void _startOver() {
+  /// 탐색 상태를 홈을 처음 열었을 때로 되돌린다(FIL-08). 필터 · G6 조건 · 정렬 · 고른 코스 · 시트 · 목록 스크롤을 처음으로 되돌리고
+  /// 지도를 홈을 여는 자리로 옮긴다. 다른 하단 탭으로 떠났을 때는 홈이 가려져 있어 바로 옮기고,
+  /// [animate]면(홈 검색창의 ✕) 보이는 채로 시트 · 지도를 움직이며 옮긴 범위로 받을 때까지 목록은 받는 중으로 보인다.
+  void _startOver({bool animate = false}) {
     setState(() {
       _filter = CourseFilter.none;
+      _pick = null;
+      _coursesSpot = null;
       _sort = CourseListSort.initial;
       _period = null;
       _selected = null;
-      _sheetSize = _halfSize;
-      _settledStage = SheetStage.half;
       _mapStage = SheetStage.half;
+      if (animate) {
+        // 시트 크기 · 멈춘 단계는 움직이는 시트가 알려 준다.
+        _area = null;
+        _totalCount = null;
+      } else {
+        _sheetSize = _halfSize;
+        _settledStage = SheetStage.half;
+      }
       _listGeneration++;
     });
-    // 가려진 동안에는 애니메이션이 멈춰 있어 바로 옮긴다.
-    if (_sheet.isAttached) _sheet.jumpTo(_halfSize);
-    _goToStart();
+    if (!animate) {
+      // 가려진 동안에는 애니메이션이 멈춰 있어 바로 옮긴다.
+      if (_sheet.isAttached) _sheet.jumpTo(_halfSize);
+    } else {
+      // 목록을 새로 만들면 움직이던 시트가 멈춰, 새 목록이 붙은 뒤에 움직인다.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _sheet.isAttached) _moveSheet(_halfSize);
+      });
+    }
+    _goToStart(animate: animate);
   }
 
   /// 홈을 연다. 지도는 서울시청에서 열고, 위치 권한이 있으면 기기에 남은 마지막 위치로 바로 맞춘다(보통 지도가 준비되기 전에 와서
@@ -178,11 +214,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     await _refineStart();
   }
 
-  /// 다른 하단 탭에서 돌아올 때 볼 자리로 지도를 옮겨 둔다. 홈을 열 때와 같다.
-  Future<void> _goToStart() async {
+  /// 홈을 여는 자리로 지도를 옮긴다(다른 하단 탭에서 돌아올 때 · 홈 검색창의 ✕). 홈을 열 때와 같다.
+  Future<void> _goToStart({bool animate = false}) async {
     final last = await ref.read(myLocationProvider).lastIfAllowed();
     if (!mounted) return;
-    _placeStart(last, animate: false);
+    _placeStart(last, animate: animate);
     await _refineStart();
   }
 
@@ -229,8 +265,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return camera != null && placed != null && _selected == null && _isAt(camera, placed);
   }
 
-  static bool _isAt(MapCamera camera, GeoPoint center) =>
-      (camera.zoom - _startZoom).abs() < 0.01 && camera.center.distanceTo(center) < 1;
+  static bool _isAt(MapCamera camera, GeoPoint center) => _isAtSpot(camera, (center: center, zoom: _startZoom));
+
+  static bool _isAtSpot(MapCamera camera, _Spot spot) =>
+      (camera.zoom - spot.zoom).abs() < 0.01 && camera.center.distanceTo(spot.center) < 1;
 
   /// 가까운순 · 내 위치 버튼에 쓸 현재 위치를 받는다. 권한이 없으면 묻는다. 못 받으면 알리고 null이다.
   Future<GeoPoint?> _locate() async {
@@ -248,9 +286,27 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _map?.showMyLocation(follow: false);
   }
 
-  /// 지역 배지를 눌렀다(A4-06). 그 지역을 보이는 지도의 한가운데에 두고 한 단계 확대한다. 시 → 구 단위, 구 → 개별 코스.
-  void _zoomInto(RegionCount region) =>
+  /// 지역 배지를 눌렀다(A4-06). 시 배지는 그 지역을 보이는 지도의 한가운데에 두고 구 단위 축척(2km)으로 확대한다.
+  /// 구 배지는 그 구의 필터에 맞는 코스(지금 지도 범위 밖 포함)가 모두 보이게 맞추고, 그 자리에서는 축척과 상관없이 코스 이름표로 보인다.
+  /// 한 단계 확대(축척 500m)보다 더 확대하지는 않는다. 코스 범위를 모르면 배지를 가운데에 두고 축척 500m로 확대한다.
+  void _zoomInto(RegionCount region) {
+    final southWest = region.southWest, northEast = region.northEast;
+    final spot = _regionsLevel == RegionLevel.district && southWest != null && northEast != null
+        ? _fitInView(southWest, northEast, _mapStage, maxZoom: _coursesZoom)
+        : null;
+    if (spot == null) {
       _centerInView(region.center, zoom: _regionsLevel == RegionLevel.city ? _districtZoom : _coursesZoom);
+      return;
+    }
+    _coursesSpot = spot;
+    final camera = _camera;
+    if (camera != null && _isAtSpot(camera, spot)) {
+      // 이미 그 자리라 지도가 멈춤을 알리지 않을 수 있어 바로 받는다.
+      _load(camera);
+    } else {
+      _map?.moveTo(spot.center, zoom: spot.zoom);
+    }
+  }
 
   /// [point]를 [stage] 시트(기본은 지금 지도가 보이는 단계) 위로 보이는 지도 부분의 한가운데에 두고 [zoom](기본은 지금 줌)으로 옮긴다.
   /// 지도는 아래 여백([_mapPadding])을 뺀 영역의 가운데에 카메라 중심을 두므로, 그 자리와 보이는 부분의 가운데 차이만큼 카메라를 남북으로 비켜 둔다.
@@ -277,6 +333,37 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return GeoPoint(_latitude(_mercator(point.lat) - below * perDp), point.lng);
   }
 
+  /// [southWest] ~ [northEast]가 [stage] 시트 위로 보이는 지도 부분에 [_fitPadding]을 두고 모두 들어오는 카메라 중심 · 줌.
+  /// 지금 범위로 1dp가 경도 · 메르카토르 y로 얼마인지 재어 줌을 고른다. [_startZoom]보다 확대하지 않는다(점이 하나여도 그렇다).
+  /// [maxZoom]보다 확대하지 않는다. 지도 범위를 아직 모르면 null.
+  _Spot? _fitInView(GeoPoint southWest, GeoPoint northEast, SheetStage stage, {double maxZoom = _startZoom}) {
+    final camera = _camera;
+    if (camera == null || _mapHeight <= 0 || _mapWidth <= 0) return null;
+    final visibleHeight = switch (stage) {
+      SheetStage.peek => _mapHeight - CourseListSheet.peekHeight,
+      _ => _mapHeight * (1 - _halfSize),
+    };
+    final lngPerDp = (camera.northEast.lng - camera.southWest.lng) / _mapWidth;
+    final yPerDp = (_mercator(camera.northEast.lat) - _mercator(camera.southWest.lat)) / _mapHeight;
+    final spanLng = northEast.lng - southWest.lng;
+    final spanY = _mercator(northEast.lat) - _mercator(southWest.lat);
+    var zoom = maxZoom;
+    if (spanLng > 0) {
+      zoom = math.min(zoom, camera.zoom + _log2((_mapWidth - _fitPadding.horizontal) * lngPerDp / spanLng));
+    }
+    if (spanY > 0) zoom = math.min(zoom, camera.zoom + _log2((visibleHeight - _fitPadding.vertical) * yPerDp / spanY));
+    zoom = math.max(zoom, _minZoom);
+    // 위 여백이 더 커서 범위의 가운데는 보이는 부분의 가운데보다 그 차이의 반만큼 아래에 온다.
+    final shift = (_fitPadding.top - _fitPadding.bottom) / 2 * yPerDp / math.pow(2, zoom - camera.zoom);
+    final center = GeoPoint(
+      _latitude((_mercator(southWest.lat) + _mercator(northEast.lat)) / 2 + shift),
+      (southWest.lng + northEast.lng) / 2,
+    );
+    return (center: _viewCenter(center, zoom: zoom, stage: stage), zoom: zoom);
+  }
+
+  static double _log2(double value) => math.log(value) / math.ln2;
+
   static double _mercator(double lat) => math.log(math.tan(math.pi / 4 + lat * math.pi / 360));
   static double _latitude(double y) => (2 * math.atan(math.exp(y)) - math.pi / 2) * 180 / math.pi;
 
@@ -298,7 +385,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (area == null) return;
     final choice = await context.push<CourseFilterChoice>(
       Routes.courseFilter,
-      extra: (filter: _filter, sort: _sort, period: _period, area: area),
+      extra: (filter: _filter, pick: _pick, sort: _sort, period: _period, area: area),
     );
     if (choice == null || !mounted) return;
     _applyFilter(choice.filter);
@@ -314,6 +401,56 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final camera = _camera;
     if (camera != null) _load(camera);
   }
+
+  /// 필터 결과 0건의 `필터 초기화`(STA-04). A3 필터와 G6 조건을 함께 푼다.
+  void _resetFilter() {
+    setState(() {
+      _filter = CourseFilter.none;
+      _pick = null;
+    });
+    final camera = _camera;
+    if (camera != null) _load(camera);
+  }
+
+  /// 검색(G1 · G6)을 연다(SEA-01). G6 조건이 있으면 그 검색어의 지역 탭으로 연다. G6에서 지역을 골라 돌아오면
+  /// 그 조건으로 지도와 목록을 함께 보이고(A2), 그냥 돌아오면 홈은 그대로다.
+  Future<void> _openSearch() async {
+    final pick = await context.push<CourseSearchPick>(Routes.courseSearch, extra: _pick?.query);
+    if (pick != null && mounted) _showPick(pick);
+  }
+
+  /// G6에서 고른 검색어 · 지역을 지도와 목록이 반씩인 홈(A2)으로 보인다(G6-02 · SEA-04). A3 필터 · 정렬 · 기간은
+  /// A3 `초기화`처럼 처음으로 되돌려 숨은 조건이 수를 줄이지 않게 한다. 지도는 그 지역의 걸린 코스 출발점이 반 시트 위로
+  /// 모두 보이게 옮겨, 목록이 G6 수와 같다.
+  void _showPick(CourseSearchPick pick) {
+    final camera = _camera;
+    final fit = _fitInView(pick.region.southWest, pick.region.northEast, SheetStage.half);
+    setState(() {
+      _pick = pick;
+      _filter = CourseFilter.none;
+      _sort = CourseListSort.initial;
+      _period = null;
+      _selected = null;
+      _coursesSpot = null;
+      _mapStage = SheetStage.half;
+      // 옮긴 지도 범위로 받을 때까지 전 목록 · 수 대신 받는 중으로 보인다.
+      _area = null;
+      _totalCount = null;
+      _listGeneration++;
+    });
+    // 검색 화면이 닫히는 동안이라 시트 · 지도를 바로 옮긴다. 지도가 멈추면 그 범위로 받는다.
+    if (_sheet.isAttached) _sheet.jumpTo(_halfSize);
+    if (camera == null) return;
+    if (fit == null || _isAtSpot(camera, fit)) {
+      // 이미 그 자리라 지도가 멈춤을 알리지 않을 수 있어 바로 받는다.
+      _load(camera);
+    } else {
+      _map?.moveTo(fit.center, zoom: fit.zoom, animate: false);
+    }
+  }
+
+  /// 홈 검색창 `한강 · 영등포구`의 ✕. G6 조건과 함께 탐색 상태를 홈을 처음 열었을 때로 되돌린다(FIL-08과 같다).
+  void _clearPick() => _startOver(animate: true);
 
   /// 코스를 등록하고 돌아오면 지도를 새 코스 출발점으로 옮긴다(B4-07). 줌은 그대로 둔다.
   /// 카메라 중심이 출발점이라 다음 코스 만들기도 그곳에서 열린다(A2-07).
@@ -341,6 +478,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _moveSheet(_halfSize);
     final camera = _camera;
     if (camera != null && !_contains(_visibleArea(camera, SheetStage.half), course.route.first)) {
+      // 구 배지로 맞춘 자리였으면 옮긴 자리도 이름표로 둔다.
+      if (_coursesSpot != null) {
+        _coursesSpot = (center: _viewCenter(course.route.first, stage: SheetStage.half), zoom: camera.zoom);
+      }
       _centerInView(course.route.first, stage: SheetStage.half);
     }
   }
@@ -394,10 +535,15 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       var courses = const <CourseListItem>[];
       var regions = const <RegionCount>[];
       final int total;
-      final regionLevel = _regionLevel(camera);
+      // G6 조건이 걸려 있거나 구 배지로 맞춘 자리면 축척과 상관없이 코스 이름표로 보인다.
+      // 그 지역 코스를 다 담으려고 축소해도 코스가 보인다(MAP-02 예외). 맞춘 자리에서 지도를 움직이면 다시 축척대로다.
+      final spot = _coursesSpot;
+      if (spot != null && !_isAtSpot(camera, spot)) _coursesSpot = null;
+      final regionLevel = _pick == null && _coursesSpot == null ? _regionLevel(camera) : null;
       switch (regionLevel) {
         case null:
-          final map = await api.mapCourses(southWest: area.southWest, northEast: area.northEast, filter: _filter);
+          final map =
+              await api.mapCourses(southWest: area.southWest, northEast: area.northEast, filter: _filter, pick: _pick);
           (courses, total) = (map.courses, map.totalCount);
         case final level:
           final counts = await api.regionCounts(
@@ -405,6 +551,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             northEast: area.northEast,
             level: level,
             filter: _filter,
+            pick: _pick,
           );
           (regions, total) = (counts.regions, counts.totalCount);
       }
@@ -445,12 +592,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           // 상단 배너 아래 영역 높이. 시트 크기는 이 높이에 대한 비율이다.
           final height = constraints.maxHeight - MediaQuery.paddingOf(context).top - _HomeHeader.height;
           _mapHeight = height;
+          _mapWidth = constraints.maxWidth;
           final peekSize = CourseListSheet.peekHeight / height;
           final stage = _stage(_sheetSize, peekSize);
           final selected = _selected;
           final shown = selected == null ? _courses : [selected];
           return Column(children: [
-            _HomeHeader(stage: stage),
+            _HomeHeader(stage: stage, pick: _pick, onSearch: _openSearch, onClearPick: _clearPick),
             Expanded(child: Stack(
             children: [
               MapView(
@@ -548,6 +696,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     area: _area,
                     totalCount: _totalCount,
                     filter: _filter,
+                    pick: _pick,
                     sort: _sort,
                     period: _period,
                     myLocation: _myLocation,
@@ -559,7 +708,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     onShowAll: () => _moveSheet(1),
                     onSort: _sortBy,
                     onOpenFilter: _openFilter,
-                    onResetFilter: () => _applyFilter(CourseFilter.none),
+                    onResetFilter: _resetFilter,
                     onWidenMap: _widenMap,
                     onCreateCourse: _createCourse,
                     onOpenCourse: (course) => context.push(Routes.courseDetail(course.courseId)),
@@ -576,15 +725,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 /// 상단 배너(A2-01 · A2-02). A2(반)는 인사말, 피크(A4 · A5) · 전체 보기(A6)는 고정 제목 `코스`, 아래는 검색창.
 /// 높이가 같아 바뀌어도 지도 크기가 그대로다.
 ///
-/// 검색창은 검색 화면(G1)이 생기면 연결한다(SEA-01). Figma A2의 위치 핀 버튼은 정책에 동작이 없어 두지 않는다.
+/// 검색창을 누르면 검색(G1)을 빈 입력으로 연다(SEA-01). Figma A2의 위치 핀 버튼은 정책에 동작이 없어 두지 않는다.
+/// G6에서 고른 검색어 · 지역이 있으면 검색창이 G6 위쪽 줄 모양 `← ⌕ 한강 · 영등포구 ✕`로 바뀐다(A6-01).
+/// ←와 글자는 그 검색어의 G6 지역 탭을 다시 열고, ✕는 조건을 풀어 홈을 처음 연 모습으로 되돌린다.
 class _HomeHeader extends StatelessWidget {
-  const _HomeHeader({required this.stage});
+  const _HomeHeader({required this.stage, required this.pick, required this.onSearch, required this.onClearPick});
 
   final SheetStage stage;
+  final CourseSearchPick? pick;
+  final VoidCallback onSearch;
+  final VoidCallback onClearPick;
 
   /// Figma A6: 앱 바 70.5 + 검색 52.
   static const height = 122.5;
   static const _titleHeight = 70.5;
+
+  /// 검색창 높이. 검색 52에서 아래 10을 뺀 42.
+  static const _searchHeight = height - _titleHeight - WdSpace.s10;
 
   @override
   Widget build(BuildContext context) {
@@ -618,16 +775,67 @@ class _HomeHeader extends StatelessWidget {
               Padding(
                 // 검색창 42 + 아래 10 = Figma 검색 52.
                 padding: const EdgeInsets.fromLTRB(WdSpace.s16, 0, WdSpace.s16, WdSpace.s10),
-                child: WdSearchBar(
-                  hintText: '원하는 키워드를 검색하세요',
-                  // 여기서는 입력하지 않고 검색(G1)을 빈 입력으로 연다(SEA-01). 돌아오면 홈 상태는 그대로다.
-                  onTap: () => context.push(Routes.courseSearch),
-                ),
+                child: switch (pick) {
+                  null => WdSearchBar(
+                      hintText: '원하는 키워드를 검색하세요',
+                      // 여기서는 입력하지 않고 검색(G1)을 빈 입력으로 연다(SEA-01). 그냥 돌아오면 홈 상태는 그대로다.
+                      onTap: onSearch,
+                    ),
+                  final pick => _pickBar(pick),
+                },
               ),
             ],
           ),
         ),
       ),
+    );
+  }
+
+  /// G6 조건 검색창. Figma G6 위쪽 줄(Search / Header)과 같은 ← · 간격 · 글자이고, 높이는 홈 검색창 그대로다.
+  /// 그냥 돌아오면 조건은 그대로다(SEA-07).
+  Widget _pickBar(CourseSearchPick pick) {
+    final text = WdText.raw(12, FontWeight.w400, 18);
+    return Row(
+      spacing: WdSpace.s10,
+      children: [
+        // 글자 화살표 · ✕는 읽지 않고 동작 이름만 읽는다.
+        Semantics(
+          button: true,
+          label: '지역 검색 결과로 돌아가기',
+          excludeSemantics: true,
+          onTap: onSearch,
+          child: GestureDetector(
+            onTap: onSearch,
+            child: Text('←', style: WdText.raw(19, FontWeight.w500, 19 * 1.4).copyWith(color: WdColors.ink)),
+          ),
+        ),
+        Expanded(
+          child: WdSurface(
+            height: _searchHeight,
+            padding: const EdgeInsets.symmetric(horizontal: WdSpace.s12),
+            onTap: onSearch,
+            child: Row(
+              spacing: WdSpace.s8,
+              children: [
+                Text('⌕', style: text.copyWith(color: WdColors.muted)),
+                Expanded(
+                  child: Text(pick.label, maxLines: 1, overflow: TextOverflow.ellipsis, style: text.copyWith(color: WdColors.ink)),
+                ),
+                Semantics(
+                  button: true,
+                  label: '검색 조건 지우기',
+                  excludeSemantics: true,
+                  onTap: onClearPick,
+                  child: GestureDetector(
+                    onTap: onClearPick,
+                    child: Text('✕', style: text.copyWith(color: WdColors.muted)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

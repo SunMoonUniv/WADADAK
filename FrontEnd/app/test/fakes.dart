@@ -177,14 +177,16 @@ class FakeCourseApi implements CourseApiClient {
   final registrations = <FakeRegistration>[];
 
   /// 지도 범위와 상관없이 돌려줄 코스. 필터는 거리 · 난이도 · 최소 평점 · 특징 · 유형을 서버처럼 적용한다.
+  /// G6에서 고른 검색어 · 지역([CourseSearchPick])은 이름에 검색어가 들어갔는지만 본다(코스에 지역 값이 없다).
   List<CourseListItem> onMap = [];
   ApiException? mapError;
-  final mapRequests = <({GeoPoint southWest, GeoPoint northEast, CourseFilter filter})>[];
+  final mapRequests = <({GeoPoint southWest, GeoPoint northEast, CourseFilter filter, CourseSearchPick? pick})>[];
 
   /// 지도 범위 · 단위 · 필터와 상관없이 돌려줄 지역별 코스 수.
   List<RegionCount> regions = [];
   ApiException? regionsError;
-  final regionRequests = <({GeoPoint southWest, GeoPoint northEast, RegionLevel level, CourseFilter filter})>[];
+  final regionRequests =
+      <({GeoPoint southWest, GeoPoint northEast, RegionLevel level, CourseFilter filter, CourseSearchPick? pick})>[];
 
   @override
   Future<RegistrationQuota> registrationQuota() async => quota;
@@ -243,10 +245,11 @@ class FakeCourseApi implements CourseApiClient {
     required GeoPoint southWest,
     required GeoPoint northEast,
     CourseFilter filter = CourseFilter.none,
+    CourseSearchPick? pick,
   }) async {
-    mapRequests.add((southWest: southWest, northEast: northEast, filter: filter));
+    mapRequests.add((southWest: southWest, northEast: northEast, filter: filter, pick: pick));
     if (mapError != null) throw mapError!;
-    final courses = [for (final course in onMap) if (matches(course, filter)) course];
+    final courses = [for (final course in onMap) if (matches(course, filter) && _picked(course, pick)) course];
     return CourseMap(totalCount: courses.length, courses: courses);
   }
 
@@ -259,14 +262,18 @@ class FakeCourseApi implements CourseApiClient {
       course.tags.toSet().containsAll(filter.tags) &&
       (filter.courseType == null || filter.courseType == course.courseType);
 
+  static bool _picked(CourseListItem course, CourseSearchPick? pick) =>
+      pick == null || _nameKey(course.name).contains(_nameKey(pick.query));
+
   @override
   Future<RegionCounts> regionCounts({
     required GeoPoint southWest,
     required GeoPoint northEast,
     required RegionLevel level,
     CourseFilter filter = CourseFilter.none,
+    CourseSearchPick? pick,
   }) async {
-    regionRequests.add((southWest: southWest, northEast: northEast, level: level, filter: filter));
+    regionRequests.add((southWest: southWest, northEast: northEast, level: level, filter: filter, pick: pick));
     if (regionsError != null) throw regionsError!;
     return RegionCounts(totalCount: regions.fold(0, (sum, region) => sum + region.count), regions: regions);
   }
@@ -283,6 +290,7 @@ class FakeCourseApi implements CourseApiClient {
     required GeoPoint southWest,
     required GeoPoint northEast,
     CourseFilter filter = CourseFilter.none,
+    CourseSearchPick? pick,
     CourseListSort sort = CourseListSort.initial,
     CoursePeriod? period,
     GeoPoint? origin,
@@ -292,13 +300,14 @@ class FakeCourseApi implements CourseApiClient {
       southWest: southWest,
       northEast: northEast,
       filter: filter,
+      pick: pick,
       sort: sort,
       period: period,
       origin: origin,
       cursor: cursor,
     ));
     if (listError != null) throw listError!;
-    final courses = [for (final course in listed) if (matches(course, filter)) course];
+    final courses = [for (final course in listed) if (matches(course, filter) && _picked(course, pick)) course];
     final from = cursor == null ? 0 : int.parse(cursor);
     final to = (from + listPageSize).clamp(0, courses.length);
     return CourseListPage(courses: courses.sublist(from, to), nextCursor: to < courses.length ? '$to' : null);
@@ -335,6 +344,22 @@ class FakeCourseApi implements CourseApiClient {
     );
   }
 
+  /// G6 지역 검색 결과. 검색어와 상관없이 돌려준다.
+  List<SearchRegion> searchedRegions = [];
+  ApiException? searchRegionsError;
+
+  /// 있으면 끝날 때까지 지역 검색 응답을 미룬다(받는 중 화면).
+  Completer<void>? searchRegionsGate;
+  final searchRegionRequests = <String>[];
+
+  @override
+  Future<List<SearchRegion>> searchRegions(String query) async {
+    searchRegionRequests.add(query);
+    await searchRegionsGate?.future;
+    if (searchRegionsError != null) throw searchRegionsError!;
+    return searchedRegions;
+  }
+
   /// 1분 갱신(공통 7 · HCR-05)에 돌려줄 현재 러너 수(courseId → 러너 수). 여기 없는 코스는 서버처럼 응답에서 빠진다.
   Map<String, int> runners = {};
   ApiException? runnersError;
@@ -356,6 +381,7 @@ typedef ListRequest = ({
   GeoPoint southWest,
   GeoPoint northEast,
   CourseFilter filter,
+  CourseSearchPick? pick,
   CourseListSort sort,
   CoursePeriod? period,
   GeoPoint? origin,

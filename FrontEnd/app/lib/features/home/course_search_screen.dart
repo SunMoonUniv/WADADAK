@@ -14,15 +14,22 @@ import '../course/course_format.dart';
 import '../course/course_list_card.dart';
 import 'my_location.dart';
 
-/// G1 · 검색 결과 — 코스. 홈 검색창에서 빈 입력으로 연다(SEA-01). 홈 탭 안에 쌓아 하단 탭이 보인다(Figma G1).
+/// G1 · G6 검색 결과(코스 · 지역). 홈 검색창에서 빈 입력으로 연다(SEA-01, G6 조건이 걸려 있으면 아래처럼 그 검색어로 연다). 홈 탭 안에 쌓아 하단 탭이 보인다(Figma G1 · G6).
 ///
 /// - 공백을 빼고 2글자 이상 입력한 뒤 키보드의 검색을 누르면 이름에 검색어가 들어간 코스를 전국에서 찾는다(SEA-03).
 ///   ✕는 검색어와 결과를 지운다(G1-01). 최근 검색어는 없다.
-/// - 코스 · 지역 · 러너 탭. 지역(G6) · 러너(G7)는 아직 없어 준비 중이라고 보인다. 탭을 바꿔도 검색어는 그대로다(G1-02).
-/// - 정렬은 홈 목록과 같은 인기순(처음) · 평점순 · 가까운순 · 최신순 · 실시간순이다(G1-03). A3 필터 · 기간 슬라이더는 쓰지 않는다.
-/// - 카드를 누르면 B1. 돌아오면 검색어 · 결과 · 스크롤이 그대로다(FIL-08).
+/// - 코스(G1) · 지역(G6) · 러너 탭. 러너(G7)는 아직 없어 준비 중이라고 보인다. 탭을 바꿔도 검색어는 그대로이고,
+///   보이는 탭의 결과가 지금 검색어의 것이 아니면 그때 받는다(G1-02 · G6-01).
+/// - 코스 탭 정렬은 홈 목록과 같은 인기순(처음) · 평점순 · 가까운순 · 최신순 · 실시간순이다(G1-03). A3 필터 · 기간 슬라이더는 쓰지 않는다.
+/// - 코스 카드를 누르면 B1. 돌아오면 검색어 · 결과 · 스크롤이 그대로다(FIL-08).
+/// - 지역 탭은 검색어에 걸린 코스가 있는 시·군·구와 그 수다(SEA-04). 지역을 누르면 고른 검색어 · 지역([CourseSearchPick])을
+///   돌려주며 닫힌다. 홈이 그 조건으로 지도와 목록을 함께 보인다(G6-02).
+/// - 홈 검색창의 G6 조건(`← 한강 · 영등포구 ✕`)에서 열면 [initialQuery]를 넣은 채 지역 탭으로 열고 그 결과를 받는다.
 class CourseSearchScreen extends ConsumerStatefulWidget {
-  const CourseSearchScreen({super.key});
+  const CourseSearchScreen({super.key, this.initialQuery});
+
+  /// 처음 검색어. 주면 키보드를 띄우지 않고 지역 탭에서 이 검색어의 결과를 받는다. 없으면 빈 입력으로 연다(SEA-01).
+  final String? initialQuery;
 
   static const tabs = ['코스', '지역', '러너'];
   static const hint = '원하는 키워드를 검색하세요';
@@ -37,8 +44,16 @@ class CourseSearchScreen extends ConsumerStatefulWidget {
   static String emptyTitle(String query) => '‘$query’ 검색 결과가 없어요';
   static const emptyMessage = '다른 검색어로 찾아보거나\n직접 코스를 만들어 보세요.';
 
-  /// 지역(G6) · 러너(G7) 탭 안내.
+  /// 러너(G7) 탭 안내.
   static String notReadyMessage(String tab) => '$tab 검색은 준비 중이에요';
+
+  /// G6 머리글 `‘한강’ 코스가 있는 지역 · 3곳`.
+  static String regionsTitle(String query, int count) => '‘$query’ 코스가 있는 지역 · ${formatCount(count)}곳';
+
+  /// G6 줄 오른쪽 `한강 코스 12개`.
+  static String regionCount(String query, int count) => '$query 코스 ${formatCount(count)}개';
+
+  static const _regionTab = 1;
 
   @override
   ConsumerState<CourseSearchScreen> createState() => _CourseSearchScreenState();
@@ -48,9 +63,12 @@ class CourseSearchScreen extends ConsumerStatefulWidget {
 typedef _SearchQuery = ({String text, CourseListSort sort, GeoPoint? origin});
 
 class _CourseSearchScreenState extends ConsumerState<CourseSearchScreen> with SingleTickerProviderStateMixin {
-  final _input = TextEditingController();
-  late final _tabs = TabController(length: CourseSearchScreen.tabs.length, vsync: this)
-    ..addListener(() => setState(() {}));
+  late final _input = TextEditingController(text: widget.initialQuery);
+  late final _tabs = TabController(
+    length: CourseSearchScreen.tabs.length,
+    vsync: this,
+    initialIndex: widget.initialQuery == null ? 0 : CourseSearchScreen._regionTab,
+  )..addListener(_onTab);
   final _list = ScrollController();
 
   /// `인기순 ▾` 글자. 정렬 목록을 이 바로 아래에 띄운다.
@@ -81,6 +99,26 @@ class _CourseSearchScreenState extends ConsumerState<CourseSearchScreen> with Si
   /// 가장 최근 첫 쪽 조회 번호. 늦게 도착한 예전 응답은 버린다.
   var _request = 0;
 
+  /// 마지막으로 검색한 검색어. 다른 탭으로 가면 그 탭도 이 검색어로 받는다. 지웠으면 null.
+  String? _submitted;
+
+  /// 지역 탭(G6). [_regions]는 [_regionsShown] 검색어의 결과다.
+  String? _regionsRequested;
+  String? _regionsShown;
+  List<SearchRegion>? _regions;
+  var _regionsFailed = false;
+  var _regionRequest = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    final query = widget.initialQuery;
+    if (query != null) {
+      _submitted = query;
+      _loadRegions(query);
+    }
+  }
+
   @override
   void dispose() {
     _input.dispose();
@@ -103,21 +141,69 @@ class _CourseSearchScreenState extends ConsumerState<CourseSearchScreen> with Si
         ..showSnackBar(SnackBar(content: Text(message)));
       return;
     }
-    _search((text: text, sort: _sort, origin: _origin));
+    _submitted = text;
+    if (_tabs.index == CourseSearchScreen._regionTab) {
+      _loadRegions(text);
+    } else {
+      _search((text: text, sort: _sort, origin: _origin));
+    }
+  }
+
+  /// 탭을 바꿨다. 보이는 탭의 결과가 지금 검색어의 것이 아니면 받는다(G1-02 · G6-01).
+  void _onTab() {
+    setState(() {});
+    final text = _submitted;
+    if (text == null) return;
+    if (_tabs.index == 0 && _requested?.text != text) _search((text: text, sort: _sort, origin: _origin));
+    if (_tabs.index == CourseSearchScreen._regionTab && _regionsRequested != text) _loadRegions(text);
   }
 
   /// 검색어를 모두 지우면(✕ 포함) 처음 상태로 돌아간다(G1-01). 입력만 바꾸는 동안은 전 결과를 둔다.
   void _onChanged(String value) {
     if (value.isNotEmpty) return;
     _request++;
+    _regionRequest++;
     setState(() {
+      _submitted = null;
       _requested = null;
       _shown = null;
       _courses = null;
       _failed = false;
       _loadingMore = false;
       _moreFailed = false;
+      _regionsRequested = null;
+      _regionsShown = null;
+      _regions = null;
+      _regionsFailed = false;
     });
+  }
+
+  /// [text]의 지역별 코스 수를 받는다(G6). 같은 검색어를 다시 받다 실패하면 전 결과를 두고 알린다.
+  Future<void> _loadRegions(String text) async {
+    final request = ++_regionRequest;
+    setState(() {
+      _regionsRequested = text;
+      _regionsFailed = false;
+      if (text != _regionsShown) {
+        _regionsShown = null;
+        _regions = null;
+      }
+    });
+    try {
+      final regions = await ref.read(courseApiClientProvider).searchRegions(text);
+      if (!mounted || request != _regionRequest) return;
+      setState(() {
+        _regions = regions;
+        _regionsShown = text;
+      });
+    } on ApiException catch (e) {
+      if (!mounted || request != _regionRequest) return;
+      if (_regionsShown == null) {
+        setState(() => _regionsFailed = true);
+      } else {
+        showError(context, e);
+      }
+    }
   }
 
   /// [query]의 첫 쪽을 받는다. 검색어가 바뀌면 처음부터 받고, 같은 검색어면 받는 동안 전 결과를 둔다.
@@ -243,17 +329,19 @@ class _CourseSearchScreenState extends ConsumerState<CourseSearchScreen> with Si
               hintText: CourseSearchScreen.hint,
               onChanged: _onChanged,
               onSubmitted: _submit,
-              autofocus: true,
+              autofocus: widget.initialQuery == null,
             ),
             WdTabBar(tabs: CourseSearchScreen.tabs, controller: _tabs),
             const Divider(height: 1, thickness: 1, color: WdColors.line),
             Expanded(
-              child: tab == 0
-                  ? _results()
-                  : _centered(Text(
-                      CourseSearchScreen.notReadyMessage(CourseSearchScreen.tabs[tab]),
-                      style: WdText.body13.copyWith(color: WdColors.muted),
-                    )),
+              child: switch (tab) {
+                0 => _results(),
+                CourseSearchScreen._regionTab => _regionResults(),
+                _ => _centered(Text(
+                    CourseSearchScreen.notReadyMessage(CourseSearchScreen.tabs[tab]),
+                    style: WdText.body13.copyWith(color: WdColors.muted),
+                  )),
+              },
             ),
           ],
         ),
@@ -274,19 +362,7 @@ class _CourseSearchScreenState extends ConsumerState<CourseSearchScreen> with Si
       ));
     }
     if (courses == null || shown == null) return const _Loading();
-    if (courses.isEmpty) {
-      // Figma G8: 탭 아래 76쯤에 안내. 코스 만들기 버튼은 두지 않는다(SEA-06).
-      return SingleChildScrollView(
-        padding: const EdgeInsets.only(top: WdSpace.s56),
-        child: Center(
-          child: WdStateMessage(
-            icon: WdIcons.search,
-            title: CourseSearchScreen.emptyTitle(shown.text),
-            message: CourseSearchScreen.emptyMessage,
-          ),
-        ),
-      );
-    }
+    if (courses.isEmpty) return _empty(shown.text);
     return NotificationListener<ScrollNotification>(
       onNotification: (notification) {
         if (notification.metrics.extentAfter < _loadMoreExtent) _loadMore();
@@ -305,6 +381,51 @@ class _CourseSearchScreenState extends ConsumerState<CourseSearchScreen> with Si
           return CourseSearchCard(course: course, onTap: () => context.push(Routes.courseDetail(course.courseId)));
         },
       ),
+    );
+  }
+
+  /// 검색 결과 0건(Figma G8). 탭 아래 76쯤에 안내. 코스 만들기 버튼은 두지 않는다(SEA-06). 지역 탭도 같다.
+  static Widget _empty(String query) => SingleChildScrollView(
+        padding: const EdgeInsets.only(top: WdSpace.s56),
+        child: Center(
+          child: WdStateMessage(
+            icon: WdIcons.search,
+            title: CourseSearchScreen.emptyTitle(query),
+            message: CourseSearchScreen.emptyMessage,
+          ),
+        ),
+      );
+
+  /// 지역 탭(G6). 머리글 `‘한강’ 코스가 있는 지역 · 3곳` 아래 지역 줄. 코스가 많은 지역부터다.
+  Widget _regionResults() {
+    final regions = _regions, shown = _regionsShown, requested = _regionsRequested;
+    if (requested == null) return const SizedBox.shrink();
+    if (_regionsFailed) {
+      return _centered(Column(
+        spacing: WdSpace.s12,
+        children: [
+          Text(CourseSearchScreen.loadFailedMessage, style: WdText.body13.copyWith(color: WdColors.muted)),
+          WdButton('다시 시도', variant: WdButtonVariant.secondary, onPressed: () => _loadRegions(requested)),
+        ],
+      ));
+    }
+    if (regions == null || shown == null) return const _Loading();
+    if (regions.isEmpty) return _empty(shown);
+    // Figma G6 Body: 위 20 · 옆 24 · 아래 24, 머리글과 줄 · 줄 사이 16.
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(WdSpace.s24, WdSpace.s20, WdSpace.s24, WdSpace.s24),
+      itemCount: regions.length + 1,
+      separatorBuilder: (_, _) => const SizedBox(height: WdSpace.s16),
+      itemBuilder: (_, index) => index == 0
+          ? Text(
+              CourseSearchScreen.regionsTitle(shown, regions.length),
+              style: WdText.raw(12, FontWeight.w700, 18).copyWith(color: WdColors.muted),
+            )
+          : _RegionRow(
+              region: regions[index - 1],
+              query: shown,
+              onTap: () => context.pop(CourseSearchPick(query: shown, region: regions[index - 1])),
+            ),
     );
   }
 
@@ -355,6 +476,51 @@ class _CourseSearchScreenState extends ConsumerState<CourseSearchScreen> with Si
         padding: const EdgeInsets.fromLTRB(WdSpace.s24, WdSpace.s56, WdSpace.s24, WdSpace.s24),
         child: Align(alignment: Alignment.topCenter, child: child),
       );
+}
+
+/// G6 지역 줄. 왼쪽 지역 이름, 오른쪽 `한강 코스 12개 ›`(Figma G6 List row, 높이 58).
+class _RegionRow extends StatelessWidget {
+  const _RegionRow({required this.region, required this.query, required this.onTap});
+
+  final SearchRegion region;
+  final String query;
+  final VoidCallback onTap;
+
+  static const _height = 58.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final small = WdText.raw(12, FontWeight.w400, 20).copyWith(color: WdColors.muted);
+    return Semantics(
+      container: true,
+      button: true,
+      label: '${region.name} ${CourseSearchScreen.regionCount(query, region.count)}',
+      excludeSemantics: true,
+      onTap: onTap,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox(
+          height: _height,
+          child: Row(
+            spacing: WdSpace.s10,
+            children: [
+              Expanded(
+                child: Text(
+                  region.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: WdText.raw(14, FontWeight.w400, 20).copyWith(color: WdColors.ink),
+                ),
+              ),
+              Text(CourseSearchScreen.regionCount(query, region.count), style: small),
+              Text('›', style: small),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 /// `인기순 ▾` 바로 아래에 띄우는 정렬 메뉴(G1-03). 흰 상자 안에 나머지 정렬이 회색 글씨로 보인다.

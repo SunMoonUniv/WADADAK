@@ -74,7 +74,12 @@ final routerProvider = Provider<GoRouter>((ref) {
             GoRoute(
               path: Routes.home,
               builder: (_, _) => const HomeScreen(),
-              routes: [GoRoute(path: 'search', builder: (_, _) => const CourseSearchScreen())],
+              routes: [
+                GoRoute(
+                  path: 'search',
+                  builder: (_, state) => CourseSearchScreen(initialQuery: state.extra as String?),
+                ),
+              ],
             ),
           ]),
           StatefulShellBranch(routes: [GoRoute(path: Routes.run, builder: (_, _) => const FreeRunScreen())]),

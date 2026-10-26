@@ -7,8 +7,9 @@ abstract final class Routes {
 
   static const home = '/home';
 
-  /// G1 검색 결과(코스 · 지역 · 러너 탭). 홈 탭 안에 쌓아 하단 탭이 보인다(Figma G1). 빈 입력으로 연다(SEA-01).
-  /// 다른 하단 탭에 갔다가 홈으로 돌아오면 닫힌다(FIL-08).
+  /// G1 · G6 검색 결과(코스 · 지역 · 러너 탭). 홈 탭 안에 쌓아 하단 탭이 보인다(Figma G1). 빈 입력으로 연다(SEA-01).
+  /// extra: 처음 검색어(`String`, 없어도 된다). 주면 지역 탭에서 그 검색어의 결과로 연다(홈 검색창의 G6 조건).
+  /// G6에서 지역을 고르면 `CourseSearchPick`을 돌려주며 닫힌다. 다른 하단 탭에 갔다가 홈으로 돌아오면 닫힌다(FIL-08).
   static const courseSearch = '/home/search';
 
   /// B3 코스 만들기(경로 그리기). 하단 탭 위에 쌓는다. extra: 홈 지도 위치(`MapCamera`).

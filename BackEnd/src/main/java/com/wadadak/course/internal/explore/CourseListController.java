@@ -19,7 +19,7 @@ class CourseListController {
     private final CourseMapRepository courseMapRepository;
 
     @Operation(summary = "코스 목록 (A2 · A6)",
-            description = "출발점이 지도 범위 안에 있는 활성 코스 목록. 범위 · 필터는 지도 범위 안 코스와 같다(MAP-07). "
+            description = "출발점이 지도 범위 안에 있는 활성 코스 목록. 범위 · 필터(G6에서 고른 query · regionCode 포함)는 지도 범위 안 코스와 같다(MAP-07). "
                     + "POPULAR는 도전 수(코스 러닝을 실제로 시작한 세션 수)가 많은 순이고 같으면 조회 수, 리뷰 수가 많은 순, 그다음 최근 등록순이다. "
                     + "RATING은 전체 기간 평점(소수 첫째 자리 반올림)이 높은 순이고 같으면 리뷰 수가 많은 순, 그다음 최근 등록순이다. "
                     + "리뷰가 없는 코스는 RATING에서 맨 뒤다. NEAREST는 현재 위치(lat · lng)에서 출발점까지 가까운 순, LATEST는 최근 등록순, "
