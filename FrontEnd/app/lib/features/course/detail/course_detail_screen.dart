@@ -24,7 +24,7 @@ import 'course_run_bar.dart';
 /// 랭킹 · 고스트는 랭킹 API에서 받는다(B1-01).
 ///
 /// - 이 코스로 달리기는 그 코스를 골라 달리기 탭의 코스 러닝(C6)으로 간다. 고스트 대결(C1)은 아직 없어 누르면 준비 중이라고 알린다.
-/// - 평균 페이스 · 현재 러너는 코스 API(코스 통계 F11)에서 받는다. 고도 프로필은 GPS 코스 등록(F7)이 생기면 붙인다.
+/// - 평균 페이스 · 현재 러너는 코스 API(코스 통계 F11)에서 받는다. 고도 프로필은 보류해서 GPS 코스에도 아직 없다(정책 문서 4.1 B1 범위).
 /// - 공유(B1-08)는 공유 링크를 정할 때까지 두지 않는다.
 /// - 비공개 · 삭제된 코스는 열지 않는다(B1-04).
 class CourseDetailScreen extends ConsumerStatefulWidget {
@@ -324,7 +324,7 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
       );
 
   /// 정보 탭. 리뷰가 있으면 러너 평가(항목 평균), 없으면 아직 달린 사람이 없다는 안내(Figma B1-1).
-  /// 고도 프로필은 GPS 코스만 보이는데(B1-03) GPS 코스 등록(F7)이 생기면 붙인다.
+  /// 고도 프로필은 GPS 코스만 보이는데(B1-03) 보류해서 아직 없다(정책 문서 4.1 B1 범위).
   /// 받아 둔 요약이 있으면 다시 받다 실패해도 그대로 보이고, 그 아래에 다시 시도를 준다(B8-02와 같다).
   Widget _info(AsyncValue<ReviewSummary> summary) {
     final value = summary.value;

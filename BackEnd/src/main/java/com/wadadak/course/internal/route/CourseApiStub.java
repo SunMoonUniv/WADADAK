@@ -6,6 +6,8 @@ import com.wadadak.common.stub.StubImplementation;
 import com.wadadak.course.CourseApi;
 import com.wadadak.course.CourseErrorCode;
 import com.wadadak.course.CourseRouteSnapshot;
+import com.wadadak.course.GpsGapCheck;
+import com.wadadak.course.internal.registration.GpsGapRule;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -36,5 +38,11 @@ class CourseApiStub implements CourseApi, StubImplementation {
             throw new AppException(CourseErrorCode.COURSE_NOT_AVAILABLE);
         }
         return new CourseRouteSnapshot(courseId, "스텁 코스-" + courseId.toString().substring(0, 4), ROUTE, 1001, 0);
+    }
+
+    /** 계산만 하는 기준이라 고정값 대신 실제 판단을 돌려준다. run이 스텁으로도 통과 · 부족을 모두 확인할 수 있다. */
+    @Override
+    public GpsGapCheck checkGpsGaps(List<List<GeoPoint>> segments) {
+        return new GpsGapCheck(GpsGapRule.passes(segments), GpsGapRule.VERSION);
     }
 }
