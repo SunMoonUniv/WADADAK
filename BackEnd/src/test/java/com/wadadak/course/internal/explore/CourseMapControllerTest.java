@@ -178,10 +178,25 @@ class CourseMapControllerTest {
                 .isCloseTo((33.481 + 33.483 + 33.485) / 3, within(1e-9));
 
         // 구 단위: 시·군·구마다, 이름은 마지막 말
-        assertThat(counts(data(regions(area + "&level=DISTRICT"))))
-                .containsExactly("성북구 2", "마포구 1", "장안구 1", "권선구 1", "의정부시 1", "연천군 1");
+        JsonNode district = data(regions(area + "&level=DISTRICT"));
+        assertThat(counts(district)).containsExactly("성북구 2", "마포구 1", "장안구 1", "권선구 1", "의정부시 1", "연천군 1");
         // 필터도 지도 범위 안 코스와 같다(MAP-07)
         assertThat(counts(data(regions(area + "&level=CITY&difficulties=HARD")))).containsExactly("서울 1", "수원 1");
+
+        // 구 단위는 그 시·군·구 코스 전체(지도 범위 밖 33.495 포함)의 출발점 범위를 준다(A4-06). 시 단위는 없다
+        JsonNode seongbuk = district.get("regions").get(0);
+        assertThat(point(seongbuk.get("southWest"))).containsExactly(33.481, 126.301);
+        assertThat(point(seongbuk.get("northEast"))).containsExactly(33.495, 126.303);
+        assertThat(city.get("regions").get(0).get("southWest").isNull()).isTrue();
+        // 범위도 필터를 따른다
+        JsonNode hard = data(regions(area + "&level=DISTRICT&difficulties=HARD")).get("regions").get(0);
+        assertThat(hard.get("name").asString()).isEqualTo("성북구");
+        assertThat(point(hard.get("southWest"))).containsExactly(33.483, 126.303);
+        assertThat(point(hard.get("northEast"))).containsExactly(33.483, 126.303);
+    }
+
+    private static List<Double> point(JsonNode point) {
+        return List.of(point.get("lat").asDouble(), point.get("lng").asDouble());
     }
 
     @Test

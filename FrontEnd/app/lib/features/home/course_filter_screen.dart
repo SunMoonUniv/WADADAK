@@ -13,8 +13,15 @@ import '../course/course_format.dart';
 import 'course_list_sheet.dart';
 import 'course_period_scale.dart';
 
-/// A3에 넘기는 값. 지금 걸린 필터 · 정렬 · 인기순 기간과, 예상 코스 수를 셀 지도 범위(홈에 보이는 범위)다.
-typedef CourseFilterRequest = ({CourseFilter filter, CourseListSort sort, CoursePeriod? period, MapArea area});
+/// A3에 넘기는 값. 지금 걸린 필터 · 정렬 · 인기순 기간과, 예상 코스 수를 셀 지도 범위(홈에 보이는 범위) ·
+/// G6에서 고른 검색어 · 지역([pick], 없으면 null)이다. 예상 코스 수도 홈 목록과 같은 조건으로 센다(MAP-07).
+typedef CourseFilterRequest = ({
+  CourseFilter filter,
+  CourseSearchPick? pick,
+  CourseListSort sort,
+  CoursePeriod? period,
+  MapArea area,
+});
 
 /// A3에서 `코스 N개 보기`로 확정한 필터 · 정렬 · 기간. 기간은 인기순일 때만 있고, 전체 ~ 오늘이면 null이다.
 typedef CourseFilterChoice = ({CourseFilter filter, CourseListSort sort, CoursePeriod? period});
@@ -128,7 +135,7 @@ class _CourseFilterScreenState extends ConsumerState<CourseFilterScreen> {
     try {
       final map = await ref
           .read(courseApiClientProvider)
-          .mapCourses(southWest: area.southWest, northEast: area.northEast, filter: _filter);
+          .mapCourses(southWest: area.southWest, northEast: area.northEast, filter: _filter, pick: widget.request.pick);
       if (!mounted || request != _countRequest) return;
       setState(() {
         _count = map.totalCount;

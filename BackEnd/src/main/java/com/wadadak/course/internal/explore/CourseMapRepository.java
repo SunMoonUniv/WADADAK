@@ -34,7 +34,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 /**
- * 지도 범위 안 코스 조회(A2·A4·A5·A6)와 코스 검색(G1). 지도·목록·코스 수가 같은 조건을 써야 해서(MAP-07) 조건을 이곳 한 군데에서 만든다.
+ * 지도 범위 안 코스 조회(A2·A4·A5·A6)와 코스 검색(G1 · G6). 지도·목록·코스 수가 같은 조건을 써야 해서(MAP-07) 조건을 이곳 한 군데에서 만든다.
  * 검색은 조건만 다르고 정렬 · 쪽 · 카드는 목록과 같다. 홈 카드의 현재 러너 1분 갱신(공통 7)도 카드와 같은 값을 여기서 읽는다.
  * 평점 · 리뷰 수 · 도전 수 · 조회 수는 코스 통계(F11), 현재 러너는 현재 러너 수 복사본에서 읽는다. 행이 없는 코스는 모두 0이다.
  */
@@ -59,6 +59,9 @@ class CourseMapRepository {
      */
     private static final Set<String> GWANGJU_DISTRICTS = Set.of(
             "1221000000", "1224000000", "1227000000", "1230000000", "1233000000");
+
+    /** {@link #sharedSigunguName}에서 받을 지역 수. 같은 이름 지역 수(최대 5)보다 넉넉하다 */
+    private static final int SHARED_NAME_LOOKUP = 20;
 
     /** 코스 · 코스 통계 · 현재 러너 수. 조건 · 열은 코스를 {@code c}, 통계를 {@code s}, 현재 러너 수를 {@code r}로 부른다. */
     private static final String FROM = """
@@ -125,7 +128,10 @@ class CourseMapRepository {
                 .list();
     }
 
-    /** 범위 안 코스를 출발점 지역별로 센다(A4-01). 코스가 많은 지역부터. */
+    /**
+     * 범위 안 코스를 출발점 지역별로 센다(A4-01). 코스가 많은 지역부터.
+     * 구 단위는 지역마다 조건에 맞는 그 시·군·구 코스 전체(지도 범위 밖 포함)의 출발점 범위도 준다(A4-06).
+     */
     RegionCounts countByRegion(CourseMapRequest request, RegionLevel level) {
         Filter filter = Filter.of(request);
         String key = switch (level) {
@@ -153,10 +159,35 @@ class CourseMapRepository {
 
         Map<String, Region> sigungus = regionDirectory.findSigungus(groups.stream().map(Group::sigunguCode).toList()).stream()
                 .collect(Collectors.toMap(Region::code, Function.identity()));
+        Map<String, RegionBounds> bounds = level == RegionLevel.DISTRICT && !groups.isEmpty()
+                ? districtBounds(request, groups.stream().map(Group::code).toList())
+                : Map.of();
         List<RegionCounts.RegionCount> regions = groups.stream()
-                .map(g -> new RegionCounts.RegionCount(g.code(), name(level, g, sigungus.get(g.sigunguCode())), g.count(), g.center()))
+                .map(g -> {
+                    RegionBounds whole = bounds.get(g.code());
+                    return new RegionCounts.RegionCount(g.code(), name(level, g, sigungus.get(g.sigunguCode())), g.count(),
+                            g.center(), whole == null ? null : whole.southWest(), whole == null ? null : whole.northEast());
+                })
                 .toList();
         return new RegionCounts(groups.stream().mapToInt(Group::count).sum(), regions);
+    }
+
+    /** [codes] 시·군·구마다 [request]의 조건(지도 범위는 빼고)에 맞는 코스 전체의 출발점 범위(A4-06). */
+    private Map<String, RegionBounds> districtBounds(CourseMapRequest request, List<String> codes) {
+        Filter filter = Filter.of(request, false);
+        return jdbc.sql("""
+                        SELECT c.sigungu_code AS code, count(*) AS n,
+                               min(ST_Y(c.start_point::geometry)) AS sw_lat, min(ST_X(c.start_point::geometry)) AS sw_lng,
+                               max(ST_Y(c.start_point::geometry)) AS ne_lat, max(ST_X(c.start_point::geometry)) AS ne_lng
+                        FROM %s
+                        WHERE %s
+                          AND c.sigungu_code IN (:codes)
+                        GROUP BY c.sigungu_code""".formatted(FROM, filter.where()))
+                .params(filter.params())
+                .param("codes", codes)
+                .query(CourseMapRepository::regionBounds)
+                .list().stream()
+                .collect(Collectors.toMap(RegionBounds::code, Function.identity()));
     }
 
     /**
@@ -188,6 +219,48 @@ class CourseMapRepository {
                 .query(Integer.class)
                 .single();
         return new CourseSearchResult(total, slice.content(), slice.nextCursor());
+    }
+
+    /**
+     * 이름에 검색어가 들어간 활성 코스를 출발점 시·군·구별로 센다(G6, SEA-04). 코스가 많은 지역부터, 같으면 지역 코드순이다.
+     * 고른 지역의 홈 목록(A2)은 같은 검색어 · 지역 조건이라 지도 범위가 그 코스들을 모두 담으면 수가 같다.
+     *
+     * @param key {@link com.wadadak.course.internal.course.CourseName#key}로 바꾼 검색어
+     */
+    CourseSearchRegions searchRegions(String key) {
+        Filter filter = Filter.byName(key);
+        List<RegionBounds> groups = jdbc.sql("""
+                        SELECT c.sigungu_code AS code, count(*) AS n,
+                               min(ST_Y(c.start_point::geometry)) AS sw_lat, min(ST_X(c.start_point::geometry)) AS sw_lng,
+                               max(ST_Y(c.start_point::geometry)) AS ne_lat, max(ST_X(c.start_point::geometry)) AS ne_lng
+                        FROM course.courses c
+                        WHERE %s
+                        GROUP BY c.sigungu_code
+                        ORDER BY n DESC, c.sigungu_code""".formatted(filter.where()))
+                .params(filter.params())
+                .query(CourseMapRepository::regionBounds)
+                .list();
+
+        Map<String, Region> sigungus = regionDirectory.findSigungus(groups.stream().map(RegionBounds::code).toList()).stream()
+                .collect(Collectors.toMap(Region::code, Function.identity()));
+        Map<String, Boolean> shared = new HashMap<>();
+        List<CourseSearchRegions.SearchRegion> regions = groups.stream()
+                .map(g -> {
+                    Region region = sigungus.get(g.code());
+                    String name = region == null ? g.code()
+                            : shared.computeIfAbsent(region.name(), this::sharedSigunguName) ? region.fullName() : region.name();
+                    return new CourseSearchRegions.SearchRegion(g.code(), name, g.count(), g.southWest(), g.northEast());
+                })
+                .toList();
+        return new CourseSearchRegions(regions);
+    }
+
+    /**
+     * 전국에 [name]인 시·군·구가 둘 이상인가(중구 · 강서구 · 고성군 등). 같은 이름은 다섯 곳이 가장 많다.
+     * 이름이 정확히 같은 지역부터 찾아 주므로 넉넉히 받아 센다.
+     */
+    private boolean sharedSigunguName(String name) {
+        return regionDirectory.searchSigungu(name, SHARED_NAME_LOOKUP).stream().filter(r -> r.name().equals(name)).count() > 1;
     }
 
     /** [filter]에 맞는 코스 한 쪽. 정렬 · 기간은 [list] 설명과 같다. */
@@ -382,6 +455,12 @@ class CourseMapRepository {
         return city.endsWith("시") ? city.substring(0, city.length() - 1) : city;
     }
 
+    private static RegionBounds regionBounds(ResultSet rs, int rowNum) throws SQLException {
+        return new RegionBounds(rs.getString("code"), rs.getInt("n"),
+                new GeoPoint(rs.getDouble("sw_lat"), rs.getDouble("sw_lng")),
+                new GeoPoint(rs.getDouble("ne_lat"), rs.getDouble("ne_lng")));
+    }
+
     private static List<GeoPoint> points(byte[] wkb) {
         try {
             return CourseGeometry.points((LineString) new WKBReader().read(wkb));
@@ -402,15 +481,22 @@ class CourseMapRepository {
         }
 
         static Filter of(CourseMapRequest request) {
-            List<String> conditions = new ArrayList<>(List.of(
-                    "c.status = 'ACTIVE'",
-                    // 공간 인덱스로 후보를 줄이고, 위도·경도 사각형으로 정확히 자른다
-                    "c.start_point && ST_MakeEnvelope(:swLng, :swLat, :neLng, :neLat, 4326)::geography",
-                    "ST_Y(c.start_point::geometry) BETWEEN :swLat AND :neLat",
-                    "ST_X(c.start_point::geometry) BETWEEN :swLng AND :neLng"));
-            Map<String, Object> params = new HashMap<>(Map.of(
-                    "swLat", request.swLat(), "swLng", request.swLng(),
-                    "neLat", request.neLat(), "neLng", request.neLng()));
+            return of(request, true);
+        }
+
+        /** @param inArea 지도 범위 안 코스만. 아니면 필터 · G6 조건만 건다 */
+        static Filter of(CourseMapRequest request, boolean inArea) {
+            List<String> conditions = new ArrayList<>(List.of("c.status = 'ACTIVE'"));
+            Map<String, Object> params = new HashMap<>();
+            if (inArea) {
+                // 공간 인덱스로 후보를 줄이고, 위도·경도 사각형으로 정확히 자른다
+                conditions.add("c.start_point && ST_MakeEnvelope(:swLng, :swLat, :neLng, :neLat, 4326)::geography");
+                conditions.add("ST_Y(c.start_point::geometry) BETWEEN :swLat AND :neLat");
+                conditions.add("ST_X(c.start_point::geometry) BETWEEN :swLng AND :neLng");
+                params.putAll(Map.of(
+                        "swLat", request.swLat(), "swLng", request.swLng(),
+                        "neLat", request.neLat(), "neLng", request.neLng()));
+            }
             if (request.minDistanceMeters() != null) {
                 conditions.add("c.distance_meters >= :minDistance");
                 params.put("minDistance", request.minDistanceMeters());
@@ -436,6 +522,16 @@ class CourseMapRepository {
                 conditions.add("c.course_type = :courseType");
                 params.put("courseType", request.courseType().name());
             }
+            // G6에서 고른 검색어 · 지역(SEA-04). 검색어는 [byName]과 같이 이름 키로 본다
+            String nameKey = request.nameKey();
+            if (nameKey != null) {
+                conditions.add("strpos(c.name_key, :nameKey) > 0");
+                params.put("nameKey", nameKey);
+            }
+            if (request.regionCode() != null) {
+                conditions.add("c.sigungu_code = :regionCode");
+                params.put("regionCode", request.regionCode());
+            }
             return new Filter(String.join("\n  AND ", conditions), params);
         }
     }
@@ -445,6 +541,10 @@ class CourseMapRepository {
 
     /** @param cursor 이 코스 다음 쪽을 가리키는 커서 */
     private record ListRow(CourseListItem item, CourseListCursor cursor) {
+    }
+
+    /** 시·군·구 하나와 조건에 맞는 그 지역 코스 수 · 출발점 범위(G6 · A4-06). */
+    private record RegionBounds(String code, int count, GeoPoint southWest, GeoPoint northEast) {
     }
 
     /** @param sigunguCode 이 묶음의 시·군·구 하나. 이름을 찾는 데 쓴다 */

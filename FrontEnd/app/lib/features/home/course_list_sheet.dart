@@ -31,7 +31,8 @@ enum SheetStage {
 /// 끝까지 내리면 다음 쪽을 이어 받는다(A6-04).
 ///
 /// 칩 줄은 `인기순` · `평점순` · `가까운순` · `최신순` · `실시간순`(누르면 바로 정렬) · 슬라이더 아이콘(A3 열기)이다.
-/// 화면이 좁아 다 들어가지 않으면 칩 줄을 옆으로 민다.
+/// 화면이 좁아 다 들어가지 않으면 칩 줄을 옆으로 민다. G6에서 고른 검색어 · 지역이 있으면 제목이
+/// `영등포구 ‘한강’ 코스 12`로 바뀐다. 조건은 홈 검색창에 보이고 거기서 푼다(A6-01).
 ///
 /// 카드가 보이는 동안(반 · 전체 보기, 앱이 앞에 있고 홈 위에 다른 화면이 없을 때) [runnersRefreshInterval]마다
 /// 카드의 현재 러너 수만 새로 받는다(공통 7 · HCR-05). 목록 순서 · 스크롤은 그대로라
@@ -42,6 +43,7 @@ class CourseListSheet extends ConsumerStatefulWidget {
     required this.area,
     required this.totalCount,
     this.filter = CourseFilter.none,
+    this.pick,
     this.sort = CourseListSort.initial,
     this.period,
     this.myLocation,
@@ -74,14 +76,22 @@ class CourseListSheet extends ConsumerStatefulWidget {
   /// 필터 결과 0건(STA-04). 코스가 없는 지역(STA-01)과 다르게 보인다.
   static const filteredEmptyMessage = '조건에 맞는 코스가 없어요';
 
+  /// G6 조건이 걸린 목록 제목 `영등포구 ‘한강’ 코스 12`. G6 줄의 `한강 코스 12개`와 같은 말이고, 수는 지도에 보이는 범위 안이다.
+  static String pickTitle(CourseSearchPick pick, int? total) =>
+      '${pick.region.name} ‘${pick.query}’ 코스${total == null ? '' : ' ${formatCount(total)}'}';
+
   /// 지금 지도 범위. 지도가 처음 멈추기 전이면 null.
   final MapArea? area;
 
-  /// 지도에 보이는 범위 안 필터에 맞는 코스 수. 제목 `지금 달리기 좋은 코스 N`, 피크 `코스 N`. 아직 모르면 null.
+  /// 지도에 보이는 범위 안 필터에 맞는 코스 수. 제목 `지금 달리기 좋은 코스 N`(G6 조건이 있으면 [pickTitle]),
+  /// 피크 `코스 N`. 아직 모르면 null.
   final int? totalCount;
 
   /// 지금 걸린 필터(A3). 지도와 같다.
   final CourseFilter filter;
+
+  /// G6에서 고른 검색어 · 지역(SEA-04). 지도와 같다. 없으면 null.
+  final CourseSearchPick? pick;
   final CourseListSort sort;
 
   /// 인기순 기간(FIL-09, A3). 인기순일 때만 있고 목록 순서만 바꾼다. null이면 전체 기간.
@@ -112,7 +122,7 @@ class CourseListSheet extends ConsumerStatefulWidget {
   /// 슬라이더 아이콘 칩을 눌렀다(A3 열기, A2-04 · A6-02).
   final VoidCallback? onOpenFilter;
 
-  /// 필터 결과 0건에서 `필터 초기화`를 눌렀다(STA-04).
+  /// 필터 결과 0건에서 `필터 초기화`를 눌렀다(STA-04). A3 필터와 G6 조건을 함께 푼다.
   final VoidCallback? onResetFilter;
 
   /// 코스가 없을 때 `지도 범위 넓히기`(STA-01).
@@ -129,7 +139,14 @@ class CourseListSheet extends ConsumerStatefulWidget {
 }
 
 /// 목록을 받은 조건. 다음 쪽도 이 조건으로 받는다.
-typedef _ListQuery = ({MapArea area, CourseFilter filter, CourseListSort sort, CoursePeriod? period, GeoPoint? origin});
+typedef _ListQuery = ({
+  MapArea area,
+  CourseFilter filter,
+  CourseSearchPick? pick,
+  CourseListSort sort,
+  CoursePeriod? period,
+  GeoPoint? origin,
+});
 
 class _CourseListSheetState extends ConsumerState<CourseListSheet> {
   /// 칩 30 + 아래 12.
@@ -181,6 +198,7 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
     return (
       area: area,
       filter: widget.filter,
+      pick: widget.pick,
       sort: widget.sort,
       period: widget.period,
       origin: nearest ? widget.myLocation : null,
@@ -264,7 +282,7 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
     return runners == null || runners == course.activeRunners ? course : course.withActiveRunners(runners);
   }
 
-  /// 범위 · 필터 · 정렬 · 기간이나 가까운순의 현재 위치가 바뀌면 다시 받는다. 카드 거리만 바뀌면 다시 받지 않는다.
+  /// 범위 · 필터 · G6 조건 · 정렬 · 기간이나 가까운순의 현재 위치가 바뀌면 다시 받는다. 카드 거리만 바뀌면 다시 받지 않는다.
   @override
   void didUpdateWidget(CourseListSheet oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -301,6 +319,7 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
         southWest: query.area.southWest,
         northEast: query.area.northEast,
         filter: query.filter,
+        pick: query.pick,
         sort: query.sort,
         period: query.period,
         origin: query.origin,
@@ -408,8 +427,8 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
                       )
                     else if (courses == null)
                       const SliverToBoxAdapter(child: _Loading())
-                    else if (courses.isEmpty && !widget.filter.isNone)
-                      // 조건은 그대로 두고 초기화를 준다(STA-04).
+                    else if (courses.isEmpty && (!widget.filter.isNone || widget.pick != null))
+                      // 조건은 그대로 두고 초기화를 준다(STA-04). G6 조건도 필터처럼 함께 푼다.
                       SliverToBoxAdapter(
                         child: _message(CourseListSheet.filteredEmptyMessage, [
                           WdButton('필터 초기화', variant: WdButtonVariant.secondary, onPressed: widget.onResetFilter),
@@ -452,6 +471,7 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
   Widget _header() {
     final peek = widget.stage == SheetStage.peek;
     final total = widget.totalCount;
+    final pick = widget.pick;
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: peek ? widget.onExpand : null,
@@ -478,9 +498,11 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
                           ? '↑ 위로 올려 코스 목록 보기'
                           : widget.selected != null
                               ? '선택한 코스'
-                              : total == null
-                                  ? '지금 달리기 좋은 코스'
-                                  : '지금 달리기 좋은 코스 ${formatCount(total)}',
+                              : pick != null
+                                  ? CourseListSheet.pickTitle(pick, total)
+                                  : total == null
+                                      ? '지금 달리기 좋은 코스'
+                                      : '지금 달리기 좋은 코스 ${formatCount(total)}',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: WdText.ko16Bold.copyWith(color: WdColors.ink),

@@ -304,6 +304,54 @@ void main() {
     expect(find.widgetWithText(WdMapCourseLabel, '성북천 벚꽃길 3K'), findsOneWidget);
   });
 
+  testWidgets('a district badge fits every course of the district and shows labels there until the map moves',
+      (tester) async {
+    // 성북구 코스가 지금 범위 밖까지 넓게 있어 다 담으려면 축척 500m보다 넓다. 서버가 구 코스 전체의 출발점 범위를 준다.
+    const wide = RegionCount(
+      code: '1129000000',
+      name: '성북구',
+      count: 3,
+      center: GeoPoint(37.5700, 126.9900),
+      southWest: GeoPoint(37.56, 126.96),
+      northEast: GeoPoint(37.59, 127.04),
+    );
+    courses
+      ..onMap = [seongbukcheon]
+      ..regions = [wide];
+    await openHome(tester);
+    await zoomTo(tester, 12);
+    expect(courses.regionRequests.last.level, RegionLevel.district);
+    final maps = courses.mapRequests.length, regions = courses.regionRequests.length;
+
+    await tester.tap(find.byType(WdRegionCountBubble));
+    await tester.pumpAndSettle();
+    expect(courses.mapRequests, hasLength(maps + 1), reason: '축척과 상관없이 코스를 받는다');
+    expect(courses.regionRequests, hasLength(regions));
+    final area = courses.mapRequests.last;
+    final span = area.northEast.lng - area.southWest.lng;
+    expect(span, greaterThan(lngSpanAt(13)), reason: '다 담으려고 축척 500m보다 넓다');
+    // 시트 위로 보이는 지도 부분에 구 코스 범위가 모두 들어온다. 이름표가 잘리지 않게 양옆에 80씩 둔다.
+    double dp(double lng) => lng / span * 402;
+    expect(dp(wide.southWest!.lng - area.southWest.lng), closeTo(80, 1));
+    expect(dp(area.northEast.lng - wide.northEast!.lng), closeTo(80, 1));
+    expect(area.southWest.lat, lessThan(wide.southWest!.lat));
+    expect(area.northEast.lat, greaterThan(wide.northEast!.lat));
+    expect(find.byType(WdRegionCountBubble), findsNothing);
+    expect(find.widgetWithText(WdMapCourseLabel, '성북천 벚꽃길 3K'), findsOneWidget);
+
+    // 그 자리에서 시트만 바꾸면 그대로 이름표다.
+    await tester.tapAt(const Offset(200, 300));
+    await tester.pumpAndSettle();
+    expect(courses.regionRequests, hasLength(regions));
+    expect(find.widgetWithText(WdMapCourseLabel, '성북천 벚꽃길 3K'), findsOneWidget);
+
+    // 지도를 움직이면 다시 축척대로 구 단위 코스 수다.
+    await moveMap(tester);
+    expect(courses.regionRequests.last.level, RegionLevel.district);
+    expect(find.byType(WdMapCourseLabel), findsNothing);
+    expect(find.byType(WdRegionCountBubble), findsOneWidget);
+  });
+
   testWidgets('moves to my location at a 100m scale with the location button', (tester) async {
     const here = GeoPoint(37.5894, 127.0167);
     location.location = here;

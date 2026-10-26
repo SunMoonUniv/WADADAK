@@ -161,13 +161,22 @@ class RegionCounts {
 
 @immutable
 class RegionCount {
-  const RegionCount({required this.code, required this.name, required this.count, required this.center});
+  const RegionCount({
+    required this.code,
+    required this.name,
+    required this.count,
+    required this.center,
+    this.southWest,
+    this.northEast,
+  });
 
   factory RegionCount.fromJson(Map<Object?, Object?> json) => RegionCount(
         code: json['code']! as String,
         name: json['name']! as String,
         count: json['count']! as int,
         center: GeoPoint.fromJson(json['center']! as Map),
+        southWest: switch (json['southWest']) { final Map point => GeoPoint.fromJson(point), _ => null },
+        northEast: switch (json['northEast']) { final Map point => GeoPoint.fromJson(point), _ => null },
       );
 
   /// 지역을 가리는 값. 같은 단위 안에서 겹치지 않는다.
@@ -179,6 +188,66 @@ class RegionCount {
 
   /// 이 지역의 범위 안 코스 출발점들의 가운데. 개수 배지를 놓는다(A4-01).
   final GeoPoint center;
+
+  /// 구 단위만. 이 시·군·구에서 필터에 맞는 코스 전체(지도 범위 밖 포함)의 출발점 범위. 배지를 누르면 이 범위로 지도를 맞춘다(A4-06).
+  /// 시 단위는 null.
+  final GeoPoint? southWest;
+  final GeoPoint? northEast;
+}
+
+/// 검색어에 걸린 코스가 있는 시·군·구 하나(G6, SEA-04).
+@immutable
+class SearchRegion {
+  const SearchRegion({
+    required this.code,
+    required this.name,
+    required this.count,
+    required this.southWest,
+    required this.northEast,
+  });
+
+  factory SearchRegion.fromJson(Map<Object?, Object?> json) => SearchRegion(
+        code: json['code']! as String,
+        name: json['name']! as String,
+        count: json['count']! as int,
+        southWest: GeoPoint.fromJson(json['southWest']! as Map),
+        northEast: GeoPoint.fromJson(json['northEast']! as Map),
+      );
+
+  /// 시·군·구 법정동 코드. 이 지역을 고르면 홈 지도 · 목록 조건으로 보낸다([CourseSearchPick]).
+  final String code;
+
+  /// 보일 이름(영등포구 · 수원시 장안구). 전국에 같은 이름이 있으면 시·도가 붙는다(서울특별시 중구).
+  final String name;
+
+  /// 이 지역에서 검색어에 걸린 코스 수.
+  final int count;
+
+  /// 그 코스들 출발점의 남서쪽 · 북동쪽 끝. 지역을 고르면 홈 지도가 이 범위를 보인다.
+  final GeoPoint southWest;
+  final GeoPoint northEast;
+}
+
+/// G6에서 고른 검색어와 지역(SEA-04 · SEA-07). 홈 지도 · 지역별 코스 수 · 목록 · A3 예상 코스 수에 A3 필터와 함께 건다.
+/// 그래서 지도 범위가 그 지역의 걸린 코스를 모두 담으면 목록 수가 G6 수와 같다.
+@immutable
+class CourseSearchPick {
+  const CourseSearchPick({required this.query, required this.region});
+
+  /// 검색어. 이름에 이 말이 들어간 코스만 남는다(공백 · 대소문자는 보지 않는다).
+  final String query;
+  final SearchRegion region;
+
+  /// 홈 검색창 글자. `한강 · 영등포구`.
+  String get label => '$query · ${region.name}';
+
+  Map<String, Object> _query() => {'query': query, 'regionCode': region.code};
+
+  @override
+  bool operator ==(Object other) => other is CourseSearchPick && other.query == query && other.region.code == region.code;
+
+  @override
+  int get hashCode => Object.hash(query, region.code);
 }
 
 /// 코스 목록 정렬(FIL-01). 칩 · 메뉴는 이 순서다(Figma A3). 처음은 [popular]다.
@@ -554,40 +623,46 @@ class CourseApiClient {
   }
 
   /// 지도 범위(남서쪽·북동쪽 끝) 안 [filter]에 맞는 코스(A2·A5). A3의 예상 코스 수도 이것으로 센다.
+  /// [pick]이 있으면 G6에서 고른 검색어 · 지역의 코스만이다.
   Future<CourseMap> mapCourses({
     required GeoPoint southWest,
     required GeoPoint northEast,
     CourseFilter filter = CourseFilter.none,
+    CourseSearchPick? pick,
   }) async {
     final data = await callApi(() => _dio.get('$_courses/map', queryParameters: {
           ..._area(southWest, northEast),
           ...filter._query(),
+          ...?pick?._query(),
         }));
     return CourseMap.fromJson(data! as Map);
   }
 
-  /// 지도 범위 안 [filter]에 맞는 코스를 출발점 지역별로 센다(A4 지도 축소).
+  /// 지도 범위 안 [filter] · [pick]에 맞는 코스를 출발점 지역별로 센다(A4 지도 축소).
   Future<RegionCounts> regionCounts({
     required GeoPoint southWest,
     required GeoPoint northEast,
     required RegionLevel level,
     CourseFilter filter = CourseFilter.none,
+    CourseSearchPick? pick,
   }) async {
     final data = await callApi(() => _dio.get('$_courses/map/regions', queryParameters: {
           ..._area(southWest, northEast),
           ...filter._query(),
+          ...?pick?._query(),
           'level': level.apiName,
         }));
     return RegionCounts.fromJson(data! as Map);
   }
 
-  /// 지도 범위 안 코스 목록 한 쪽(A2 · A6). 범위 · 필터는 [mapCourses]와 같다(MAP-07).
+  /// 지도 범위 안 코스 목록 한 쪽(A2 · A6). 범위 · 필터 · [pick]은 [mapCourses]와 같다(MAP-07).
   /// 가까운순은 현재 위치 [origin]이 필요하다. [period]는 인기순에만 보낸다(FIL-09, 다른 정렬이면 COMMON-001).
   /// 다음 쪽은 앞 쪽의 [CourseListPage.nextCursor]를 [cursor]로 보내고, 범위 · 필터 · 정렬 · 기간 · 현재 위치는 첫 쪽과 같게 보낸다.
   Future<CourseListPage> listCourses({
     required GeoPoint southWest,
     required GeoPoint northEast,
     CourseFilter filter = CourseFilter.none,
+    CourseSearchPick? pick,
     CourseListSort sort = CourseListSort.initial,
     CoursePeriod? period,
     GeoPoint? origin,
@@ -596,6 +671,7 @@ class CourseApiClient {
     final data = await callApi(() => _dio.get(_courses, queryParameters: {
           ..._area(southWest, northEast),
           ...filter._query(),
+          ...?pick?._query(),
           'sort': sort.apiName,
           ...?period?._query(),
           'lat': ?origin?.lat,
@@ -628,6 +704,13 @@ class CourseApiClient {
           'cursor': ?cursor,
         }));
     return CourseSearchPage.fromJson(data! as Map);
+  }
+
+  /// 이름에 [query]가 들어간 활성 코스를 출발점 시·군·구별로 센다(G6, SEA-04). 검색어 규칙은 [searchCourses]와 같고
+  /// A3 필터는 쓰지 않는다. 코스가 많은 지역부터다. [isSearchable]이 아닌 검색어는 COMMON-001이다.
+  Future<List<SearchRegion>> searchRegions(String query) async {
+    final data = await callApi(() => _dio.get('$_courses/search/regions', queryParameters: {'query': query}));
+    return [for (final region in (data! as Map)['regions']! as List) SearchRegion.fromJson(region as Map)];
   }
 
   /// 한 번에 현재 러너 수를 물을 수 있는 코스 수. 서버도 같은 기준으로 거른다.
