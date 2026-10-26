@@ -1,0 +1,685 @@
+{
+  "description": "Shared regression for nullable GAP boundaries. Existing measurement rules and versions remain unchanged.",
+  "cases": [
+    {
+      "name": "PACE_V2_gap_before_first_gps",
+      "inputs": [
+        {
+          "seq": 0,
+          "kind": "START",
+          "elapsedMs": 0,
+          "reason": "PACE_V2",
+          "measuredAt": "2026-10-12T00:00:00.000Z"
+        },
+        {
+          "seq": 1,
+          "kind": "GAP",
+          "elapsedMs": 1000,
+          "measuredAt": "2026-10-12T00:00:01.000Z"
+        },
+        {
+          "seq": 2,
+          "kind": "GPS",
+          "elapsedMs": 2000,
+          "location": {
+            "lat": 36.799,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:02.000Z"
+        },
+        {
+          "seq": 3,
+          "kind": "GPS",
+          "elapsedMs": 4000,
+          "location": {
+            "lat": 36.79904496601819,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:04.000Z"
+        },
+        {
+          "seq": 4,
+          "kind": "GPS",
+          "elapsedMs": 6000,
+          "location": {
+            "lat": 36.799089932036374,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:06.000Z"
+        },
+        {
+          "seq": 5,
+          "kind": "PAUSE",
+          "elapsedMs": 7000,
+          "measuredAt": "2026-10-12T00:00:07.000Z"
+        },
+        {
+          "seq": 6,
+          "kind": "END",
+          "elapsedMs": 8000,
+          "reason": "USER",
+          "measuredAt": "2026-10-12T00:00:08.000Z"
+        }
+      ],
+      "expected": {
+        "distanceM": 10,
+        "elapsedMs": 8000,
+        "activeMs": 7000,
+        "movingMs": 7000,
+        "gapCount": 1,
+        "segmentMs": [
+          [
+            2000,
+            4000,
+            6000
+          ]
+        ]
+      }
+    },
+    {
+      "name": "PACE_V2_repeated_gap_while_paused",
+      "inputs": [
+        {
+          "seq": 0,
+          "kind": "START",
+          "elapsedMs": 0,
+          "reason": "PACE_V2",
+          "measuredAt": "2026-10-12T00:00:00.000Z"
+        },
+        {
+          "seq": 1,
+          "kind": "GPS",
+          "elapsedMs": 1000,
+          "location": {
+            "lat": 36.799,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:01.000Z"
+        },
+        {
+          "seq": 2,
+          "kind": "GPS",
+          "elapsedMs": 3000,
+          "location": {
+            "lat": 36.79904496601819,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:03.000Z"
+        },
+        {
+          "seq": 3,
+          "kind": "GPS",
+          "elapsedMs": 5000,
+          "location": {
+            "lat": 36.799089932036374,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:05.000Z"
+        },
+        {
+          "seq": 4,
+          "kind": "PAUSE",
+          "elapsedMs": 6000,
+          "measuredAt": "2026-10-12T00:00:06.000Z"
+        },
+        {
+          "seq": 5,
+          "kind": "GAP",
+          "elapsedMs": 7000,
+          "measuredAt": "2026-10-12T00:00:07.000Z"
+        },
+        {
+          "seq": 6,
+          "kind": "GAP",
+          "elapsedMs": 8000,
+          "measuredAt": "2026-10-12T00:00:08.000Z"
+        },
+        {
+          "seq": 7,
+          "kind": "GPS",
+          "elapsedMs": 9000,
+          "location": {
+            "lat": 36.80798421043361,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:09.000Z"
+        },
+        {
+          "seq": 8,
+          "kind": "RESUME",
+          "elapsedMs": 10000,
+          "measuredAt": "2026-10-12T00:00:10.000Z"
+        },
+        {
+          "seq": 9,
+          "kind": "GPS",
+          "elapsedMs": 11000,
+          "location": {
+            "lat": 36.80079864072745,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:11.000Z"
+        },
+        {
+          "seq": 10,
+          "kind": "GPS",
+          "elapsedMs": 13000,
+          "location": {
+            "lat": 36.80084360674564,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:13.000Z"
+        },
+        {
+          "seq": 11,
+          "kind": "GPS",
+          "elapsedMs": 15000,
+          "location": {
+            "lat": 36.800888572763824,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:15.000Z"
+        },
+        {
+          "seq": 12,
+          "kind": "PAUSE",
+          "elapsedMs": 16000,
+          "measuredAt": "2026-10-12T00:00:16.000Z"
+        },
+        {
+          "seq": 13,
+          "kind": "END",
+          "elapsedMs": 18000,
+          "reason": "USER",
+          "measuredAt": "2026-10-12T00:00:18.000Z"
+        }
+      ],
+      "expected": {
+        "distanceM": 20,
+        "elapsedMs": 18000,
+        "activeMs": 12000,
+        "movingMs": 12000,
+        "gapCount": 0,
+        "segmentMs": [
+          [
+            1000,
+            3000,
+            5000
+          ],
+          [
+            11000,
+            13000,
+            15000
+          ]
+        ]
+      }
+    },
+    {
+      "name": "PACE_V2_repeated_gap_after_confirmed_stop",
+      "inputs": [
+        {
+          "seq": 0,
+          "kind": "START",
+          "elapsedMs": 0,
+          "reason": "PACE_V2",
+          "measuredAt": "2026-10-12T00:00:00.000Z"
+        },
+        {
+          "seq": 1,
+          "kind": "GPS",
+          "elapsedMs": 1000,
+          "location": {
+            "lat": 36.799,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:01.000Z"
+        },
+        {
+          "seq": 2,
+          "kind": "GPS",
+          "elapsedMs": 4000,
+          "location": {
+            "lat": 36.799,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:04.000Z"
+        },
+        {
+          "seq": 3,
+          "kind": "GPS",
+          "elapsedMs": 7000,
+          "location": {
+            "lat": 36.799,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:07.000Z"
+        },
+        {
+          "seq": 4,
+          "kind": "GAP",
+          "elapsedMs": 20000,
+          "measuredAt": "2026-10-12T00:00:20.000Z"
+        },
+        {
+          "seq": 5,
+          "kind": "GAP",
+          "elapsedMs": 25000,
+          "measuredAt": "2026-10-12T00:00:25.000Z"
+        },
+        {
+          "seq": 6,
+          "kind": "GPS",
+          "elapsedMs": 40000,
+          "location": {
+            "lat": 36.80079864072745,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:40.000Z"
+        },
+        {
+          "seq": 7,
+          "kind": "GPS",
+          "elapsedMs": 42000,
+          "location": {
+            "lat": 36.80084360674564,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:42.000Z"
+        },
+        {
+          "seq": 8,
+          "kind": "GPS",
+          "elapsedMs": 44000,
+          "location": {
+            "lat": 36.800888572763824,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:44.000Z"
+        },
+        {
+          "seq": 9,
+          "kind": "PAUSE",
+          "elapsedMs": 45000,
+          "measuredAt": "2026-10-12T00:00:45.000Z"
+        },
+        {
+          "seq": 10,
+          "kind": "END",
+          "elapsedMs": 46000,
+          "reason": "USER",
+          "measuredAt": "2026-10-12T00:00:46.000Z"
+        }
+      ],
+      "expected": {
+        "distanceM": 10,
+        "elapsedMs": 46000,
+        "activeMs": 45000,
+        "movingMs": 39000,
+        "gapCount": 1,
+        "segmentMs": [
+          [
+            40000,
+            42000,
+            44000
+          ]
+        ]
+      }
+    },
+    {
+      "name": "PACE_V3_gap_before_first_gps",
+      "inputs": [
+        {
+          "seq": 0,
+          "kind": "START",
+          "elapsedMs": 0,
+          "reason": "PACE_V3",
+          "measuredAt": "2026-10-12T00:00:00.000Z"
+        },
+        {
+          "seq": 1,
+          "kind": "GAP",
+          "elapsedMs": 1000,
+          "measuredAt": "2026-10-12T00:00:01.000Z"
+        },
+        {
+          "seq": 2,
+          "kind": "GPS",
+          "elapsedMs": 2000,
+          "location": {
+            "lat": 36.799,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:02.000Z"
+        },
+        {
+          "seq": 3,
+          "kind": "GPS",
+          "elapsedMs": 4000,
+          "location": {
+            "lat": 36.79904496601819,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:04.000Z"
+        },
+        {
+          "seq": 4,
+          "kind": "GPS",
+          "elapsedMs": 6000,
+          "location": {
+            "lat": 36.799089932036374,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:06.000Z"
+        },
+        {
+          "seq": 5,
+          "kind": "PAUSE",
+          "elapsedMs": 7000,
+          "measuredAt": "2026-10-12T00:00:07.000Z"
+        },
+        {
+          "seq": 6,
+          "kind": "END",
+          "elapsedMs": 8000,
+          "reason": "USER",
+          "measuredAt": "2026-10-12T00:00:08.000Z"
+        }
+      ],
+      "expected": {
+        "distanceM": 10,
+        "elapsedMs": 8000,
+        "activeMs": 7000,
+        "movingMs": 7000,
+        "gapCount": 1,
+        "segmentMs": [
+          [
+            2000,
+            4000,
+            6000
+          ]
+        ]
+      }
+    },
+    {
+      "name": "PACE_V3_repeated_gap_while_paused",
+      "inputs": [
+        {
+          "seq": 0,
+          "kind": "START",
+          "elapsedMs": 0,
+          "reason": "PACE_V3",
+          "measuredAt": "2026-10-12T00:00:00.000Z"
+        },
+        {
+          "seq": 1,
+          "kind": "GPS",
+          "elapsedMs": 1000,
+          "location": {
+            "lat": 36.799,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:01.000Z"
+        },
+        {
+          "seq": 2,
+          "kind": "GPS",
+          "elapsedMs": 3000,
+          "location": {
+            "lat": 36.79904496601819,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:03.000Z"
+        },
+        {
+          "seq": 3,
+          "kind": "GPS",
+          "elapsedMs": 5000,
+          "location": {
+            "lat": 36.799089932036374,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:05.000Z"
+        },
+        {
+          "seq": 4,
+          "kind": "PAUSE",
+          "elapsedMs": 6000,
+          "measuredAt": "2026-10-12T00:00:06.000Z"
+        },
+        {
+          "seq": 5,
+          "kind": "GAP",
+          "elapsedMs": 7000,
+          "measuredAt": "2026-10-12T00:00:07.000Z"
+        },
+        {
+          "seq": 6,
+          "kind": "GAP",
+          "elapsedMs": 8000,
+          "measuredAt": "2026-10-12T00:00:08.000Z"
+        },
+        {
+          "seq": 7,
+          "kind": "GPS",
+          "elapsedMs": 9000,
+          "location": {
+            "lat": 36.80798421043361,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:09.000Z"
+        },
+        {
+          "seq": 8,
+          "kind": "RESUME",
+          "elapsedMs": 10000,
+          "measuredAt": "2026-10-12T00:00:10.000Z"
+        },
+        {
+          "seq": 9,
+          "kind": "GPS",
+          "elapsedMs": 11000,
+          "location": {
+            "lat": 36.80079864072745,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:11.000Z"
+        },
+        {
+          "seq": 10,
+          "kind": "GPS",
+          "elapsedMs": 13000,
+          "location": {
+            "lat": 36.80084360674564,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:13.000Z"
+        },
+        {
+          "seq": 11,
+          "kind": "GPS",
+          "elapsedMs": 15000,
+          "location": {
+            "lat": 36.800888572763824,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:15.000Z"
+        },
+        {
+          "seq": 12,
+          "kind": "PAUSE",
+          "elapsedMs": 16000,
+          "measuredAt": "2026-10-12T00:00:16.000Z"
+        },
+        {
+          "seq": 13,
+          "kind": "END",
+          "elapsedMs": 18000,
+          "reason": "USER",
+          "measuredAt": "2026-10-12T00:00:18.000Z"
+        }
+      ],
+      "expected": {
+        "distanceM": 20,
+        "elapsedMs": 18000,
+        "activeMs": 12000,
+        "movingMs": 12000,
+        "gapCount": 0,
+        "segmentMs": [
+          [
+            1000,
+            3000,
+            5000
+          ],
+          [
+            11000,
+            13000,
+            15000
+          ]
+        ]
+      }
+    },
+    {
+      "name": "PACE_V3_repeated_gap_after_confirmed_stop",
+      "inputs": [
+        {
+          "seq": 0,
+          "kind": "START",
+          "elapsedMs": 0,
+          "reason": "PACE_V3",
+          "measuredAt": "2026-10-12T00:00:00.000Z"
+        },
+        {
+          "seq": 1,
+          "kind": "GPS",
+          "elapsedMs": 1000,
+          "location": {
+            "lat": 36.799,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:01.000Z"
+        },
+        {
+          "seq": 2,
+          "kind": "GPS",
+          "elapsedMs": 4000,
+          "location": {
+            "lat": 36.799,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:04.000Z"
+        },
+        {
+          "seq": 3,
+          "kind": "GPS",
+          "elapsedMs": 7000,
+          "location": {
+            "lat": 36.799,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:07.000Z"
+        },
+        {
+          "seq": 4,
+          "kind": "GAP",
+          "elapsedMs": 20000,
+          "measuredAt": "2026-10-12T00:00:20.000Z"
+        },
+        {
+          "seq": 5,
+          "kind": "GAP",
+          "elapsedMs": 25000,
+          "measuredAt": "2026-10-12T00:00:25.000Z"
+        },
+        {
+          "seq": 6,
+          "kind": "GPS",
+          "elapsedMs": 40000,
+          "location": {
+            "lat": 36.80079864072745,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:40.000Z"
+        },
+        {
+          "seq": 7,
+          "kind": "GPS",
+          "elapsedMs": 42000,
+          "location": {
+            "lat": 36.80084360674564,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:42.000Z"
+        },
+        {
+          "seq": 8,
+          "kind": "GPS",
+          "elapsedMs": 44000,
+          "location": {
+            "lat": 36.800888572763824,
+            "lng": 127.075
+          },
+          "accuracyM": 3,
+          "measuredAt": "2026-10-12T00:00:44.000Z"
+        },
+        {
+          "seq": 9,
+          "kind": "PAUSE",
+          "elapsedMs": 45000,
+          "measuredAt": "2026-10-12T00:00:45.000Z"
+        },
+        {
+          "seq": 10,
+          "kind": "END",
+          "elapsedMs": 46000,
+          "reason": "USER",
+          "measuredAt": "2026-10-12T00:00:46.000Z"
+        }
+      ],
+      "expected": {
+        "distanceM": 10,
+        "elapsedMs": 46000,
+        "activeMs": 45000,
+        "movingMs": 39000,
+        "gapCount": 1,
+        "segmentMs": [
+          [
+            40000,
+            42000,
+            44000
+          ]
+        ]
+      }
+    }
+  ]
+}

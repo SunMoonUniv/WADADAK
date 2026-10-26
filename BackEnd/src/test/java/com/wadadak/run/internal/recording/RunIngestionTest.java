@@ -436,6 +436,35 @@ class RunIngestionTest {
         assertThat(runs.result(owner,id)).isEqualTo(stored);
     }
 
+    @Test void sharedGapCasesFinishAndKeepRawInputsAndRegistrationOnRetry(AssertablePublishedEvents events) throws Exception {
+        var fixture=json.readTree(Files.readString(Path.of("../run/fixtures/motion_gap_null_v1.json")));
+        int registered=0;
+        for(var source:fixture.get("cases")) {
+            UUID runId=UUID.randomUUID();
+            runs.prepare(owner,runId,new Prepare(start,"FREE"));
+            var raw=new ArrayList<Input>();
+            for(var node:source.get("inputs")) raw.add(json.treeToValue(node,Input.class));
+            int last=raw.size()-1;
+            runs.upload(owner,runId,new Upload(last,raw)); runs.process(runId);
+            assertThat(runs.status(owner,runId).processing()).as(source.get("name").asText()).isEqualTo("DONE");
+            Result stored=runs.result(owner,runId);
+            var expected=source.get("expected");
+            assertThat(stored.calculationVersion()).isEqualTo(raw.getFirst().reason());
+            assertThat(stored.metrics().distanceM()).isCloseTo(expected.get("distanceM").asDouble(),within(.000001));
+            assertThat(stored.metrics().elapsedMs()).isEqualTo(expected.get("elapsedMs").asLong());
+            assertThat(stored.metrics().activeMs()).isEqualTo(expected.get("activeMs").asLong());
+            assertThat(stored.metrics().movingMs()).isEqualTo(expected.get("movingMs").asLong());
+            assertThat(stored.metrics().gapCount()).isEqualTo(expected.get("gapCount").asInt());
+            String summary=db.queryForObject("SELECT summary_json FROM run.records WHERE id=?",String.class,runId);
+            runs.upload(owner,runId,new Upload(last,raw)); runs.process(runId);
+            assertThat(runs.result(owner,runId)).isEqualTo(stored);
+            assertThat(db.queryForObject("SELECT summary_json FROM run.records WHERE id=?",String.class,runId)).isEqualTo(summary);
+            assertThat(db.query("SELECT payload FROM run.inputs WHERE session_id=? ORDER BY stream_seq",
+                (rs,n)->json.readValue(rs.getString(1),Input.class),runId)).containsExactlyElementsOf(raw);
+            assertThat(events.ofType(RunSessionEndedEvent.class)).hasSize(++registered);
+        }
+    }
+
     @Test void invalidPressureFieldsRollBackBeforeDurableStorage() {
         for (Input p : List.of(
             new Input(1,Kind.BAROMETER,1000,start.plusMillis(1000),null,null,null,null,null,null,null,1000L,null,null,Double.NaN,3),
