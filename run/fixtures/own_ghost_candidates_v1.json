@@ -1,0 +1,178 @@
+{
+  "owner": "00000000-0000-4000-8000-000000000200",
+  "course": {
+    "courseId": "00000000-0000-4000-8000-000000000100",
+    "version": 3,
+    "name": "한강 야경 5K"
+  },
+  "records": [
+    {
+      "id": "00000000-0000-4000-8000-000000000001",
+      "courseId": "00000000-0000-4000-8000-000000000100",
+      "courseVersion": 3,
+      "startedAt": "2026-10-26T00:00:00Z",
+      "completedAt": "2026-10-26T00:27:14.000Z",
+      "registeredAt": "2026-10-26T01:00:00.000Z",
+      "courseElapsedSeconds": 1634,
+      "courseDistanceMeters": 5200,
+      "averageCadence": 176
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000002",
+      "courseId": "00000000-0000-4000-8000-000000000100",
+      "courseVersion": 3,
+      "startedAt": "2026-10-25T15:00:00Z",
+      "completedAt": "2026-10-25T15:28:02.000Z",
+      "registeredAt": "2026-10-26T01:00:01.000Z",
+      "courseElapsedSeconds": 1682,
+      "courseDistanceMeters": 5200,
+      "averageCadence": 175
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000003",
+      "courseId": "00000000-0000-4000-8000-000000000100",
+      "courseVersion": 3,
+      "startedAt": "2026-10-25T14:59:59.999Z",
+      "completedAt": "2026-10-25T15:26:49.999Z",
+      "registeredAt": "2026-10-26T01:00:02.000Z",
+      "courseElapsedSeconds": 1610,
+      "courseDistanceMeters": 5200,
+      "averageCadence": 174
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "courseId": "00000000-0000-4000-8000-000000000100",
+      "courseVersion": 3,
+      "startedAt": "2026-09-30T15:00:00Z",
+      "completedAt": "2026-09-30T15:28:20.000Z",
+      "registeredAt": "2026-10-26T01:00:03.000Z",
+      "courseElapsedSeconds": 1700,
+      "courseDistanceMeters": 5200,
+      "averageCadence": 173
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000005",
+      "courseId": "00000000-0000-4000-8000-000000000100",
+      "courseVersion": 3,
+      "startedAt": "2026-09-30T14:59:59.999Z",
+      "completedAt": "2026-09-30T15:28:39.999Z",
+      "registeredAt": "2026-10-26T01:00:04.000Z",
+      "courseElapsedSeconds": 1720,
+      "courseDistanceMeters": 5200,
+      "averageCadence": null
+    },
+    {
+      "id": "00000000-0000-4000-8000-000000000006",
+      "courseId": "00000000-0000-4000-8000-000000000100",
+      "courseVersion": 3,
+      "startedAt": "2026-10-26T00:00:00Z",
+      "completedAt": "2026-10-26T00:27:14.000Z",
+      "registeredAt": "2026-10-26T01:00:05.000Z",
+      "courseElapsedSeconds": 1634,
+      "courseDistanceMeters": 5200,
+      "averageCadence": 171
+    }
+  ],
+  "recentIds": [
+    "00000000-0000-4000-8000-000000000006",
+    "00000000-0000-4000-8000-000000000001",
+    "00000000-0000-4000-8000-000000000002",
+    "00000000-0000-4000-8000-000000000003",
+    "00000000-0000-4000-8000-000000000004",
+    "00000000-0000-4000-8000-000000000005"
+  ],
+  "bestIds": [
+    "00000000-0000-4000-8000-000000000003",
+    "00000000-0000-4000-8000-000000000006",
+    "00000000-0000-4000-8000-000000000001",
+    "00000000-0000-4000-8000-000000000002",
+    "00000000-0000-4000-8000-000000000004",
+    "00000000-0000-4000-8000-000000000005"
+  ],
+  "page": {
+    "content": [
+      {
+        "id": "00000000-0000-4000-8000-000000000006",
+        "courseId": "00000000-0000-4000-8000-000000000100",
+        "courseVersion": 3,
+        "startedAt": "2026-10-26T00:00:00Z",
+        "completedAt": "2026-10-26T00:27:14.000Z",
+        "registeredAt": "2026-10-26T01:00:05.000Z",
+        "courseElapsedSeconds": 1634,
+        "courseDistanceMeters": 5200,
+        "averageCadence": 171
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000001",
+        "courseId": "00000000-0000-4000-8000-000000000100",
+        "courseVersion": 3,
+        "startedAt": "2026-10-26T00:00:00Z",
+        "completedAt": "2026-10-26T00:27:14.000Z",
+        "registeredAt": "2026-10-26T01:00:00.000Z",
+        "courseElapsedSeconds": 1634,
+        "courseDistanceMeters": 5200,
+        "averageCadence": 176
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000002",
+        "courseId": "00000000-0000-4000-8000-000000000100",
+        "courseVersion": 3,
+        "startedAt": "2026-10-25T15:00:00Z",
+        "completedAt": "2026-10-25T15:28:02.000Z",
+        "registeredAt": "2026-10-26T01:00:01.000Z",
+        "courseElapsedSeconds": 1682,
+        "courseDistanceMeters": 5200,
+        "averageCadence": 175
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "courseId": "00000000-0000-4000-8000-000000000100",
+        "courseVersion": 3,
+        "startedAt": "2026-10-25T14:59:59.999Z",
+        "completedAt": "2026-10-25T15:26:49.999Z",
+        "registeredAt": "2026-10-26T01:00:02.000Z",
+        "courseElapsedSeconds": 1610,
+        "courseDistanceMeters": 5200,
+        "averageCadence": 174
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000004",
+        "courseId": "00000000-0000-4000-8000-000000000100",
+        "courseVersion": 3,
+        "startedAt": "2026-09-30T15:00:00Z",
+        "completedAt": "2026-09-30T15:28:20.000Z",
+        "registeredAt": "2026-10-26T01:00:03.000Z",
+        "courseElapsedSeconds": 1700,
+        "courseDistanceMeters": 5200,
+        "averageCadence": 173
+      },
+      {
+        "id": "00000000-0000-4000-8000-000000000005",
+        "courseId": "00000000-0000-4000-8000-000000000100",
+        "courseVersion": 3,
+        "startedAt": "2026-09-30T14:59:59.999Z",
+        "completedAt": "2026-09-30T15:28:39.999Z",
+        "registeredAt": "2026-10-26T01:00:04.000Z",
+        "courseElapsedSeconds": 1720,
+        "courseDistanceMeters": 5200,
+        "averageCadence": null
+      }
+    ],
+    "nextCursor": null,
+    "summary": {
+      "count": 6,
+      "averageSeconds": 1663.3333333333333,
+      "best": {
+        "id": "00000000-0000-4000-8000-000000000003",
+        "courseId": "00000000-0000-4000-8000-000000000100",
+        "courseVersion": 3,
+        "startedAt": "2026-10-25T14:59:59.999Z",
+        "completedAt": "2026-10-25T15:26:49.999Z",
+        "registeredAt": "2026-10-26T01:00:02.000Z",
+        "courseElapsedSeconds": 1610,
+        "courseDistanceMeters": 5200,
+        "averageCadence": 174
+      }
+    }
+  }
+}
