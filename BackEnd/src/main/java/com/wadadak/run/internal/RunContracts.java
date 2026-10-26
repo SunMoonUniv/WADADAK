@@ -122,6 +122,14 @@ public final class RunContracts {
                                 long courseElapsedSeconds, Long durationMs, boolean eligible,
                                 List<String> unavailableReasons, GhostQuality quality,
                                 List<GhostSample> samples, List<GhostSpan> spans) {}
+    /** After course preparation, approve one own opponent. Reuse every field when retrying. */
+    public record GhostStart(@NotNull UUID courseId, @NotNull @Min(0) Long courseVersion,
+                             @NotNull UUID sourceRecordId, @NotNull Instant startedAt,
+                             @NotNull @Pattern(regexp="GHOST_PLAYBACK_V1") String playbackVersion) {}
+    /** Durable approval receipt, not the live running state or a completion verdict. */
+    public record GhostStartApproval(String version, UUID sessionId, UUID sourceRecordId,
+                                     Instant startedAt, Instant approvedAt, Instant courseValidatedAt,
+                                     CourseSnapshot course, GhostPlayback playback) {}
     /** 기록 목록 한 줄의 코스 요약(MY I1 카드 제목·완주·진행도·리뷰 쓰기·코스 상세). 자유 러닝이면 목록의 {@code course}가 null */
     public record CourseSummary(UUID courseId, String courseName, boolean completed, double progressPercent, boolean reviewEligible) {
         public static CourseSummary from(CourseOutcome course) {

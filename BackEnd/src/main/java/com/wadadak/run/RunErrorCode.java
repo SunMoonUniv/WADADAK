@@ -10,7 +10,8 @@ import org.springframework.http.HttpStatus;
 public enum RunErrorCode implements ErrorCode {
     INVALID(HttpStatus.BAD_REQUEST, "RUN-001", "러닝 입력을 확인해 주세요."),
     NOT_FOUND(HttpStatus.NOT_FOUND, "RUN-002", "러닝 기록을 찾을 수 없어요."),
-    CONFLICT(HttpStatus.CONFLICT, "RUN-003", "이미 저장한 러닝 입력과 다른 내용이에요.");
+    CONFLICT(HttpStatus.CONFLICT, "RUN-003", "이미 저장한 러닝 입력과 다른 내용이에요."),
+    GHOST_UNAVAILABLE(HttpStatus.CONFLICT, "RUN-004", "선택한 기록을 고스트로 사용할 수 없어요. 다른 기록을 선택해 주세요.");
     private final HttpStatus status;
     private final String code;
     private final String message;
