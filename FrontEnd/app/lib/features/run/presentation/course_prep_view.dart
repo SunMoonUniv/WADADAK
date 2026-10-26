@@ -14,7 +14,7 @@ import '../domain/course_run.dart';
 import '../domain/run_models.dart';
 
 /// 고른 코스의 상세(경로·거리·난이도·현재 러너). 실패하면 카드에 이름만 보인다
-final _courseDetailProvider = FutureProvider.autoDispose.family<CourseDetail, String>(
+final runCourseDetailProvider = FutureProvider.autoDispose.family<CourseDetail, String>(
   (ref, courseId) => ref.watch(courseApiClientProvider).courseDetail(courseId),
   retry: (_, _) => null,
 );
@@ -28,7 +28,7 @@ class CourseRunPrep extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final id = course.courseId;
-    final detail = ref.watch(_courseDetailProvider(id)).value;
+    final detail = ref.watch(runCourseDetailProvider(id)).value;
     final rating = ref.watch(reviewSummaryProvider(id)).value?.averageRating;
     final ranking = ref.watch(courseRankingProvider((courseId: id, period: RankingPeriod.all))).value;
     final me = ranking?.me;
@@ -57,10 +57,7 @@ class CourseRunPrep extends ConsumerWidget {
             formatActiveRunners(detail?.activeRunners ?? 0),
           ].join(' · '),
           thumbnail: detail == null ? null : CourseRouteThumbnail(detail.route),
-          // C8(달리기 준비의 코스 선택)이 생기기 전에는 코스 상세에서 고른다
-          onChange: () => ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('코스 상세에서 이 코스로 달리기를 눌러 다른 코스를 골라 주세요.')),
-          ),
+          onChange: () => context.push(Routes.runCourseSelect),
         ),
         const SizedBox(height: WdSpace.s8),
         WdRecordCard(

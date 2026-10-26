@@ -33,6 +33,9 @@ abstract final class Routes {
   /// B2 리뷰 쓰기 · B10 리뷰 수정. G2 위에 쌓는다. extra: `ReviewFormArgs`.
   static const reviewForm = '/review/form';
   static const run = '/run';
+
+  /// C8 코스 선택(달리기 준비). 하단 탭을 덮는다.
+  static const runCourseSelect = '/run/course-select';
   static const ranking = '/ranking';
   static const my = '/my';
 

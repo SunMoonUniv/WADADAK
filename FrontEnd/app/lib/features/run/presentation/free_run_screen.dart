@@ -218,11 +218,7 @@ class _Preparation extends StatelessWidget {
               if (index == 0) {
                 onClearCourse?.call();
               } else if (index == 1 && course == null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('코스 상세에서 이 코스로 달리기를 눌러 코스를 골라 주세요.'),
-                  ),
-                );
+                context.push(Routes.runCourseSelect); // C8: 코스를 고른다(RUN-03)
               } else if (index == 2) {
                 _notReady(context, '고스트 대결');
               }
