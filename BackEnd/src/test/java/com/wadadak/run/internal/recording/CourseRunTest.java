@@ -13,6 +13,7 @@ import com.wadadak.event.run.RunRecordDeletedEvent;
 import com.wadadak.event.run.RunSessionEndedEvent;
 import com.wadadak.run.RunErrorCode;
 import com.wadadak.run.internal.RunContracts.CourseOutcome;
+import com.wadadak.run.internal.RunContracts.CourseSource;
 import com.wadadak.run.internal.RunContracts.CourseSnapshot;
 import com.wadadak.run.internal.RunContracts.Input;
 import com.wadadak.run.internal.RunContracts.Kind;
@@ -48,6 +49,7 @@ import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -344,5 +346,47 @@ class CourseRunTest {
                 .andExpect(status().isOk());
         mvc.perform(post("/api/v1/runs/sessions/" + id + "/course/segment-end").with(jwt().jwt(j -> j.subject(owner.toString()))))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void courseSourceGivesTheRecordedRouteSplitAtPausesWithAccuracyAndAltitude() throws Exception {
+        // 출발점에서 북쪽 300m → 일시정지 → 재개 뒤 500m까지. 고도는 북쪽 1m마다 0.1m씩 오른다
+        List<Input> inputs = new ArrayList<>();
+        inputs.add(new Input(0, Kind.START, 0, startedAt, null, null, null));
+        long ms = 0;
+        for (double y = 0; y <= 500 + 1e-9; y += 5) {
+            if (y == 305) {
+                inputs.add(new Input(inputs.size(), Kind.PAUSE, ms, startedAt.plusMillis(ms), null, null, null));
+                ms += 2000;
+                inputs.add(new Input(inputs.size(), Kind.RESUME, ms, startedAt.plusMillis(ms), null, null, "MANUAL"));
+            }
+            inputs.add(new Input(inputs.size(), Kind.GPS, ms, startedAt.plusMillis(ms), new GeoPoint(LAT0 + y * LAT_PER_M, LNG0),
+                    5.0, null, null, null, null, null, null, y * 0.1, 3.0));
+            ms += 2000;
+        }
+        inputs.add(new Input(inputs.size(), Kind.END, ms, startedAt.plusMillis(ms), null, null, "INTERRUPTED"));
+        runs.prepare(owner, id, new Prepare(startedAt, "FREE"));
+        runs.upload(owner, id, new Upload(inputs.size() - 1, inputs));
+        runs.process(id);
+
+        CourseSource source = runs.courseSource(owner, id);
+        assertThat(source.distanceMeters()).isEqualTo(runs.result(owner, id).metrics().distanceM());
+        assertThat(source.segments()).hasSize(2); // 일시정지 전후는 잇지 않는다
+        assertThat(source.segments().getFirst()).hasSize(61).first().satisfies(p -> {
+            assertThat(p.lat()).isEqualTo(LAT0);
+            assertThat(p.accuracyM()).isEqualTo(5.0);
+            assertThat(p.altitudeM()).isZero();
+            assertThat(p.altitudeAccuracyM()).isEqualTo(3.0);
+        });
+        assertThat(source.segments().getLast().getLast().altitudeM()).isCloseTo(50, within(1e-9));
+
+        assertThatThrownBy(() -> runs.courseSource(UUID.randomUUID(), id)) // 남의 기록
+                .isInstanceOfSatisfying(AppException.class, e -> assertThat(e.getErrorCode()).isEqualTo(RunErrorCode.NOT_FOUND));
+        mvc.perform(get("/api/v1/runs/records/" + id + "/course-source").with(jwt().jwt(j -> j.subject(owner.toString()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.recordId").value(id.toString()))
+                .andExpect(jsonPath("$.data.segments.length()").value(2))
+                .andExpect(jsonPath("$.data.segments[0][0].accuracyM").value(5.0))
+                .andExpect(jsonPath("$.data.segments[0][0].altitudeM").value(0.0));
     }
 }

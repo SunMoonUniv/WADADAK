@@ -95,6 +95,15 @@ public final class RunContracts {
     }
     public record Lap(int number, double distanceM, long movingMs, long elapsedMs, boolean complete, Double paceSecondsPerKm) {}
     public record Deleted(UUID id, boolean deleted) {}
+    /**
+     * GPS 코스 등록(F7 B6·D4)용 원본 경로. 등록 가능 여부는 course가 판단한다.
+     *
+     * @param distanceMeters 결과 화면과 같은 기록 거리
+     * @param segments       결과 화면 지도와 같은 인정 이동 경로. 일시정지·GPS 공백·튐에서 끊긴 구간을 순서대로 담고 구간 사이는 잇지 않는다
+     */
+    public record CourseSource(UUID recordId, double distanceMeters, List<List<SourcePoint>> segments) {}
+    /** 지점별 GPS 원본 값. 정확도·고도는 없으면 null */
+    public record SourcePoint(double lat, double lng, Double accuracyM, Double altitudeM, Double altitudeAccuracyM) {}
     /** 기록 목록 한 줄의 코스 요약(MY I1 카드 제목·완주·진행도·리뷰 쓰기·코스 상세). 자유 러닝이면 목록의 {@code course}가 null */
     public record CourseSummary(UUID courseId, String courseName, boolean completed, double progressPercent, boolean reviewEligible) {
         public static CourseSummary from(CourseOutcome course) {

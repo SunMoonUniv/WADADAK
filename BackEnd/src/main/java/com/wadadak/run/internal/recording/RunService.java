@@ -199,6 +199,17 @@ class RunService {
         return new Result(stored.id(),stored.startedAt(),stored.endedAt(),stored.registeredAt(),stored.endReason(),
             stored.metrics(),stored.routeSegments(),stored.laps(),stored.policyVersion(),stored.calculationVersion(),stats,stored.course());
     }
+    /** GPS 코스 등록용 원본 경로. 결과 화면 지도와 같은 구간을 원본 입력에서 다시 만들어 지점별 정확도·고도를 붙인다 */
+    @Transactional(readOnly=true)
+    public CourseSource courseSource(UUID owner, UUID id) {
+        session(owner,id,false);
+        RunRecord record=records.findById(id).orElseThrow(()->new AppException(RunErrorCode.NOT_FOUND));
+        Result stored=json.readValue(record.getResultJson(),Result.class);
+        List<List<SourcePoint>> segments=FreeRunCalculator.calculate(stored.startedAt(),inputs.findAll(id)).samples().stream()
+            .map(segment->segment.stream().map(p->new SourcePoint(p.location().lat(),p.location().lng(),p.accuracyM(),p.altitudeM(),p.altitudeAccuracyM())).toList())
+            .toList();
+        return new CourseSource(id,stored.metrics().distanceM(),segments);
+    }
     @Transactional(readOnly=true)
     public CursorSlice<RecordSummary> history(UUID owner, Cursorable page) {
         Instant before=Instant.MAX;
