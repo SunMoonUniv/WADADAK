@@ -90,6 +90,8 @@ class CourseLive {
 class RunCourseResult {
   const RunCourseResult({
     required this.courseId,
+    this.courseName,
+    this.courseDistanceMeters = 0,
     required this.completed,
     required this.reason,
     required this.recognizedDistanceMeters,
@@ -100,6 +102,8 @@ class RunCourseResult {
 
   factory RunCourseResult.fromJson(Map<String, dynamic> json) => RunCourseResult(
     courseId: json['courseId'] as String,
+    courseName: json['courseName'] as String?,
+    courseDistanceMeters: (json['courseDistanceMeters'] as num? ?? 0).toInt(),
     completed: json['completed'] == true,
     reason: json['reason'] as String? ?? '',
     recognizedDistanceMeters: (json['recognizedDistanceMeters'] as num? ?? 0).toDouble(),
@@ -109,6 +113,12 @@ class RunCourseResult {
   );
 
   final String courseId, reason;
+
+  /// 달릴 때의 코스 이름(서버 2026-10-22 이후 기록). 예전 기록은 null
+  final String? courseName;
+
+  /// 코스 전체 거리(m, 코스 등록 값)
+  final int courseDistanceMeters;
   final bool completed, reviewEligible;
   final double recognizedDistanceMeters, progressPercent;
   final int courseElapsedSeconds;

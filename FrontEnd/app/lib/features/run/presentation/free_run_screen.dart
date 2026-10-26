@@ -14,6 +14,7 @@ import '../application/free_run_controller.dart';
 import '../domain/course_run.dart';
 import '../domain/run_models.dart';
 import 'course_deviation_alert.dart';
+import 'course_prep_view.dart';
 import 'course_start_view.dart';
 import 'free_run_live_view.dart';
 import 'free_run_result_view.dart';
@@ -217,11 +218,7 @@ class _Preparation extends StatelessWidget {
               if (index == 0) {
                 onClearCourse?.call();
               } else if (index == 1 && course == null) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('코스 상세에서 이 코스로 달리기를 눌러 코스를 골라 주세요.'),
-                  ),
-                );
+                context.push(Routes.runCourseSelect); // C8: 코스를 고른다(RUN-03)
               } else if (index == 2) {
                 _notReady(context, '고스트 대결');
               }
@@ -251,7 +248,7 @@ class _Preparation extends StatelessWidget {
                           const SizedBox(height: WdSpace.s12),
                         ],
                         if (course != null) ...[
-                          _CourseIntro(course: course!),
+                          CourseRunPrep(course: course!),
                         ] else ...[
                           Text('오늘은, 발길이 닿는 대로.', style: WdText.ko22Bold),
                           const SizedBox(height: WdSpace.s4),
@@ -301,7 +298,6 @@ class _Preparation extends StatelessWidget {
                               ],
                             ),
                           ),
-                        ],
                         const SizedBox(height: WdSpace.s8),
                         WdSurface(
                           color: WdColors.dark,
@@ -388,6 +384,7 @@ class _Preparation extends StatelessWidget {
                             ),
                           ],
                         ),
+                        ],
                         const SizedBox(height: WdSpace.s30),
                         const Spacer(),
                         Center(
@@ -595,30 +592,5 @@ class _RunHoldToStartState extends State<RunHoldToStart> {
         onPressed: widget.onStart == null ? null : () {},
       ),
     ),
-  );
-}
-
-/// 코스 상세에서 고른 코스(F6). 시작하면 서버가 코스 공개 여부를 확인하고(연결 필요, D-08) 업로드 후 완주를 판정한다.
-class _CourseIntro extends StatelessWidget {
-  const _CourseIntro({required this.course});
-  final CourseSelection course;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      Text(course.name, style: WdText.ko22Bold),
-      const SizedBox(height: WdSpace.s4),
-      Text(
-        '출발점에서 시작해 코스를 따라 끝까지 달려 보세요.',
-        style: WdText.ko12.copyWith(color: WdColors.muted),
-      ),
-      const SizedBox(height: WdSpace.s8),
-      const WdInfoBanner(
-        '코스 러닝은 시작할 때 인터넷 연결이 필요해요. 완주 여부는 기록을 올린 뒤 서버가 판정해요.',
-        tone: WdBannerTone.warning,
-        plain: true,
-      ),
-    ],
   );
 }
