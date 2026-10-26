@@ -11,7 +11,9 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class FreeRunCalculator {
-    public record Calculation(Metrics metrics, List<List<GeoPoint>> segments, Instant endedAt, String endReason, List<Lap> laps, ResultStats stats) {}
+    /** @param samples segments와 같은 모양의 원본 GPS 입력(정확도·고도 포함). 코스 등록용 경로(course-source)에 쓴다 */
+    public record Calculation(Metrics metrics, List<List<GeoPoint>> segments, Instant endedAt, String endReason, List<Lap> laps, ResultStats stats,
+                              List<List<Input>> samples) {}
     record Travel(long start, long end, double distance) {}
     record Span(long start, long end) { long before(long ms) { return Math.clamp(ms-start,0,end-start); } }
     private static long movingAt(long ms, List<Span> pauses, MotionPace motion, boolean v2) {
@@ -121,7 +123,7 @@ public final class FreeRunCalculator {
             distanceM > 0 && movingMs > 0 ? movingMs/distanceM : null, movingMs,
             distanceM > 0 ? lastMs/distanceM : null, coverage>0?steps*60000.0/coverage:null, coverage, steps),
             segments, end.measuredAt(), end.reason(), laps,
-            RunResultStatsCalculator.calculate(inputs,v2?motion.samples:samples,laps));
+            RunResultStatsCalculator.calculate(inputs,v2?motion.samples:samples,laps), v2?motion.samples:samples);
     }
     private static boolean freshFix(Instant start, Input p) {
         long age=Duration.between(p.measuredAt(),start.plusMillis(p.elapsedMs())).toMillis();
