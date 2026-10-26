@@ -45,6 +45,10 @@ public final class CourseJudge {
                      long courseElapsedSeconds, long courseMovingSeconds, boolean reviewEligible) {
     }
 
+    /** F9 reads the existing projection; it does not introduce a second course matcher. */
+    public record CourseSample(long seq, long elapsedMs, Double positionM, boolean connected, boolean ambiguous) {}
+    public record Analysis(Judgement judgement, List<CourseSample> samples, long courseElapsedMs) {}
+
     private final JudgingConfig config;
 
     /** 주행 검증 전 개발용 기준값({@link JudgingConfig#DEFAULTS}) */
@@ -57,6 +61,10 @@ public final class CourseJudge {
     }
 
     public Judgement judge(CourseRouteSnapshot course, List<Input> inputs) {
+        return analyze(course, inputs).judgement();
+    }
+
+    public Analysis analyze(CourseRouteSnapshot course, List<Input> inputs) {
         RouteGeometry route = new RouteGeometry(course.route());
         List<Point> points = new CourseTracker(route, config).track(inputs);
         RecognizedDistance recognized = RecognizedDistance.of(points);
@@ -84,7 +92,7 @@ public final class CourseJudge {
         long movingMs = Math.max(0, elapsedMs - pausedMs(inputs, endMs));
 
         double meters = recognized.meters();
-        return new Judgement(
+        Judgement judgement = new Judgement(
                 recognized.ranges(),
                 meters,
                 length,
@@ -95,6 +103,14 @@ public final class CourseJudge {
                 toSeconds(elapsedMs),
                 toSeconds(movingMs),
                 meters + EPSILON_M >= Math.max(REVIEW_MIN_M, length * REVIEW_RATIO));
+        var bySeq = inputs.stream().collect(java.util.stream.Collectors.toMap(Input::seq, i -> i, (a, b) -> b));
+        List<CourseSample> samples = points.stream().map(p -> {
+            Input input = bySeq.get(p.seq());
+            boolean ambiguous = p.s() == null && com.wadadak.run.internal.GpsQuality.good(input)
+                    && route.candidates(route.toLocal(input.location()), config.routeToleranceM()).size() > 1;
+            return new CourseSample(p.seq(), p.elapsedMs(), p.s(), p.connected(), ambiguous);
+        }).toList();
+        return new Analysis(judgement, samples, elapsedMs);
     }
 
     /** 출발 확인: 처음으로 코스상 위치를 정한 표본이 출발점 반경 안(s ≤ 시작 반경). C-04처럼 중간에서 시작하면 실패 */
