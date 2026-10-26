@@ -33,6 +33,10 @@ class RunController {
     @GetMapping("/records/{id}") ApiResult<Result> result(@AuthenticationPrincipal Jwt jwt,@PathVariable UUID id) {
         return ApiResult.success(runs.result(owner(jwt),id));
     }
+    /** GPS 코스 등록(F7 B6·D4)용 원본 경로. 결과 화면 지도와 같은 구간(끊긴 곳은 나눔)과 지점별 GPS 정확도·고도 */
+    @GetMapping("/records/{id}/course-source") ApiResult<CourseSource> courseSource(@AuthenticationPrincipal Jwt jwt,@PathVariable UUID id) {
+        return ApiResult.success(runs.courseSource(owner(jwt),id));
+    }
     @DeleteMapping("/records/{id}") ApiResult<Deleted> delete(@AuthenticationPrincipal Jwt jwt,@PathVariable UUID id) {
         return ApiResult.success(runs.delete(owner(jwt),id));
     }
