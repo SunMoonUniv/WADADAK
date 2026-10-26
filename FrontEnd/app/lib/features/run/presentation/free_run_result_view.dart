@@ -92,23 +92,23 @@ class FreeRunResultView extends StatelessWidget {
                     spacing: WdSpace.s3,
                     children: [
                       Text(
-                        run.course != null || pendingCourse != null ? pendingCourse ?? '코스 러닝' : '자유 러닝',
+                        run.course != null || pendingCourse != null
+                            ? run.course?.courseName ?? pendingCourse ?? '코스 러닝'
+                            : '자유 러닝',
                         style: WdText.ko16Bold,
                       ),
                       Text(
-                        startedLabel,
+                        switch ((run.course, pendingCourse)) {
+                          (final course?, _) => '$startedLabel · ${course.completed ? '코스 완주' : '코스 미완주'}',
+                          (null, final String _) => '$startedLabel · 판정 대기',
+                          _ => startedLabel,
+                        },
                         style: WdText.ko12.copyWith(color: WdColors.muted),
                       ),
                     ],
                   ),
-                  if (run.course != null)
-                    _CourseVerdict(course: run.course!)
-                  else if (pendingCourse != null)
-                    const WdInfoBanner(
-                      '코스 완주 여부는 기록을 올린 뒤 서버가 판정해요. 판정 대기 중이에요.',
-                      tone: WdBannerTone.warning,
-                      plain: true,
-                    ),
+                  if (run.course != null || pendingCourse != null)
+                    _CourseBadge(course: run.course),
                   WdSurface(
                     radius: WdRadius.r12,
                     padding: const EdgeInsets.symmetric(
@@ -381,31 +381,52 @@ class _RunStatSummary extends StatelessWidget {
   );
 }
 
-/// 서버 코스 판정(정책 5.1·5.3). 앱은 완주를 판정하지 않고 서버 결과만 보인다.
-class _CourseVerdict extends StatelessWidget {
-  const _CourseVerdict({required this.course});
-  final RunCourseResult course;
+/// Figma D1·D1-1 "Course record badge": 서버 코스 판정(정책 5.3). 앱은 완주를 판정하지 않고 서버 결과만 보인다.
+/// [course]가 없으면 업로드 전·판정 전이다(D-14 "판정 대기").
+class _CourseBadge extends StatelessWidget {
+  const _CourseBadge({required this.course});
+  final RunCourseResult? course;
 
   @override
-  Widget build(BuildContext context) => WdSurface(
-    radius: WdRadius.r12,
-    padding: const EdgeInsets.symmetric(horizontal: WdSpace.s14, vertical: WdSpace.s12),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      spacing: WdSpace.s4,
-      children: [
-        Text(course.completed ? '코스 완주' : '코스 미완주', style: WdText.ko16Bold),
-        Text(
-          '진행도 ${course.progressPercent.floor()}% · 코스 ${(course.recognizedDistanceMeters / 1000).toStringAsFixed(2)} km 인정'
-          '${course.completed ? ' · ${formatRunTime(Duration(seconds: course.courseElapsedSeconds))}' : ''}',
-          style: WdText.ko12.copyWith(color: WdColors.muted),
-        ),
-        if (course.shortfall != null) Text(course.shortfall!, style: WdText.ko12.copyWith(color: WdColors.muted)),
-        Text(
-          course.reviewEligible ? '이 코스에 리뷰를 남길 수 있어요.' : '코스를 20% 이상(최소 1km) 달리면 리뷰를 남길 수 있어요.',
-          style: WdText.ko12.copyWith(color: WdColors.muted),
-        ),
-      ],
-    ),
-  );
+  Widget build(BuildContext context) {
+    final c = course;
+    final (bg, fg, icon, title, detail) = switch (c) {
+      null => (WdColors.infoBg, WdColors.info, WdIcons.ghostInfo, '코스 완주 판정 대기', '기록을 올린 뒤 서버가 완주를 판정해요.'),
+      RunCourseResult(completed: true) => (
+        WdColors.limeSoft,
+        WdColors.green,
+        WdIcons.ghostSuccess,
+        '코스 완주 인정',
+        [?c.courseName, if (c.courseDistanceMeters > 0) '${(c.courseDistanceMeters / 1000).toStringAsFixed(1)} km 완주'].join(' · '),
+      ),
+      _ => (
+        WdColors.warningBg,
+        WdColors.warning,
+        WdIcons.ghostWarning,
+        '코스 완주 미인정',
+        '${c.shortfall}\n코스 ${(c.recognizedDistanceMeters / 1000).toStringAsFixed(1)} km(${c.progressPercent.floor()}%)까지 인정됐고 개인 기록으로 저장됐어요.',
+      ),
+    };
+    return WdSurface(
+      color: bg,
+      radius: WdRadius.r12,
+      padding: const EdgeInsets.symmetric(horizontal: WdSpace.s14, vertical: WdSpace.s12),
+      child: Row(
+        spacing: WdSpace.s10,
+        children: [
+          WdIcon(icon, size: 24),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: WdSpace.s2,
+              children: [
+                Text(title, style: WdText.run13W700H16.copyWith(color: fg)),
+                Text(detail, style: WdText.ko12.copyWith(color: WdColors.muted)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
