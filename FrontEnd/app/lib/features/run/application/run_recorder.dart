@@ -2,6 +2,8 @@ import 'dart:async';
 
 import '../data/run_local_store.dart';
 import '../domain/recording_models.dart';
+import '../domain/ghost_run.dart';
+import '../../../core/time/monotonic_clock.dart';
 
 class RunStorageFailure implements Exception {
   const RunStorageFailure(this.cause);
@@ -11,7 +13,13 @@ class RunStorageFailure implements Exception {
 }
 
 class RunRecorder {
-  RunRecorder(this.store, this.nowMs, {this.motionFiltering = true});
+  RunRecorder(
+    this.store,
+    this.nowMs, {
+    this.motionFiltering = true,
+    this.recoveryClock,
+  });
+  final Future<RunClockSample> Function()? recoveryClock;
   final bool motionFiltering;
   final RunStore store;
   final Future<int> Function() nowMs;
@@ -76,7 +84,7 @@ class RunRecorder {
     if (!active) return;
     final ms = await _elapsed();
     if (persist) {
-      await _persist(() => store.checkpoint(current!, ms));
+      await _saveCheckpoint(current!, ms, () => store.checkpoint(current!, ms));
       current!.checkpointMs = ms;
     }
     elapsedMs = ms;
@@ -249,6 +257,7 @@ class RunRecorder {
     );
     _autoResume.reset();
   });
+
   /// 코스 구간 종료(F6). 서버는 이 입력 전까지로 코스를 판정한다. 세션은 같은 상태로 계속된다
   Future<void> segmentEnd(String reason) => _serial(() async {
     if (!active) return;
@@ -269,18 +278,51 @@ class RunRecorder {
       [_input(RunKind.end, ms, reason: reason)],
       RunPhase.ended,
       ms,
-      pending: calculator.distanceM > 0,
+      pending: calculator.distanceM > 0 || current!.ghost!=null,
       reason: reason,
     );
     confirmingEnd = false;
   });
   Future<List<LocalRun>> recover(String owner, {bool summaryOnly = false}) =>
       _serial(() async {
+        if (active) {
+          if (current!.owner != owner) throw StateError('다른 계정의 러닝이 진행 중이에요.');
+          return store.list(owner, summaryOnly: summaryOnly);
+        }
         late List<LocalRun> runs;
         await _persist(() async {
           runs = await store.list(owner, unfinishedOnly: summaryOnly);
         });
         for (final run in runs.where((r) => r.phase != RunPhase.ended)) {
+          final reading = run.ghost == null ? null : await _readRecoveryClock();
+          final anchor = run.recoveryAnchor;
+          final since = anchor == null || reading == null
+              ? null
+              : reading.since(
+                  RunClockSample(anchor.checkpointClockMs, anchor.bootId),
+                );
+          if (run.ghost != null &&
+              anchor != null &&
+              since != null &&
+              since <= 60000 &&
+              anchor.originMs == run.ghost!.intent.clock.elapsedMs &&
+              anchor.bootId == run.ghost!.intent.clock.bootId &&
+              anchor.checkpointClockMs == anchor.originMs + run.checkpointMs &&
+              run.ghost!.intent.id == run.id &&
+              run.ghost!.intent.owner == run.owner &&
+              run.ghost!.intent.startedAt == run.startedAt) {
+            current = run;
+            calculator = RunCalculator.replay(run.inputs);
+            _originMs = anchor.originMs;
+            elapsedMs = run.checkpointMs;
+            _autoResume.reset();
+            confirmingEnd = false;
+            final ms = reading!.elapsedMs - _originMs;
+            await _commit(_recoveryGap(run, ms), run.phase, ms);
+            _pressureBoundaryMs = ms;
+            _lastPressureMs = -1;
+            continue;
+          }
           final ms = run.checkpointMs;
           final calc = RunCalculator.replay(run.inputs);
           final end = RunInput(
@@ -296,14 +338,14 @@ class RunRecorder {
               [end],
               RunPhase.ended,
               ms,
-              pending: calc.distanceM > 0,
+              pending: calc.distanceM > 0 || run.ghost!=null,
               endReason: 'INTERRUPTED',
             ),
           );
           run.inputs.add(end);
           run.phase = RunPhase.ended;
           run.endReason = 'INTERRUPTED';
-          run.pending = calc.distanceM > 0;
+          run.pending = calc.distanceM > 0 || run.ghost!=null;
         }
         return summaryOnly ? store.list(owner, summaryOnly: true) : runs;
       });
@@ -343,7 +385,9 @@ class RunRecorder {
     String? reason,
   }) async {
     final run = current!;
-    await _persist(
+    await _saveCheckpoint(
+      run,
+      ms,
       () => store.append(
         run,
         batch,
@@ -369,6 +413,125 @@ class RunRecorder {
     elapsedMs = ms;
     changes.add(null);
   }
+
+  Future<RunClockSample?> _readRecoveryClock() async {
+    try {
+      return await recoveryClock?.call();
+    } on Object {
+      return null;
+    }
+  }
+
+  Future<void> _saveCheckpoint(
+    LocalRun run,
+    int ms,
+    Future<void> Function() write,
+  ) async {
+    final before = run.recoveryAnchor;
+    run.recoveryAnchor = before?.at(ms);
+    try {
+      await _persist(write);
+    } on Object {
+      run.recoveryAnchor = before;
+      rethrow;
+    }
+  }
+
+  List<RunInput> _recoveryGap(LocalRun run, int ms) => [
+    RunInput(
+      seq: run.inputs.length,
+      kind: RunKind.gap,
+      elapsedMs: run.checkpointMs,
+      measuredAt: run.startedAt.add(Duration(milliseconds: run.checkpointMs)),
+      reason: 'PROCESS_RECOVERY',
+    ),
+    if (ms > run.checkpointMs)
+      RunInput(
+        seq: run.inputs.length + 1,
+        kind: RunKind.gap,
+        elapsedMs: ms,
+        measuredAt: run.startedAt.add(Duration(milliseconds: ms)),
+        reason: 'PROCESS_RECOVERY',
+      ),
+  ];
+
+  /// Receipt and START move from the pending ledger into one session transaction.
+  Future<bool> startGhost(
+    GhostRunContext context, {
+    bool recovering = false,
+    RunClockSample? checkpointClock,
+  }) => _serial(() async {
+    if (active) throw StateError('진행 중인 러닝이 있어요.');
+    final intent = context.intent;
+    final reading = await _readRecoveryClock();
+    final saved = checkpointClock ?? intent.clock;
+    final since = reading?.since(saved);
+    final liveElapsed = reading == null
+        ? null
+        : reading.elapsedMs - intent.clock.elapsedMs;
+    final canContinue =
+        since != null &&
+            since <= 60000 &&
+            reading!.bootId == intent.clock.bootId &&
+            saved.elapsedMs >= intent.clock.elapsedMs ||
+        !recovering &&
+            reading?.bootId == null &&
+            intent.clock.bootId == null &&
+            liveElapsed != null &&
+            liveElapsed >= 0 &&
+            liveElapsed <= 60000;
+    final run = LocalRun(
+      id: intent.id,
+      owner: intent.owner,
+      startedAt: intent.startedAt,
+      ghost: context,
+      recoveryAnchor: intent.clock.bootId == null
+          ? null
+          : RunRecoveryAnchor(
+              intent.clock.bootId!,
+              intent.clock.elapsedMs,
+              intent.clock.elapsedMs,
+            ),
+    );
+    final start = RunInput(
+      seq: 0,
+      kind: RunKind.start,
+      elapsedMs: 0,
+      measuredAt: run.startedAt,
+      reason: motionFiltering ? 'PACE_V3' : null,
+    );
+    await _persist(() => store.create(run, start));
+    run.inputs.add(start);
+    current = run;
+    calculator = RunCalculator()..add(start);
+    elapsedMs = 0;
+    _originMs = intent.clock.elapsedMs;
+    _pressureBoundaryMs = 0;
+    _lastPressureMs = -1;
+    _autoResume.reset();
+    confirmingEnd = false;
+    if (canContinue) {
+      final ms = reading!.elapsedMs - _originMs;
+      await _commit(_recoveryGap(run, ms), RunPhase.running, ms);
+      _pressureBoundaryMs = ms;
+      return true;
+    }
+    await _commit(
+      [
+        RunInput(
+          seq: 1,
+          kind: RunKind.end,
+          elapsedMs: 0,
+          measuredAt: run.startedAt,
+          reason: 'INTERRUPTED',
+        ),
+      ],
+      RunPhase.ended,
+      0,
+      reason: 'INTERRUPTED',
+    );
+    return false;
+  });
 
   Future<void> close() async {
     await _queue;

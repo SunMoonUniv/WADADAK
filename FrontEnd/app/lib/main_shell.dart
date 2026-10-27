@@ -25,7 +25,9 @@ class MainShell extends ConsumerWidget {
         // C5만 탭을 표시하고 H4/C4/D1-2는 피그마의 전체 화면을 쓴다.
         final fullScreen =
             shell.currentIndex == 1 &&
-            (run.preparing || run.snapshot.state != RunState.ready);
+            (run.preparing ||
+                run.courseStart != null ||
+                run.snapshot.state != RunState.ready);
         return Scaffold(
           body: HomeTabExits(atHome: shell.currentIndex == 0, child: shell),
           bottomNavigationBar: fullScreen

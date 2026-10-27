@@ -54,20 +54,28 @@ void main() {
     await tester.pump();
   }
 
-  testWidgets('course run tab shows C6 to pick a course instead of jumping to course select (RUN-03)', (tester) async {
-    await mount(tester);
-    await tester.tap(find.text('코스 러닝'));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'course run tab shows C6 to pick a course instead of jumping to course select (RUN-03)',
+    (tester) async {
+      await mount(tester);
+      await tester.tap(find.text('코스 러닝'));
+      await tester.pumpAndSettle();
 
-    expect(find.text('코스를 골라 주세요'), findsOneWidget);
-    expect(find.text('코스를 고르면 시작할 수 있어요'), findsOneWidget);
-    expect(tester.widget<RunHoldToStart>(find.byType(RunHoldToStart)).onStart, isNull);
+      expect(find.text('코스를 골라 주세요'), findsOneWidget);
+      expect(find.text('코스를 고르면 시작할 수 있어요'), findsOneWidget);
+      expect(
+        tester
+            .widget<WdButton>(find.widgetWithText(WdButton, '코스 러닝 시작'))
+            .onPressed,
+        isNull,
+      );
 
-    await tester.tap(find.text('자유 러닝'));
-    await tester.pumpAndSettle();
-    expect(find.text('자유 러닝 시작'), findsOneWidget);
-    expect(find.text('코스를 골라 주세요'), findsNothing);
-  });
+      await tester.tap(find.text('자유 러닝'));
+      await tester.pumpAndSettle();
+      expect(find.text('자유 러닝 시작'), findsOneWidget);
+      expect(find.text('코스를 골라 주세요'), findsNothing);
+    },
+  );
 
   testWidgets('short press and cancelled countdown create no session', (
     tester,

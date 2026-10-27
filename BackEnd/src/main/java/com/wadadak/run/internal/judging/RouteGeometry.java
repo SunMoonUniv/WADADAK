@@ -19,8 +19,13 @@ final class RouteGeometry {
     private final Point[] vertices;
     /** 출발점부터 각 꼭짓점까지 경로 길이(m). cumulative[0] = 0 */
     private final double[] cumulative;
+    private final java.util.Set<Integer> breaks;
 
     RouteGeometry(List<GeoPoint> route) {
+        this(route,List.of());
+    }
+    RouteGeometry(List<GeoPoint> route, List<Integer> breaks) {
+        this.breaks = java.util.Set.copyOf(breaks);
         if (route.size() < 2) {
             throw new IllegalArgumentException("경로는 점이 2개 이상이어야 합니다.");
         }
@@ -30,7 +35,7 @@ final class RouteGeometry {
         vertices = route.stream().map(this::toLocal).toArray(Point[]::new);
         cumulative = new double[vertices.length];
         for (int i = 1; i < vertices.length; i++) {
-            cumulative[i] = cumulative[i - 1] + vertices[i - 1].distanceTo(vertices[i]);
+            cumulative[i] = cumulative[i - 1] + (this.breaks.contains(i) ? 0 : vertices[i - 1].distanceTo(vertices[i]));
         }
     }
 
@@ -69,6 +74,7 @@ final class RouteGeometry {
     List<Projection> candidates(Point p, double tolerance) {
         List<Projection> found = new ArrayList<>();
         for (int i = 0; i < vertices.length - 1; i++) {
+            if (breaks.contains(i+1)) continue;
             Projection projection = project(p, i);
             if (projection.d() <= tolerance) {
                 found.add(projection);

@@ -19,7 +19,12 @@ public final class RunContracts {
     public record CourseStart(@NotNull Instant startedAt) {}
     /** 코스 러닝 준비 응답. 앱은 이 경로로 안내하고 기기에 저장한다 */
     public record CourseSnapshot(UUID sessionId, UUID courseId, String name, List<GeoPoint> route,
-                                 int totalDistanceMeters, long version) {}
+                                 int totalDistanceMeters, long version, List<Integer> breaks) {
+        public CourseSnapshot { breaks = breaks == null ? List.of() : List.copyOf(breaks); }
+        public CourseSnapshot(UUID sessionId, UUID courseId, String name, List<GeoPoint> route, int totalDistanceMeters, long version) {
+            this(sessionId,courseId,name,route,totalDistanceMeters,version,List.of());
+        }
+    }
     /**
      * 서버 코스 판정 결과(정책 제3부 5.1·5.3). 코스 러닝 기록에만 있다.
      *
@@ -70,13 +75,18 @@ public final class RunContracts {
     /** @param gpsGap GPS 코스 등록 끊긴 구간 판단(CourseApi.checkGpsGaps, F7 B6·결과 화면 "GPS 정확도 부족"). 처리 뒤 쓰기 트랜잭션 밖에서 채운다. 아직이면 null */
     public record Result(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt,
                          String endReason, Metrics metrics, List<List<GeoPoint>> routeSegments, List<Lap> laps,
-                         String policyVersion, String calculationVersion, ResultStats stats, CourseOutcome course, GpsGapCheck gpsGap) {
+                         String policyVersion, String calculationVersion, ResultStats stats, CourseOutcome course, GpsGapCheck gpsGap, GhostOutcome ghost) {
+        public Result(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason,
+                      Metrics metrics, List<List<GeoPoint>> routeSegments, List<Lap> laps, String policyVersion,
+                      String calculationVersion, ResultStats stats, CourseOutcome course, GpsGapCheck gpsGap) {
+            this(id,startedAt,endedAt,registeredAt,endReason,metrics,routeSegments,laps,policyVersion,calculationVersion,stats,course,gpsGap,null);
+        }
         public Result(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason,
                       Metrics metrics, List<List<GeoPoint>> routeSegments, List<Lap> laps, String policyVersion, String calculationVersion, ResultStats stats, CourseOutcome course) {
-            this(id,startedAt,endedAt,registeredAt,endReason,metrics,routeSegments,laps,policyVersion,calculationVersion,stats,course,null);
+            this(id,startedAt,endedAt,registeredAt,endReason,metrics,routeSegments,laps,policyVersion,calculationVersion,stats,course,null,null);
         }
         public Result withGpsGap(GpsGapCheck value) {
-            return new Result(id,startedAt,endedAt,registeredAt,endReason,metrics,routeSegments,laps,policyVersion,calculationVersion,stats,course,value);
+            return new Result(id,startedAt,endedAt,registeredAt,endReason,metrics,routeSegments,laps,policyVersion,calculationVersion,stats,course,value,ghost);
         }
         /** 자유 러닝 결과: 코스 판정 없음 */
         public Result(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason,
@@ -132,13 +142,31 @@ public final class RunContracts {
                                 List<String> unavailableReasons, GhostQuality quality,
                                 List<GhostSample> samples, List<GhostSpan> spans) {}
     /** After course preparation, approve one own opponent. Reuse every field when retrying. */
-    public record GhostStart(@NotNull UUID courseId, @NotNull @Min(0) Long courseVersion,
+    public record GhostStart(UUID courseId, @Min(0) Long courseVersion,
                              @NotNull UUID sourceRecordId, @NotNull Instant startedAt,
-                             @NotNull @Pattern(regexp="GHOST_PLAYBACK_V1") String playbackVersion) {}
+                             @NotNull @Pattern(regexp="GHOST_PLAYBACK_V1|GHOST_PLAYBACK_FREE_V1") String playbackVersion,
+                             @Size(max=64) String referenceHash) {
+        public GhostStart(UUID courseId, Long courseVersion, UUID sourceRecordId, Instant startedAt, String playbackVersion) {
+            this(courseId,courseVersion,sourceRecordId,startedAt,playbackVersion,null);
+        }
+    }
+    public record FreeGhostCandidate(UUID id, Instant startedAt, Instant registeredAt, String endReason,
+                                     double distanceM, long elapsedMs, boolean distanceEligible) {}
+    public record FreeGhostPage(List<FreeGhostCandidate> content, String nextCursor) {}
+    public record FreeGhostPreparation(GhostPlayback playback, double originalDistanceM,
+                                       long originalElapsedMs, String endReason, String referenceHash) {}
     /** Durable approval receipt, not the live running state or a completion verdict. */
     public record GhostStartApproval(String version, UUID sessionId, UUID sourceRecordId,
                                      Instant startedAt, Instant approvedAt, Instant courseValidatedAt,
                                      CourseSnapshot course, GhostPlayback playback) {}
+    public enum GhostVerdict { WIN, LOSE, DRAW, INVALID }
+    public enum GhostVerdictReason { COMPLETED_TIME_COMPARISON, VOLUNTARY_BEFORE_GHOST_FINISH,
+        VOLUNTARY_AFTER_GHOST_FINISH, INVOLUNTARY_INCOMPLETE, FINISH_NOT_CONFIRMED }
+    /** Immutable server summary. Replay is preserved for the duel and subsequent result comparison. */
+    public record GhostOutcome(String version, UUID sessionId, UUID sourceRecordId, GhostVerdict outcome, GhostVerdictReason reason,
+                                boolean completed, long courseElapsedSeconds, long sourceElapsedSeconds,
+                                long courseEndElapsedMs, long sourceDurationMs, String courseEndReason,
+                                Instant finalizedAt) {}
     /** 기록 목록 한 줄의 코스 요약(MY I1 카드 제목·완주·진행도·리뷰 쓰기·코스 상세). 자유 러닝이면 목록의 {@code course}가 null */
     public record CourseSummary(UUID courseId, String courseName, boolean completed, double progressPercent, boolean reviewEligible) {
         public static CourseSummary from(CourseOutcome course) {
@@ -147,9 +175,13 @@ public final class RunContracts {
         }
     }
     public record RecordSummary(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt,
-                                String endReason, Metrics metrics, ResultStats stats, CourseSummary course, GpsGapCheck gpsGap) {
+                                String endReason, Metrics metrics, ResultStats stats, CourseSummary course, GpsGapCheck gpsGap, GhostOutcome ghost) {
+        public RecordSummary(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason,
+                             Metrics metrics, ResultStats stats, CourseSummary course, GpsGapCheck gpsGap) {
+            this(id,startedAt,endedAt,registeredAt,endReason,metrics,stats,course,gpsGap,null);
+        }
         public RecordSummary(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason, Metrics metrics, ResultStats stats, CourseSummary course) {
-            this(id,startedAt,endedAt,registeredAt,endReason,metrics,stats,course,null);
+            this(id,startedAt,endedAt,registeredAt,endReason,metrics,stats,course,null,null);
         }
         public RecordSummary(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason, Metrics metrics, ResultStats stats) {
             this(id,startedAt,endedAt,registeredAt,endReason,metrics,stats,null);
@@ -159,7 +191,7 @@ public final class RunContracts {
         }
         public static RecordSummary from(Result result) {
             return new RecordSummary(result.id(),result.startedAt(),result.endedAt(),result.registeredAt(),result.endReason(),result.metrics(),result.stats(),
-                    CourseSummary.from(result.course()),result.gpsGap());
+                    CourseSummary.from(result.course()),result.gpsGap(),result.ghost());
         }
     }
 }

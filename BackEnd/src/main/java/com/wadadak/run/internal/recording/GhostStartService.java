@@ -16,15 +16,19 @@ class GhostStartService {
     private final GhostStartStore store;
     private final CourseApi courses;
     private final Clock clock;
+    private final FreeGhostService freeGhosts;
 
-    GhostStartService(GhostStartStore store, CourseApi courses, Clock clock) {
-        this.store = store; this.courses = courses; this.clock = clock;
+    GhostStartService(GhostStartStore store, CourseApi courses, Clock clock, FreeGhostService freeGhosts) {
+        this.store = store; this.courses = courses; this.clock = clock; this.freeGhosts=freeGhosts;
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public GhostStartApproval start(UUID owner, UUID id, GhostStart request) {
+        if(request.courseId()==null) return freeGhosts.start(owner,id,request);
         var saved = store.existing(owner, id, request);
         if (saved.isPresent()) return saved.get(); // No dependency on the original record/current course on retry.
+        if(request.courseVersion()==null || !"GHOST_PLAYBACK_V1".equals(request.playbackVersion()))
+            throw new com.wadadak.common.exception.AppException(com.wadadak.run.RunErrorCode.INVALID);
         CourseRouteSnapshot current;
         try {
             current = courses.getRouteForRun(request.courseId());

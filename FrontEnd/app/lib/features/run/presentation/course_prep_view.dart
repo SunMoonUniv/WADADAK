@@ -14,15 +14,18 @@ import '../domain/course_run.dart';
 import '../domain/run_models.dart';
 
 /// 고른 코스의 상세(경로·거리·난이도·현재 러너). 실패하면 카드에 이름만 보인다
-final runCourseDetailProvider = FutureProvider.autoDispose.family<CourseDetail, String>(
-  (ref, courseId) => ref.watch(courseApiClientProvider).courseDetail(courseId),
-  retry: (_, _) => null,
-);
+final runCourseDetailProvider = FutureProvider.autoDispose
+    .family<CourseDetail, String>(
+      (ref, courseId) =>
+          ref.watch(courseApiClientProvider).courseDetail(courseId),
+      retry: (_, _) => null,
+    );
 
 /// C6 달리기 준비 — 코스 러닝(Figma 1453:4196): 코스 카드 · 이 코스의 내 최고 기록 · 이탈 안내 한 줄.
 /// 고스트 대결 준비(C1)도 같은 부품(WdSelectedCourseCard · WdRecordCard)을 쓴다.
 class CourseRunPrep extends ConsumerWidget {
-  const CourseRunPrep({super.key, required this.course});
+  const CourseRunPrep({super.key, required this.course, this.ghost = false});
+  final bool ghost;
 
   /// 고른 코스. `코스 러닝` 탭에서 아직 안 골랐으면 null이고 C8로 고르게 한다(RUN-03)
   final CourseSelection? course;
@@ -34,9 +37,15 @@ class CourseRunPrep extends ConsumerWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('익숙한 코스, 새로운 기록.', style: WdText.ko22Bold),
+          Text(
+            ghost ? '지난 기록과 다시 달려보세요.' : '익숙한 코스, 새로운 기록.',
+            style: WdText.ko22Bold,
+          ),
           const SizedBox(height: WdSpace.s4),
-          Text('달릴 코스를 골라 주세요.', style: WdText.ko12.copyWith(color: WdColors.muted)),
+          Text(
+            '달릴 코스를 골라 주세요.',
+            style: WdText.ko12.copyWith(color: WdColors.muted),
+          ),
           const SizedBox(height: WdSpace.s8),
           GestureDetector(
             onTap: () => context.push(Routes.runCourseSelect),
@@ -54,13 +63,25 @@ class CourseRunPrep extends ConsumerWidget {
     final id = course.courseId;
     final detail = ref.watch(runCourseDetailProvider(id)).value;
     final rating = ref.watch(reviewSummaryProvider(id)).value?.averageRating;
-    final ranking = ref.watch(courseRankingProvider((courseId: id, period: RankingPeriod.all))).value;
+    final ranking = ghost
+        ? null
+        : ref
+              .watch(
+                courseRankingProvider((
+                  courseId: id,
+                  period: RankingPeriod.all,
+                )),
+              )
+              .value;
     final me = ranking?.me;
     final best = me?.courseElapsedSeconds;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text('익숙한 코스, 새로운 기록.', style: WdText.ko22Bold),
+        Text(
+          ghost ? '지난 기록과 다시 달려보세요.' : '익숙한 코스, 새로운 기록.',
+          style: WdText.ko22Bold,
+        ),
         const SizedBox(height: WdSpace.s4),
         Text(
           '${course.name}${objectParticle(course.name)} 따라 끝까지 달려보세요.',
@@ -84,23 +105,26 @@ class CourseRunPrep extends ConsumerWidget {
           onChange: () => context.push(Routes.runCourseSelect),
         ),
         const SizedBox(height: WdSpace.s8),
-        WdRecordCard(
-          overline: '코스 최고 기록',
-          title: '이 코스의 내 최고 기록',
-          time: best == null ? '—' : formatRunTime(Duration(seconds: best)),
-          caption: best == null
-              ? '아직 완주 기록이 없어요'
-              : '평균 페이스 ${formatRunPace(me!.paceSecondsPerKm?.toDouble())}',
-          footer: switch (me?.status) {
-            MyRankStatus.ranked => '코스 순위 ${me!.rank}위 / ${formatCount(ranking!.participantCount)}명',
-            MyRankStatus.private => '비공개 중 · 참여 ${formatCount(ranking!.participantCount)}명',
-            _ => '완주하면 코스 랭킹에 올라요',
-          },
-          onTap: () => context.push(
-            Routes.courseRankings(id),
-            extra: (courseName: course.name, period: RankingPeriod.all),
+        if (!ghost)
+          WdRecordCard(
+            overline: '코스 최고 기록',
+            title: '이 코스의 내 최고 기록',
+            time: best == null ? '—' : formatRunTime(Duration(seconds: best)),
+            caption: best == null
+                ? '아직 완주 기록이 없어요'
+                : '평균 페이스 ${formatRunPace(me!.paceSecondsPerKm?.toDouble())}',
+            footer: switch (me?.status) {
+              MyRankStatus.ranked =>
+                '코스 순위 ${me!.rank}위 / ${formatCount(ranking!.participantCount)}명',
+              MyRankStatus.private =>
+                '비공개 중 · 참여 ${formatCount(ranking!.participantCount)}명',
+              _ => '완주하면 코스 랭킹에 올라요',
+            },
+            onTap: () => context.push(
+              Routes.courseRankings(id),
+              extra: (courseName: course.name, period: RankingPeriod.all),
+            ),
           ),
-        ),
         const SizedBox(height: WdSpace.s8),
         Row(
           crossAxisAlignment: CrossAxisAlignment.start,

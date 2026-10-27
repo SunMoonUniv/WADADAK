@@ -18,7 +18,7 @@
 | `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `gps_course_sources`, `course_stats`, `course_daily_stats`, `course_active_runners`, `processed_events` |
 | `ranking` | ranking | `course_ranking_entries`, `distance_run_records`, `course_status_copies`, `member_visibility_copies`, `member_region_history`, `withdrawn_members` |
 | `review` | review | `reviews`, `review_photos`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
-| `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members`, `course_attempts`, `course_runner_counts`, `ghost_starts`, `ghost_start_playbacks` |
+| `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members`, `course_attempts`, `course_runner_counts`, `ghost_starts`, `ghost_start_playbacks`, `ghost_results`, `free_ghost_starts`, `free_ghost_results` |
 | `common` | common | `region`, `event_publication`, `shedlock`, `photo_uploads`, `flyway_schema_history` |
 
 notification 스키마는 아직 없다. 해당 모듈을 구현할 때 이 문서에 추가한다.
@@ -761,7 +761,7 @@ Flyway가 관리한다. 모든 모듈의 마이그레이션 이력을 여기 한
 
 ### 3.6 run
 
-자유 러닝의 종료 원본 업로드·재계산·기록 조회·삭제와 코스 러닝 시도(준비·시작·현재 러너 수·판정), 내 고스트 시작 승인·상대 고정을 담당한다. 아래 테이블은 모두 `created_at`·`updated_at`을 갖는다. 2026-10-14 보완 마이그레이션으로 컬럼을 추가한 기존 행은 마이그레이션 시각을 기본값으로 가지며, 실제 러닝 시각은 `started_at`·결과의 `endedAt`로 구분한다.
+자유 러닝의 종료 원본 업로드·재계산·기록 조회·삭제와 코스 러닝 시도(준비·시작·현재 러너 수·판정), 내 고스트 시작 승인·상대 고정·서버 승패와 결과 저장을 담당한다. 아래 테이블은 모두 `created_at`·`updated_at`을 갖는다. 2026-10-14 보완 마이그레이션으로 컬럼을 추가한 기존 행은 마이그레이션 시각을 기본값으로 가지며, 실제 러닝 시각은 `started_at`·결과의 `endedAt`로 구분한다.
 
 #### `run.sessions` — 종료 기록 수집·처리 상태
 
@@ -835,9 +835,26 @@ PK는 `(session_id, stream_seq)`, `session_id`만 같은 run 스키마 sessions�
 - 승인: `session_id` UUID PK, `source_record_id` UUID(인덱스·FK 없음), `started_at`/`approved_at`/`course_validated_at` TIMESTAMPTZ, `approval_version`/`playback_version`/`source_policy_version`/`source_calculation_version` VARCHAR(40), `source_elapsed_seconds`/`source_duration_ms` BIGINT. 코스 ID/경로/회원은 기존 시도에 보존하고 중복 복사하지 않는다. 원본 상대 삭제는 이미 승인된 대결을 지우지 않는다.
 - 상세: `session_id` UUID PK, `playback_json` TEXT. 총 소요 ms·코스 누적 위치·정지/공백의 파생 자료이며 상대 GPS 원본 스트림·회원 프로필은 저장하지 않는다.
 - 기존 회원→세션 잠금으로 시작/삭제/탈퇴를 직렬화한다. 승인·상세·기존 코스 시작/집계 이벤트는 같은 트랜잭션. 동일 요청 재전송은 승인/재생 자료를 그대로 읽고 새 이벤트를 내지 않는다.
-- 본인 대결 삭제·회원 탈퇴는 시도 삭제를 통해 두 테이블을 함께 정리한다. 요약의 최소 비교 시간/버전과 상세를 분리했다. **서버 최종 승패 확정 후 30일 상세 정리**는 후속 승패/보존 구현에 연결하며 시작일 기준으로 먼저 지우지 않는다. 이번 단계는 최종 승패를 확정하거나 만료 작업을 실행하지 않는다.
+- 본인 대결 삭제·회원 탈퇴는 시도 삭제를 통해 승인·상세와 아래 결과 요약을 함께 정리한다. 최소 비교 시간/버전과 상세를 분리했다. 최종 승패 저장은 아래 결과 구현에 연결한다. 자료는 기존 정책 9.1의 세션 종료 및 종료 후 결과 비교를 위해 보존하며 별도 기간 만료를 추가하지 않는다.
 
-계약과 경합 기준은 [고스트 시작 승인 계약](<run/고스트 시작 승인 계약 v1 - 2026-10-26.md>) 참조.
+계약과 경합 기준은 [고스트 시작 승인 계약](<run/고스트 시작 승인 계약 v1 - 2026-10-26.md>) 참조. 위 시작 승인 단계 이후의 최종 판정 저장은 아래 `ghost_results` 구현으로 연결한다.
+
+#### `run.ghost_results` — 고스트 서버 확정 요약 (2026-10-27)
+
+`V20261027_2000__run_ghost_results.sql`: `session_id UUID PK/FK→ghost_starts ON DELETE CASCADE`, `finalized_at TIMESTAMPTZ`, `result_json TEXT`, 공통 감사 컬럼. 기간 만료 컬럼·만료 조회 인덱스는 두지 않는다. 상대 원본 FK·GPS·재생 배열·프로필은 없다. 시작/상대의 최소 비교 시간·버전은 기존 승인 요약에 보존한다.
+
+result_json은 `GHOST_RESULT_V1` 버전, 본인 세션/상대 ID, WIN/LOSE/DRAW/INVALID, 판정 사유, 서버 완주 여부·코스 정수 초·상대 정수 초, 첫 구간 종료 원본 ms/사유·상대 완주 원본 ms, 최종 확정 시각이다. 양수 거리의 기존 `records.result_json`/`summary_json`에도 같은 선택 `ghost`를 넣는다(일반/과거 기록 null). 유효한 0거리 업로드는 일반 기록/등록 이벤트 없이 대결 요약만 저장하며 기존 ZERO_DISTANCE 상태를 유지한다.
+
+기존 회원→세션 잠금과 업로드 처리 트랜잭션에 참여한다. 중복/동시 처리로 판정·확정 시각을 갱신하지 않고 개인 기록 저장 실패는 대결 요약도 롤백한다. 본인 기록 삭제/탈퇴는 시도→승인→결과·상세를 연쇄 삭제한다. 요약·상세는 기존 보존 정책과 본인 기록 삭제/탈퇴 처리를 따르며 기간 경과만으로 자동 삭제하지 않는다. [서버 승패·결과 저장 계약](<run/고스트 서버 승패·결과 저장 계약 v1 - 2026-10-27.md>)
+
+#### `run.free_ghost_starts` · `run.free_ghost_results` — 코스 없는 내 자유 기록 대결 (2026-10-27)
+
+`V20261027_2100__run_free_ghosts.sql`로 추가한다. 등록 코스의 `course_attempts`·`ghost_starts`를 가짜 코스 ID로 채우지 않고 run 안의 세션과 연결한다. 두 테이블 모두 공통 `created_at`·`updated_at`을 갖는다.
+
+- `free_ghost_starts`: `session_id UUID PK/FK→sessions ON DELETE CASCADE`, `member_id UUID`(인덱스), `reference_hash VARCHAR(64)`, `approval_json TEXT`. 승인·경로 조각·상대 재생·원본 ID·대결 비교 시간의 불변 자료를 저장한다. 승인과 새 세션은 같은 트랜잭션으로 생성한다. 원본 기록 FK·타 모듈 FK·코스 이벤트·기간 만료 컬럼은 없다.
+- `free_ghost_results`: `session_id UUID PK/FK→free_ghost_starts ON DELETE CASCADE`, `finalized_at TIMESTAMPTZ`, `result_json TEXT`. `GHOST_RESULT_FREE_V1`을 저장하며 양수 거리의 일반 기록에도 같은 `ghost` 요약이 있다. `course`는 null이다. 유효한 0거리 종료는 개인 기록을 만들지 않고 별도 대결 판정만 보존한다.
+- 기준 자료의 `CourseSnapshot`은 run 내부 공용 경로 DTO 이름이다. 자유 대결은 `courseId=null`, 버전 1, `breaks`(각 새 경로 조각 시작 인덱스)를 사용한다. 저장된 GPS 공백을 직선으로 채우거나 등록 코스를 생성하지 않는다. 기존 코스 DTO의 생략된 `breaks`는 빈 배열로 읽는다.
+- 본인 대결 삭제/탈퇴는 세션 삭제를 통해 승인·결과를 연쇄 삭제한다. 상대 원본 삭제는 이미 승인된 자료를 바꾸지 않는다. 기존 등록 코스용 테이블·자료·보존 정책은 유지한다. [계약·구현](<run/내 자유 기록 고스트 계약·구현 - 2026-10-27.md>)
 
 #### 코스 판정 결과 `course` (2026-10-20)
 
@@ -845,7 +862,7 @@ PK는 `(session_id, stream_seq)`, `session_id`만 같은 run 스키마 sessions�
 
 #### 기기 SQLite와 서버 DB의 구분
 
-앱의 `runs_v1.db`(현재 스키마 v3)는 별개다. 파일명은 기존 기기 기록을 유지하기 위해 바꾸지 않는다. 서버의 미종료 세션 관리 DB가 아니라 통신 없이 측정·저장·복구할 원본 저장소이며, 서버 확정 전후 화면은 같은 기록 ID로 합친다.
+앱의 `runs_v1.db`(현재 스키마 v4)는 별개다. 파일명은 기존 기기 기록을 유지하기 위해 바꾸지 않는다. 서버의 미종료 세션 관리 DB가 아니라 통신 없이 측정·저장·복구할 원본 저장소이며, 서버 확정 전후 화면은 같은 기록 ID로 합친다.
 
 | 기기 테이블 | 저장 내용 |
 | --- | --- |
@@ -853,8 +870,13 @@ PK는 `(session_id, stream_seq)`, `session_id`만 같은 run 스키마 sessions�
 | `inputs` | `(session_id, seq)`별 원본 입력 JSON. 서버 등록 후에도 원본 유지 |
 | `run_settings` | 계정별 음성 안내 설정 |
 | `run_deletions` | `(owner, id)`별 삭제 ID와 서버 삭제 전송 대기 상태. 좌표·결과 없음 |
+| `ghost_start_intents` | 측정 전 고스트 시작 요청·승인 확인 원장. ID PK·owner UNIQUE, 불변 intent JSON·승인 JSON·마지막 저장 OS 시계 JSON. 로컬 START 저장 때 sessions로 원자적으로 이동 |
+| `ghost_closures` | `(id PK/FK→sessions ON DELETE CASCADE, owner)`별 코스 구간 종료 신호 재전송 대기. owner 인덱스. 본인 세션 삭제 시 함께 삭제 |
 
 - v3는 `sessions.summary TEXT`만 추가한다. v1→v2의 계정별 설정·삭제 테이블 이관도 유지한다. 기존 원본·결과·등록 시각·삭제 ID를 삭제하거나 새 계산 버전으로 다시 쓰지 않는다.
+- v4는 `sessions.ghost_context TEXT`(시작 요청+검증한 서버 승인/상대 파생 재생 자료), `recovery_anchor TEXT`(부팅 ID·시작 OS 경과 ms·저장 지점 OS 경과 ms)와 위 두 고스트 테이블을 추가한다. 새 checkpoint_ms와 시계 근거는 같은 쓰기로 저장한다. 기존 행은 null로 보존하며 종전 중단 마감 방식으로 복구한다. 상세 재생 자료는 목록용 summary에 포함하지 않는다.
+- 승인된 고스트만 같은 부팅·마지막 저장 후 0~60,000ms의 신뢰 가능한 경과시간으로 재개한다. 중단 구간은 GAP 입력으로 보존하며 GPS/거리를 보충하지 않는다. 일시정지·코스 구간 종료·입력 순번과 원래 시작 시각을 유지한다. 초과/재부팅/불명확한 시계는 저장 checkpoint에서 INTERRUPTED로 마감한다. [기기 복구 구현](<run/고스트 기기 저장·60초 재개 구현 - 2026-10-27.md>)
+- 자유 기록 대결은 같은 v4 저장소에 선택 `referenceHash`·null 코스 ID·FREE 승인/재생 버전과 경로 조각을 보존한다. 기존 v1 기기 JSON과 호환되며 등록 코스용 종료 신호는 생성하지 않는다. 0거리 대결도 판정을 조회할 때까지 동기화 대기로 보존하고 `/ghost/result`로 받은 승패를 표시한다. 일반 0거리 개인 기록의 목록/서버 제외 정책은 바꾸지 않는다.
 - 종료 입력·종료 상태·업로드 대기·기기 계산 요약은 같은 SQLite 트랜잭션으로 저장한다. 서버 확인 시 상세 결과와 서버 요약·동기화 완료도 같은 갱신으로 저장한다. 결과 ID가 다르면 저장하지 않는다.
 - 목록은 경로·랩을 제외한 `summary`와 상태 컬럼만 읽는다. 상세를 열 때 선택한 ID의 원본·서버 결과를 읽고, 동기화는 미전송 종료 기록만, 복구는 미종료 기록만 읽는다. 기존 기록의 요약이 비어 있으면 최초 조회에 한 번 생성한다. 저장된 서버 확정 결과가 있으면 그 값과 최초 등록 시각을 그대로 요약한다.
 - 기기에 삭제된 ID는 생성 단계에서도 재사용하지 못한다. 삭제 뒤 도착한 서버 응답은 행을 재생성하거나 삭제된 메모리 기록을 갱신하지 않는다. 삭제 ID는 서버 반영 후에도 유지한다.

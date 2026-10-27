@@ -13,12 +13,15 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 import '../application/course_run_entry.dart';
 import '../application/free_run_controller.dart';
 import '../domain/course_run.dart';
+import '../domain/own_ghost.dart';
+import '../domain/free_ghost.dart';
 import '../domain/run_models.dart';
 import 'course_deviation_alert.dart';
 import 'course_prep_view.dart';
 import 'course_start_view.dart';
 import 'free_run_live_view.dart';
 import 'free_run_result_view.dart';
+import 'ghost_prep_view.dart';
 
 /// C5 → H4 → C4 / 일시정지 → D1-2. 측정 상태는 화면 밖에서 유지한다.
 class FreeRunScreen extends ConsumerWidget {
@@ -28,6 +31,7 @@ class FreeRunScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final controller = ref.watch(freeRunControllerProvider);
     final courseTab = ref.watch(courseTabProvider);
+    final ghostTab = ref.watch(ghostTabProvider);
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
@@ -56,6 +60,10 @@ class FreeRunScreen extends ConsumerWidget {
                     onStart: controller.prepareStart,
                     onCancel: controller.cancelCourseStart,
                     error: controller.error,
+                    ghost:
+                        controller.selectedGhost != null ||
+                        controller.selectedFreeGhost != null,
+                    pendingGhost: controller.hasPendingGhostStart,
                   ),
                   RunState.ready => _Preparation(
                     onStart: controller.prepareStart,
@@ -67,12 +75,23 @@ class FreeRunScreen extends ConsumerWidget {
                     course: controller.selectedCourse,
                     courseMode: controller.selectedCourse != null || courseTab,
                     onCourseTab: ref.read(courseTabProvider.notifier).set,
+                    ghostMode:
+                        controller.selectedGhost != null ||
+                        controller.selectedFreeGhost != null ||
+                        ghostTab ||
+                        controller.hasPendingGhostStart,
+                    ghost: controller.selectedGhost,
+                    freeGhost: controller.selectedFreeGhost,
+                    pendingGhost: controller.hasPendingGhostStart,
+                    onGhostTab: ref.read(ghostTabProvider.notifier).set,
+                    onClearGhost: controller.clearGhost,
                     onClearCourse: controller.clearCourse,
                   ),
                   RunState.finished => FreeRunResultView(
                     run: run,
                     onConfirm: controller.newRun,
                     pendingCourse: controller.courseOf(run)?.name,
+                    onRetryGhost: controller.retrySync,
                   ),
                   _ => CourseDeviationAlert(
                     open: controller.deviationAlert,
@@ -82,6 +101,11 @@ class FreeRunScreen extends ConsumerWidget {
                       run: run,
                       course: controller.courseLive,
                       courseNotice: controller.courseNotice,
+                      ghostOpponent: controller.ghostOpponent,
+                      ghostPosition: controller.ghostComparison?.position,
+                      ghostGap: controller.ghostComparison == null
+                          ? null
+                          : '거리 ${controller.ghostComparison!.distance} · 시간 ${controller.ghostComparison!.time}',
                       onPause: controller.storageFault
                           ? null
                           : controller.pause,
@@ -124,14 +148,16 @@ class FreeRunScreen extends ConsumerWidget {
                 const SizedBox(height: WdSpace.s12),
                 Text(
                   onCourse
-                      ? '코스만 종료하면 코스 도전을 마치고 같은 기록을 자유 러닝으로 이어서 측정해요.'
+                      ? (controller.privateGhost
+                            ? '대결만 종료하면 같은 기록을 자유 러닝으로 이어서 측정해요.'
+                            : '코스만 종료하면 코스 도전을 마치고 같은 기록을 자유 러닝으로 이어서 측정해요.')
                       : '이번 러닝의 결과를 확인할 수 있어요.',
                   style: WdText.ko13.copyWith(color: WdColors.muted),
                 ),
                 const SizedBox(height: WdSpace.s24),
                 if (onCourse) ...[
                   WdButton(
-                    '코스만 종료',
+                    controller.privateGhost ? '대결만 종료' : '코스만 종료',
                     variant: WdButtonVariant.secondary,
                     onPressed: () => Navigator.pop(context, _EndChoice.course),
                   ),
@@ -171,11 +197,6 @@ class FreeRunScreen extends ConsumerWidget {
 
 enum _EndChoice { course, run }
 
-void _notReady(BuildContext context, String feature) {
-  ScaffoldMessenger.of(context)
-      .showSnackBar(SnackBar(content: Text('$feature 기능은 준비 중이에요.')));
-}
-
 /// Figma 1453:4123 — 준비 화면. 실제 기록 조회 연결 전에는 빈 최근 기록을 표시한다.
 class _Preparation extends StatelessWidget {
   const _Preparation({
@@ -187,6 +208,12 @@ class _Preparation extends StatelessWidget {
     this.courseMode = false,
     this.onCourseTab,
     this.onClearCourse,
+    this.ghostMode = false,
+    this.ghost,
+    this.freeGhost,
+    this.pendingGhost = false,
+    this.onGhostTab,
+    this.onClearGhost,
   });
   final VoidCallback onStart;
   final String? error;
@@ -200,6 +227,11 @@ class _Preparation extends StatelessWidget {
   final bool courseMode;
   final ValueChanged<bool>? onCourseTab;
   final VoidCallback? onClearCourse;
+  final bool ghostMode, pendingGhost;
+  final PreparedOwnGhost? ghost;
+  final PreparedFreeGhost? freeGhost;
+  final ValueChanged<bool>? onGhostTab;
+  final VoidCallback? onClearGhost;
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -221,19 +253,29 @@ class _Preparation extends StatelessWidget {
             WdSpace.s24,
             WdSpace.s12,
           ),
-          child: WdSegmentedControl(
-            items: const ['자유 러닝', '코스 러닝', '고스트 대결'],
-            selectedIndex: courseMode ? 1 : 0,
-            onChanged: (index) {
-              if (index == 0) {
-                onClearCourse?.call();
-                onCourseTab?.call(false);
-              } else if (index == 1) {
-                onCourseTab?.call(true);
-              } else if (index == 2) {
-                _notReady(context, '고스트 대결');
-              }
-            },
+          child: IgnorePointer(
+            ignoring: pendingGhost,
+            child: WdSegmentedControl(
+              items: const ['자유 러닝', '코스 러닝', '고스트 대결'],
+              selectedIndex: ghostMode
+                  ? 2
+                  : courseMode
+                  ? 1
+                  : 0,
+              onChanged: (index) {
+                if (index == 0) {
+                  onClearCourse?.call();
+                  onCourseTab?.call(false);
+                  onGhostTab?.call(false);
+                } else if (index == 1) {
+                  onClearGhost?.call();
+                  onGhostTab?.call(false);
+                  onCourseTab?.call(true);
+                } else if (index == 2) {
+                  onGhostTab?.call(true);
+                }
+              },
+            ),
           ),
         ),
         Expanded(
@@ -258,7 +300,15 @@ class _Preparation extends StatelessWidget {
                             WdButton('권한 설정 열기', onPressed: onSettings),
                           const SizedBox(height: WdSpace.s12),
                         ],
-                        if (courseMode) ...[
+                        if (ghostMode) ...[
+                          GhostRunPrep(
+                            course: course,
+                            ghost: ghost,
+                            freeGhost: freeGhost,
+                            onClearFree: onClearGhost,
+                            locked: pendingGhost,
+                          ),
+                        ] else if (courseMode) ...[
                           CourseRunPrep(course: course),
                         ] else ...[
                           Text('오늘은, 발길이 닿는 대로.', style: WdText.ko22Bold),
@@ -269,7 +319,7 @@ class _Preparation extends StatelessWidget {
                           ),
                           const SizedBox(height: WdSpace.s8),
                           const WdInfoBanner(
-                            '자유 러닝은 코스 기록 · 랭킹 · 고스트 대결에 반영되지 않아요.',
+                            '자유 러닝은 코스 랭킹에 반영되지 않아요. 저장된 1km 이상 기록은 내 고스트로 선택할 수 있어요.',
                             tone: WdBannerTone.warning,
                             plain: true,
                           ),
@@ -295,10 +345,14 @@ class _Preparation extends StatelessWidget {
                                     children: [
                                       Text(
                                         '정해진 길 없이, 자유롭게',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
                                         style: WdText.ko16Bold,
                                       ),
                                       Text(
                                         '시간과 거리, 페이스를 함께 기록해요',
+                                        maxLines: 2,
+                                        overflow: TextOverflow.ellipsis,
                                         style: WdText.ko12.copyWith(
                                           color: WdColors.muted,
                                         ),
@@ -309,92 +363,92 @@ class _Preparation extends StatelessWidget {
                               ],
                             ),
                           ),
-                        const SizedBox(height: WdSpace.s8),
-                        WdSurface(
-                          color: WdColors.dark,
-                          radius: WdRadius.r20,
-                          height: 178,
-                          padding: const EdgeInsets.all(WdSpace.s20),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Row(
-                                spacing: WdSpace.s10,
-                                children: [
-                                  WdSurface(
-                                    color: WdColors.darkCard,
-                                    radius: WdRadius.r12,
-                                    width: 42,
-                                    height: 42,
-                                    child: const Center(
-                                      child: WdIcon(WdIcons.brandGhost),
+                          const SizedBox(height: WdSpace.s8),
+                          WdSurface(
+                            color: WdColors.dark,
+                            radius: WdRadius.r20,
+                            height: 178,
+                            padding: const EdgeInsets.all(WdSpace.s20),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Row(
+                                  spacing: WdSpace.s10,
+                                  children: [
+                                    WdSurface(
+                                      color: WdColors.darkCard,
+                                      radius: WdRadius.r12,
+                                      width: 42,
+                                      height: 42,
+                                      child: const Center(
+                                        child: WdIcon(WdIcons.brandGhost),
+                                      ),
                                     ),
-                                  ),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      spacing: WdSpace.s3,
-                                      children: [
-                                        Text(
-                                          '지난 러닝',
-                                          style: WdText.run11W700H16.copyWith(
-                                            color: WdColors.grayLight,
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        spacing: WdSpace.s3,
+                                        children: [
+                                          Text(
+                                            '지난 러닝',
+                                            style: WdText.run11W700H16.copyWith(
+                                              color: WdColors.grayLight,
+                                            ),
                                           ),
-                                        ),
-                                        Text(
-                                          '최근 자유 러닝',
-                                          style: WdText.ko15Bold.copyWith(
-                                            color: WdColors.white,
+                                          Text(
+                                            '최근 자유 러닝',
+                                            style: WdText.ko15Bold.copyWith(
+                                              color: WdColors.white,
+                                            ),
                                           ),
-                                        ),
-                                      ],
+                                        ],
+                                      ),
                                     ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: WdSpace.s14),
-                              Text(
-                                recent == null
-                                    ? '아직 기록이 없어요'
-                                    : '${(recent!.distanceMeters / 1000).toStringAsFixed(2)} km',
-                                style: WdText.ko22Bold.copyWith(
-                                  color: WdColors.white,
+                                  ],
                                 ),
-                              ),
-                              const Spacer(),
-                              const ColoredBox(
-                                color: WdColors.darkLine,
-                                child: SizedBox(height: WdSpace.s1),
-                              ),
-                              const SizedBox(height: WdSpace.s14),
-                              Text(
-                                recent == null
-                                    ? '첫 자유 러닝을 시작해 보세요.'
-                                    : '총 소요 ${formatRunTime(recent!.elapsed)} · 기기 저장 완료',
-                                style: WdText.ko12.copyWith(
-                                  color: WdColors.grayLight,
+                                const SizedBox(height: WdSpace.s14),
+                                Text(
+                                  recent == null
+                                      ? '아직 기록이 없어요'
+                                      : '${(recent!.distanceMeters / 1000).toStringAsFixed(2)} km',
+                                  style: WdText.ko22Bold.copyWith(
+                                    color: WdColors.white,
+                                  ),
+                                ),
+                                const Spacer(),
+                                const ColoredBox(
+                                  color: WdColors.darkLine,
+                                  child: SizedBox(height: WdSpace.s1),
+                                ),
+                                const SizedBox(height: WdSpace.s14),
+                                Text(
+                                  recent == null
+                                      ? '첫 자유 러닝을 시작해 보세요.'
+                                      : '총 소요 ${formatRunTime(recent!.elapsed)} · 기기 저장 완료',
+                                  style: WdText.ko12.copyWith(
+                                    color: WdColors.grayLight,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: WdSpace.s8),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            spacing: WdSpace.s10,
+                            children: [
+                              const WdIcon(WdIcons.ghostInfo, size: 18),
+                              Expanded(
+                                child: Text(
+                                  '러닝 기록은 이 기기에 자동으로 저장돼요.',
+                                  style: WdText.ko12.copyWith(
+                                    color: WdColors.muted,
+                                  ),
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                        const SizedBox(height: WdSpace.s8),
-                        Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          spacing: WdSpace.s10,
-                          children: [
-                            const WdIcon(WdIcons.ghostInfo, size: 18),
-                            Expanded(
-                              child: Text(
-                                '러닝 기록은 이 기기에 자동으로 저장돼요.',
-                                style: WdText.ko12.copyWith(
-                                  color: WdColors.muted,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
                         ],
                         const SizedBox(height: WdSpace.s30),
                         const Spacer(),
@@ -405,14 +459,35 @@ class _Preparation extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: WdSpace.s8),
-                        RunHoldToStart(
-                          label: courseMode ? '코스 러닝 시작' : '자유 러닝 시작',
-                          onStart: courseMode && course == null ? null : onStart,
-                        ),
+                        if (ghostMode || courseMode)
+                          WdButton(
+                            pendingGhost
+                                ? '같은 고스트 시작 확인'
+                                : ghostMode
+                                ? '고스트 대결 시작'
+                                : '코스 러닝 시작',
+                            onPressed:
+                                pendingGhost ||
+                                    (ghostMode && freeGhost != null) ||
+                                    course != null &&
+                                        (!ghostMode || ghost != null)
+                                ? onStart
+                                : null,
+                          )
+                        else
+                          RunHoldToStart(label: '자유 러닝 시작', onStart: onStart),
                         const SizedBox(height: WdSpace.s8),
                         Center(
                           child: Text(
-                            courseMode && course == null ? '코스를 고르면 시작할 수 있어요' : '1초 길게 눌러 시작',
+                            pendingGhost
+                                ? '새 대결을 만들지 않고 기존 시작을 확인해요'
+                                : ghostMode && (course == null || ghost == null)
+                                ? '코스와 상대 기록을 고르면 시작할 수 있어요'
+                                : (ghostMode || courseMode) && course != null
+                                ? '출발점으로 이동한 뒤 시작해요'
+                                : courseMode
+                                ? '코스를 고르면 시작할 수 있어요'
+                                : '1초 길게 눌러 시작',
                             style: WdText.ko12.copyWith(color: WdColors.muted),
                           ),
                         ),

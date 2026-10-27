@@ -17,6 +17,7 @@ import java.util.stream.Collectors;
 /** Read-only F9 derivation from the immutable source and its original course snapshot. */
 public final class GhostPlaybackBuilder {
     public static final String VERSION = "GHOST_PLAYBACK_V1";
+    public static final String FREE_VERSION = "GHOST_PLAYBACK_FREE_V1";
     private static final String SOURCE_POLICY_VERSION = "2026-10-14";
     private static final double EPSILON = 1e-6;
 
@@ -40,6 +41,22 @@ public final class GhostPlaybackBuilder {
         if (!judgement.completed() || judgement.courseElapsedSeconds() != source.course().courseElapsedSeconds()
                 || !Objects.equals(judgement.completedAt(), source.course().completedAt()))
             return unavailable(source, snapshot, "SOURCE_RESULT_MISMATCH");
+        return compose(source,snapshot,inputs,analysis,VERSION);
+    }
+
+    public GhostPlayback buildReference(Result source, CourseSnapshot snapshot, List<Input> inputs) {
+        var analysis = new CourseJudge().analyze(snapshot.route(),snapshot.breaks(),inputs);
+        if (!analysis.judgement().completed()) return unavailableReference(source,snapshot,"REFERENCE_NOT_REPRODUCIBLE");
+        return compose(source,snapshot,inputs,analysis,FREE_VERSION);
+    }
+
+    public GhostPlayback unavailableReference(Result source, CourseSnapshot snapshot, String reason) {
+        return new GhostPlayback(source.id(),snapshot,FREE_VERSION,source.policyVersion(),source.calculationVersion(),
+                0,null,false,List.of(reason),null,List.of(),List.of());
+    }
+
+    private GhostPlayback compose(Result source, CourseSnapshot snapshot, List<Input> inputs,
+                                  CourseJudge.Analysis analysis, String version) {
         long duration = analysis.courseElapsedMs();
         var points = playbackSamples(analysis.samples(), inputs, duration);
         List<Pause> pauses = pauses(inputs, points, duration);
@@ -73,8 +90,8 @@ public final class GhostPlaybackBuilder {
         if (pauses.stream().anyMatch(p -> p.position == null)) reasons.add("PAUSE_POSITION_UNAVAILABLE");
         if (samples.isEmpty() || samples.getLast().elapsedMs() != duration || samples.getLast().coursePositionM() == null)
             reasons.add("FINISH_POSITION_UNAVAILABLE");
-        return new GhostPlayback(source.id(), snapshot, VERSION, source.policyVersion(), source.calculationVersion(),
-                source.course().courseElapsedSeconds(), duration, reasons.isEmpty(), List.copyOf(reasons),
+        return new GhostPlayback(source.id(), snapshot, version, source.policyVersion(), source.calculationVersion(),
+                analysis.judgement().courseElapsedSeconds(), duration, reasons.isEmpty(), List.copyOf(reasons),
                 new GhostQuality(active, totalGap, longest), samples, spans);
     }
 
