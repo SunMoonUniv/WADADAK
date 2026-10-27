@@ -15,6 +15,7 @@ import 'course_filter_screen.dart';
 import 'course_list_sheet.dart';
 import 'home_tab_exits.dart';
 import 'my_location.dart';
+import 'registered_course_focus.dart';
 
 /// 홈(A2). 위에 상단 배너(인사말 · 검색창), 아래에 지도, `＋ 코스 만들기`, 현재 위치 버튼, 코스 목록 시트가 있다.
 /// 지도는 축척에 따라 범위 안 코스(경로 · 이름표, A5)나 지역별 코스 수 배지(A4)를 보인다(MAP-02).
@@ -155,6 +156,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void initState() {
     super.initState();
+    // 홈 밖(달리기 결과의 D4)에서 코스를 등록하면 지도를 새 코스 출발점으로 옮긴다(B4-07과 같다). 줌은 그대로 둔다.
+    // 그때 홈은 D4에 가려져 있어 바로 옮긴다. 다른 하단 탭에서 왔으면 홈은 이미 처음 모습이다(FIL-08).
+    ref.listenManual(registeredCourseFocusProvider, (_, startPoint) {
+      if (startPoint == null) return;
+      ref.read(registeredCourseFocusProvider.notifier).done();
+      _map?.moveTo(startPoint, animate: false);
+    });
     _open();
   }
 
