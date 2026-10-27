@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:go_router/go_router.dart';
 import 'package:wadadak/core/api/course_api_client.dart';
 import 'package:wadadak/features/run/application/run_result_mapper.dart';
 import 'package:wadadak/features/run/domain/run_models.dart';
@@ -43,20 +44,24 @@ void main() {
   });
 
   Future<void> show(WidgetTester tester, RunSnapshot value, RegistrationQuota q) async {
+    final router = GoRouter(routes: [
+      GoRoute(path: '/', builder: (_, _) => Scaffold(body: CourseRegisterCard(run: value))),
+      GoRoute(path: '/course/new/gps/:recordId', builder: (_, s) => Text('D4 ${s.pathParameters['recordId']}')),
+    ]);
     await tester.pumpWidget(ProviderScope(
       overrides: [courseApiClientProvider.overrideWithValue(FakeCourseApi()..quota = q)],
-      child: MaterialApp(home: Scaffold(body: CourseRegisterCard(run: value))),
+      child: MaterialApp.router(routerConfig: router),
     ));
     await tester.pumpAndSettle();
   }
 
-  testWidgets('registrable record opens course registration', (tester) async {
+  testWidgets('registrable record opens course registration (D4)', (tester) async {
     await show(tester, run(), quota);
     expect(find.text('코스로 등록할 수 있어요'), findsOneWidget);
     expect(find.text('달린 경로가 그대로 코스가 돼요'), findsOneWidget);
     await tester.tap(find.text('코스로 등록'));
     await tester.pumpAndSettle();
-    expect(find.text('코스 정보 입력 화면은 준비 중이에요.'), findsOneWidget);
+    expect(find.text('D4 r1'), findsOneWidget);
   });
 
   testWidgets('used up daily quota shows the limit instead of moving on (B6-06)', (tester) async {
@@ -68,6 +73,7 @@ void main() {
     await tester.tap(find.text('코스로 등록'));
     await tester.pumpAndSettle();
     expect(find.textContaining('3개까지 등록할 수 있어요'), findsOneWidget);
+    expect(find.textContaining('D4'), findsNothing);
   });
 
   testWidgets('blocked record shows the reason and does nothing on tap', (tester) async {

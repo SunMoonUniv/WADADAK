@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../../../core/api/course_api_client.dart';
+import '../../../routes.dart';
 import '../domain/run_models.dart';
 
 /// 오늘 등록 한도와 GPS 코스 등록에 쓴 기록(`이미 등록됨`). 실패하면 막지 않고 D4 등록 때 서버가 다시 본다
@@ -22,7 +24,7 @@ String? registerBlocker(RunSnapshot run, RegistrationQuota? quota) {
 }
 
 /// Figma D1-2 "Register as course card" — 결과 화면의 `달린 경로로 코스 만들기`(정책 공통 3).
-/// 1km 미만 · 동기화 대기 · GPS 정확도 부족 · 이미 등록됨이면 비활성과 사유. 누르면 오늘 한도를 확인하고 D4로 간다
+/// 1km 미만 · 동기화 대기 · GPS 정확도 부족 · 이미 등록됨이면 비활성과 사유. 누르면 오늘 한도를 확인하고 D4(F7)로 간다
 class CourseRegisterCard extends ConsumerWidget {
   const CourseRegisterCard({super.key, required this.run});
   final RunSnapshot run;
@@ -41,8 +43,7 @@ class CourseRegisterCard extends ConsumerWidget {
       );
       return;
     }
-    // ponytail: D4(GPS 코스 정보 입력)는 F7이 만들면 그 경로로 연결한다
-    messenger.showSnackBar(const SnackBar(content: Text('코스 정보 입력 화면은 준비 중이에요.')));
+    if (context.mounted) context.push(Routes.gpsCourseInfo(run.sessionId!)); // 버튼이 켜졌으면 서버에 올린 기록이다
   }
 
   @override
