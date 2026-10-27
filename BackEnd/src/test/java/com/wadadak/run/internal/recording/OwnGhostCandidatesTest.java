@@ -37,6 +37,7 @@ class OwnGhostCandidatesTest {
     @Autowired JsonMapper json;
     @Autowired MockMvc mvc;
     @MockitoBean CourseApi courseApi;
+    @MockitoBean GpsGapWorker gpsGapWorker; // 1분마다 끊긴 구간 판단을 채우는 작업이 테스트 중에 돌지 않게
     @MockitoBean RunProcessingWorker processingWorker;
     @MockitoBean CourseRunReleaseWorker releaseWorker;
     @MockitoBean Clock clock;

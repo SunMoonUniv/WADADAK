@@ -32,6 +32,12 @@ class RunRecord extends BaseEntity<UUID> {
         this.summaryJson = summaryJson;
     }
 
+    /** 저장 뒤 더한 값(GPS 코스 등록 기준 등)을 채운다 */
+    void replaceJson(String resultJson, String summaryJson) {
+        this.resultJson = resultJson;
+        this.summaryJson = summaryJson;
+    }
+
     void markRegistrationPublished() {
         this.registrationPublished = true;
     }
