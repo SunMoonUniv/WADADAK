@@ -180,6 +180,9 @@ class FakeCourseApi implements CourseApiClient {
   /// G6에서 고른 검색어 · 지역([CourseSearchPick])은 이름에 검색어가 들어갔는지만 본다(코스에 지역 값이 없다).
   List<CourseListItem> onMap = [];
   ApiException? mapError;
+
+  /// 있으면 끝날 때까지 지도 범위 코스 응답을 미룬다. 끝난 뒤의 [mapError] · [onMap]으로 답한다.
+  Completer<void>? mapGate;
   final mapRequests = <({GeoPoint southWest, GeoPoint northEast, CourseFilter filter, CourseSearchPick? pick})>[];
 
   /// 지도 범위 · 단위 · 필터와 상관없이 돌려줄 지역별 코스 수.
@@ -248,6 +251,7 @@ class FakeCourseApi implements CourseApiClient {
     CourseSearchPick? pick,
   }) async {
     mapRequests.add((southWest: southWest, northEast: northEast, filter: filter, pick: pick));
+    if (mapGate case final gate?) await gate.future;
     if (mapError != null) throw mapError!;
     final courses = [for (final course in onMap) if (matches(course, filter) && _picked(course, pick)) course];
     return CourseMap(totalCount: courses.length, courses: courses);

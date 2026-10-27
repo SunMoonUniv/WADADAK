@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -6,6 +7,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wadadak/core/api/api_client.dart';
 import 'package:wadadak/core/api/course_api_client.dart';
 import 'package:wadadak/core/api/member_api_client.dart';
+import 'package:wadadak/core/auth/auth_controller.dart';
 import 'package:wadadak/core/auth/social_login.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/map/dev_map_view.dart';
@@ -171,6 +173,52 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.widgetWithText(WdMapCourseLabel, '성북천 벚꽃길 3K'), findsOneWidget);
+  });
+
+  testWidgets('closes the failure notice once the courses load', (tester) async {
+    courses.mapError = const ApiException(ApiException.network, '네트워크에 연결할 수 없어요.');
+    await openHome(tester);
+    expect(find.text(failedMessage), findsOneWidget);
+
+    // `다시 시도`를 누르지 않고 지도를 움직여 받아도 닫는다. 그대로 두면 다른 화면에도 남는다.
+    courses
+      ..mapError = null
+      ..onMap = [seongbukcheon];
+    await moveMap(tester);
+
+    expect(find.widgetWithText(WdMapCourseLabel, '성북천 벚꽃길 3K'), findsOneWidget);
+    expect(find.text(failedMessage), findsNothing);
+  });
+
+  testWidgets('does not blame the network when the login has ended', (tester) async {
+    // 리프레시 토큰도 만료되면 앱이 로그아웃한 뒤 원래 요청의 401을 넘긴다(AuthInterceptor).
+    courses.mapGate = Completer();
+    await openHome(tester);
+    final container = ProviderScope.containerOf(tester.element(find.byType(MapView)));
+    courses.mapError = const ApiException('COMMON-002', '인증이 필요합니다.', status: 401);
+    container.read(authControllerProvider.notifier).sessionExpired();
+    courses.mapGate!.complete();
+
+    await tester.pump();
+    expect(find.text(failedMessage), findsNothing, reason: '로그인 화면으로 가는 중에 알림을 띄우지 않는다');
+    await tester.pumpAndSettle();
+    expect(find.text('카카오 로그인'), findsOneWidget);
+    expect(find.text(failedMessage), findsNothing);
+  });
+
+  testWidgets('closes the failure notice when home goes away', (tester) async {
+    courses.mapError = const ApiException(ApiException.network, '네트워크에 연결할 수 없어요.');
+    await openHome(tester);
+    expect(find.text(failedMessage), findsOneWidget);
+
+    // 다른 요청에서 로그인이 끝나 로그인 화면으로 간다. 알림의 `다시 시도`가 가리킬 홈이 없어진다.
+    ProviderScope.containerOf(tester.element(find.byType(MapView)))
+        .read(authControllerProvider.notifier)
+        .sessionExpired();
+    await tester.pumpAndSettle();
+
+    expect(find.text('카카오 로그인'), findsOneWidget);
+    expect(find.text(failedMessage), findsNothing, reason: '다시 로그인해도 지난 홈의 알림이 남지 않는다');
   });
 
   testWidgets('keeps the courses it has when a later load fails', (tester) async {
