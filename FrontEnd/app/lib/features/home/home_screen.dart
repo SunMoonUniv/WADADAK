@@ -7,7 +7,7 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/api/course_api_client.dart';
-import '../../core/error_message.dart';
+import '../../core/auth/auth_controller.dart';
 import '../../core/map/map_view.dart';
 import '../../routes.dart';
 import '../course/course_format.dart';
@@ -63,6 +63,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   /// [_regions]를 센 단위(시 · 구). 배지를 누르면 다음 단계로 확대한다.
   var _regionsLevel = RegionLevel.city;
   var _loaded = false;
+
+  /// 처음 조회가 실패했다는 알림(QST-02)과 그 알림을 띄운 곳. `다시 시도` 버튼이 있어 저절로 닫히지 않고 다른 화면에도
+  /// 남으므로, 코스를 받거나 홈이 없어지면(로그아웃 등) 닫는다. 닫히면 null이다.
+  ({ScaffoldMessengerState messenger, ScaffoldFeatureController<SnackBar, SnackBarClosedReason> notice})? _loadFailed;
 
   /// 지도가 센 범위 안 코스 수(시트 제목 `지금 달리기 좋은 코스 N`). 아직 모르면 null.
   int? _totalCount;
@@ -168,6 +172,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   @override
   void dispose() {
+    // 홈이 없어지면(로그아웃 등) 알림의 `다시 시도`가 없어진 홈을 가리키므로 알림도 닫는다.
+    // 위젯 트리를 정리하는 중이라 이 프레임이 끝난 뒤 닫는다.
+    if (_loadFailed != null) WidgetsBinding.instance.addPostFrameCallback((_) => _closeLoadFailed());
     _sheet.dispose();
     super.dispose();
   }
@@ -556,6 +563,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           (regions, total) = (counts.regions, counts.totalCount);
       }
       if (!mounted || request != _request) return;
+      _closeLoadFailed();
       setState(() {
         _courses = courses;
         _regions = regions;
@@ -563,11 +571,36 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
         _totalCount = total;
         _loaded = true;
       });
-    } on ApiException catch (e) {
+    } on ApiException {
       // 처음 조회가 실패하면 알리고 다시 시도하게 한다. 그 뒤 갱신이 실패하면 전에 받은 것을 둔다(QST-02 · STA-02).
       if (!mounted || request != _request || _loaded) return;
-      showError(context, e, message: _loadFailedMessage, onRetry: () => _load(_camera ?? camera));
+      // 로그인이 끝났으면(리프레시 토큰도 만료) 로그인 화면으로 가는 중이다. 네트워크 문제가 아니므로 알리지 않는다.
+      // 401만 보지 않는다. 토큰 갱신이 통신 오류로 실패해도 401이 오고, 그때는 로그인이 그대로다.
+      if (ref.read(authControllerProvider).value is SignedOut) return;
+      _showLoadFailed(camera);
     }
+  }
+
+  /// 처음 조회 실패 알림. 오류 알림(`showError`)과 같은 모양이고, 나중에 닫으려고 직접 띄운다.
+  void _showLoadFailed(MapCamera camera) {
+    final messenger = ScaffoldMessenger.of(context)..hideCurrentSnackBar();
+    final notice = messenger.showSnackBar(SnackBar(
+      content: const Text(_loadFailedMessage),
+      action: SnackBarAction(label: '다시 시도', onPressed: () => _load(_camera ?? camera)),
+    ));
+    final shown = (messenger: messenger, notice: notice);
+    _loadFailed = shown;
+    notice.closed.then((_) {
+      if (_loadFailed == shown) _loadFailed = null;
+    });
+  }
+
+  /// 처음 조회 실패 알림이 아직 떠 있으면 닫는다. 홈이 없어진 뒤에도 부를 수 있게 띄운 곳으로 닫는다.
+  void _closeLoadFailed() {
+    final shown = _loadFailed;
+    if (shown == null) return;
+    _loadFailed = null;
+    if (shown.messenger.mounted) shown.messenger.hideCurrentSnackBar();
   }
 
   /// 시트를 [size]로 옮긴다.
