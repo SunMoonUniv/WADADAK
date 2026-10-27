@@ -81,10 +81,25 @@ public class Course extends BaseEntity<UUID> {
      */
     public static Course registerCustom(UUID creatorId, String name, Difficulty difficulty, Set<CourseTag> tags,
                                         LineString route, int distanceMeters, String emdCode, Instant expiresAt) {
+        return register(CourseType.CUSTOM, creatorId, name, difficulty, tags, route, distanceMeters, emdCode, expiresAt);
+    }
+
+    /**
+     * GPS 주행 등록 코스. 사용자 지정 코스처럼 바로 공개된다(D4).
+     *
+     * @param route 러닝 기록 경로 조각을 잇고 점을 줄인 경로. SRID 4326, 첫 점이 출발점이 된다
+     */
+    public static Course registerGps(UUID creatorId, String name, Difficulty difficulty, Set<CourseTag> tags,
+                                     LineString route, int distanceMeters, String emdCode, Instant expiresAt) {
+        return register(CourseType.GPS, creatorId, name, difficulty, tags, route, distanceMeters, emdCode, expiresAt);
+    }
+
+    private static Course register(CourseType type, UUID creatorId, String name, Difficulty difficulty, Set<CourseTag> tags,
+                                   LineString route, int distanceMeters, String emdCode, Instant expiresAt) {
         Course course = new Course();
         course.id = UuidV7.create();
         course.creatorId = creatorId;
-        course.courseType = CourseType.CUSTOM;
+        course.courseType = type;
         course.name = CourseName.display(name);
         course.nameKey = CourseName.key(name);
         course.difficulty = difficulty;

@@ -15,7 +15,7 @@
 | 스키마 | 모듈 | 테이블 |
 | --- | --- | --- |
 | `member` | member | `members`, `agreements`, `refresh_tokens`, `region_event_backfill` |
-| `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `course_stats`, `course_daily_stats`, `course_active_runners`, `processed_events` |
+| `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `gps_course_sources`, `course_stats`, `course_daily_stats`, `course_active_runners`, `processed_events` |
 | `ranking` | ranking | `course_ranking_entries`, `distance_run_records`, `course_status_copies`, `member_visibility_copies`, `member_region_history`, `withdrawn_members` |
 | `review` | review | `reviews`, `review_photos`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
 | `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members`, `course_attempts`, `course_runner_counts`, `ghost_starts`, `ghost_start_playbacks` |
@@ -38,7 +38,7 @@ notification 스키마는 아직 없다. 해당 모듈을 구현할 때 이 문�
 - 실선: 같은 스키마 안의 FK
 - 점선: 다른 모듈(스키마)의 ID를 값으로만 저장한 참조. FK 없음
 - 모든 엔티티 테이블에 있는 `created_at`·`updated_at`은 생략했다. `common`의 인프라 테이블(`event_publication`, `shedlock`, `photo_uploads`, `flyway_schema_history`)은 다른 테이블과 관계가 없어 3.5에서만 설명한다.
-- `course_ranking_entries.run_record_id`, `course_run_records.run_record_id`, `reviews.source_run_record_id`는 run 모듈의 러닝 기록 ID다. 아래 `run_records`에 점선으로 연결했다. 다른 스키마이므로 FK는 없다.
+- `course_ranking_entries.run_record_id`, `course_run_records.run_record_id`, `reviews.source_run_record_id`, `gps_course_sources.run_record_id`는 run 모듈의 러닝 기록 ID다. 아래 `run_records`에 점선으로 연결했다. 다른 스키마이므로 FK는 없다.
 - `course_status_copies`·`withdrawn_members`는 ranking과 review에 같은 이름으로 있다. ERD에서는 review 쪽을 `review_` 접두사로 구분했다.
 
 ```mermaid
@@ -47,12 +47,14 @@ erDiagram
     members ||--o{ refresh_tokens : "member_id"
     members ||--o| region_event_backfill : "member_id"
     courses ||--o{ registration_requests : "course_id"
+    courses ||--o| gps_course_sources : "course_id"
     courses ||--o| course_stats : "course_id"
     courses ||--o{ course_daily_stats : "course_id"
     courses ||--o| course_active_runners : "course_id"
     members ||..o{ courses : "creator_id"
     members ||..o{ daily_registration_counts : "member_id"
     members ||..o{ registration_requests : "member_id"
+    members ||..o{ gps_course_sources : "member_id"
     region ||..o{ members : "region_code"
     region ||..o{ courses : "emd_code, sigungu_code, sido_code"
     courses ||..o{ course_ranking_entries : "course_id"
@@ -139,6 +141,12 @@ erDiagram
         uuid member_id "member ID"
         uuid idempotency_key
         uuid course_id FK
+    }
+    gps_course_sources {
+        uuid course_id PK "FK"
+        uuid run_record_id UK "run 기록 ID"
+        uuid member_id "member ID"
+        text source_segments_json "원본 경로 조각"
     }
     course_stats {
         uuid course_id PK "FK"
@@ -252,6 +260,7 @@ erDiagram
     run_records ||..o| course_ranking_entries : "run_record_id"
     run_records ||..o| course_run_records : "run_record_id"
     run_records ||..o| distance_run_records : "run_record_id"
+    run_records ||..o| gps_course_sources : "run_record_id"
     members ||..o{ distance_run_records : "member_id"
     run_sessions {
         UUID id PK
@@ -427,7 +436,7 @@ erDiagram
 | `courses_expires_at_idx` | `expires_at` | `ACTIVE` | 만료 배치 |
 | `courses_hidden_at_idx` | `hidden_at` | `HIDDEN` | 숨긴 지 24시간 지난 코스 삭제 배치 |
 
-- 지금은 사용자 지정(`CUSTOM`) 코스 등록만 행을 만든다. 만료 배치(1분마다 만료된 코스를 `HIDDEN`, 숨긴 지 24시간 지나면 `DELETED`)는 있고, GPS 코스 등록과 등록자 삭제는 아직 없다.
+- 사용자 지정(`CUSTOM`)과 GPS 주행 등록(`GPS`)이 행을 만든다. GPS 코스의 `route`는 러닝 기록 경로 조각을 잇고 점을 줄인 경로이고, 원본은 `gps_course_sources`에 있다. 만료 배치(1분마다 만료된 코스를 `HIDDEN`, 숨긴 지 24시간 지나면 `DELETED`)는 있고, 등록자 삭제는 아직 없다.
 
 #### `course.daily_registration_counts` — 일일 등록 수
 
@@ -455,6 +464,19 @@ erDiagram
 - `registration_requests_uk`: `UNIQUE (member_id, idempotency_key)`. 같은 키로 다시 요청하면 새로 만들지 않고 이 코스를 돌려준다.
 - `registration_requests_created_at_idx`: `(created_at)`. 24시간 지난 행을 지우는 데 쓴다.
 - 24시간 지난 행을 지우는 배치는 아직 없다.
+
+#### `course.gps_course_sources` — GPS 코스 출처
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `course_id` | `UUID` | | PK, FK → `courses.id`. GPS 주행 등록 코스 |
+| `run_record_id` | `UUID` | | 코스로 만든 러닝 기록 ID(run 모듈, FK 없음) |
+| `member_id` | `UUID` | | 등록한 회원 ID(member 모듈, FK 없음) |
+| `source_segments_json` | `TEXT` | | 앱이 보낸 원본 경로 조각(course-source `segments`) JSON. 점마다 위도·경도·정확도·고도·고도 정확도 |
+
+- `gps_course_sources_run_record_uk`: `UNIQUE (run_record_id)`. 같은 러닝 기록은 한 번만 코스로 만든다(`COURSE-010`). 코스 행은 지워져도 `DELETED`로 남으므로 이 행도 지우지 않아, 코스가 지워지거나 만료돼도 그 기록은 다시 쓰지 않는다.
+- `gps_course_sources_member_id_idx`: `(member_id)`. 등록 한도 API의 `usedRunRecordIds`(B6·결과 화면 `이미 등록됨`)
+- `courses.route`는 점을 줄인 경로라 고도를 다시 만들 수 없다. 원본은 보류한 고도 프로필을 나중에 만들 때 쓰고 화면에는 쓰지 않는다. 크기가 커서 `courses`와 따로 둔다.
 
 #### `course.course_stats` — 코스 누적 통계
 
