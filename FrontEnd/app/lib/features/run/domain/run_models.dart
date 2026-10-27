@@ -93,10 +93,14 @@ class RunSnapshot {
     this.resultStats,
     this.liveElevationGainM,
     this.course,
+    this.gpsGapPassed,
   }) : inputs = List.unmodifiable(inputs);
 
   /// 서버 코스 판정. 코스 러닝 기록을 서버가 처리한 뒤에만 있다
   final RunCourseResult? course;
+
+  /// 서버의 GPS 코스 등록 끊긴 구간 판단(`gpsGap.passed`). 판단 전·업로드 전이면 null
+  final bool? gpsGapPassed;
 
   final RunState state;
   final String? sessionId;
