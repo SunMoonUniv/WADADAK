@@ -228,7 +228,7 @@ class _Preparation extends StatelessWidget {
   final ValueChanged<bool>? onCourseTab;
   final VoidCallback? onClearCourse;
   final bool ghostMode, pendingGhost;
-  final PreparedOwnGhost? ghost;
+  final PreparedCourseGhost? ghost;
   final PreparedFreeGhost? freeGhost;
   final ValueChanged<bool>? onGhostTab;
   final VoidCallback? onClearGhost;

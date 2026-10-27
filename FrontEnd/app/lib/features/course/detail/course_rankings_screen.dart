@@ -41,12 +41,6 @@ class _CourseRankingsScreenState extends ConsumerState<CourseRankingsScreen> {
   /// 마지막으로 보인 순위와 그 기간.
   (RankingPeriod, CourseRankingFeed)? _shown;
 
-  void _notReady() {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text(CourseRunBar.ghostNotReadyMessage)));
-  }
-
   @override
   Widget build(BuildContext context) {
     final provider = courseRankingFeedProvider((courseId: widget.courseId, period: _period));
@@ -95,7 +89,9 @@ class _CourseRankingsScreenState extends ConsumerState<CourseRankingsScreen> {
         ranking: feed.whenData((feed) => feed.summary),
         period: _period,
         onRun: () => runCourse(context, ref, CourseSelection(widget.courseId, widget.courseName)),
-        onGhost: (_) => _notReady(),
+        onGhost: (candidate) => runPublicGhost(
+          context, ref, CourseSelection(widget.courseId, widget.courseName), candidate, _period,
+        ),
       ),
     );
   }

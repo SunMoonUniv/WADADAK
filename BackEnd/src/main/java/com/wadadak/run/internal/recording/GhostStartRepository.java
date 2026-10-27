@@ -33,20 +33,24 @@ class GhostStartRepository {
                 new CourseSnapshot(id, rs.getObject("course_id", UUID.class), rs.getString("course_name"),
                     List.of(json.readValue(rs.getString("route_json"), GeoPoint[].class)),
                     rs.getInt("total_distance_meters"), rs.getLong("course_version")),
-                json.readValue(rs.getString("playback_json"), GhostPlayback.class)), id).stream().findFirst();
+                json.readValue(rs.getString("playback_json"), GhostPlayback.class),
+                rs.getString("public_period")==null?null:com.wadadak.ranking.RankingPeriod.valueOf(rs.getString("public_period"))), id).stream().findFirst();
     }
 
     void save(GhostStartApproval approval) {
+        save(approval,approval.playback().course().version());
+    }
+    void save(GhostStartApproval approval,Long sourceCourseVersion) {
         db.update("""
                 INSERT INTO run.ghost_starts(session_id, source_record_id, started_at, approved_at,
                     course_validated_at, approval_version, playback_version, source_policy_version,
-                    source_calculation_version, source_elapsed_seconds, source_duration_ms)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    source_calculation_version, source_elapsed_seconds, source_duration_ms, public_period,source_course_version)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, approval.sessionId(), approval.sourceRecordId(), Timestamp.from(approval.startedAt()),
                 Timestamp.from(approval.approvedAt()), Timestamp.from(approval.courseValidatedAt()), approval.version(),
                 approval.playback().version(), approval.playback().sourcePolicyVersion(),
                 approval.playback().sourceCalculationVersion(), approval.playback().courseElapsedSeconds(),
-                approval.playback().durationMs());
+                approval.playback().durationMs(),approval.publicPeriod()==null?null:approval.publicPeriod().name(),sourceCourseVersion);
         db.update("INSERT INTO run.ghost_start_playbacks(session_id, playback_json) VALUES (?, ?)",
                 approval.sessionId(), json.writeValueAsString(approval.playback()));
     }

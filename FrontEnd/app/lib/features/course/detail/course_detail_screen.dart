@@ -23,7 +23,7 @@ import 'course_run_bar.dart';
 /// B1 코스 상세 — 정보 · B8 리뷰 · B9 랭킹 탭. 코스 정보는 코스 API, 평점 · 리뷰 수 · 러너 평가 · 리뷰는 리뷰 API,
 /// 랭킹 · 고스트는 랭킹 API에서 받는다(B1-01).
 ///
-/// - 이 코스로 달리기는 그 코스를 골라 달리기 탭의 코스 러닝(C6)으로 간다. 고스트 대결(C1)은 아직 없어 누르면 준비 중이라고 알린다.
+/// - 이 코스로 달리기는 코스 러닝(C6)으로, 고스트 대결은 선택 기간의 공개 상대 검증 후 기존 대결 준비로 간다.
 /// - 평균 페이스 · 현재 러너는 코스 API(코스 통계 F11)에서 받는다. 고도 프로필은 보류해서 GPS 코스에도 아직 없다(정책 문서 4.1 B1 범위).
 /// - 공유(B1-08)는 공유 링크를 정할 때까지 두지 않는다.
 /// - 비공개 · 삭제된 코스는 열지 않는다(B1-04).
@@ -114,12 +114,6 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
           code == CourseApiClient.courseNotFoundCode || code == CourseApiClient.courseNotAvailableCode,
         _ => false,
       };
-
-  void _notReady(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
-  }
 
   void _onTab(int index) {
     setState(() {
@@ -281,7 +275,10 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
         ranking: _tab == 2 ? ranking : allRanking,
         period: _tab == 2 ? _rankingPeriod : RankingPeriod.all,
         onRun: () => runCourse(context, ref, CourseSelection(course.courseId, course.name)),
-        onGhost: (_) => _notReady(CourseRunBar.ghostNotReadyMessage),
+        onGhost: (candidate) => runPublicGhost(
+          context, ref, CourseSelection(course.courseId, course.name),
+          candidate, _tab == 2 ? _rankingPeriod : RankingPeriod.all,
+        ),
       ),
     );
   }

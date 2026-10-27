@@ -15,6 +15,7 @@ class GhostStartIntent {
     required this.sourceSeconds,
     required this.clock,
     this.referenceHash,
+    this.publicPeriod,
   }) {
     if (owner.isEmpty ||
         id.isEmpty ||
@@ -28,12 +29,16 @@ class GhostStartIntent {
         course.version! < 0 ||
         course.route.length < 2 ||
         sourceSeconds < 0 ||
-        clock.elapsedMs < 0) {
+        clock.elapsedMs < 0 ||
+        (publicPeriod != null &&
+            (course.courseId == null ||
+                !['ALL', 'MONTH', 'WEEK'].contains(publicPeriod)))) {
       throw const FormatException('고스트 시작 정보가 일치하지 않아요.');
     }
   }
   final String owner, id, sourceId;
   final String? referenceHash;
+  final String? publicPeriod;
   bool get isFree => course.courseId == null;
   String get playbackVersion =>
       isFree ? 'GHOST_PLAYBACK_FREE_V1' : 'GHOST_PLAYBACK_V1';
@@ -48,6 +53,7 @@ class GhostStartIntent {
     'startedAt': startedAt.toUtc().toIso8601String(),
     'playbackVersion': playbackVersion,
     'referenceHash': ?referenceHash,
+    'publicPeriod': ?publicPeriod,
   };
   Map<String, dynamic> toJson() => {
     'version': 'GHOST_DEVICE_V1',
@@ -58,6 +64,7 @@ class GhostStartIntent {
     'sourceId': sourceId,
     'sourceSeconds': sourceSeconds,
     'referenceHash': ?referenceHash,
+    'publicPeriod': ?publicPeriod,
     'clock': clock.toJson(),
   };
   factory GhostStartIntent.fromJson(Map<String, dynamic> j) {
@@ -74,6 +81,7 @@ class GhostStartIntent {
       sourceId: j['sourceId'] as String,
       sourceSeconds: j['sourceSeconds'] as int,
       referenceHash: j['referenceHash'] as String?,
+      publicPeriod: j['publicPeriod'] as String?,
       clock: RunClockSample.fromJson(
         (j['clock'] as Map).cast<String, dynamic>(),
       ),
@@ -93,6 +101,7 @@ class GhostRunContext {
     );
     if (approval['version'] !=
             (intent.isFree ? 'GHOST_START_FREE_V1' : 'GHOST_START_V1') ||
+        approval['publicPeriod'] != intent.publicPeriod ||
         approval['sessionId'] != intent.id ||
         approval['sourceRecordId'] != intent.sourceId ||
         DateTime.parse(approval['startedAt'] as String) != intent.startedAt ||

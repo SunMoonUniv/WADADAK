@@ -19,7 +19,7 @@ class GhostRunPrep extends StatelessWidget {
     this.onClearFree,
   });
   final CourseSelection? course;
-  final PreparedOwnGhost? ghost;
+  final PreparedCourseGhost? ghost;
   final bool locked;
   final PreparedFreeGhost? freeGhost;
   final VoidCallback? onClearFree;
@@ -57,17 +57,25 @@ class GhostRunPrep extends StatelessWidget {
           ),
           const SizedBox(height: WdSpace.s12),
           WdRecordCard(
-            overline: '대결 상대 · 내 기록',
-            title: selected == null ? '내 완주 기록 선택' : '선택한 내 완주 기록',
+            overline: selected?.publicPeriod == null
+                ? '대결 상대 · 내 기록'
+                : '대결 상대 · 공개 코스 기록',
+            title: selected == null
+                ? '내 완주 기록 선택'
+                : selected.publicPeriod == null
+                ? '선택한 내 완주 기록'
+                : '선택한 공개 기록',
             time: selected == null
                 ? '—'
-                : formatRunTime(Duration(seconds: selected.candidate.seconds)),
+                : formatRunTime(Duration(seconds: selected.seconds)),
             caption: selected == null ? '내 최고·최근·과거 완주 기록' : '정지 포함 코스 총 소요시간',
             footer: course == null
                 ? '코스를 먼저 골라 주세요'
                 : selected == null
                 ? '기록 선택'
-                : '다른 내 기록 선택',
+                : selected.publicPeriod == null
+                ? '다른 내 기록 선택'
+                : '내 완주 기록으로 변경',
             onTap: course == null || locked
                 ? null
                 : () => context.push(Routes.runOwnGhostSelect),

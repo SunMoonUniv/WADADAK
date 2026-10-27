@@ -45,6 +45,15 @@ class CourseRankingService implements RankingApi, CourseRankingReader {
 
     @Override
     @Transactional(readOnly = true)
+    public java.util.Optional<GhostCandidate> findPublicGhostCandidate(UUID courseId, RankingPeriod period,
+                                                                     UUID requesterId, UUID runRecordId) {
+        return ranking(courseId,from(period)).stream()
+            .filter(r->!r.memberId().equals(requesterId) && r.runRecordId().equals(runRecordId))
+            .map(r->new GhostCandidate(r.runRecordId(),r.memberId(),r.rank(),r.courseElapsedSeconds())).findFirst();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
     public CourseRankingSummary summary(UUID courseId, RankingPeriod period, UUID requesterId) {
         Instant from = from(period);
         boolean visible = repository.isVisible(requesterId);

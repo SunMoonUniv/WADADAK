@@ -145,9 +145,12 @@ public final class RunContracts {
     public record GhostStart(UUID courseId, @Min(0) Long courseVersion,
                              @NotNull UUID sourceRecordId, @NotNull Instant startedAt,
                              @NotNull @Pattern(regexp="GHOST_PLAYBACK_V1|GHOST_PLAYBACK_FREE_V1") String playbackVersion,
-                             @Size(max=64) String referenceHash) {
+                             @Size(max=64) String referenceHash, com.wadadak.ranking.RankingPeriod publicPeriod) {
         public GhostStart(UUID courseId, Long courseVersion, UUID sourceRecordId, Instant startedAt, String playbackVersion) {
-            this(courseId,courseVersion,sourceRecordId,startedAt,playbackVersion,null);
+            this(courseId,courseVersion,sourceRecordId,startedAt,playbackVersion,null,null);
+        }
+        public GhostStart(UUID courseId, Long courseVersion, UUID sourceRecordId, Instant startedAt, String playbackVersion, String referenceHash) {
+            this(courseId,courseVersion,sourceRecordId,startedAt,playbackVersion,referenceHash,null);
         }
     }
     public record FreeGhostCandidate(UUID id, Instant startedAt, Instant registeredAt, String endReason,
@@ -158,7 +161,15 @@ public final class RunContracts {
     /** Durable approval receipt, not the live running state or a completion verdict. */
     public record GhostStartApproval(String version, UUID sessionId, UUID sourceRecordId,
                                      Instant startedAt, Instant approvedAt, Instant courseValidatedAt,
-                                     CourseSnapshot course, GhostPlayback playback) {}
+                                     CourseSnapshot course, GhostPlayback playback,
+                                     com.wadadak.ranking.RankingPeriod publicPeriod) {
+        public GhostStartApproval(String version, UUID sessionId, UUID sourceRecordId, Instant startedAt,
+                                  Instant approvedAt, Instant courseValidatedAt, CourseSnapshot course, GhostPlayback playback) {
+            this(version,sessionId,sourceRecordId,startedAt,approvedAt,courseValidatedAt,course,playback,null);
+        }
+    }
+    public record PublicGhostPreparation(com.wadadak.ranking.RankingPeriod publicPeriod,
+                                         com.wadadak.ranking.GhostCandidate candidate, GhostPlayback playback, long sourceCourseVersion) {}
     public enum GhostVerdict { WIN, LOSE, DRAW, INVALID }
     public enum GhostVerdictReason { COMPLETED_TIME_COMPARISON, VOLUNTARY_BEFORE_GHOST_FINISH,
         VOLUNTARY_AFTER_GHOST_FINISH, INVOLUNTARY_INCOMPLETE, FINISH_NOT_CONFIRMED }

@@ -47,6 +47,7 @@ abstract final class Routes {
   /// C9 내 완주 기록 선택. 현재 계정과 고른 코스의 서버 준비 버전으로 조회한다.
   static const runOwnGhostSelect = '/run/own-ghost-select';
   static const runFreeGhostSelect = '/run/free-ghost-select';
+  static const runPublicGhost = '/run/public-ghost';
   static const ranking = '/ranking';
   static const my = '/my';
 

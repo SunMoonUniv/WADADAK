@@ -28,4 +28,8 @@ public interface RankingApi {
      * @throws com.wadadak.common.exception.AppException {@link RankingErrorCode#INVALID_GHOST_LIMIT} — {@code limit} 범위 밖
      */
     List<GhostCandidate> getPublicGhostCandidates(UUID courseId, RankingPeriod period, UUID requesterId, int limit);
+
+    /** Revalidate the selected representative without a top-N limit; never substitutes another record. */
+    java.util.Optional<GhostCandidate> findPublicGhostCandidate(UUID courseId, RankingPeriod period,
+                                                              UUID requesterId, UUID runRecordId);
 }

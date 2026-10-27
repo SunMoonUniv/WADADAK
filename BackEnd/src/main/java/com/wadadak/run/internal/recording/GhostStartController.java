@@ -22,8 +22,9 @@ class GhostStartController {
         this.starts = starts; this.store = store; this.freeGhosts=freeGhosts;
     }
 
-    @Operation(summary = "내 고스트 대결 시작 승인·상대 고정",
-            description = "기존 course 준비 후 호출. 코스 활성·경로 버전과 본인 완주 재생 적합성을 재검증하고 상대를 저장한다. "
+    @Operation(summary = "고스트 대결 시작 승인·상대 고정",
+            description = "등록 코스는 기존 course 준비 후 호출. publicPeriod가 있으면 공개 대표 기록, 없으면 본인 원본을 검증한다. "
+                    + "코스 없는 내 자유 기록은 기존 자유 고스트 계약을 따른다. 코스·원본 재생 적합성을 재검증하고 상대를 저장한다. "
                     + "기존 코스 시작 신호도 같은 트랜잭션에서 처리하므로 course/start를 별도로 보낼 필요 없다. "
                     + "동일 세션·모든 요청 필드가 같은 재시도는 최초 승인/재생 자료를 반환한다. "
                     + "startedAt은 마이크로초 정밀도까지 허용. RUN-004는 상대 재선택, RUN-003은 충돌이다.")

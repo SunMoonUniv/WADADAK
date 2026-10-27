@@ -96,10 +96,28 @@ class OwnGhostReplay {
   final String payloadJson;
 }
 
-class PreparedOwnGhost {
+abstract interface class PreparedCourseGhost {
+  String get owner;
+  GhostCourseContext get course;
+  OwnGhostReplay get replay;
+  String get sourceId;
+  int get seconds;
+  String? get publicPeriod;
+}
+
+class PreparedOwnGhost implements PreparedCourseGhost {
   const PreparedOwnGhost(this.owner, this.course, this.candidate, this.replay);
+  @override
   final String owner;
+  @override
   final GhostCourseContext course;
   final OwnGhostCandidate candidate;
+  @override
   final OwnGhostReplay replay;
+  @override
+  String get sourceId => candidate.id;
+  @override
+  int get seconds => candidate.seconds;
+  @override
+  String? get publicPeriod => null;
 }

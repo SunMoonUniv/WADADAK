@@ -7,9 +7,13 @@ import org.springframework.stereotype.Component;
 @Component
 class RunEventHandler {
     private final RunService runs;
-    RunEventHandler(RunService runs) { this.runs = runs; }
+    private final PublicGhostAccess publicGhosts;
+    RunEventHandler(RunService runs, PublicGhostAccess publicGhosts) { this.runs = runs; this.publicGhosts=publicGhosts; }
+    @ApplicationModuleListener
+    public void on(com.wadadak.event.member.MemberVisibilityChangedEvent event) { publicGhosts.visibility(event); }
     @ApplicationModuleListener
     public void on(MemberWithdrawnEvent event) {
         runs.withdraw(event.memberId(), event.withdrawnAt());
+        publicGhosts.forget(event.memberId());
     }
 }
