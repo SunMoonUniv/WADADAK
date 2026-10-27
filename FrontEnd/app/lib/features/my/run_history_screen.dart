@@ -411,7 +411,7 @@ class _MonthAnalysis extends StatelessWidget {
   );
 }
 
-/// Figma I1 기록 줄: 요일 · 날짜 | 제목(코스 이름 또는 자유 러닝) · 시간 · 거리 · 페이스 | 결과 태그.
+/// Figma I1 기록 줄: 요일 · 날짜 | 제목(코스 이름 또는 자유 러닝 · 고스트 대결) · 시간 · 거리 · 페이스 | 결과 태그.
 /// 코스 러닝이면 아래에 [코스 상세] · [리뷰 쓰기]. 누르면 기록 상세.
 class RunRecordCard extends ConsumerWidget {
   const RunRecordCard(this.row, {super.key});
@@ -451,7 +451,7 @@ class RunRecordCard extends ConsumerWidget {
                   children: [
                     Text(
                       // 아직 올리지 않은 기록은 코스 판정 전이라 자유 러닝인지 모른다
-                      course?.courseName ?? (row.synced ? '자유 러닝' : '러닝'),
+                      course?.courseName ?? (row.ghost != null ? '고스트 대결' : row.synced ? '자유 러닝' : '러닝'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: WdText.raw(15, FontWeight.w700, 22).copyWith(color: WdColors.ink),
@@ -488,11 +488,23 @@ class RunRecordCard extends ConsumerWidget {
     );
   }
 
-  /// 아직 기기에만 있으면 동기화 대기(D-14). 코스 러닝은 완주 · 진행도, 자유 러닝은 기록.
-  /// 고스트 대결의 대결 승 · 패는 고스트(F9)가 생기면 붙인다.
+  /// 아직 기기에만 있으면 동기화 대기(D-14). 고스트 대결은 서버 판정(승리 · 패배 · 무승부 · 대결 무효),
+  /// 코스 러닝은 완주 · 진행도, 자유 러닝은 기록.
   Widget _resultTag() {
     final course = row.course;
+    final ghost = row.ghost;
     if (!row.synced) return const WdTag('동기화 대기', tone: WdTone.warning, filled: false);
+    if (ghost != null) {
+      return WdTag(
+        ghost.label,
+        tone: switch (ghost.outcome) {
+          'WIN' => WdTone.success,
+          'INVALID' => WdTone.warning,
+          _ => WdTone.neutral,
+        },
+        filled: false,
+      );
+    }
     if (course == null) return const WdTag('기록', filled: false);
     if (course.completed) return const WdTag('완주', tone: WdTone.success, filled: false);
     return WdTag('${course.progressPercent.floor()}% 주행', filled: false);

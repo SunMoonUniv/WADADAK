@@ -24,6 +24,23 @@ class RecordCourse {
   final bool reviewEligible;
 }
 
+/// 기록 목록 한 줄의 고스트 대결 판정(`RecordSummary.ghost`). 고스트 대결이 아니면 없다.
+/// 코스 위 대결이면 [RecordCourse]도 함께 붙는다.
+class RecordGhost {
+  RecordGhost.fromJson(Map json) : outcome = json['outcome'] as String? ?? '';
+
+  /// 서버 판정: `WIN` · `LOSE` · `DRAW` · `INVALID`.
+  final String outcome;
+
+  /// 결과 화면(D1)과 같은 말.
+  String get label => switch (outcome) {
+    'WIN' => '승리',
+    'LOSE' => '패배',
+    'DRAW' => '무승부',
+    _ => '대결 무효',
+  };
+}
+
 /// I1 기록 카드 한 장. 서버 기록과 아직 올리지 않은 기기 기록을 같은 모양으로 맞춘다.
 class RunHistoryRow {
   const RunHistoryRow({
@@ -35,6 +52,7 @@ class RunHistoryRow {
     required this.paceSecondsPerKm,
     required this.syncState,
     this.course,
+    this.ghost,
   });
 
   final String id;
@@ -51,6 +69,9 @@ class RunHistoryRow {
 
   /// 서버가 판정한 코스 요약. 자유 러닝이거나 아직 올리지 않았으면 없다.
   final RecordCourse? course;
+
+  /// 서버가 판정한 고스트 대결 결과. 고스트 대결이 아니거나 아직 올리지 않았으면 없다.
+  final RecordGhost? ghost;
 
   bool get synced => syncState == 'synced';
 }
@@ -76,7 +97,7 @@ RunHistoryRow _fromLocal(recording.LocalRun r) {
   final metrics =
       (r.result?['metrics'] as Map?)?.cast<String, dynamic>() ??
       recording.RunCalculator.replay(r.inputs).at(r.checkpointMs).toJson();
-  return _row(r.id, r.startedAt, metrics, r.syncState, null);
+  return _row(r.id, r.startedAt, metrics, r.syncState, null, null);
 }
 
 RunHistoryRow _fromSummary(Map<String, dynamic> json, String syncState) => _row(
@@ -85,9 +106,17 @@ RunHistoryRow _fromSummary(Map<String, dynamic> json, String syncState) => _row(
   (json['metrics'] as Map).cast<String, dynamic>(),
   syncState,
   json['course'] == null ? null : RecordCourse.fromJson(json['course'] as Map),
+  json['ghost'] == null ? null : RecordGhost.fromJson(json['ghost'] as Map),
 );
 
-RunHistoryRow _row(String id, DateTime startedAt, Map<String, dynamic> metrics, String syncState, RecordCourse? course) =>
+RunHistoryRow _row(
+  String id,
+  DateTime startedAt,
+  Map<String, dynamic> metrics,
+  String syncState,
+  RecordCourse? course,
+  RecordGhost? ghost,
+) =>
     RunHistoryRow(
       id: id,
       startedAt: startedAt,
@@ -97,14 +126,15 @@ RunHistoryRow _row(String id, DateTime startedAt, Map<String, dynamic> metrics, 
       paceSecondsPerKm: (metrics['paceSecondsPerKm'] as num?)?.toDouble(),
       syncState: syncState,
       course: course,
+      ghost: ghost,
     );
 
 /// I1 유형 탭. 아직 올리지 않은 기록은 코스 판정 전이라 전체에만 보인다.
+/// 고스트 대결은 코스 위든 자유 러닝이든 고스트 대결 탭에만 넣어 탭끼리 겹치지 않는다.
 enum RunType {
   all('전체'),
   free('자유 러닝'),
   course('코스 러닝'),
-  // 고스트 대결(F9)이 생기면 기록에 대결 정보가 붙는다. 그때까지 비어 있다
   ghost('고스트 대결');
 
   const RunType(this.label);
@@ -113,9 +143,9 @@ enum RunType {
 
   bool includes(RunHistoryRow row) => switch (this) {
     RunType.all => true,
-    RunType.free => row.synced && row.course == null,
-    RunType.course => row.course != null,
-    RunType.ghost => false,
+    RunType.free => row.synced && row.course == null && row.ghost == null,
+    RunType.course => row.course != null && row.ghost == null,
+    RunType.ghost => row.ghost != null,
   };
 }
 

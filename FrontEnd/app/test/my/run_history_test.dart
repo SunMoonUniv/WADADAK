@@ -17,13 +17,14 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../run/recording/run_controller_test.dart' as fake;
 
-/// 서버 기록 한 줄(RecordSummary). [course]가 있으면 코스 러닝이다.
-Map<String, dynamic> _summary(String id, String startedAt, {Map<String, dynamic>? course}) => {
+/// 서버 기록 한 줄(RecordSummary). [course]가 있으면 코스 러닝, [ghost]가 있으면 고스트 대결이다.
+Map<String, dynamic> _summary(String id, String startedAt, {Map<String, dynamic>? course, String? ghost}) => {
   'id': id,
   'startedAt': startedAt,
   'endReason': 'USER',
   'metrics': {'distanceM': 5210.0, 'elapsedMs': 1634000, 'activeMs': 1634000, 'movingMs': 1634000, 'paceSecondsPerKm': 313.6, 'gapCount': 0},
   'course': course,
+  'ghost': ghost == null ? null : {'outcome': ghost, 'reason': 'COMPLETED_TIME_COMPARISON', 'completed': true},
 };
 
 const _course = {
@@ -40,6 +41,9 @@ class _HistoryApi extends fake.TestApi {
   final sizes = <int?>[];
   bool withSeptember = true;
 
+  /// 첫 페이지 끝에 코스 위 고스트 대결(승리, 10/11)과 자유 고스트 대결(패배, 10/10)을 붙인다.
+  bool withGhosts = false;
+
   @override
   Future<Map<String, dynamic>> history(String owner, {String? cursor, int? size}) async {
     cursors.add(cursor);
@@ -50,6 +54,10 @@ class _HistoryApi extends fake.TestApi {
               _summary('run-course', '2026-10-14T03:00:00Z', course: _course),
               _summary('run-half', '2026-10-13T03:00:00Z', course: {..._course, 'courseId': 'course-2', 'courseName': '성북천 벚꽃길 3K', 'completed': false, 'progressPercent': 62.4}),
               _summary('run-free', '2026-10-12T03:00:00Z'),
+              if (withGhosts) ...[
+                _summary('run-ghost-course', '2026-10-11T03:00:00Z', course: _course, ghost: 'WIN'),
+                _summary('run-ghost-free', '2026-10-10T03:00:00Z', ghost: 'LOSE'),
+              ],
             ],
             'nextCursor': withSeptember ? 'next' : null,
           }
@@ -302,6 +310,37 @@ void main() {
     await tap(tester, find.text('고스트 대결'));
     expect(find.text('고스트 대결 0'), findsOneWidget);
     expect(find.text('아직 고스트 대결 기록이 없어요.'), findsOneWidget);
+  });
+
+  testWidgets('ghost duels show only in the ghost tab with the server verdict', (tester) async {
+    history.withGhosts = true;
+    await openHistory(tester);
+
+    // 전체에는 다 보이고, 대결 기록은 승 · 패 태그를 단다
+    expect(find.byType(RunRecordCard), findsNWidgets(5));
+    expect(find.descendant(of: cardOf('고스트 대결'), matching: find.text('패배')), findsOneWidget);
+    final courseDuel = find.ancestor(of: find.text('승리'), matching: find.byType(RunRecordCard));
+    expect(find.descendant(of: courseDuel, matching: find.text('한강 야경 5K')), findsOneWidget);
+    // 코스 위 대결이라 코스 버튼은 그대로 있다
+    expect(find.descendant(of: courseDuel, matching: find.text('리뷰 쓰기')), findsOneWidget);
+
+    // 자유 · 코스 탭에는 대결 기록이 없다. 자유 러닝은 카드 제목과 겹쳐서 탭 막대 안에서 찾는다
+    await tap(tester, find.descendant(of: find.byType(WdTabBar), matching: find.text('자유 러닝')));
+    expect(find.text('자유 러닝 2'), findsOneWidget); // 10/12 + 9월
+    expect(find.text('패배'), findsNothing);
+    await tap(tester, find.text('코스 러닝'));
+    expect(find.text('코스 러닝 2'), findsOneWidget);
+    expect(find.text('승리'), findsNothing);
+
+    await tap(tester, find.text('고스트 대결'));
+    expect(find.text('고스트 대결 2'), findsOneWidget);
+    expect(find.byType(RunRecordCard), findsNWidgets(2));
+    expect(find.text('승리'), findsOneWidget);
+    expect(find.text('패배'), findsOneWidget);
+    for (final day in [10, 11]) {
+      expect(labeled('10월 $day일 달림'), findsOneWidget);
+    }
+    expect(labeled('10월 12일 달림'), findsNothing);
   });
 
   testWidgets('a run still on the device waits for sync', (tester) async {
