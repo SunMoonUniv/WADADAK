@@ -10,6 +10,8 @@ import org.springframework.context.ApplicationEventPublisher;
 import java.time.Clock;
 import com.wadadak.run.internal.RunContracts.*;
 import com.wadadak.run.RunErrorCode;
+import com.wadadak.common.geo.GeoPoint;
+import com.wadadak.course.GpsGapCheck;
 import com.wadadak.run.internal.metrics.FreeRunCalculator;
 import com.wadadak.run.internal.metrics.RunResultStatsCalculator;
 import org.springframework.data.domain.PageRequest;
@@ -198,7 +200,32 @@ class RunService {
         // Enrich old results on detail reads; keep stored distance/time/ranking intact.
         ResultStats stats = FreeRunCalculator.calculate(stored.startedAt(), raw).stats();
         return new Result(stored.id(),stored.startedAt(),stored.endedAt(),stored.registeredAt(),stored.endReason(),
-            stored.metrics(),stored.routeSegments(),stored.laps(),stored.policyVersion(),stored.calculationVersion(),stats,stored.course());
+            stored.metrics(),stored.routeSegments(),stored.laps(),stored.policyVersion(),stored.calculationVersion(),stats,stored.course(),stored.gpsGap());
+    }
+    /** 끊긴 구간 판단이 없거나 [version]과 다른 기록(판단 도입 전·기준 변경) */
+    @Transactional(readOnly=true)
+    public List<UUID> gpsGapOutdated(String version) {
+        return records.findGpsGapOutdated(version,50);
+    }
+    /**
+     * 끊긴 구간 판단에 넣을 경로 조각(course-source와 같은 점). 기록이 없으면 null.
+     * 원본이 지금 계산 규칙으로 계산되지 않으면 빈 조각(판단은 GPS 정확도 부족)
+     */
+    @Transactional(readOnly=true)
+    public List<List<GeoPoint>> gpsGapSegments(UUID id) {
+        RunRecord record=records.findById(id).orElse(null);
+        if(record==null) return null;
+        Result stored=json.readValue(record.getResultJson(),Result.class);
+        try { return FreeRunCalculator.calculate(stored.startedAt(),inputs.findAll(id)).segments(); }
+        catch(AppException e) { return List.of(); }
+    }
+    /** 끊긴 구간 판단을 결과·목록에 넣는다. 판단(CourseApi)은 이 트랜잭션 밖에서 한다(개발 정책 4.4) */
+    @Transactional
+    public void saveGpsGap(UUID id, GpsGapCheck check) {
+        RunRecord record=records.findById(id).orElse(null);
+        if(record==null) return;
+        Result updated=json.readValue(record.getResultJson(),Result.class).withGpsGap(check);
+        record.replaceJson(json.writeValueAsString(updated),json.writeValueAsString(RecordSummary.from(updated)));
     }
     /** GPS 코스 등록용 원본 경로. 결과 화면 지도와 같은 구간을 원본 입력에서 다시 만들어 지점별 정확도·고도를 붙인다 */
     @Transactional(readOnly=true)

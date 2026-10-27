@@ -50,6 +50,7 @@ RunSnapshot remoteRunSnapshot(
     averageCadence: (m['averageCadence'] as num?)?.toDouble(),
     cadenceCoverageMs: ms('cadenceCoverageMs'),
     cadenceStatus: m['averageCadence'] == null ? '측정 없음' : '측정 완료',
+    gpsGapPassed: (json['gpsGap'] as Map?)?['passed'] as bool?,
     course: json['course'] is Map
         ? RunCourseResult.fromJson((json['course'] as Map).cast<String, dynamic>())
         : null,

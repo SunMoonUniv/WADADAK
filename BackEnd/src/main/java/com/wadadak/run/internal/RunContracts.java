@@ -1,6 +1,7 @@
 package com.wadadak.run.internal;
 
 import com.wadadak.common.geo.GeoPoint;
+import com.wadadak.course.GpsGapCheck;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.*;
 import java.time.Instant;
@@ -66,9 +67,17 @@ public final class RunContracts {
                 distanceM > 0 ? elapsedMs / distanceM : null, null, 0, 0);
         }
     }
+    /** @param gpsGap GPS 코스 등록 끊긴 구간 판단(CourseApi.checkGpsGaps, F7 B6·결과 화면 "GPS 정확도 부족"). 처리 뒤 쓰기 트랜잭션 밖에서 채운다. 아직이면 null */
     public record Result(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt,
                          String endReason, Metrics metrics, List<List<GeoPoint>> routeSegments, List<Lap> laps,
-                         String policyVersion, String calculationVersion, ResultStats stats, CourseOutcome course) {
+                         String policyVersion, String calculationVersion, ResultStats stats, CourseOutcome course, GpsGapCheck gpsGap) {
+        public Result(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason,
+                      Metrics metrics, List<List<GeoPoint>> routeSegments, List<Lap> laps, String policyVersion, String calculationVersion, ResultStats stats, CourseOutcome course) {
+            this(id,startedAt,endedAt,registeredAt,endReason,metrics,routeSegments,laps,policyVersion,calculationVersion,stats,course,null);
+        }
+        public Result withGpsGap(GpsGapCheck value) {
+            return new Result(id,startedAt,endedAt,registeredAt,endReason,metrics,routeSegments,laps,policyVersion,calculationVersion,stats,course,value);
+        }
         /** 자유 러닝 결과: 코스 판정 없음 */
         public Result(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason,
                       Metrics metrics, List<List<GeoPoint>> routeSegments, List<Lap> laps, String policyVersion, String calculationVersion, ResultStats stats) {
@@ -138,7 +147,10 @@ public final class RunContracts {
         }
     }
     public record RecordSummary(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt,
-                                String endReason, Metrics metrics, ResultStats stats, CourseSummary course) {
+                                String endReason, Metrics metrics, ResultStats stats, CourseSummary course, GpsGapCheck gpsGap) {
+        public RecordSummary(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason, Metrics metrics, ResultStats stats, CourseSummary course) {
+            this(id,startedAt,endedAt,registeredAt,endReason,metrics,stats,course,null);
+        }
         public RecordSummary(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason, Metrics metrics, ResultStats stats) {
             this(id,startedAt,endedAt,registeredAt,endReason,metrics,stats,null);
         }
@@ -147,7 +159,7 @@ public final class RunContracts {
         }
         public static RecordSummary from(Result result) {
             return new RecordSummary(result.id(),result.startedAt(),result.endedAt(),result.registeredAt(),result.endReason(),result.metrics(),result.stats(),
-                    CourseSummary.from(result.course()));
+                    CourseSummary.from(result.course()),result.gpsGap());
         }
     }
 }

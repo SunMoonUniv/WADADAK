@@ -554,16 +554,22 @@ class CourseDetail {
 /// 오늘(Asia/Seoul) 남은 등록 수. 유형마다 따로 센다.
 @immutable
 class RegistrationQuota {
-  const RegistrationQuota({required this.custom, required this.gps});
+  const RegistrationQuota({required this.custom, required this.gps, this.usedRunRecordIds = const []});
 
-  factory RegistrationQuota.fromJson(Map<Object?, Object?> json) =>
-      RegistrationQuota(custom: TypeQuota._fromJson(json['custom']! as Map), gps: TypeQuota._fromJson(json['gps']! as Map));
+  factory RegistrationQuota.fromJson(Map<Object?, Object?> json) => RegistrationQuota(
+        custom: TypeQuota._fromJson(json['custom']! as Map),
+        gps: TypeQuota._fromJson(json['gps']! as Map),
+        usedRunRecordIds: [for (final id in json['usedRunRecordIds'] as List? ?? const []) id as String],
+      );
 
   /// 사용자 지정(B3 지도에 점 찍기). 하루 1개.
   final TypeQuota custom;
 
   /// GPS 주행 등록(B5·B6 합산). 하루 3개.
   final TypeQuota gps;
+
+  /// 이 회원이 GPS 코스 등록에 쓴 러닝 기록 ID. B6·결과 화면의 `이미 등록됨`(코스가 지워지거나 만료돼도 남는다)
+  final List<String> usedRunRecordIds;
 }
 
 @immutable

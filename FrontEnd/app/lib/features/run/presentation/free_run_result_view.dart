@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../domain/course_run.dart';
+import 'course_register_card.dart';
 import '../domain/run_models.dart';
 import 'free_run_live_view.dart';
 import 'run_lap_list.dart';
@@ -109,34 +110,7 @@ class FreeRunResultView extends StatelessWidget {
                   ),
                   if (run.course != null || pendingCourse != null)
                     _CourseBadge(course: run.course),
-                  WdSurface(
-                    radius: WdRadius.r12,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: WdSpace.s14,
-                      vertical: WdSpace.s12,
-                    ),
-                    child: Row(
-                      spacing: WdSpace.s10,
-                      children: [
-                        const WdIcon(WdIcons.ghostInfo, size: 24),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            spacing: WdSpace.s2,
-                            children: [
-                              Text('코스 등록 준비 중이에요', style: WdText.run13W700H16),
-                              Text(
-                                'GPS 경로 수집 후 사용할 수 있어요',
-                                style: WdText.ko12.copyWith(
-                                  color: WdColors.muted,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                  CourseRegisterCard(run: run),
                   WdSurface(
                     padding: const EdgeInsets.all(WdSpace.s16),
                     child: Column(

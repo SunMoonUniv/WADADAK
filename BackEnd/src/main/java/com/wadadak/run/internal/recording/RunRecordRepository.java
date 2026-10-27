@@ -26,6 +26,14 @@ interface RunRecordRepository extends JpaRepository<RunRecord, UUID> {
             """, nativeQuery = true)
     List<String> findSummariesBefore(UUID memberId, Instant before, UUID beforeId, int limit);
 
+    // ponytail: 목록 JSON을 매번 훑는다. 기록이 많아지면 기준 버전 컬럼을 따로 둔다
+    @Query(value = """
+            SELECT r.id FROM run.records r
+            WHERE coalesce(r.summary_json::jsonb #>> '{gpsGap,version}', '') <> :version
+            ORDER BY r.registered_at, r.id LIMIT :limit
+            """, nativeQuery = true)
+    List<UUID> findGpsGapOutdated(String version, int limit);
+
     @Query("select r.id from RunRecord r where r.registrationPublished = false order by r.registeredAt, r.id")
     List<UUID> findUnpublishedIds(Pageable page);
 
