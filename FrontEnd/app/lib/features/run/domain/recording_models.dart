@@ -4,6 +4,8 @@ import 'motion_pace.dart';
 import 'run_lap.dart';
 import 'run_cadence.dart';
 import 'run_result_stats.dart';
+import 'ghost_run.dart';
+import '../../../core/time/monotonic_clock.dart';
 
 enum RunPhase { running, paused, ended }
 
@@ -131,9 +133,13 @@ class LocalRun {
     this.inputsLoaded = true,
     this.syncState = 'pending',
     this.syncFailure,
+    this.ghost,
+    this.recoveryAnchor,
     List<RunInput>? inputs,
   }) : inputs = inputs ?? [];
   final String id, owner;
+  final GhostRunContext? ghost;
+  RunRecoveryAnchor? recoveryAnchor;
   final DateTime startedAt;
   RunPhase phase;
   int checkpointMs;

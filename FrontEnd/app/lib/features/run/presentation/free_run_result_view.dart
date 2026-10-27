@@ -16,6 +16,7 @@ class FreeRunResultView extends StatelessWidget {
     this.onDelete,
     this.history = false,
     this.pendingCourse,
+    this.onRetryGhost,
   });
   final RunSnapshot run;
   final VoidCallback onConfirm;
@@ -24,6 +25,7 @@ class FreeRunResultView extends StatelessWidget {
 
   /// 방금 끝낸 코스 러닝의 코스 이름. 서버 판정([RunSnapshot.course])이 오기 전 "판정 대기"로 보인다(D-14)
   final String? pendingCourse;
+  final VoidCallback? onRetryGhost;
 
   @override
   Widget build(BuildContext context) {
@@ -58,6 +60,39 @@ class FreeRunResultView extends StatelessWidget {
               child: Column(
                 spacing: WdSpace.s12,
                 children: [
+                  if (run.ghost != null || run.ghostPending) ...[
+                    WdRecordCard(
+                      overline: '고스트 대결 결과',
+                      title: switch (run.ghost?['outcome']) {
+                        'WIN' => '승리',
+                        'LOSE' => '패배',
+                        'DRAW' => '무승부',
+                        'INVALID' => '대결 무효',
+                        _ => '서버 판정 대기',
+                      },
+                      time: run.ghost == null
+                          ? '—'
+                          : formatRunTime(
+                              Duration(
+                                seconds:
+                                    (run.ghost!['courseElapsedSeconds'] as num)
+                                        .toInt(),
+                              ),
+                            ),
+                      caption: run.ghost == null
+                          ? '업로드 후 서버가 최종 결과를 판정해요.'
+                          : '상대 ${formatRunTime(Duration(seconds: (run.ghost!['sourceElapsedSeconds'] as num).toInt()))}',
+                      footer: run.ghost == null
+                          ? '연결되면 같은 대결의 결과를 확인해요.'
+                          : '정지를 포함한 동일 경로 비교 시간',
+                    ),
+                    if (run.ghost == null && onRetryGhost != null)
+                      WdButton(
+                        '판정 다시 확인',
+                        variant: WdButtonVariant.secondary,
+                        onPressed: onRetryGhost,
+                      ),
+                  ],
                   WdSurface(
                     color: WdColors.ink,
                     radius: WdRadius.full,
@@ -98,14 +133,12 @@ class FreeRunResultView extends StatelessWidget {
                             : '자유 러닝',
                         style: WdText.ko16Bold,
                       ),
-                      Text(
-                        switch ((run.course, pendingCourse)) {
-                          (final course?, _) => '$startedLabel · ${course.completed ? '코스 완주' : '코스 미완주'}',
-                          (null, final String _) => '$startedLabel · 판정 대기',
-                          _ => startedLabel,
-                        },
-                        style: WdText.ko12.copyWith(color: WdColors.muted),
-                      ),
+                      Text(switch ((run.course, pendingCourse)) {
+                        (final course?, _) =>
+                          '$startedLabel · ${course.completed ? '코스 완주' : '코스 미완주'}',
+                        (null, final String _) => '$startedLabel · 판정 대기',
+                        _ => startedLabel,
+                      }, style: WdText.ko12.copyWith(color: WdColors.muted)),
                     ],
                   ),
                   if (run.course != null || pendingCourse != null)
@@ -365,13 +398,23 @@ class _CourseBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = course;
     final (bg, fg, icon, title, detail) = switch (c) {
-      null => (WdColors.infoBg, WdColors.info, WdIcons.ghostInfo, '코스 완주 판정 대기', '기록을 올린 뒤 서버가 완주를 판정해요.'),
+      null => (
+        WdColors.infoBg,
+        WdColors.info,
+        WdIcons.ghostInfo,
+        '코스 완주 판정 대기',
+        '기록을 올린 뒤 서버가 완주를 판정해요.',
+      ),
       RunCourseResult(completed: true) => (
         WdColors.limeSoft,
         WdColors.green,
         WdIcons.ghostSuccess,
         '코스 완주 인정',
-        [?c.courseName, if (c.courseDistanceMeters > 0) '${(c.courseDistanceMeters / 1000).toStringAsFixed(1)} km 완주'].join(' · '),
+        [
+          ?c.courseName,
+          if (c.courseDistanceMeters > 0)
+            '${(c.courseDistanceMeters / 1000).toStringAsFixed(1)} km 완주',
+        ].join(' · '),
       ),
       _ => (
         WdColors.warningBg,
@@ -384,7 +427,10 @@ class _CourseBadge extends StatelessWidget {
     return WdSurface(
       color: bg,
       radius: WdRadius.r12,
-      padding: const EdgeInsets.symmetric(horizontal: WdSpace.s14, vertical: WdSpace.s12),
+      padding: const EdgeInsets.symmetric(
+        horizontal: WdSpace.s14,
+        vertical: WdSpace.s12,
+      ),
       child: Row(
         spacing: WdSpace.s10,
         children: [
@@ -395,7 +441,10 @@ class _CourseBadge extends StatelessWidget {
               spacing: WdSpace.s2,
               children: [
                 Text(title, style: WdText.run13W700H16.copyWith(color: fg)),
-                Text(detail, style: WdText.ko12.copyWith(color: WdColors.muted)),
+                Text(
+                  detail,
+                  style: WdText.ko12.copyWith(color: WdColors.muted),
+                ),
               ],
             ),
           ),

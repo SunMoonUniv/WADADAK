@@ -58,7 +58,7 @@ class GhostPlayback {
             position: (s['coursePositionM'] as num?)?.toDouble(),
           ),
       ]) {
-    if (eligible && version == 'GHOST_PLAYBACK_V1') {
+    if (eligible && supported) {
       var edge = 0;
       for (final s in spans) {
         if (s.fromMs != edge ||
@@ -89,6 +89,7 @@ class GhostPlayback {
   }
 
   final String? version;
+  bool get supported => version=='GHOST_PLAYBACK_V1' || version=='GHOST_PLAYBACK_FREE_V1';
   final bool eligible;
   final int? durationMs;
   final List<String> reasons;
@@ -98,7 +99,7 @@ class GhostPlayback {
   GhostMoment at(int elapsedMs) {
     final end = durationMs;
     if (!eligible ||
-        version != 'GHOST_PLAYBACK_V1' ||
+        !supported ||
         end == null ||
         spans.isEmpty) {
       return const GhostMoment(GhostPlaybackState.unavailable, null);
@@ -152,7 +153,7 @@ class GhostPlayback {
 
   /// Earliest confirmed forward arrival, in ms. Never extrapolates across gaps.
   double? firstArrivalMs(double positionM) {
-    if (!eligible || version != 'GHOST_PLAYBACK_V1' || !positionM.isFinite) {
+    if (!eligible || !supported || !positionM.isFinite) {
       return null;
     }
     for (final span in spans) {

@@ -25,6 +25,8 @@ import 'features/review/review_form_screen.dart';
 import 'features/review/review_list_screen.dart';
 import 'features/run/presentation/course_select_screen.dart';
 import 'features/run/presentation/free_run_screen.dart';
+import 'features/run/presentation/own_ghost_selection_screen.dart';
+import 'features/run/presentation/free_ghost_selection_screen.dart';
 import 'features/run/presentation/run_settings_screen.dart';
 import 'main_shell.dart';
 import 'routes.dart';
@@ -96,6 +98,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(path: Routes.runSettings, builder: (_, _) => const RunSettingsScreen()),
       GoRoute(path: Routes.runCourseSelect, builder: (_, _) => const CourseSelectScreen()),
+      GoRoute(path: Routes.runOwnGhostSelect, builder: (_, _) => const OwnGhostSelectionScreen()),
+      GoRoute(path: Routes.runFreeGhostSelect, builder: (_, _) => const FreeGhostSelectionScreen()),
       GoRoute(
         path: '/my/record/:id',
         builder: (_, state) => MyRunRecordScreen(id: state.pathParameters['id']!),

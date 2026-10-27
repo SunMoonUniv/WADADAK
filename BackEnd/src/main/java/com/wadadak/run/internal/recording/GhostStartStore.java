@@ -106,7 +106,7 @@ class GhostStartStore {
         if (!saved.sourceRecordId().equals(request.sourceRecordId())
                 || !saved.startedAt().equals(request.startedAt())
                 || !saved.course().courseId().equals(request.courseId())
-                || saved.course().version() != request.courseVersion()
+                || !java.util.Objects.equals(saved.course().version(),request.courseVersion())
                 || !saved.playback().version().equals(request.playbackVersion())) conflict();
         return saved;
     }

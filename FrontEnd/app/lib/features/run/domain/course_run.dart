@@ -15,15 +15,55 @@ class CourseSelection {
 
 /// 준비(`PUT .../course`) 응답. 서버가 이 경로로 완주를 판정한다. 첫 점이 출발점이다.
 class CourseSnapshot {
-  const CourseSnapshot({required this.route, required this.totalDistanceMeters});
+  const CourseSnapshot({
+    required this.route,
+    required this.totalDistanceMeters,
+    this.sessionId,
+    this.courseId,
+    this.name,
+    this.version,
+    this.breaks = const [],
+  });
 
   factory CourseSnapshot.fromJson(Map<String, dynamic> json) => CourseSnapshot(
-    route: [for (final point in json['route'] as List) GeoPoint.fromJson(point as Map)],
+    route: [
+      for (final point in json['route'] as List)
+        GeoPoint.fromJson(point as Map),
+    ],
     totalDistanceMeters: (json['totalDistanceMeters'] as num).toInt(),
+    sessionId: json['sessionId'] as String?,
+    courseId: json['courseId'] as String?,
+    name: json['name'] as String?,
+    version: (json['version'] as num?)?.toInt(),
+    breaks: (json['breaks'] as List? ?? const [])
+        .map((v) => (v as num).toInt())
+        .toList(),
   );
 
   final List<GeoPoint> route;
   final int totalDistanceMeters;
+  final String? sessionId, courseId, name;
+  final int? version;
+  final List<int> breaks;
+  List<List<GeoPoint>> get routeSegments {
+    final edges = [0, ...breaks, route.length];
+    return [
+      for (var i = 1; i < edges.length; i++)
+        route.sublist(edges[i - 1], edges[i]),
+    ];
+  }
+
+  Map<String, dynamic> toJson() => {
+    'sessionId': sessionId,
+    'courseId': courseId,
+    'name': name,
+    'version': version,
+    'totalDistanceMeters': totalDistanceMeters,
+    'breaks': breaks,
+    'route': [
+      for (final p in route) {'lat': p.lat, 'lng': p.lng},
+    ],
+  };
 }
 
 /// 준비를 마치고 측정을 시작하기 전(RCR-01). 출발점 반경 안에 들어와야 시작할 수 있다.
@@ -36,7 +76,7 @@ class CourseStart {
 
   /// 준비·시작 신호·기록에 같이 쓰는 세션 ID.
   final String runId;
-  final CourseSelection course;
+  final CourseSelection? course;
   final CourseSnapshot snapshot;
 
   /// 마지막으로 받은 현재 위치.
@@ -60,7 +100,12 @@ class CourseLive {
   /// 이탈 후보·확정이면 경로까지 거리와 가장 가까운 경로 지점(Figma C4-3 점선). 아니면 null
   ({double d, GeoPoint point})? get deviation {
     final g = guidance, d = g?.distanceM, point = g?.nearestPoint;
-    if (g == null || g.state == GuidanceState.onRoute || d == null || point == null) return null;
+    if (g == null ||
+        g.state == GuidanceState.onRoute ||
+        d == null ||
+        point == null) {
+      return null;
+    }
     return (d: d, point: point);
   }
 
@@ -77,13 +122,15 @@ class CourseLive {
   String get nextTarget {
     final position = tracker.positionM ?? 0;
     final km = position ~/ 1000 + 1;
-    return lengthM - km * 1000 > 1e-6 // 끝이 딱 km 지점이면 부동소수 오차로 넘지 않게
+    return lengthM - km * 1000 >
+            1e-6 // 끝이 딱 km 지점이면 부동소수 오차로 넘지 않게
         ? '$km km 지점까지 ${formatMeters(km * 1000 - position)}'
         : '도착까지 ${formatMeters(lengthM - position)}';
   }
 
-  static String formatMeters(double meters) =>
-      meters < 1000 ? '${meters.round()} m' : '${(meters / 1000).toStringAsFixed(2)} km';
+  static String formatMeters(double meters) => meters < 1000
+      ? '${meters.round()} m'
+      : '${(meters / 1000).toStringAsFixed(2)} km';
 }
 
 /// 서버 코스 판정(`Result.course`). 코스 러닝 기록에만 있다.
@@ -100,13 +147,16 @@ class RunCourseResult {
     required this.courseElapsedSeconds,
   });
 
-  factory RunCourseResult.fromJson(Map<String, dynamic> json) => RunCourseResult(
+  factory RunCourseResult.fromJson(
+    Map<String, dynamic> json,
+  ) => RunCourseResult(
     courseId: json['courseId'] as String,
     courseName: json['courseName'] as String?,
     courseDistanceMeters: (json['courseDistanceMeters'] as num? ?? 0).toInt(),
     completed: json['completed'] == true,
     reason: json['reason'] as String? ?? '',
-    recognizedDistanceMeters: (json['recognizedDistanceMeters'] as num? ?? 0).toDouble(),
+    recognizedDistanceMeters: (json['recognizedDistanceMeters'] as num? ?? 0)
+        .toDouble(),
     progressPercent: (json['progressPercent'] as num? ?? 0).toDouble(),
     reviewEligible: json['reviewEligible'] == true,
     courseElapsedSeconds: (json['courseElapsedSeconds'] as num? ?? 0).toInt(),

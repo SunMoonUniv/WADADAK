@@ -65,7 +65,11 @@ public final class CourseJudge {
     }
 
     public Analysis analyze(CourseRouteSnapshot course, List<Input> inputs) {
-        RouteGeometry route = new RouteGeometry(course.route());
+        return analyze(course.route(),List.of(),inputs);
+    }
+    /** Run-owned reference geometry. Breaks have no inferred connecting segment or distance. */
+    public Analysis analyze(List<com.wadadak.common.geo.GeoPoint> reference, List<Integer> breaks, List<Input> inputs) {
+        RouteGeometry route = new RouteGeometry(reference,breaks);
         List<Point> points = new CourseTracker(route, config).track(inputs);
         RecognizedDistance recognized = RecognizedDistance.of(points);
         double length = route.length();

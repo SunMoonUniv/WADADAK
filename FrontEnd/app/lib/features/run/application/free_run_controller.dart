@@ -4,8 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../domain/course_run.dart';
+import '../domain/own_ghost.dart';
 import '../domain/free_run_session.dart';
 import '../domain/run_models.dart';
+import '../domain/free_ghost.dart';
+import '../../../core/map/geo_point.dart';
 import '../domain/run_result_stats.dart';
 import '../domain/recording_models.dart' as recording;
 import 'run_controller.dart';
@@ -52,13 +55,104 @@ class FreeRunController extends ChangeNotifier {
   /// 코스 상세에서 고른 코스(F6). 있으면 시작이 코스 러닝이 된다
   CourseSelection? get selectedCourse => _recording?.selectedCourse;
   void clearCourse() => _recording?.clearCourse();
+  PreparedOwnGhost? get selectedGhost => _recording?.selectedGhost;
+  PreparedFreeGhost? get selectedFreeGhost => _recording?.selectedFreeGhost;
+  bool get privateGhost =>
+      _recording?.run?.ghost?.intent.isFree == true ||
+      selectedFreeGhost != null;
+  void clearGhost() => _recording?.clearGhost();
+  bool get hasPendingGhostStart => _recording?.hasPendingGhostStart ?? false;
+  bool get onGhost => onCourse && _recording?.run?.ghost != null;
+  String? get ghostOpponent => onGhost
+      ? '내 기록 ${formatRunTime(Duration(seconds: _recording!.run!.ghost!.intent.sourceSeconds))}'
+      : null;
+  ({GeoPoint? position, String distance, String time})? get ghostComparison {
+    final engine = _recording,
+        current = _recording?.run,
+        tracker = _recording?.courseTracker;
+    if (!onGhost || current == null || tracker == null || engine == null) {
+      return null;
+    }
+    tracker.feed(current.inputs);
+    final replay = current.ghost!.replay.playback;
+    final moment = replay.at(engine.recorder.elapsedMs);
+    final ghostS = moment.coursePositionM;
+    final position = ghostS == null ? null : tracker.route.pointAt(ghostS);
+    final last = tracker.points.lastOrNull;
+    final boundary = current.inputs
+        .where(
+          (i) =>
+              i.kind == recording.RunKind.gap ||
+              i.kind == recording.RunKind.resume,
+        )
+        .lastOrNull;
+    final s = last?.s;
+    final fresh =
+        last != null &&
+        (boundary == null || boundary.seq < last.input.seq) &&
+        (current.phase == recording.RunPhase.paused ||
+            engine.recorder.elapsedMs - last.input.elapsedMs <= 10000);
+    if (!fresh || s == null) {
+      return (position: position, distance: '—', time: '—');
+    }
+    final distance = ghostS == null
+        ? '—'
+        : '${(s - ghostS).abs().round()}m ${s >= ghostS ? '앞서요' : '뒤에 있어요'}';
+    double? first;
+    for (var i = 1; i < tracker.points.length; i++) {
+      final a = tracker.points[i - 1], b = tracker.points[i];
+      if (b.connected &&
+          a.s != null &&
+          b.s != null &&
+          b.s! > a.s! &&
+          s >= a.s! &&
+          s <= b.s!) {
+        first =
+            a.input.elapsedMs +
+            (b.input.elapsedMs - a.input.elapsedMs) *
+                (s - a.s!) /
+                (b.s! - a.s!);
+        break;
+      }
+    }
+    final opponent = replay.firstArrivalMs(s);
+    final reversing =
+        tracker.points.length > 1 &&
+        tracker.points[tracker.points.length - 2].s != null &&
+        s < tracker.points[tracker.points.length - 2].s!;
+    final delta = first == null || opponent == null || reversing
+        ? null
+        : first - opponent;
+    return (
+      position: position,
+      distance: distance,
+      time: delta == null
+          ? '—'
+          : '${(delta.abs() / 1000).round()}초 ${delta <= 0 ? '앞서요' : '뒤에 있어요'}',
+    );
+  }
+
+  void retrySync() {
+    if (_recording != null) unawaited(_recording!.sync(manual: true));
+  }
 
   /// 진행 중인 코스 러닝의 안내(C4 코스). 코스 러닝이 아니면 null
   CourseLive? get courseLive {
-    final recording = _recording, run = _recording?.run, tracker = _recording?.courseTracker;
-    if (recording == null || run == null || tracker == null || !recording.onCourse) return null;
+    final recording = _recording,
+        run = _recording?.run,
+        tracker = _recording?.courseTracker;
+    if (recording == null ||
+        run == null ||
+        tracker == null ||
+        !recording.onCourse) {
+      return null;
+    }
     tracker.feed(run.inputs);
-    return CourseLive(recording.course!.name, tracker, recording.routeGuidance);
+    return CourseLive(
+      recording.course?.name ?? '내 자유 기록 대결',
+      tracker,
+      recording.routeGuidance,
+    );
   }
 
   /// 이탈 안내 팝업 "코스를 벗어났어요"를 띄울 때(7.1)
@@ -77,8 +171,12 @@ class FreeRunController extends ChangeNotifier {
 
   /// 코스 구간을 끝내고 자유 러닝으로 바뀐 뒤의 안내
   String? get courseNotice => switch (_recording?.courseEndReason) {
-    'ROUTE_END' => '코스 끝에 도착했어요. 자유 러닝으로 이어서 기록해요.',
-    'COURSE_ONLY' => '코스만 종료했어요. 자유 러닝으로 이어서 기록해요.',
+    'ROUTE_END' => privateGhost
+        ? '기준 경로 끝에 도착했어요. 자유 러닝으로 이어서 기록해요.'
+        : '코스 끝에 도착했어요. 자유 러닝으로 이어서 기록해요.',
+    'COURSE_ONLY' => privateGhost
+        ? '대결만 종료했어요. 자유 러닝으로 이어서 기록해요.'
+        : '코스만 종료했어요. 자유 러닝으로 이어서 기록해요.',
     _ => null,
   };
 
@@ -88,7 +186,9 @@ class FreeRunController extends ChangeNotifier {
 
   /// [run]이 방금 시작한 코스 러닝이면 그 코스. 서버 판정 전 결과 화면에 "판정 대기"로 보인다
   CourseSelection? courseOf(RunSnapshot run) =>
-      run.sessionId != null && run.sessionId == _recording?.courseRunId ? _recording?.course : null;
+      run.sessionId != null && run.sessionId == _recording?.courseRunId
+      ? _recording?.course
+      : null;
   bool get hasSettingsAction => _recording?.setupAction != null;
   void openSettings() {
     if (_recording != null) unawaited(_recording!.openSettings());
@@ -227,6 +327,7 @@ class FreeRunController extends ChangeNotifier {
           ? '측정 없음'
           : '측정 완료',
       distanceMeters: metrics.distanceM,
+      ghostPending: run.ghost != null,
       inputs: run.inputs
           .map(
             (input) => RunInput(

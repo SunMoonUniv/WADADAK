@@ -41,7 +41,7 @@ RunSnapshot remoteRunSnapshot(
     segments: route,
     paceDisplayManaged: true,
     averagePaceDisplay: (m['paceSecondsPerKm'] as num?)?.toDouble(),
-    storageStatus: storageStatus,
+    storageStatus: distance<=0 && json['ghost'] is Map?'서버 대결 판정 완료 · 거리 기록 없음':storageStatus,
     endReason: json['endReason'] as String?,
     gapCount: ms('gapCount'),
     laps: (json['laps'] as List? ?? [])
@@ -51,6 +51,7 @@ RunSnapshot remoteRunSnapshot(
     cadenceCoverageMs: ms('cadenceCoverageMs'),
     cadenceStatus: m['averageCadence'] == null ? '측정 없음' : '측정 완료',
     gpsGapPassed: (json['gpsGap'] as Map?)?['passed'] as bool?,
+    ghost: (json['ghost'] as Map?)?.cast<String,dynamic>(),
     course: json['course'] is Map
         ? RunCourseResult.fromJson((json['course'] as Map).cast<String, dynamic>())
         : null,

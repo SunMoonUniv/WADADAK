@@ -37,14 +37,16 @@ class RunService {
     private final ApplicationEventPublisher events;
     private final Clock clock;
     private final CourseRunService courseRuns;
+    private final GhostResultService ghostResults;
     static final String POLICY_VERSION = "2026-10-14";
     RunService(RunSessionRepository sessions, RunRecordRepository records,
                DeletedRunRecordRepository deletedRecords, WithdrawnRunMemberRepository withdrawnMembers,
                RunInputRepository inputs, RunLocks locks, JsonMapper json,
-               ApplicationEventPublisher events, Clock clock, CourseRunService courseRuns) {
+               ApplicationEventPublisher events, Clock clock, CourseRunService courseRuns, GhostResultService ghostResults) {
         this.sessions=sessions; this.records=records; this.deletedRecords=deletedRecords;
         this.withdrawnMembers=withdrawnMembers; this.inputs=inputs; this.locks=locks;
         this.json=json; this.events=events; this.clock=clock; this.courseRuns=courseRuns;
+        this.ghostResults=ghostResults;
     }
     private void ensureActiveMember(UUID member) {
         if (withdrawnMembers.existsById(member)) throw new AppException(RunErrorCode.NOT_FOUND);
@@ -178,13 +180,14 @@ class RunService {
         FreeRunCalculator.Calculation calculation;
         try { calculation=FreeRunCalculator.calculate(session.getStartedAt(),raw); }
         catch(AppException e) { session.fail(e.getErrorCode().getCode()); return; }
-        if(calculation.metrics().distanceM()<=0) {
-            session.fail("ZERO_DISTANCE"); return;
-        }
         Instant registered=clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
         // 코스 러닝이면 시작 때 저장한 코스 스냅샷으로 서버가 완주·인정 거리·리뷰 자격을 판정한다(정책 5.3)
         CourseOutcome course=courseRuns.judge(id,raw);
-        Result result=new Result(id,session.getStartedAt(),calculation.endedAt(),registered,calculation.endReason(),calculation.metrics(),calculation.segments(),calculation.laps(),POLICY_VERSION,raw.getFirst().reason(),calculation.stats(),course);
+        GhostOutcome ghost=ghostResults.finalizeResult(id,course,raw,registered);
+        if(calculation.metrics().distanceM()<=0) {
+            session.fail("ZERO_DISTANCE"); return;
+        }
+        Result result=new Result(id,session.getStartedAt(),calculation.endedAt(),registered,calculation.endReason(),calculation.metrics(),calculation.segments(),calculation.laps(),POLICY_VERSION,raw.getFirst().reason(),calculation.stats(),course,null,ghost);
         RunRecord record=records.save(new RunRecord(id,registered,json.writeValueAsString(result),json.writeValueAsString(RecordSummary.from(result))));
         publishRegistration(member.get(),record,result);
         session.complete();
@@ -200,7 +203,7 @@ class RunService {
         // Enrich old results on detail reads; keep stored distance/time/ranking intact.
         ResultStats stats = FreeRunCalculator.calculate(stored.startedAt(), raw).stats();
         return new Result(stored.id(),stored.startedAt(),stored.endedAt(),stored.registeredAt(),stored.endReason(),
-            stored.metrics(),stored.routeSegments(),stored.laps(),stored.policyVersion(),stored.calculationVersion(),stats,stored.course(),stored.gpsGap());
+            stored.metrics(),stored.routeSegments(),stored.laps(),stored.policyVersion(),stored.calculationVersion(),stats,stored.course(),stored.gpsGap(),stored.ghost());
     }
     /** 끊긴 구간 판단이 없거나 [version]과 다른 기록(판단 도입 전·기준 변경) */
     @Transactional(readOnly=true)

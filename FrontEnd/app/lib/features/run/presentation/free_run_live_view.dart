@@ -23,6 +23,9 @@ class FreeRunLiveView extends StatefulWidget {
     required this.onStop,
     this.course,
     this.courseNotice,
+    this.ghostOpponent,
+    this.ghostPosition,
+    this.ghostGap,
   });
   final RunSnapshot run;
   final VoidCallback? onPause, onResume, onStop;
@@ -30,6 +33,9 @@ class FreeRunLiveView extends StatefulWidget {
 
   /// 코스 구간이 끝나 자유 러닝으로 바뀐 뒤 안내(경로 끝 도착·코스만 종료)
   final String? courseNotice;
+  final String? ghostOpponent;
+  final GeoPoint? ghostPosition;
+  final String? ghostGap;
 
   @override
   State<FreeRunLiveView> createState() => _FreeRunLiveViewState();
@@ -110,7 +116,8 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
           children: [
             WdRunHeader(
               title: course?.name ?? '자유 러닝',
-              subtitle: course == null ? '자유 러닝' : '코스 러닝',
+              subtitle:
+                  widget.ghostOpponent ?? (course == null ? '자유 러닝' : '코스 러닝'),
               badge: paused
                   ? '일시정지'
                   : course?.offRoute == true
@@ -127,6 +134,14 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                 style: WdText.ko12.copyWith(color: WdColors.runTextSub),
               ),
             ),
+            if (widget.ghostGap != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: WdSpace.s24),
+                child: Text(
+                  widget.ghostGap!,
+                  style: WdText.ko12Medium.copyWith(color: WdColors.lime),
+                ),
+              ),
             if (widget.courseNotice != null)
               Padding(
                 padding: const EdgeInsets.symmetric(
@@ -162,6 +177,7 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                         dark: true,
                         showDistanceMarkers: true,
                         course: course,
+                        ghostPosition: widget.ghostPosition,
                       ),
                     ),
                     Row(
@@ -194,13 +210,18 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                     ),
                     if (course != null)
                       WdRemainingDistance(
-                        leading: '남은 거리 ${CourseLive.formatMeters(course.remainingM)}',
+                        leading:
+                            '남은 거리 ${CourseLive.formatMeters(course.remainingM)}',
                         trailing: '코스 진행 ${(course.progress * 100).round()}%',
                         progress: course.progress,
                         dark: true,
                       ),
                     Text(
-                      '${course == null ? '자유 러닝' : course.deviation != null ? '코스에서 ${CourseLive.formatMeters(course.deviation!.d)} 벗어났어요' : course.nextTarget} · ${run.gpsStatus}',
+                      '${course == null
+                          ? '자유 러닝'
+                          : course.deviation != null
+                          ? '코스에서 ${CourseLive.formatMeters(course.deviation!.d)} 벗어났어요'
+                          : course.nextTarget} · ${run.gpsStatus}',
                       style: WdText.ko13.copyWith(color: WdColors.runTextSub),
                     ),
                   ]),
@@ -251,7 +272,8 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                       WdCourseProgress(
                         progress: course.progress,
                         leading: course.nextTarget,
-                        trailing: '총 ${(course.lengthM / 1000).toStringAsFixed(1)} km',
+                        trailing:
+                            '총 ${(course.lengthM / 1000).toStringAsFixed(1)} km',
                       ),
                   ]),
                   _scroll([
@@ -374,9 +396,11 @@ class RunRouteView extends StatelessWidget {
     this.dark = false,
     this.showDistanceMarkers = false,
     this.course,
+    this.ghostPosition,
   });
   final RunSnapshot run;
   final bool dark, showDistanceMarkers;
+  final GeoPoint? ghostPosition;
 
   /// 코스 러닝이면 코스 경로(주행선 아래)·코스 출발점·코스 km 표지를 그린다. km 표지는 주행 거리 대신 코스 기준이다
   final CourseLive? course;
@@ -410,12 +434,20 @@ class RunRouteView extends StatelessWidget {
         myLocation: GeoPoint(location.latitude, location.longitude),
         lines: [
           if (course != null)
-            MapLine(id: 'course', points: course.route, style: MapLineStyle.runCourse),
+            for (var i = 0; i < course.tracker.route.segments.length; i++)
+              MapLine(
+                id: i == 0 ? 'course' : 'course-$i',
+                points: course.tracker.route.segments[i],
+                style: MapLineStyle.runCourse,
+              ),
           // C4-3: 벗어났으면 내 위치에서 가장 가까운 경로 지점까지 점선
           if (course?.deviation case final deviation?)
             MapLine(
               id: 'to-route',
-              points: [GeoPoint(location.latitude, location.longitude), deviation.point],
+              points: [
+                GeoPoint(location.latitude, location.longitude),
+                deviation.point,
+              ],
               style: MapLineStyle.guide,
             ),
           for (var index = 0; index < run.segments.length; index++)
@@ -430,6 +462,13 @@ class RunRouteView extends StatelessWidget {
         // Endpoints use the accepted route only, including server-only history.
         // No markers or lines are interpolated across GPS/pause gaps.
         markers: [
+          if (ghostPosition != null)
+            MapMarker(
+              id: 'ghost-opponent',
+              position: ghostPosition!,
+              imageKey: 'ghost-opponent',
+              child: const WdIcon(WdIcons.brandGhost, size: 24),
+            ),
           if (course != null) ...[
             for (final (km, point) in course.tracker.route.kilometres())
               MapMarker(

@@ -22,13 +22,16 @@ abstract final class Routes {
   static const courseFilter = '/course/filter';
 
   /// B1 코스 상세. 하단 탭 위에 쌓아 돌아오면 홈의 탐색 상태(필터 · 지도 위치 · 목록 스크롤)가 그대로다(FIL-08).
-  static String courseDetail(String courseId) => '/course/${Uri.encodeComponent(courseId)}';
+  static String courseDetail(String courseId) =>
+      '/course/${Uri.encodeComponent(courseId)}';
 
   /// G2 코스 리뷰 전체. B8 "모두 보기"에서 연다. extra: 코스 이름(String).
-  static String courseReviews(String courseId) => '/course/${Uri.encodeComponent(courseId)}/reviews';
+  static String courseReviews(String courseId) =>
+      '/course/${Uri.encodeComponent(courseId)}/reviews';
 
   /// G3 코스 전체 순위. B9 "전체 순위 N명 보기"에서 연다. extra: `CourseRankingsArgs`.
-  static String courseRankings(String courseId) => '/course/${Uri.encodeComponent(courseId)}/rankings';
+  static String courseRankings(String courseId) =>
+      '/course/${Uri.encodeComponent(courseId)}/rankings';
 
   /// B2 리뷰 쓰기 · B10 리뷰 수정. G2 위에 쌓는다. extra: `ReviewFormArgs`.
   static const reviewForm = '/review/form';
@@ -36,6 +39,10 @@ abstract final class Routes {
 
   /// C8 코스 선택(달리기 준비). 하단 탭을 덮는다.
   static const runCourseSelect = '/run/course-select';
+
+  /// C9 내 완주 기록 선택. 현재 계정과 고른 코스의 서버 준비 버전으로 조회한다.
+  static const runOwnGhostSelect = '/run/own-ghost-select';
+  static const runFreeGhostSelect = '/run/free-ghost-select';
   static const ranking = '/ranking';
   static const my = '/my';
 

@@ -147,6 +147,11 @@ void main() {
       await disk.synced(run, result);
       final db = await disk.database;
       await db.execute('ALTER TABLE sessions DROP COLUMN summary');
+      // Reconstruct the actual pre-ghost v2 schema before exercising both upgrades.
+      await db.execute('DROP TABLE ghost_closures');
+      await db.execute('DROP TABLE ghost_start_intents');
+      await db.execute('ALTER TABLE sessions DROP COLUMN ghost_context');
+      await db.execute('ALTER TABLE sessions DROP COLUMN recovery_anchor');
       await db.execute('PRAGMA user_version=2');
       await disk.close();
       disk = RunLocalStore(factory: databaseFactoryFfi, databasePath: path);

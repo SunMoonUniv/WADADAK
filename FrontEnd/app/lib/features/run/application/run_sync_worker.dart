@@ -12,6 +12,36 @@ class RunSyncWorker {
   final RunStore store;
   final Future<String?> Function() owner;
   bool _busy = false;
+  Future<bool> _zeroGhost(
+    LocalRun run,
+    String expectedOwner,
+    Map<String, dynamic> state,
+  ) async {
+    if (run.ghost == null || state['failure'] != 'ZERO_DISTANCE') return false;
+    final verdict = await api.ghostResult(expectedOwner, run.id);
+    if (!await _allowed(expectedOwner) || await _deleted(expectedOwner, run.id)) {
+      return true;
+    }
+    final result = <String, dynamic>{
+      'id': run.id,
+      'startedAt': run.startedAt.toUtc().toIso8601String(),
+      'endReason': run.endReason,
+      'ghost': verdict,
+      'routeSegments': <Object>[],
+      'metrics':
+          run.summary?['metrics'] ??
+          {
+            'distanceM': 0.0,
+            'elapsedMs': run.checkpointMs,
+            'activeMs': 0,
+            'gapCount': 0,
+          },
+      'laps': <Object>[],
+    };
+    await store.synced(run, result);
+    return true;
+  }
+
   Future<bool> _deleted(String expectedOwner, String id) async =>
       store is RunHistoryStore &&
       (await (store as RunHistoryStore).deletedIds(expectedOwner)).contains(id);
@@ -31,6 +61,16 @@ class RunSyncWorker {
     _busy = true;
     try {
       if (!await _allowed(expectedOwner)) return;
+      if (store is RunGhostStore) {
+        final ghosts = store as RunGhostStore;
+        for (final id in await ghosts.pendingGhostClosures(expectedOwner)) {
+          if (!await _allowed(expectedOwner)) return;
+          if (await _deleted(expectedOwner, id)) continue;
+          await api.segmentEnd(expectedOwner, id);
+          if (!await _allowed(expectedOwner)) return;
+          await ghosts.ghostClosureSynced(expectedOwner, id);
+        }
+      }
       await _deletions(expectedOwner);
       for (final run in await store.list(expectedOwner, pendingOnly: true)) {
         if (!await _allowed(expectedOwner)) return;
@@ -49,6 +89,7 @@ class RunSyncWorker {
           var state = await api.prepare(upload);
           if (await _deleted(expectedOwner, run.id)) continue;
           if (state['processing'] == 'FAILED') {
+            if (await _zeroGhost(run, expectedOwner, state)) continue;
             await store.syncStatus(
               run,
               'blocked',
@@ -73,6 +114,7 @@ class RunSyncWorker {
           if (await _deleted(expectedOwner, run.id)) continue;
           state = await api.status(upload);
           if (state['processing'] == 'FAILED') {
+            if (await _zeroGhost(run, expectedOwner, state)) continue;
             await store.syncStatus(
               run,
               'blocked',

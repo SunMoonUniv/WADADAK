@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -26,6 +27,11 @@ import '../domain/route_guidance.dart';
 import '../domain/recording_models.dart';
 import 'run_recorder.dart';
 import 'run_sync_worker.dart';
+import 'ghost_start_flow.dart';
+import '../data/ghost_start_api.dart';
+import '../domain/ghost_run.dart';
+import '../domain/own_ghost.dart';
+import '../domain/free_ghost.dart';
 
 final runControllerProvider = Provider<RunController>((ref) {
   final controller = RunController(
@@ -47,7 +53,9 @@ final runControllerProvider = Provider<RunController>((ref) {
   ref.listen(selectedCourseProvider, (_, next) {
     if (next == null) return;
     controller.selectCourse(next);
-    Future.microtask(() => ref.read(selectedCourseProvider.notifier).select(null));
+    Future.microtask(
+      () => ref.read(selectedCourseProvider.notifier).select(null),
+    );
   }, fireImmediately: true);
   ref.onDispose(controller.dispose);
   unawaited(controller.bindOwner());
@@ -67,13 +75,32 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     this.device,
     AudioGuide? audio,
     Future<int> Function()? nowMs,
+    Future<RunClockSample> Function()? recoveryClock,
+    GhostStartSource? ghostApi,
   }) : audioGuide = audio ?? AudioGuide(RunAudioOutput()),
        _wait = wait ?? Future<void>.delayed,
        _utcNow = utcNow ?? (() => DateTime.now().toUtc()),
        _lifecycleState =
            lifecycleState ?? (() => WidgetsBinding.instance.lifecycleState) {
     audioGuide.onChanged = _notify;
-    recorder = RunRecorder(store, nowMs ?? MonotonicClock().nowMs);
+    final clock = MonotonicClock();
+    _recoveryClock =
+        recoveryClock ??
+        (nowMs == null
+            ? clock.sample
+            : () async => RunClockSample(await nowMs(), null));
+    recorder = RunRecorder(
+      store,
+      nowMs ?? clock.nowMs,
+      recoveryClock: _recoveryClock,
+    );
+    ghostStarts = GhostStartFlow(
+      store,
+      ghostApi ?? GhostStartApi(api),
+      recorder,
+      _recoveryClock,
+      () async => _disposed ? null : await owner(),
+    );
     syncWorker = RunSyncWorker(
       api,
       store,
@@ -103,6 +130,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   String? get voiceNotice => audioGuide.notice;
   Set<String> deletedIds = {};
   int pendingDeleteCount = 0;
+  int pendingGhostClosureCount = 0;
   String? _deviceRunId;
   bool _pressureStarted = false;
   Completer<void>? _syncDone;
@@ -111,6 +139,19 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   final Future<String?> Function() owner;
   late final RunRecorder recorder;
   late final RunSyncWorker syncWorker;
+  late final GhostStartFlow ghostStarts;
+  late final Future<RunClockSample> Function() _recoveryClock;
+  PreparedFreeGhost? selectedFreeGhost;
+  PreparedOwnGhost? _selectedGhost;
+  PreparedOwnGhost? get selectedGhost => _selectedGhost;
+  set selectedGhost(PreparedOwnGhost? value) {
+    _selectedGhost = value;
+    selectedFreeGhost = null;
+  }
+
+  CourseSnapshot? _ghostPreparation;
+  int _ghostSelectionGeneration = 0;
+  bool hasPendingGhostStart = false;
   Timer? _timer;
   final Future<void> Function(Duration) _wait;
   final DateTime Function() _utcNow;
@@ -129,7 +170,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   CourseSelection? course;
   String? courseRunId;
 
-  /// 그 코스 러닝의 경로 추적(진행도·남은 거리 안내용, 완주 판정 아님). 앱을 다시 켜면 러닝이 끝나므로 기기에 저장하지 않는다
+  /// 경로 추적은 원본에서 재구성한다. 승인된 고스트만 신뢰 가능한 60초 이내에 재개한다.
   CourseTracker? courseTracker;
 
   /// 그 코스 러닝의 이탈 안내(6·7장). 안내 전용이고 판정에는 영향이 없다
@@ -143,7 +184,10 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// 진행 중인 러닝이 아직 코스 구간이다
   bool get onCourse =>
-      courseRunId != null && run?.id == courseRunId && recorder.active && courseEndReason == null;
+      courseRunId != null &&
+      run?.id == courseRunId &&
+      recorder.active &&
+      courseEndReason == null;
   List<LocalRun> records = [];
   List<Map<String, dynamic>> remoteRecords = [];
   String? currentOwner, error, gpsNotice, nextCursor, historyNotice;
@@ -178,9 +222,29 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       while (!_disposed) {
         final member = await owner();
         if (member == currentOwner) return;
+        final previousOwner = currentOwner;
+        if (previousOwner != null) {
+          for (final pending in await store.pendingGhostStarts(previousOwner)) {
+            await store.deleteRecord(previousOwner, pending.intent.id);
+          }
+        }
         cancelStart();
         cancelCourseStart();
+        await _stopWatchingStart();
+        courseStart = null;
+        if (previousOwner != null) {
+          selectedCourse = null;
+        }
+        course = null;
+        courseRunId = null;
+        courseTracker = null;
+        routeGuidance = null;
+        courseEndReason = null;
         currentOwner = null;
+        selectedGhost = null;
+        _ghostPreparation = null;
+        _ghostSelectionGeneration++;
+        hasPendingGhostStart = false;
         records = [];
         remoteRecords = [];
         _notify();
@@ -202,12 +266,15 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         historyNotice = null;
         deletedIds = {};
         pendingDeleteCount = 0;
+        pendingGhostClosureCount = 0;
         voiceSettings = const RunVoiceSettings();
         if (member == null) return;
         voiceSettings = await store.voiceSettings(member);
         audioGuide.restoreSettings(voiceSettings);
         deletedIds = await store.deletedIds(member);
         pendingDeleteCount = (await store.pendingDeletions(member)).length;
+        pendingGhostClosureCount = (await store.pendingGhostClosures(member))
+            .length;
         records = (await recorder.recover(member, summaryOnly: true))
             .where(
               (r) =>
@@ -220,6 +287,17 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
           records = [];
           continue;
         }
+        if (!recorder.active) {
+          try {
+            await ghostStarts.recover(member);
+          } on ApiException catch (e) {
+            error = e.message;
+          }
+        }
+        hasPendingGhostStart = (await store.pendingGhostStarts(member))
+            .isNotEmpty;
+        if (await owner() != member) continue;
+        await _restoreGhostRun();
         remoteRecords = [];
         nextCursor = null;
         _notify();
@@ -238,16 +316,81 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// 코스 러닝으로 시작할 코스를 고른다. 진행 중인 러닝이 있으면 바꾸지 않는다(RUN-05)
   void selectCourse(CourseSelection selection) {
-    if (recorder.active || preparing || courseStart != null) return;
+    if (recorder.active ||
+        preparing ||
+        courseStart != null ||
+        hasPendingGhostStart) {
+      return;
+    }
     selectedCourse = selection;
+    selectedGhost = null;
+    _ghostPreparation = null;
+    _ghostSelectionGeneration++;
     error = null;
     _notify();
   }
 
   void clearCourse() {
-    if (preparing) return;
+    if (recorder.active ||
+        preparing ||
+        courseStart != null ||
+        hasPendingGhostStart) {
+      return;
+    }
     selectedCourse = null;
+    selectedGhost = null;
+    _ghostPreparation = null;
+    _ghostSelectionGeneration++;
     _notify();
+  }
+
+  bool get canSelectGhost =>
+      recorder.current == null &&
+      !preparing &&
+      courseStart == null &&
+      !hasPendingGhostStart;
+
+  void clearGhost() {
+    if (!canSelectGhost) return;
+    selectedGhost = null;
+    _ghostPreparation = null;
+    _ghostSelectionGeneration++;
+    _notify();
+  }
+
+  /// Read the existing course preparation identity without starting/counting a duel.
+  /// The same snapshot/session is reused when the selected ghost reaches the start flow.
+  Future<({String owner, CourseSnapshot snapshot})>
+  prepareGhostSelection() async {
+    await bindOwner();
+    final selection = selectedCourse, member = currentOwner;
+    if (!canSelectGhost || selection == null || member == null) {
+      throw StateError('고스트를 선택할 수 없는 상태예요.');
+    }
+    final generation = ++_ghostSelectionGeneration;
+    final id = const Uuid().v7();
+    final snapshot = CourseSnapshot.fromJson(
+      await api.prepareCourse(member, id, selection.courseId),
+    );
+    final activeOwner = await owner();
+    if (_disposed ||
+        generation != _ghostSelectionGeneration ||
+        !canSelectGhost ||
+        activeOwner != member ||
+        currentOwner != member ||
+        !identical(selectedCourse, selection)) {
+      throw StateError('계정 또는 코스가 바뀌었어요.');
+    }
+    if (snapshot.sessionId != id ||
+        snapshot.courseId != selection.courseId ||
+        snapshot.version == null ||
+        snapshot.version! < 0 ||
+        snapshot.route.length < 2 ||
+        snapshot.totalDistanceMeters <= 0) {
+      throw const FormatException('Invalid ghost course preparation');
+    }
+    _ghostPreparation = snapshot;
+    return (owner: member, snapshot: snapshot);
   }
 
   /// 코스 러닝 서버 연결(D-08). 끊겨 있으면 시작하지 않고 연결 실패를 알린다
@@ -256,7 +399,9 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       return await call();
     } on ApiException catch (e) {
       if (e.code == ApiException.network) {
-        throw const DeviceSetupException('인터넷에 연결되지 않아 코스 러닝을 시작할 수 없어요. 연결을 확인하고 다시 시도해 주세요.');
+        throw const DeviceSetupException(
+          '인터넷에 연결되지 않아 코스 러닝을 시작할 수 없어요. 연결을 확인하고 다시 시도해 주세요.',
+        );
       }
       rethrow;
     }
@@ -267,6 +412,10 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> prepareStart() async {
     if (preparing || recorder.active || storageFault || _disposed) return;
     await bindOwner();
+    if (hasPendingGhostStart) {
+      await retryGhostStart();
+      return;
+    }
     if (preparing || recorder.active || storageFault || _disposed) return;
     final member = await owner();
     if (member == null) {
@@ -279,7 +428,13 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     final generation = ++_generation;
     // 코스 러닝은 세션 ID를 먼저 만들어 서버 준비·시작 신호와 기록에 같은 ID를 쓴다
     final selection = start == null ? selectedCourse : null;
-    final runId = start?.runId ?? const Uuid().v7();
+    final freeGhost = selectedFreeGhost;
+    final ghostPreparation =
+        freeGhost != null || selection != null && selectedGhost != null
+        ? _ghostPreparation
+        : null;
+    final runId =
+        start?.runId ?? ghostPreparation?.sessionId ?? const Uuid().v7();
     preparing = true;
     error = null;
     setupAction = null;
@@ -302,13 +457,29 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       if (_lifecycleState() != AppLifecycleState.resumed) {
         throw const DeviceSetupException('앱으로 돌아온 뒤 러닝을 시작해 주세요.');
       }
-      if (selection != null) {
+      if (selection != null || freeGhost != null && start == null) {
         // 코스 공개 여부 확인과 판정용 경로 저장. 실패하면 시작하지 않는다(D-08)
-        final snapshot = CourseSnapshot.fromJson(
-          await _courseCall(() => api.prepareCourse(member, runId, selection.courseId)),
-        );
+        final snapshot =
+            ghostPreparation ??
+            CourseSnapshot.fromJson(
+              await _courseCall(
+                () => api.prepareCourse(member, runId, selection!.courseId),
+              ),
+            );
+        final ghost = selectedGhost;
+        if (ghost != null &&
+            (ghost.owner != member ||
+                snapshot.courseId != ghost.course.id ||
+                snapshot.version != ghost.course.version)) {
+          throw StateError('코스가 바뀌었어요. 고스트를 다시 선택해 주세요.');
+        }
         if (generation != _generation || _disposed) return;
-        courseStart = CourseStart(runId, selection, snapshot, GeoPoint(position.latitude, position.longitude));
+        courseStart = CourseStart(
+          runId,
+          selection,
+          snapshot,
+          GeoPoint(position.latitude, position.longitude),
+        );
         _watchStart();
         return;
       }
@@ -342,7 +513,33 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         return;
       }
       final startedAt = _utcNow();
-      if (start != null) {
+      final ghost = selectedGhost;
+      if ((ghost != null || freeGhost != null) && start != null) {
+        _committing = true;
+        countdown = null;
+        hasPendingGhostStart = true;
+        _notify();
+        final reading = await _recoveryClock();
+        final intent = GhostStartIntent(
+          owner: member,
+          id: runId,
+          startedAt: startedAt,
+          course: start.snapshot,
+          sourceId: freeGhost?.replay.sourceId ?? ghost!.candidate.id,
+          sourceSeconds: freeGhost?.replay.seconds ?? ghost!.candidate.seconds,
+          referenceHash: freeGhost?.referenceHash,
+          clock: reading,
+        );
+        final continued = await ghostStarts.begin(intent);
+        hasPendingGhostStart = (await store.pendingGhostStarts(member))
+            .isNotEmpty;
+        if (!continued) {
+          error = hasPendingGhostStart
+              ? '같은 고스트 시작을 확인하고 있어요. 연결 후 다시 시도해 주세요.'
+              : '중단된 대결은 마지막 저장 지점에서 마감했어요.';
+          return;
+        }
+      } else if (start != null) {
         // 시작 신호(도전 수·현재 러너 수). 기록의 시작 시각과 같은 값을 보내야 업로드가 코스 기록으로 맞는다
         await _courseCall(() => api.startCourse(member, runId, startedAt));
         if (generation != _generation || _disposed || await owner() != member) {
@@ -352,15 +549,22 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       _committing = true;
       countdown = null;
       _notify();
-      await recorder.start(runId, member, startedAt);
+      if (ghost == null && freeGhost == null) {
+        await recorder.start(runId, member, startedAt);
+      }
       course = start?.course;
       courseRunId = start == null ? null : runId;
-      final geometry = start == null ? null : RouteGeometry(start.snapshot.route);
+      final geometry = start == null
+          ? null
+          : RouteGeometry(start.snapshot.route, breaks: start.snapshot.breaks);
       courseTracker = geometry == null ? null : CourseTracker(geometry);
       routeGuidance = geometry == null ? null : RouteGuidance(geometry);
       courseEndReason = null;
       courseStart = null;
       selectedCourse = null;
+      selectedGhost = null;
+      _ghostPreparation = null;
+      _ghostSelectionGeneration++;
       currentOwner = member;
       if (_disposed || await owner() != member) {
         await recorder.end(reason: 'ACCOUNT_CHANGED');
@@ -403,17 +607,129 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     ++_generation;
     countdown = null;
     preparing = false;
-    unawaited(_stopLocation().then((_) {
-      if (courseStart != null && !_disposed) _watchStart();
-    }));
+    unawaited(
+      _stopLocation().then((_) {
+        if (courseStart != null && !_disposed) _watchStart();
+      }),
+    );
     _notify();
+  }
+
+  /// Entry adapter for the existing own-ghost selection component. Uses the F6 preparation flow.
+  void selectFreeGhost(PreparedFreeGhost prepared) {
+    if (!canSelectGhost || prepared.owner != currentOwner) {
+      throw StateError('고스트 선택을 다시 확인해 주세요.');
+    }
+    final reference = prepared.reference;
+    selectedCourse = null;
+    selectedGhost = null;
+    _ghostPreparation = CourseSnapshot(
+      sessionId: const Uuid().v7(),
+      route: reference.route,
+      totalDistanceMeters: reference.totalDistanceMeters,
+      name: reference.name,
+      version: reference.version,
+      breaks: reference.breaks,
+    );
+    selectedFreeGhost = prepared;
+    _ghostSelectionGeneration++;
+    error = null;
+    _notify();
+  }
+
+  /// Entry adapter for the existing own-ghost selection component. Uses the F6 preparation flow.
+  void selectGhost(PreparedOwnGhost prepared) {
+    if (!canSelectGhost) {
+      return;
+    }
+    if (prepared.owner != currentOwner ||
+        prepared.replay.sourceId != prepared.candidate.id ||
+        !prepared.replay.playback.eligible) {
+      throw StateError('고스트 선택을 다시 확인해 주세요.');
+    }
+    final data =
+        (jsonDecode(prepared.replay.payloadJson) as Map)['course'] as Map;
+    selectedCourse = CourseSelection(
+      prepared.course.id,
+      data['name'] as String? ?? '고스트 대결',
+    );
+    selectedGhost = prepared;
+    _ghostSelectionGeneration++;
+    error = null;
+    _notify();
+  }
+
+  Future<void> retryGhostStart() async {
+    final member = currentOwner;
+    if (member == null ||
+        preparing ||
+        recorder.active ||
+        storageFault ||
+        _disposed) {
+      return;
+    }
+    preparing = true;
+    try {
+      await ghostStarts.recover(member);
+      if (await owner() != member || _disposed) return;
+      hasPendingGhostStart = (await store.pendingGhostStarts(member))
+          .isNotEmpty;
+      await _restoreGhostRun();
+      if (hasPendingGhostStart) error = '같은 고스트 시작을 확인하고 있어요. 연결 후 다시 시도해 주세요.';
+    } on Object catch (e) {
+      await _operationError(e);
+    } finally {
+      preparing = false;
+      _notify();
+    }
+    if (!recorder.active) unawaited(sync());
+  }
+
+  Future<void> _restoreGhostRun() async {
+    final current = recorder.current, context = recorder.current?.ghost;
+    if (!recorder.active || current?.owner != currentOwner || context == null) {
+      return;
+    }
+    await _stopWatchingStart();
+    if (_disposed || await owner() != current!.owner) return;
+    final snapshot = context.intent.course;
+    course = snapshot.courseId == null
+        ? null
+        : CourseSelection(snapshot.courseId!, snapshot.name ?? '고스트 대결');
+    courseRunId = current.id;
+    courseStart = null;
+    selectedCourse = null;
+    selectedGhost = null;
+    final segment = current.inputs
+        .where((i) => i.kind == RunKind.segmentEnd)
+        .firstOrNull;
+    courseEndReason =
+        segment?.reason ?? (segment == null ? null : 'COURSE_ONLY');
+    final geometry = RouteGeometry(snapshot.route, breaks: snapshot.breaks);
+    final courseInputs = current.inputs
+        .takeWhile((i) => i.kind != RunKind.segmentEnd)
+        .toList();
+    courseTracker = CourseTracker(geometry)..feed(courseInputs);
+    routeGuidance = RouteGuidance(geometry)..feed(courseInputs);
+    routeGuidance!.alertOpen = false; // Do not replay historical alerts/audio.
+    _latest = null;
+    _lastFixAt = null;
+    _gapOpen = true;
+    gpsNotice = '대결을 이어가고 있어요. 새 GPS 신호를 기다려요.';
+    if (_gps == null) _startLocation();
+    unawaited(_refreshExtras());
   }
 
   /// 경로 끝 도착(RUN-08): 코스를 따라간 위치가 끝 [courseArrivalM] 안이면 코스 구간을 끝낸다.
   /// 좌표가 아니라 코스상 위치로 보므로 순환·왕복 코스의 출발점을 끝으로 보지 않는다. 완주는 서버가 판정한다
   void _checkCourseEnd() {
     final tracker = courseTracker, current = run;
-    if (!onCourse || tracker == null || current == null || current.phase != RunPhase.running) return;
+    if (!onCourse ||
+        tracker == null ||
+        current == null ||
+        current.phase != RunPhase.running) {
+      return;
+    }
     tracker.feed(current.inputs);
     final position = tracker.positionM;
     if (position != null && position >= tracker.route.length - courseArrivalM) {
@@ -469,17 +785,26 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       await _operationError(e);
       return;
     }
-    unawaited(() async {
-      try {
-        await api.segmentEnd(member, id);
-      } on Object {
-        // 현재 러너 수는 업로드 도착·3시간 뒤에도 빠진다
-      }
-    }());
+    if (run?.ghost?.intent.isFree != true) {
+      unawaited(() async {
+        try {
+          await api.segmentEnd(member, id);
+        } on Object {
+          // 현재 러너 수는 업로드 도착·3시간 뒤에도 빠진다
+        }
+      }());
+    }
     if (reason == 'ROUTE_END' && tracker != null) {
       // 측정 시작(START)이 0ms라 구간 종료 시각이 곧 코스 총 소요시간
-      final ms = run?.inputs.where((i) => i.kind == RunKind.segmentEnd).lastOrNull?.elapsedMs ?? 0;
-      unawaited(audioGuide.announce(courseArrivalVoice(ms, tracker.route.length)));
+      final ms =
+          run?.inputs
+              .where((i) => i.kind == RunKind.segmentEnd)
+              .lastOrNull
+              ?.elapsedMs ??
+          0;
+      unawaited(
+        audioGuide.announce(courseArrivalVoice(ms, tracker.route.length)),
+      );
     }
   }
 
@@ -512,15 +837,12 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
             intervalDuration: const Duration(seconds: 1),
           ),
         )
-        .listen(
-          (p) {
-            final start = courseStart;
-            if (start == null || _disposed) return;
-            start.position = GeoPoint(p.latitude, p.longitude);
-            _notify();
-          },
-          onError: (Object e) => unawaited(_operationError(e)),
-        );
+        .listen((p) {
+          final start = courseStart;
+          if (start == null || _disposed) return;
+          start.position = GeoPoint(p.latitude, p.longitude);
+          _notify();
+        }, onError: (Object e) => unawaited(_operationError(e)));
   }
 
   Future<void> _stopWatchingStart() async {
@@ -651,9 +973,15 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       }
       await _refreshExtras();
       if (_ticks % 15 == 0 &&
+          hasPendingGhostStart &&
+          _lifecycleState() == AppLifecycleState.resumed) {
+        unawaited(retryGhostStart());
+      }
+      if (_ticks % 15 == 0 &&
           !_syncDisabled &&
           !syncing &&
           (pendingDeleteCount > 0 ||
+              pendingGhostClosureCount > 0 ||
               records.any((r) => r.pending && r.syncState != 'blocked'))) {
         unawaited(sync());
       }
@@ -745,9 +1073,11 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     final loaded = await store.list(member, summaryOnly: true);
     final removed = await store.deletedIds(member);
     final deletions = await store.pendingDeletions(member);
+    final ghostClosures = await store.pendingGhostClosures(member);
     if (currentOwner != member) return;
     deletedIds = {...deletedIds, ...removed};
     pendingDeleteCount = deletions.length;
+    pendingGhostClosureCount = ghostClosures.length;
     remoteRecords.removeWhere((r) => removed.contains(r['id']));
     records = loaded
         .where(
@@ -1120,6 +1450,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     }
     if (state == AppLifecycleState.resumed) {
       unawaited(bindOwner());
+      if (hasPendingGhostStart) unawaited(retryGhostStart());
       if (!_syncDisabled) unawaited(sync());
     }
   }

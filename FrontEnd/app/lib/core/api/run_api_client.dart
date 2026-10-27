@@ -64,6 +64,8 @@ class RunApiClient {
   Future<Map<String, dynamic>> result(String owner, String id) => _map(
     () => dio.get<Object?>('/api/v1/runs/records/$id', options: options(owner)),
   );
+  Future<Map<String,dynamic>> ghostResult(String owner,String id)=>_map(
+    ()=>dio.get<Object?>('/api/v1/runs/sessions/$id/ghost/result',options:options(owner)));
   Future<void> delete(String owner, String id) async {
     final result = await _map(
       () => dio.delete<Object?>(

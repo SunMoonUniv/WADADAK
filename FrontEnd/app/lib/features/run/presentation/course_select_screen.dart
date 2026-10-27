@@ -210,6 +210,7 @@ class _CourseSelectScreenState extends ConsumerState<CourseSelectScreen> {
               onPressed: () {
                 ref.read(runControllerProvider).clearCourse();
                 ref.read(courseTabProvider.notifier).set(false);
+                ref.read(ghostTabProvider.notifier).set(false);
                 context.pop();
               },
             ),

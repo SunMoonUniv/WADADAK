@@ -16,9 +16,10 @@ import org.springframework.web.bind.annotation.*;
 class GhostStartController {
     private final GhostStartService starts;
     private final GhostStartStore store;
+    private final FreeGhostService freeGhosts;
 
-    GhostStartController(GhostStartService starts, GhostStartStore store) {
-        this.starts = starts; this.store = store;
+    GhostStartController(GhostStartService starts, GhostStartStore store, FreeGhostService freeGhosts) {
+        this.starts = starts; this.store = store; this.freeGhosts=freeGhosts;
     }
 
     @Operation(summary = "내 고스트 대결 시작 승인·상대 고정",
@@ -37,7 +38,7 @@ class GhostStartController {
                     + "승인 전·삭제·탈퇴·다른 계정은 RUN-002. 승인 영수증이며 현재 주행 상태·승패가 아니다.")
     @GetMapping("/start")
     ApiResult<GhostStartApproval> get(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID id) {
-        return ApiResult.success(store.get(owner(jwt), id));
+        return ApiResult.success(freeGhosts.receipt(owner(jwt),id).orElseGet(()->store.get(owner(jwt), id)));
     }
 
     private static UUID owner(Jwt jwt) {

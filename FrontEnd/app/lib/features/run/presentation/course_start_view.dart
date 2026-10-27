@@ -14,12 +14,15 @@ class CourseStartView extends StatefulWidget {
     required this.onStart,
     required this.onCancel,
     this.error,
+    this.ghost = false,
+    this.pendingGhost = false,
   });
 
   final CourseStart start;
   final VoidCallback onStart;
   final VoidCallback onCancel;
   final String? error;
+  final bool ghost, pendingGhost;
 
   @override
   State<CourseStartView> createState() => _CourseStartViewState();
@@ -31,17 +34,27 @@ class _CourseStartViewState extends State<CourseStartView> {
   @override
   Widget build(BuildContext context) {
     final start = widget.start;
+    final mode = widget.ghost ? '고스트 대결' : '코스 러닝';
     final near = start.nearStart;
     final position = start.position;
     final meters = start.distanceToStartM;
-    final (distance, unit) =
-        meters < 1000 ? ('${meters.round()}', 'm') : ((meters / 1000).toStringAsFixed(1), 'km');
+    final (distance, unit) = meters < 1000
+        ? ('${meters.round()}', 'm')
+        : ((meters / 1000).toStringAsFixed(1), 'km');
     return Scaffold(
       backgroundColor: WdColors.runBackground,
       body: SafeArea(
         child: Column(
           children: [
-            WdRunHeader(title: start.course.name, subtitle: '코스 러닝', badge: near ? '시작 가능' : '준비'),
+            WdRunHeader(
+              title: start.course?.name ?? start.snapshot.name ?? '내 자유 기록 대결',
+              subtitle: widget.ghost ? '고스트 대결' : '코스 러닝',
+              badge: widget.pendingGhost
+                  ? '시작 확인 중'
+                  : near
+                  ? '시작 가능'
+                  : '준비',
+            ),
             Expanded(
               child: Stack(
                 children: [
@@ -54,8 +67,20 @@ class _CourseStartViewState extends State<CourseStartView> {
                       myLocation: position,
                       padding: const EdgeInsets.only(bottom: 56),
                       lines: [
-                        MapLine(id: 'course', points: start.snapshot.route),
-                        MapLine(id: 'to-start', points: [position, start.start], style: MapLineStyle.guide),
+                        for (
+                          var i = 0;
+                          i < start.snapshot.routeSegments.length;
+                          i++
+                        )
+                          MapLine(
+                            id: i == 0 ? 'course' : 'course-$i',
+                            points: start.snapshot.routeSegments[i],
+                          ),
+                        MapLine(
+                          id: 'to-start',
+                          points: [position, start.start],
+                          style: MapLineStyle.guide,
+                        ),
                       ],
                       markers: [
                         MapMarker(
@@ -68,35 +93,57 @@ class _CourseStartViewState extends State<CourseStartView> {
                           id: 'course-start-label',
                           position: start.start,
                           anchor: const Offset(0.5, 1.7), // 출발점 표지 위
-                          child: const _Label('출발점', color: WdColors.lime, textColor: WdColors.ink),
+                          child: const _Label(
+                            '출발점',
+                            color: WdColors.lime,
+                            textColor: WdColors.ink,
+                          ),
                           imageKey: 'label:start',
                         ),
                         MapMarker(
                           id: 'my-location-label',
                           position: position,
                           anchor: const Offset(0.5, -0.8), // 현재 위치 점 아래
-                          child: const _Label('현재 위치', color: WdColors.runSurface, textColor: WdColors.white),
+                          child: const _Label(
+                            '현재 위치',
+                            color: WdColors.runSurface,
+                            textColor: WdColors.white,
+                          ),
                           imageKey: 'label:me',
                         ),
                       ],
                       onCreated: (map) async {
                         _map = map;
-                        await map.fitPoints([...start.snapshot.route, position]);
+                        await map.fitPoints([
+                          ...start.snapshot.route,
+                          position,
+                        ]);
                         map.showMyLocation(follow: false);
                       },
                     ),
                   ),
-                  const Positioned(left: WdSpace.s24, bottom: WdSpace.s16, child: _Legend()),
+                  const Positioned(
+                    left: WdSpace.s24,
+                    bottom: WdSpace.s16,
+                    child: _Legend(),
+                  ),
                   Positioned(
                     right: WdSpace.s24,
                     bottom: WdSpace.s12,
-                    child: WdMapLocateButton(onPressed: () => _map?.fitPoints([position, start.start])),
+                    child: WdMapLocateButton(
+                      onPressed: () => _map?.fitPoints([position, start.start]),
+                    ),
                   ),
                 ],
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(WdSpace.s24, WdSpace.s24, WdSpace.s24, WdSpace.s24),
+              padding: const EdgeInsets.fromLTRB(
+                WdSpace.s24,
+                WdSpace.s24,
+                WdSpace.s24,
+                WdSpace.s24,
+              ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 spacing: WdSpace.s12,
@@ -110,21 +157,40 @@ class _CourseStartViewState extends State<CourseStartView> {
                     textBaseline: TextBaseline.alphabetic,
                     spacing: WdSpace.s8,
                     children: [
-                      Text(distance, style: WdText.run56W800H74.copyWith(color: near ? WdColors.lime : WdColors.white)),
-                      Text(unit, style: WdText.ko13.copyWith(color: WdColors.runTextSub)),
+                      Text(
+                        distance,
+                        style: WdText.run56W800H74.copyWith(
+                          color: near ? WdColors.lime : WdColors.white,
+                        ),
+                      ),
+                      Text(
+                        unit,
+                        style: WdText.ko13.copyWith(color: WdColors.runTextSub),
+                      ),
                     ],
                   ),
                   Text(
                     near
-                        ? '출발점 ${CourseStart.radiusM.round()} m 안에 도착했어요.\n준비됐다면 코스 러닝을 시작해 주세요.'
-                        : '출발점 ${CourseStart.radiusM.round()} m 안에 들어오면\n코스 러닝을 시작할 수 있어요.',
+                        ? '출발점 ${CourseStart.radiusM.round()} m 안에 도착했어요.\n준비됐다면 $mode을 시작해 주세요.'
+                        : '출발점 ${CourseStart.radiusM.round()} m 안에 들어오면\n$mode을 시작할 수 있어요.',
                     style: WdText.ko13.copyWith(color: WdColors.runTextSub),
                   ),
-                  if (widget.error != null) WdInfoBanner(widget.error!, tone: WdBannerTone.warning),
+                  if (widget.error != null)
+                    WdInfoBanner(widget.error!, tone: WdBannerTone.warning),
                   const SizedBox(height: WdSpace.s4),
                   // 1초 누르기 → 3초 카운트다운(RUN-04)
-                  RunHoldToStart(label: '코스 러닝 시작', onStart: near ? widget.onStart : null),
-                  WdButton('취소', onPressed: widget.onCancel, variant: WdButtonVariant.secondary),
+                  if (widget.pendingGhost)
+                    WdButton('같은 고스트 시작 확인', onPressed: widget.onStart)
+                  else
+                    RunHoldToStart(
+                      label: widget.ghost ? '고스트 대결 시작' : '코스 러닝 시작',
+                      onStart: near ? widget.onStart : null,
+                    ),
+                  WdButton(
+                    '취소',
+                    onPressed: widget.pendingGhost ? null : widget.onCancel,
+                    variant: WdButtonVariant.secondary,
+                  ),
                 ],
               ),
             ),
@@ -143,8 +209,14 @@ class _Label extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: WdSpace.s10, vertical: WdSpace.s6),
-    decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(WdRadius.r8)),
+    padding: const EdgeInsets.symmetric(
+      horizontal: WdSpace.s10,
+      vertical: WdSpace.s6,
+    ),
+    decoration: BoxDecoration(
+      color: color,
+      borderRadius: BorderRadius.circular(WdRadius.r8),
+    ),
     child: Text(text, style: WdText.ko12Medium.copyWith(color: textColor)),
   );
 }
@@ -159,13 +231,23 @@ class _Legend extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       spacing: WdSpace.s6,
       children: [
-        Container(width: 6, height: 6, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
+        Container(
+          width: 6,
+          height: 6,
+          decoration: BoxDecoration(color: dot, shape: BoxShape.circle),
+        ),
         Text(label, style: WdText.ko12.copyWith(color: WdColors.white)),
       ],
     );
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: WdSpace.s12, vertical: WdSpace.s6),
-      decoration: BoxDecoration(color: WdColors.ink, borderRadius: BorderRadius.circular(WdRadius.full)),
+      padding: const EdgeInsets.symmetric(
+        horizontal: WdSpace.s12,
+        vertical: WdSpace.s6,
+      ),
+      decoration: BoxDecoration(
+        color: WdColors.ink,
+        borderRadius: BorderRadius.circular(WdRadius.full),
+      ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         spacing: WdSpace.s14,
