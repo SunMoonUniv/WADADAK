@@ -9,3 +9,12 @@
 
 ## 프로젝트 주소
 - 피그마 디자인 페이지 : https://www.figma.com/design/AHA57jFG1znDzxdmGWHGUm/%EB%AA%B0%EC%9E%85%ED%98%95-%EB%94%94%EC%9E%90%EC%9D%B8?node-id=1453-2946&t=eD45iuPCv04tYXHO-1
+
+## 담당영역
+| 이름 | 담당 |
+|---|---|
+| 이도현 | ㅇ|
+| 원세찬 | ㅇ|
+| 문석용 | ㅇ|
+| 김효성 | ㅇ|
+| 서현석 | ㅇ|
