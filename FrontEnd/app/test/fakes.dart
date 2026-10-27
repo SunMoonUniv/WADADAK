@@ -15,6 +15,7 @@ import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/map/geo_point.dart';
 import 'package:wadadak/core/permissions/device_setup.dart';
 import 'package:wadadak/core/upload/photo_uploader.dart';
+import 'package:wadadak/features/course/create/run_course_source_api.dart';
 import 'package:wadadak/features/home/my_location.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
 
@@ -243,6 +244,57 @@ class FakeCourseApi implements CourseApiClient {
     return RegisteredCourse(courseId: 'course-${registrations.length}', name: name, startPoint: anchorPoints.first);
   }
 
+  /// D4 미리보기 오류(이미 등록됨 · 1 km 미만 · GPS 정확도 부족 등). 있으면 그 오류로 답한다.
+  ApiException? gpsRouteError;
+  final gpsPreviews = <({String recordId, List<List<GpsSourcePoint>> segments})>[];
+  final gpsRegistrations = <FakeGpsRegistration>[];
+
+  /// 서버처럼 조각을 달린 순서대로 잇고, 끝점에 1km 표지 하나를 둔다.
+  @override
+  Future<GpsCourseRoute> previewGpsRoute({
+    required String recordId,
+    required List<List<GpsSourcePoint>> segments,
+  }) async {
+    gpsPreviews.add((recordId: recordId, segments: segments));
+    if (gpsRouteError != null) throw gpsRouteError!;
+    final route = [for (final segment in segments) for (final point in segment) GeoPoint(point.lat, point.lng)];
+    return GpsCourseRoute(
+      recordId: recordId,
+      segments: segments,
+      route: route,
+      distanceMeters: GeoPoint.pathLength(route).round(),
+      distanceMarkers: [DistanceMarker(1, route.last)],
+    );
+  }
+
+  /// 사용자 지정 코스와 같은 [registerError] · [registerGate]를 쓴다. 출발점은 첫 조각의 첫 점이다.
+  @override
+  Future<RegisteredCourse> registerGps({
+    required String idempotencyKey,
+    required String recordId,
+    required List<List<GpsSourcePoint>> segments,
+    required String name,
+    required Difficulty difficulty,
+    required Set<CourseTag> tags,
+  }) async {
+    gpsRegistrations.add((
+      idempotencyKey: idempotencyKey,
+      recordId: recordId,
+      segments: segments,
+      name: name,
+      difficulty: difficulty,
+      tags: {...tags},
+    ));
+    await registerGate?.future;
+    if (registerError != null) throw registerError!;
+    final start = segments.first.first;
+    return RegisteredCourse(
+      courseId: 'gps-course-${gpsRegistrations.length}',
+      name: name,
+      startPoint: GeoPoint(start.lat, start.lng),
+    );
+  }
+
   @override
   Future<CourseMap> mapCourses({
     required GeoPoint southWest,
@@ -438,6 +490,29 @@ typedef FakeRegistration = ({
   Difficulty difficulty,
   Set<CourseTag> tags,
 });
+
+typedef FakeGpsRegistration = ({
+  String idempotencyKey,
+  String recordId,
+  List<List<GpsSourcePoint>> segments,
+  String name,
+  Difficulty difficulty,
+  Set<CourseTag> tags,
+});
+
+/// 러닝 기록의 코스 등록용 경로(D4). 없는 기록은 달리기 서버처럼 RUN-002다. [error]가 있으면 그 오류다.
+class FakeRunCourseSource implements RunCourseSourceApi {
+  Map<String, List<List<GpsSourcePoint>>> records = {};
+  ApiException? error;
+  final requests = <String>[];
+
+  @override
+  Future<List<List<GpsSourcePoint>>> segments(String recordId) async {
+    requests.add(recordId);
+    if (error != null) throw error!;
+    return records[recordId] ?? (throw const ApiException('RUN-002', '러닝 기록을 찾을 수 없어요.', status: 404));
+  }
+}
 
 /// 코스 리뷰를 읽기만 하는 리뷰 API(B1 · B8, B8에서 여는 G2). 오류를 넣으면 그 요청이 실패한다.
 class FakeCourseReviewApi extends Fake implements ReviewApiClient {

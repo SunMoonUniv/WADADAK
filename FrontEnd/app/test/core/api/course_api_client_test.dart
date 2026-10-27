@@ -332,4 +332,98 @@ void main() {
     expect(route.route, const [start, end]);
     expect(route.distanceMarkers.single.km, 1);
   });
+
+  group('GPS course (D4)', () {
+    const recordId = '01a17acc-0000-7000-8000-000000000001';
+    const segments = [
+      [GpsSourcePoint(37.5894, 127.0167, accuracyM: 5, altitudeM: 31.5, altitudeAccuracyM: 3)],
+      [GpsSourcePoint(37.5826, 127.0286)],
+    ];
+    final sentSegments = [
+      [
+        {'lat': 37.5894, 'lng': 127.0167, 'accuracyM': 5.0, 'altitudeM': 31.5, 'altitudeAccuracyM': 3.0},
+      ],
+      [
+        {'lat': 37.5826, 'lng': 127.0286, 'accuracyM': null, 'altitudeM': null, 'altitudeAccuracyM': null},
+      ],
+    ];
+
+    test('previews the route of a run record, keeping what to send on registering', () async {
+      final server = _FakeServer({
+        'route': [start.toJson(), end.toJson()],
+        'distanceMeters': 1520,
+        'distanceMarkers': [
+          {'km': 1, 'point': end.toJson()},
+        ],
+      });
+
+      final route = await client(server).previewGpsRoute(recordId: recordId, segments: segments);
+
+      expect(server.request.method, 'POST');
+      expect(server.request.path, '/api/v1/courses/gps/route');
+      expect(server.request.data, {'sourceRunRecordId': recordId, 'segments': sentSegments});
+      expect(route.recordId, recordId);
+      expect(route.segments, segments);
+      expect(route.route, const [start, end]);
+      expect(route.distanceMeters, 1520);
+      expect(route.distanceMarkers.single.point, end);
+    });
+
+    test('registers with the idempotency key, the record and its segments', () async {
+      final server = _FakeServer({
+        'courseId': '0b7e2d4a-6c1f-4e8a-9d3b-5f2a7c9e1b61',
+        'name': '성북천 달리기',
+        'startPoint': start.toJson(),
+        'distanceMeters': 1520,
+        'expiresAt': '2026-11-25T14:59:59Z',
+      });
+
+      final course = await client(server).registerGps(
+        idempotencyKey: 'key-2',
+        recordId: recordId,
+        segments: segments,
+        name: '성북천 달리기',
+        difficulty: Difficulty.hard,
+        tags: {CourseTag.riverside},
+      );
+
+      expect(server.request.method, 'POST');
+      expect(server.request.path, '/api/v1/courses/gps');
+      expect(server.request.headers['Idempotency-Key'], 'key-2');
+      expect(server.request.data, {
+        'sourceRunRecordId': recordId,
+        'segments': sentSegments,
+        'name': '성북천 달리기',
+        'difficulty': 'HARD',
+        'tags': ['RIVERSIDE'],
+      });
+      expect(course.courseId, '0b7e2d4a-6c1f-4e8a-9d3b-5f2a7c9e1b61');
+      expect(course.startPoint, start);
+    });
+
+    test('reads a source point the run server sends', () {
+      final point = GpsSourcePoint.fromJson(
+          {'lat': 37.5894, 'lng': 127, 'accuracyM': 4, 'altitudeM': null, 'altitudeAccuracyM': null});
+
+      expect(point.lat, 37.5894);
+      expect(point.lng, 127.0, reason: '정수로 와도 읽는다');
+      expect(point.accuracyM, 4.0);
+      expect(point.altitudeM, isNull);
+    });
+  });
+
+  test('tells the run records already used for GPS courses with today\'s quota', () async {
+    final server = _FakeServer({
+      'custom': {'limit': 1, 'remaining': 0},
+      'gps': {'limit': 3, 'remaining': 2},
+      'usedRunRecordIds': ['record-1', 'record-2'],
+    });
+
+    final quota = await client(server).registrationQuota();
+
+    expect(server.request.path, '/api/v1/courses/registration-quota');
+    expect(quota.custom.remaining, 0);
+    expect(quota.gps.remaining, 2);
+    expect(quota.usedRunRecordIds, ['record-1', 'record-2']);
+  });
 }

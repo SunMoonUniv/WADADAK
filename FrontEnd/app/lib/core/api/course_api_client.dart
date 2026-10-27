@@ -17,12 +17,9 @@ class GeneratedRoute {
 
   factory GeneratedRoute.fromJson(Map<Object?, Object?> json, {required List<GeoPoint> anchorPoints}) => GeneratedRoute(
         anchorPoints: anchorPoints,
-        route: [for (final point in json['route']! as List) GeoPoint.fromJson(point as Map)],
+        route: _routeFromJson(json),
         distanceMeters: json['distanceMeters']! as int,
-        distanceMarkers: [
-          for (final marker in json['distanceMarkers']! as List)
-            DistanceMarker((marker as Map)['km']! as int, GeoPoint.fromJson(marker['point']! as Map)),
-        ],
+        distanceMarkers: _distanceMarkersFromJson(json),
       );
 
   /// 이 경로를 만든 B3 입력점. 등록할 때 다시 보낸다(서버는 받은 경로를 믿지 않고 입력점으로 다시 만든다).
@@ -38,6 +35,84 @@ class GeneratedRoute {
   /// 출발점부터 1km마다의 지점(B4-01 거리 표지).
   final List<DistanceMarker> distanceMarkers;
 }
+
+/// 러닝 기록 경로의 한 점(F7 GPS 코스 등록 D4 · B6). 달리기 서버 course-source의 점을 그대로 코스 서버에 보낸다.
+/// 정확도 · 고도는 재지 못했으면 null이다. 코스 경로에는 위도 · 경도만 쓰고, 나머지는 서버가 원본으로 따로 둔다.
+@immutable
+class GpsSourcePoint {
+  const GpsSourcePoint(this.lat, this.lng, {this.accuracyM, this.altitudeM, this.altitudeAccuracyM});
+
+  factory GpsSourcePoint.fromJson(Map<Object?, Object?> json) => GpsSourcePoint(
+        (json['lat']! as num).toDouble(),
+        (json['lng']! as num).toDouble(),
+        accuracyM: (json['accuracyM'] as num?)?.toDouble(),
+        altitudeM: (json['altitudeM'] as num?)?.toDouble(),
+        altitudeAccuracyM: (json['altitudeAccuracyM'] as num?)?.toDouble(),
+      );
+
+  final double lat;
+  final double lng;
+  final double? accuracyM;
+  final double? altitudeM;
+  final double? altitudeAccuracyM;
+
+  Map<String, Object?> toJson() => {
+        'lat': lat,
+        'lng': lng,
+        'accuracyM': accuracyM,
+        'altitudeM': altitudeM,
+        'altitudeAccuracyM': altitudeAccuracyM,
+      };
+}
+
+/// 러닝 기록 경로로 만든 최종 경로(D4 미리보기). 서버가 만들고 저장하지 않는다.
+/// 경로 조각을 달린 순서대로 잇고 모양이 2m 넘게 바뀌지 않게 점을 줄였다(4.1 F7 GPS 코스 등록 저장).
+@immutable
+class GpsCourseRoute {
+  const GpsCourseRoute({
+    required this.recordId,
+    required this.segments,
+    required this.route,
+    required this.distanceMeters,
+    required this.distanceMarkers,
+  });
+
+  factory GpsCourseRoute.fromJson(
+    Map<Object?, Object?> json, {
+    required String recordId,
+    required List<List<GpsSourcePoint>> segments,
+  }) =>
+      GpsCourseRoute(
+        recordId: recordId,
+        segments: segments,
+        route: _routeFromJson(json),
+        distanceMeters: json['distanceMeters']! as int,
+        distanceMarkers: _distanceMarkersFromJson(json),
+      );
+
+  /// 코스로 만들 러닝 기록 ID. 등록할 때 다시 보낸다.
+  final String recordId;
+
+  /// 그 기록의 경로 조각(달린 순서, 조각 사이는 잇지 않았다). 등록할 때 다시 보낸다(서버는 미리보기를 믿지 않고 다시 만든다).
+  final List<List<GpsSourcePoint>> segments;
+
+  /// 첫 점 출발, 마지막 점 도착.
+  final List<GeoPoint> route;
+
+  /// 줄인 경로의 WGS84 타원체 길이(m, 반올림). 상한이 없다.
+  final int distanceMeters;
+
+  /// 출발점부터 1km마다의 지점.
+  final List<DistanceMarker> distanceMarkers;
+}
+
+List<GeoPoint> _routeFromJson(Map<Object?, Object?> json) =>
+    [for (final point in json['route']! as List) GeoPoint.fromJson(point as Map)];
+
+List<DistanceMarker> _distanceMarkersFromJson(Map<Object?, Object?> json) => [
+      for (final marker in json['distanceMarkers']! as List)
+        DistanceMarker((marker as Map)['km']! as int, GeoPoint.fromJson(marker['point']! as Map)),
+    ];
 
 @immutable
 class DistanceMarker {
@@ -628,6 +703,48 @@ class CourseApiClient {
     return RegisteredCourse.fromJson(data! as Map);
   }
 
+  /// 러닝 기록의 경로 조각 → 최종 경로 · 거리 · 1km 표지(D4 미리보기, 저장하지 않는다).
+  /// 이미 코스로 만든 기록 COURSE-010, 점 2개 미만 003, 1km 미만 004, GPS 정확도 부족 011 순으로 본다.
+  Future<GpsCourseRoute> previewGpsRoute({
+    required String recordId,
+    required List<List<GpsSourcePoint>> segments,
+  }) async {
+    final data = await callApi(() => _dio.post('$_courses/gps/route', data: {
+          'sourceRunRecordId': recordId,
+          'segments': _segmentsJson(segments),
+        }));
+    return GpsCourseRoute.fromJson(data! as Map, recordId: recordId, segments: segments);
+  }
+
+  /// GPS 주행 코스 등록(D4). 서버가 [segments]로 경로를 다시 만들어 확인하고 바로 공개한다.
+  ///
+  /// [idempotencyKey]는 [registerCustom]과 같다. 미리보기의 오류에 더해 이름 중복 COURSE-006, 85% 겹침 007,
+  /// 오늘 GPS 한도 008, 출발점 지역 없음 009.
+  Future<RegisteredCourse> registerGps({
+    required String idempotencyKey,
+    required String recordId,
+    required List<List<GpsSourcePoint>> segments,
+    required String name,
+    required Difficulty difficulty,
+    required Set<CourseTag> tags,
+  }) async {
+    final data = await callApi(() => _dio.post(
+          '$_courses/gps',
+          data: {
+            'sourceRunRecordId': recordId,
+            'segments': _segmentsJson(segments),
+            'name': name,
+            'difficulty': difficulty.apiName,
+            'tags': [for (final tag in tags) tag.apiName],
+          },
+          options: Options(headers: {'Idempotency-Key': idempotencyKey}),
+        ));
+    return RegisteredCourse.fromJson(data! as Map);
+  }
+
+  static List<List<Map<String, Object?>>> _segmentsJson(List<List<GpsSourcePoint>> segments) =>
+      [for (final segment in segments) [for (final point in segment) point.toJson()]];
+
   /// 지도 범위(남서쪽·북동쪽 끝) 안 [filter]에 맞는 코스(A2·A5). A3의 예상 코스 수도 이것으로 센다.
   /// [pick]이 있으면 G6에서 고른 검색어 · 지역의 코스만이다.
   Future<CourseMap> mapCourses({
@@ -735,7 +852,6 @@ class CourseApiClient {
   static Map<String, Object> _area(GeoPoint southWest, GeoPoint northEast) =>
       {'swLat': southWest.lat, 'swLng': southWest.lng, 'neLat': northEast.lat, 'neLng': northEast.lng};
 
-  /// 오늘 남은 등록 수. 0이면 그 방식의 코스 만들기를 미리 막는다(개발 정책 10.2 course).
   /// 코스 상세(B1). 없는 코스는 [courseNotFoundCode], 비공개 · 삭제된 코스는 [courseNotAvailableCode] 오류다.
   Future<CourseDetail> courseDetail(String courseId) async {
     final data = await callApi(() => _dio.get('$_courses/${Uri.encodeComponent(courseId)}'));
@@ -748,6 +864,7 @@ class CourseApiClient {
   /// 비공개 · 삭제된 코스(B1-04 신규 상세 진입 차단).
   static const courseNotAvailableCode = 'COURSE-002';
 
+  /// 오늘 남은 등록 수. 0이면 그 방식의 코스 만들기를 미리 막는다(개발 정책 10.2 course).
   Future<RegistrationQuota> registrationQuota() async {
     final data = await callApi(() => _dio.get('$_courses/registration-quota'));
     return RegistrationQuota.fromJson(data! as Map);
