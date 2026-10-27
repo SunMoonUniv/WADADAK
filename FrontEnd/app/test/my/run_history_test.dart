@@ -33,7 +33,8 @@ const _course = {
   'reviewEligible': true,
 };
 
-/// 서버 기록 두 페이지. 첫 페이지: 코스 완주 · 코스 62% · 자유 러닝(이번 주 월~수), 다음 페이지: 9월 자유 러닝.
+/// 서버 기록 세 페이지(최근 순).
+/// 첫 페이지: 코스 완주 · 코스 62% · 자유 러닝(이번 주 월~수), 둘째: 9월 자유 러닝, 셋째: 8월 자유 러닝.
 class _HistoryApi extends fake.TestApi {
   final cursors = <String?>[];
 
@@ -49,8 +50,13 @@ class _HistoryApi extends fake.TestApi {
             ],
             'nextCursor': 'next',
           }
-        : {
+        : cursor == 'next'
+        ? {
             'content': [_summary('run-september', '2026-09-20T03:00:00Z')],
+            'nextCursor': 'more',
+          }
+        : {
+            'content': [_summary('run-august', '2026-08-10T03:00:00Z')],
             'nextCursor': null,
           };
   }
@@ -195,11 +201,11 @@ void main() {
     expect(find.descendant(of: cardOf('자유 러닝'), matching: find.text('리뷰 쓰기')), findsNothing);
   });
 
-  testWidgets('I1 loads every page to count this month, this week and the tabs', (tester) async {
+  testWidgets('I1 loads only what this month and this week need', (tester) async {
     await openHistory(tester);
 
+    // 10월 1일보다 앞선 기록(9월)이 나오면 멈춘다. 8월 페이지는 받지 않는다
     expect(history.cursors, [null, 'next']);
-    expect(find.text('전체 4'), findsOneWidget);
     expect(find.text('2026년 10월'), findsOneWidget);
     // 10월 기록 3개: 5.21km × 3, 움직인 시간 합 ÷ 거리 합
     expect(find.text('이번 달 거리'), findsOneWidget);
@@ -212,12 +218,14 @@ void main() {
     expect(labeled('목 0.0km'), findsOneWidget);
   });
 
-  testWidgets('month arrows change only the summary', (tester) async {
+  testWidgets('month arrows change only the summary and load that month', (tester) async {
     await openHistory(tester);
 
     await tester.tap(labeled('이전 달'));
     await tester.pumpAndSettle();
 
+    // 9월 1일보다 앞선 기록이 나올 때까지 더 받는다
+    expect(history.cursors, [null, 'next', 'more']);
     expect(find.text('2026년 9월'), findsOneWidget);
     expect(find.text('9월 거리'), findsOneWidget);
     expect(find.text('5.2 km'), findsOneWidget);
@@ -225,14 +233,17 @@ void main() {
     // 차트는 이번 주, 목록은 전체 그대로다
     expect(labeled('월 5.2km'), findsOneWidget);
     expect(find.text('한강 야경 5K'), findsOneWidget);
-    // 첫 기록이 9월이라 더 앞으로는 못 간다
+    // 다 받았고 첫 기록이 8월이라 8월보다 앞으로는 못 간다
     await tester.tap(labeled('이전 달'));
     await tester.pumpAndSettle();
-    expect(find.text('2026년 9월'), findsOneWidget);
+    expect(find.text('2026년 8월'), findsOneWidget);
+    await tester.tap(labeled('이전 달'));
+    await tester.pumpAndSettle();
+    expect(find.text('2026년 8월'), findsOneWidget);
 
     await tester.tap(labeled('다음 달'));
     await tester.pumpAndSettle();
-    expect(find.text('2026년 10월'), findsOneWidget);
+    expect(find.text('2026년 9월'), findsOneWidget);
   });
 
   testWidgets('type tabs filter the summary, chart and list', (tester) async {
@@ -240,15 +251,28 @@ void main() {
 
     await tester.tap(find.text('코스 러닝'));
     await tester.pumpAndSettle();
-    expect(find.text('코스 러닝 2'), findsOneWidget);
     expect(find.text('10.4 km'), findsOneWidget);
+    expect(find.byType(RunRecordCard), findsNWidgets(2));
     expect(cardOf('자유 러닝'), findsNothing);
     expect(labeled('월 0.0km'), findsOneWidget);
 
     await tester.tap(find.text('고스트 대결'));
     await tester.pumpAndSettle();
-    expect(find.text('고스트 대결 0'), findsOneWidget);
     expect(find.text('아직 고스트 대결 기록이 없어요.'), findsOneWidget);
+    expect(find.text('이전 기록 더 보기'), findsNothing); // 더 받아도 고스트 기록은 없다
+  });
+
+  testWidgets('older records load page by page', (tester) async {
+    await openHistory(tester);
+    expect(find.byType(RunRecordCard), findsNWidgets(4));
+
+    await tester.ensureVisible(find.text('이전 기록 더 보기'));
+    await tester.tap(find.text('이전 기록 더 보기'));
+    await tester.pumpAndSettle();
+
+    expect(history.cursors, [null, 'next', 'more']);
+    expect(find.byType(RunRecordCard), findsNWidgets(5));
+    expect(find.text('이전 기록 더 보기'), findsNothing); // 다 받았다
   });
 
   testWidgets('a run still on the device waits for sync', (tester) async {

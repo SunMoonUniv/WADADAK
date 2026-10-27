@@ -18,7 +18,10 @@ import 'run_history_rows.dart';
 /// - `‹ ›`로 달을 바꾸면 요약 3칸만 바뀐다. 주간 차트는 늘 이번 주, 목록은 늘 전체 최근 순이다.
 /// - Figma의 `필터` 버튼은 거를 조건이 정해지지 않아 두지 않는다.
 ///
-/// 요약 · 차트 · 탭 개수를 세려고 내 기록을 끝까지 받는다(기록 API는 페이지로만 준다).
+/// 기록은 무한 스크롤로 받는다(2026-10-27 사용자 결정. 매일 뛰면 한 달에 30개씩 쌓인다).
+/// 처음엔 한 페이지(20개)를 받고, 요약에 필요한 만큼(고른 달 · 이번 주)만 더 받는다. 목록은 끝에 가까워지면 이어 받는다.
+/// 전체 개수는 끝까지 받아야 알 수 있어서 탭에 개수를 붙이지 않는다.
+///
 /// 코스 러닝 카드의 [코스 상세]는 B1, [리뷰 쓰기]는 리뷰 진입(`openReviewWriter`)으로 간다.
 /// 기록 데이터(기기 · 서버 · 동기화 · 삭제)는 달리기 담당의 `runController`를 그대로 쓴다.
 class MyRunHistoryScreen extends ConsumerStatefulWidget {
@@ -41,30 +44,53 @@ class _MyRunHistoryScreenState extends ConsumerState<MyRunHistoryScreen> {
   @override
   void initState() {
     super.initState();
-    _runs = ref.read(runControllerProvider)..addListener(_loadRest);
+    _runs = ref.read(runControllerProvider)..addListener(_loadForSummary);
     Future.microtask(() async {
       await _runs.bindOwner();
       if (!mounted) return;
       await _runs.loadHistory();
-      _loadRest();
+      _loadForSummary();
     });
   }
 
   @override
   void dispose() {
-    _runs.removeListener(_loadRest);
+    _runs.removeListener(_loadForSummary);
     super.dispose();
   }
 
-  /// 한 페이지를 받을 때마다 다음 페이지를 이어 받는다. 실패하면 멈추고 배너로 다시 받게 한다.
-  void _loadRest() {
+  /// 요약에 필요한 날(고른 달 1일과 이번 주 월요일 중 이른 날)
+  DateTime get _summaryFrom {
+    final today = widget.now();
+    final monday = DateTime(today.year, today.month, today.day).subtract(Duration(days: today.weekday - 1));
+    return _month.isBefore(monday) ? _month : monday;
+  }
+
+  /// 받은 기록이 요약에 필요한 날까지 닿지 않았으면 한 페이지 더 받는다. 기록은 최근 순으로 오므로
+  /// 가장 오래된 기록이 그날보다 앞서면 멈춘다. 실패하면 멈추고 배너로 다시 받게 한다.
+  void _loadForSummary() {
     if (!mounted || _runs.loadingHistory || _runs.nextCursor == null || _runs.historyNotice != null) return;
+    final rows = runHistoryRows(local: _runs.records, remote: _runs.remoteRecords, deletedIds: _runs.deletedIds);
+    if (rows.isEmpty || !rows.last.startedAt.toLocal().isBefore(_summaryFrom)) {
+      unawaited(_runs.loadHistory(more: true));
+    }
+  }
+
+  /// 목록 끝에 가까워지거나 [이전 기록 더 보기]를 누르면 다음 페이지를 받는다.
+  void _loadMore() {
+    if (_runs.loadingHistory || _runs.nextCursor == null || _runs.historyNotice != null) return;
     unawaited(_runs.loadHistory(more: true));
+  }
+
+  void _moveMonth(int by) {
+    setState(() => _month = DateTime(_month.year, _month.month + by));
+    _loadForSummary();
   }
 
   Future<void> _refresh() async {
     await _runs.sync(manual: true);
     await _runs.loadHistory();
+    _loadForSummary();
   }
 
   @override
@@ -75,11 +101,41 @@ class _MyRunHistoryScreenState extends ConsumerState<MyRunHistoryScreen> {
       final rows = all.where(_type.includes).toList();
       final today = widget.now();
       final thisMonth = DateTime(today.year, today.month);
-      // 가장 오래된 기록이 있는 달까지만 뒤로 갈 수 있다
-      final firstMonth = all.isEmpty
-          ? thisMonth
+      // 다 받았으면 가장 오래된 기록이 있는 달까지만 뒤로 갈 수 있다. 덜 받았으면 더 받아 가며 간다
+      final firstMonth = _runs.nextCursor != null || all.isEmpty
+          ? (all.isEmpty ? thisMonth : DateTime(1970))
           : DateTime(all.last.startedAt.toLocal().year, all.last.startedAt.toLocal().month);
       final summary = monthSummary(rows, _month);
+      // 고스트 대결 기록은 아직 없어서 더 받아도 나오지 않는다
+      final canLoadMore = _runs.nextCursor != null && _type != RunType.ghost;
+      final header = _Header(
+        month: _month,
+        isThisMonth: _month == thisMonth,
+        summary: summary,
+        week: weekDistances(rows, today),
+        todayIndex: today.weekday - 1,
+        onPrevious: _month.isAfter(firstMonth) ? () => _moveMonth(-1) : null,
+        onNext: _month.isBefore(thisMonth) ? () => _moveMonth(1) : null,
+        notice: _runs.historyNotice == null
+            ? null
+            : TextButton(
+                onPressed: _runs.loadingHistory ? null : () => _runs.loadHistory(more: _runs.nextCursor != null),
+                child: const Text('다시 불러오기'),
+              ),
+        empty: rows.isEmpty && !_runs.loadingHistory && !canLoadMore ? _emptyText : null,
+      );
+      final footer = _runs.loadingHistory
+          ? const Padding(
+              padding: EdgeInsets.all(WdSpace.s16),
+              child: Center(child: CircularProgressIndicator(color: WdColors.ink)),
+            )
+          : canLoadMore && _runs.historyNotice == null
+          // 목록이 짧아 스크롤할 수 없을 때(코스 러닝 탭 등)도 이어 받을 수 있게 둔다
+          ? Padding(
+              padding: const EdgeInsets.only(top: WdSpace.s16),
+              child: WdButton('이전 기록 더 보기', variant: WdButtonVariant.secondary, onPressed: _loadMore),
+            )
+          : const SizedBox.shrink();
       return DefaultTabController(
         length: RunType.values.length,
         child: Scaffold(
@@ -90,8 +146,7 @@ class _MyRunHistoryScreenState extends ConsumerState<MyRunHistoryScreen> {
               DecoratedBox(
                 decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: WdColors.line))),
                 child: WdTabBar(
-                  // 고른 탭에만 개수를 붙인다(Figma "전체 42")
-                  tabs: [for (final t in RunType.values) t == _type ? '${t.label} ${rows.length}' : t.label],
+                  tabs: [for (final t in RunType.values) t.label],
                   onTap: (index) => setState(() => _type = RunType.values[index]),
                 ),
               ),
@@ -99,56 +154,31 @@ class _MyRunHistoryScreenState extends ConsumerState<MyRunHistoryScreen> {
                 child: RefreshIndicator(
                   color: WdColors.ink,
                   onRefresh: _refresh,
-                  child: ListView(
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(WdSpace.s24, WdSpace.s20, WdSpace.s24, WdSpace.s24),
-                    children: [
-                      _MonthHeader(
-                        month: _month,
-                        onPrevious: _month.isAfter(firstMonth)
-                            ? () => setState(() => _month = DateTime(_month.year, _month.month - 1))
-                            : null,
-                        onNext: _month.isBefore(thisMonth)
-                            ? () => setState(() => _month = DateTime(_month.year, _month.month + 1))
-                            : null,
-                      ),
-                      const SizedBox(height: WdSpace.s12),
-                      WdStatSummary([
-                        (
-                          _month == thisMonth ? '이번 달 거리' : '${_month.month}월 거리',
-                          '${(summary.distanceMeters / 1000).toStringAsFixed(1)} km',
-                        ),
-                        ('러닝', '${summary.runs}회'),
-                        ('평균 페이스', formatRunPace(summary.paceSecondsPerKm)),
-                      ]),
-                      const SizedBox(height: WdSpace.s24),
-                      Text('주간 주행 거리', style: _heading),
-                      const SizedBox(height: WdSpace.s12),
-                      _WeekChart(meters: weekDistances(rows, today), todayIndex: today.weekday - 1),
-                      const SizedBox(height: WdSpace.s24),
-                      Text('최근 기록', style: _heading),
-                      if (_runs.historyNotice != null) ...[
-                        const SizedBox(height: WdSpace.s12),
-                        const WdInfoBanner('서버 기록을 불러오지 못했어요. 기기에 저장된 기록은 볼 수 있어요.', tone: WdBannerTone.warning),
-                        TextButton(
-                          onPressed: _runs.loadingHistory ? null : () => _runs.loadHistory(more: _runs.nextCursor != null),
-                          child: const Text('다시 불러오기'),
-                        ),
-                      ],
-                      if (rows.isEmpty && !_runs.loadingHistory)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: WdSpace.s32),
-                          child: Center(
-                            child: Text(_emptyText, style: WdText.label12.copyWith(color: WdColors.muted)),
-                          ),
-                        ),
-                      for (final row in rows) ...[const SizedBox(height: WdSpace.s12), RunRecordCard(row)],
-                      if (_runs.loadingHistory)
-                        const Padding(
-                          padding: EdgeInsets.all(WdSpace.s16),
-                          child: Center(child: CircularProgressIndicator(color: WdColors.ink)),
-                        ),
-                    ],
+                  child: NotificationListener<ScrollNotification>(
+                    // 끝에서 400px 안으로 내려오면 다음 페이지를 받는다
+                    onNotification: (notification) {
+                      if (notification.metrics.extentAfter < 400 &&
+                          notification is ScrollUpdateNotification &&
+                          notification.metrics.axisDirection == AxisDirection.down &&
+                          canLoadMore) {
+                        _loadMore();
+                      }
+                      return false;
+                    },
+                    // builder: 화면에 보이는 카드만 만든다. 기록이 많아도 가볍다
+                    child: ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      padding: const EdgeInsets.fromLTRB(WdSpace.s24, WdSpace.s20, WdSpace.s24, WdSpace.s24),
+                      itemCount: rows.length + 2,
+                      itemBuilder: (context, index) {
+                        if (index == 0) return header;
+                        if (index == rows.length + 1) return footer;
+                        return Padding(
+                          padding: const EdgeInsets.only(top: WdSpace.s12),
+                          child: RunRecordCard(rows[index - 1]),
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),
@@ -159,8 +189,6 @@ class _MyRunHistoryScreenState extends ConsumerState<MyRunHistoryScreen> {
     },
   );
 
-  static final _heading = WdText.ko16Bold.copyWith(color: WdColors.ink);
-
   String get _emptyText => switch (_type) {
     RunType.all => '아직 러닝 기록이 없어요. 첫 러닝을 시작해 보세요.',
     RunType.free => '아직 자유 러닝 기록이 없어요.',
@@ -169,7 +197,67 @@ class _MyRunHistoryScreenState extends ConsumerState<MyRunHistoryScreen> {
   };
 }
 
-/// "2026년 9월" + ‹ ›. 이번 달보다 뒤나 첫 기록보다 앞으로는 못 간다(버튼이 흐려진다).
+/// 목록 위쪽: 달 이동 · 요약 3칸 · 주간 주행 거리 · "최근 기록" 제목(과 불러오기 실패 · 빈 목록 안내).
+class _Header extends StatelessWidget {
+  const _Header({
+    required this.month,
+    required this.isThisMonth,
+    required this.summary,
+    required this.week,
+    required this.todayIndex,
+    required this.onPrevious,
+    required this.onNext,
+    required this.notice,
+    required this.empty,
+  });
+
+  final DateTime month;
+  final bool isThisMonth;
+  final MonthSummary summary;
+  final List<double> week;
+  final int todayIndex;
+  final VoidCallback? onPrevious, onNext;
+
+  /// 서버 기록을 못 받았을 때 배너 아래 [다시 불러오기]
+  final Widget? notice;
+
+  /// 보일 기록이 없을 때 문구
+  final String? empty;
+
+  static final _heading = WdText.ko16Bold.copyWith(color: WdColors.ink);
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      _MonthHeader(month: month, onPrevious: onPrevious, onNext: onNext),
+      const SizedBox(height: WdSpace.s12),
+      WdStatSummary([
+        (isThisMonth ? '이번 달 거리' : '${month.month}월 거리', '${(summary.distanceMeters / 1000).toStringAsFixed(1)} km'),
+        ('러닝', '${summary.runs}회'),
+        ('평균 페이스', formatRunPace(summary.paceSecondsPerKm)),
+      ]),
+      const SizedBox(height: WdSpace.s24),
+      Text('주간 주행 거리', style: _heading),
+      const SizedBox(height: WdSpace.s12),
+      _WeekChart(meters: week, todayIndex: todayIndex),
+      const SizedBox(height: WdSpace.s24),
+      Text('최근 기록', style: _heading),
+      if (notice != null) ...[
+        const SizedBox(height: WdSpace.s12),
+        const WdInfoBanner('서버 기록을 불러오지 못했어요. 기기에 저장된 기록은 볼 수 있어요.', tone: WdBannerTone.warning),
+        notice!,
+      ],
+      if (empty != null)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: WdSpace.s32),
+          child: Center(child: Text(empty!, style: WdText.label12.copyWith(color: WdColors.muted))),
+        ),
+    ],
+  );
+}
+
+/// "2026년 9월" + ‹ ›. 이번 달보다 뒤나 (다 받았을 때) 첫 기록보다 앞으로는 못 간다(버튼이 흐려진다).
 class _MonthHeader extends StatelessWidget {
   const _MonthHeader({required this.month, required this.onPrevious, required this.onNext});
 
