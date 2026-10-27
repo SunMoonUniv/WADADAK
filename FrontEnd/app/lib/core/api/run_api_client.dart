@@ -78,10 +78,11 @@ class RunApiClient {
     }
   }
 
-  Future<Map<String, dynamic>> history(String owner, {String? cursor}) => _map(
+  /// 기록 목록 한 페이지. [size]를 비우면 서버 기본(20개), 최대 50개다.
+  Future<Map<String, dynamic>> history(String owner, {String? cursor, int? size}) => _map(
     () => dio.get<Object?>(
       '/api/v1/runs/records',
-      queryParameters: {'cursor': ?cursor},
+      queryParameters: {'cursor': ?cursor, 'size': ?size},
       options: options(owner),
     ),
   );

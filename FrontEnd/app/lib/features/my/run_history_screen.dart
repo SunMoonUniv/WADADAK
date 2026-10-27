@@ -10,16 +10,18 @@ import '../review/review_entry.dart';
 import '../run/application/run_controller.dart';
 import '../run/domain/run_models.dart';
 import 'run_history_rows.dart';
+import 'run_month_sheet.dart';
 
-/// I1 · 내 러닝 기록. MY에서 연다(하단 탭이 보인다, Figma I1).
+/// I1 · 내 러닝 기록 — 캘린더형(Figma `I1 · 내 러닝 기록 — 캘린더형 (10/27 회의)`). MY에서 연다(하단 탭이 보인다).
 ///
-/// 위에서부터 유형 탭 · 달 이동과 그 달 요약 · 이번 주 주행 거리 · 최근 기록이다(2026-10-22 사용자 결정).
-/// - 유형 탭은 아래 전부(요약 · 차트 · 목록)에 적용한다. 고스트 대결 탭은 고스트(F9)가 생길 때까지 비어 있다.
-/// - `‹ ›`로 달을 바꾸면 요약 3칸만 바뀐다. 주간 차트는 늘 이번 주, 목록은 늘 전체 최근 순이다.
-/// - Figma의 `필터` 버튼은 거를 조건이 정해지지 않아 두지 않는다.
+/// 위에서부터 유형 탭 · 전체 기간 요약 · 달력(달 이동 · 달린 날 도장) · "N월 분석" · 그 달 기록이다.
+/// - 유형 탭(전체 · 자유 러닝 · 코스 러닝 · 고스트 대결)은 화면 전체에 적용한다. 고스트 대결은 F9가 생길 때까지 비어 있다.
+/// - 달을 바꾸면(‹ › · 오늘 · 연월 고르기) 달력 · N월 분석 · 아래 기록만 바뀐다. 위쪽 요약은 늘 전체 기간이다.
+/// - 합계는 앱이 낸다. run은 기록을 하나씩만 주므로(팀 결정) 처음에 내 기록을 끝까지(50개씩) 받는다.
+/// - 칼로리는 계산식(달리기 담당)이 아직 없어 `—`다(정책 공통 9).
+/// (2026-10-27 회의 · 사용자 결정)
 ///
-/// 요약 · 차트 · 탭 개수를 세려고 내 기록을 끝까지 받는다(기록 API는 페이지로만 준다).
-/// 코스 러닝 카드의 [코스 상세]는 B1, [리뷰 쓰기]는 리뷰 진입(`openReviewWriter`)으로 간다.
+/// 코스 러닝 기록의 [코스 상세]는 B1, [리뷰 쓰기]는 리뷰 진입(`openReviewWriter`)으로 간다.
 /// 기록 데이터(기기 · 서버 · 동기화 · 삭제)는 달리기 담당의 `runController`를 그대로 쓴다.
 class MyRunHistoryScreen extends ConsumerStatefulWidget {
   const MyRunHistoryScreen({super.key, this.now = DateTime.now});
@@ -32,11 +34,16 @@ class MyRunHistoryScreen extends ConsumerStatefulWidget {
 }
 
 class _MyRunHistoryScreenState extends ConsumerState<MyRunHistoryScreen> {
+  /// 한 번에 받는 기록 수(서버 최대). 끝까지 받으므로 클수록 요청이 적다.
+  static const _pageSize = 50;
+
   late final RunController _runs;
   var _type = RunType.all;
 
-  /// 요약을 보는 달(1일). 처음은 이번 달이다.
-  late DateTime _month = DateTime(widget.now().year, widget.now().month);
+  /// 달력 · N월 분석 · 아래 기록이 보는 달(1일). 처음은 이번 달이다.
+  late DateTime _month = _thisMonth;
+
+  DateTime get _thisMonth => DateTime(widget.now().year, widget.now().month);
 
   @override
   void initState() {
@@ -45,7 +52,7 @@ class _MyRunHistoryScreenState extends ConsumerState<MyRunHistoryScreen> {
     Future.microtask(() async {
       await _runs.bindOwner();
       if (!mounted) return;
-      await _runs.loadHistory();
+      await _runs.loadHistory(pageSize: _pageSize);
       _loadRest();
     });
   }
@@ -59,12 +66,17 @@ class _MyRunHistoryScreenState extends ConsumerState<MyRunHistoryScreen> {
   /// 한 페이지를 받을 때마다 다음 페이지를 이어 받는다. 실패하면 멈추고 배너로 다시 받게 한다.
   void _loadRest() {
     if (!mounted || _runs.loadingHistory || _runs.nextCursor == null || _runs.historyNotice != null) return;
-    unawaited(_runs.loadHistory(more: true));
+    unawaited(_runs.loadHistory(more: true, pageSize: _pageSize));
   }
 
   Future<void> _refresh() async {
     await _runs.sync(manual: true);
-    await _runs.loadHistory();
+    await _runs.loadHistory(pageSize: _pageSize);
+  }
+
+  Future<void> _pickMonth(DateTime first) async {
+    final picked = await showRunMonthSheet(context, selected: _month, first: first, last: _thisMonth);
+    if (picked != null && mounted) setState(() => _month = picked);
   }
 
   @override
@@ -73,13 +85,14 @@ class _MyRunHistoryScreenState extends ConsumerState<MyRunHistoryScreen> {
     builder: (context, _) {
       final all = runHistoryRows(local: _runs.records, remote: _runs.remoteRecords, deletedIds: _runs.deletedIds);
       final rows = all.where(_type.includes).toList();
-      final today = widget.now();
-      final thisMonth = DateTime(today.year, today.month);
-      // 가장 오래된 기록이 있는 달까지만 뒤로 갈 수 있다
+      final thisMonth = _thisMonth;
+      // 가장 오래된 기록이 있는 달까지만 뒤로 갈 수 있다(기록이 없으면 이번 달만)
       final firstMonth = all.isEmpty
           ? thisMonth
           : DateTime(all.last.startedAt.toLocal().year, all.last.startedAt.toLocal().month);
-      final summary = monthSummary(rows, _month);
+      // 끝까지 받기 전에는 합계가 덜 나오므로 로딩으로 보인다
+      final loading = _runs.historyNotice == null && (_runs.nextCursor != null || _runs.loadingHistory);
+      final monthRows = inMonth(rows, _month).toList();
       return DefaultTabController(
         length: RunType.values.length,
         child: Scaffold(
@@ -88,10 +101,12 @@ class _MyRunHistoryScreenState extends ConsumerState<MyRunHistoryScreen> {
           body: Column(
             children: [
               DecoratedBox(
-                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: WdColors.line))),
+                decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: WdColors.map))),
                 child: WdTabBar(
-                  // 고른 탭에만 개수를 붙인다(Figma "전체 42")
-                  tabs: [for (final t in RunType.values) t == _type ? '${t.label} ${rows.length}' : t.label],
+                  // 고른 탭에만 개수를 붙인다(Figma "전체 42"). 다 받은 뒤에 보인다
+                  tabs: [
+                    for (final t in RunType.values) t == _type && !loading ? '${t.label} ${rows.length}' : t.label,
+                  ],
                   onTap: (index) => setState(() => _type = RunType.values[index]),
                 ),
               ),
@@ -101,53 +116,55 @@ class _MyRunHistoryScreenState extends ConsumerState<MyRunHistoryScreen> {
                   onRefresh: _refresh,
                   child: ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
-                    padding: const EdgeInsets.fromLTRB(WdSpace.s24, WdSpace.s20, WdSpace.s24, WdSpace.s24),
+                    padding: const EdgeInsets.only(bottom: WdSpace.s24),
                     children: [
-                      _MonthHeader(
-                        month: _month,
-                        onPrevious: _month.isAfter(firstMonth)
-                            ? () => setState(() => _month = DateTime(_month.year, _month.month - 1))
-                            : null,
-                        onNext: _month.isBefore(thisMonth)
-                            ? () => setState(() => _month = DateTime(_month.year, _month.month + 1))
-                            : null,
+                      _TotalSummary(totals: RunTotals.of(rows), loading: loading),
+                      const ColoredBox(color: WdColors.soft, child: SizedBox(height: 8)),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(WdSpace.s24, 18, WdSpace.s24, 0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          spacing: WdSpace.s6,
+                          children: [
+                            _MonthNav(
+                              month: _month,
+                              onPrevious: _month.isAfter(firstMonth)
+                                  ? () => setState(() => _month = DateTime(_month.year, _month.month - 1))
+                                  : null,
+                              onNext: _month.isBefore(thisMonth)
+                                  ? () => setState(() => _month = DateTime(_month.year, _month.month + 1))
+                                  : null,
+                              onPick: () => _pickMonth(firstMonth),
+                              onToday: () => setState(() => _month = thisMonth),
+                            ),
+                            _Calendar(month: _month, runDays: runDays(rows, _month), today: widget.now()),
+                            const SizedBox(height: WdSpace.s10),
+                            _MonthAnalysis(month: _month, totals: RunTotals.of(monthRows)),
+                            const SizedBox(height: WdSpace.s16),
+                            Text('상세 기록', style: WdText.ko16Bold.copyWith(color: WdColors.muted)),
+                            if (_runs.historyNotice != null) ...[
+                              const WdInfoBanner(
+                                '서버 기록을 불러오지 못했어요. 기기에 저장된 기록은 볼 수 있어요.',
+                                tone: WdBannerTone.warning,
+                              ),
+                              TextButton(
+                                onPressed: _runs.loadingHistory
+                                    ? null
+                                    : () => _runs.loadHistory(more: _runs.nextCursor != null, pageSize: _pageSize),
+                                child: const Text('다시 불러오기'),
+                              ),
+                            ],
+                            if (monthRows.isEmpty && !loading)
+                              Padding(
+                                padding: const EdgeInsets.symmetric(vertical: WdSpace.s32),
+                                child: Center(
+                                  child: Text(_emptyText, style: WdText.label12.copyWith(color: WdColors.muted)),
+                                ),
+                              ),
+                            for (final row in monthRows) ...[const SizedBox(height: WdSpace.s6), RunRecordCard(row)],
+                          ],
+                        ),
                       ),
-                      const SizedBox(height: WdSpace.s12),
-                      WdStatSummary([
-                        (
-                          _month == thisMonth ? '이번 달 거리' : '${_month.month}월 거리',
-                          '${(summary.distanceMeters / 1000).toStringAsFixed(1)} km',
-                        ),
-                        ('러닝', '${summary.runs}회'),
-                        ('평균 페이스', formatRunPace(summary.paceSecondsPerKm)),
-                      ]),
-                      const SizedBox(height: WdSpace.s24),
-                      Text('주간 주행 거리', style: _heading),
-                      const SizedBox(height: WdSpace.s12),
-                      _WeekChart(meters: weekDistances(rows, today), todayIndex: today.weekday - 1),
-                      const SizedBox(height: WdSpace.s24),
-                      Text('최근 기록', style: _heading),
-                      if (_runs.historyNotice != null) ...[
-                        const SizedBox(height: WdSpace.s12),
-                        const WdInfoBanner('서버 기록을 불러오지 못했어요. 기기에 저장된 기록은 볼 수 있어요.', tone: WdBannerTone.warning),
-                        TextButton(
-                          onPressed: _runs.loadingHistory ? null : () => _runs.loadHistory(more: _runs.nextCursor != null),
-                          child: const Text('다시 불러오기'),
-                        ),
-                      ],
-                      if (rows.isEmpty && !_runs.loadingHistory)
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: WdSpace.s32),
-                          child: Center(
-                            child: Text(_emptyText, style: WdText.label12.copyWith(color: WdColors.muted)),
-                          ),
-                        ),
-                      for (final row in rows) ...[const SizedBox(height: WdSpace.s12), RunRecordCard(row)],
-                      if (_runs.loadingHistory)
-                        const Padding(
-                          padding: EdgeInsets.all(WdSpace.s16),
-                          child: Center(child: CircularProgressIndicator(color: WdColors.ink)),
-                        ),
                     ],
                   ),
                 ),
@@ -159,29 +176,124 @@ class _MyRunHistoryScreenState extends ConsumerState<MyRunHistoryScreen> {
     },
   );
 
-  static final _heading = WdText.ko16Bold.copyWith(color: WdColors.ink);
-
-  String get _emptyText => switch (_type) {
-    RunType.all => '아직 러닝 기록이 없어요. 첫 러닝을 시작해 보세요.',
-    RunType.free => '아직 자유 러닝 기록이 없어요.',
-    RunType.course => '아직 코스 러닝 기록이 없어요.',
-    RunType.ghost => '아직 고스트 대결 기록이 없어요.',
-  };
+  String get _emptyText => _type == RunType.ghost ? '아직 고스트 대결 기록이 없어요.' : '이 달의 러닝 기록이 없어요.';
 }
 
-/// "2026년 9월" + ‹ ›. 이번 달보다 뒤나 첫 기록보다 앞으로는 못 간다(버튼이 흐려진다).
-class _MonthHeader extends StatelessWidget {
-  const _MonthHeader({required this.month, required this.onPrevious, required this.onNext});
+/// 위쪽 전체 기간 요약: 큰 거리 + 시간 · 페이스 · 칼로리.
+class _TotalSummary extends StatelessWidget {
+  const _TotalSummary({required this.totals, required this.loading});
+
+  final RunTotals totals;
+  final bool loading;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.fromLTRB(WdSpace.s24, WdSpace.s20, WdSpace.s24, 22),
+    child: Column(
+      spacing: WdSpace.s16,
+      children: [
+        Column(
+          spacing: 2,
+          children: [
+            Text('전체 기간', style: WdText.raw(12, FontWeight.w700, 16).copyWith(color: WdColors.muted)),
+            SizedBox(
+              height: 56,
+              child: loading
+                  ? const Center(
+                      child: SizedBox.square(
+                        dimension: 24,
+                        child: CircularProgressIndicator(color: WdColors.ink, strokeWidth: 2),
+                      ),
+                    )
+                  : Text(
+                      (totals.distanceMeters / 1000).toStringAsFixed(2),
+                      style: WdText.raw(48, FontWeight.w700, 56).copyWith(color: WdColors.ink),
+                    ),
+            ),
+            Text('거리(km)', style: WdText.raw(12, FontWeight.w500, 16).copyWith(color: WdColors.muted)),
+          ],
+        ),
+        IntrinsicHeight(
+          child: Row(
+            children: [
+              _metric(loading ? '—' : formatRunTime(totals.elapsed), '시간'),
+              const VerticalDivider(width: 1, thickness: 1, color: WdColors.map, indent: 6, endIndent: 6),
+              _metric(loading ? '—' : formatRunPace(totals.paceSecondsPerKm), '페이스'),
+              const VerticalDivider(width: 1, thickness: 1, color: WdColors.map, indent: 6, endIndent: 6),
+              // 칼로리 계산식은 달리기 담당이 정한다(정책 공통 9). 아직 없어서 비워 둔다
+              _metric('—', '칼로리(kcal)'),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
+
+  static Widget _metric(String value, String label) => Expanded(
+    child: Column(
+      spacing: 2,
+      children: [
+        Text(value, style: WdText.raw(20, FontWeight.w700, 26).copyWith(color: WdColors.ink)),
+        Text(label, style: WdText.raw(12, FontWeight.w500, 16).copyWith(color: WdColors.muted)),
+      ],
+    ),
+  );
+}
+
+/// "‹ 2026.10 ›" + 오늘. 달 이름을 누르면 연 · 월을 고른다. 이번 달보다 뒤나 첫 기록보다 앞으로는 못 간다.
+class _MonthNav extends StatelessWidget {
+  const _MonthNav({
+    required this.month,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onPick,
+    required this.onToday,
+  });
 
   final DateTime month;
   final VoidCallback? onPrevious, onNext;
+  final VoidCallback onPick, onToday;
 
   @override
   Widget build(BuildContext context) => Row(
     children: [
-      Expanded(child: Text('${month.year}년 ${month.month}월', style: WdText.ko16Bold.copyWith(color: WdColors.ink))),
-      _arrow('‹', '이전 달', onPrevious),
-      _arrow('›', '다음 달', onNext),
+      const SizedBox(width: 40),
+      Expanded(
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          spacing: WdSpace.s6,
+          children: [
+            _arrow('‹', '이전 달', onPrevious),
+            Semantics(
+              button: true,
+              label: '연 · 월 고르기',
+              child: InkWell(
+                onTap: onPick,
+                borderRadius: BorderRadius.circular(WdRadius.r8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: WdSpace.s6, vertical: WdSpace.s4),
+                  child: Text(
+                    '${month.year}.${month.month.toString().padLeft(2, '0')}',
+                    style: WdText.raw(20, FontWeight.w700, 26).copyWith(color: WdColors.ink),
+                  ),
+                ),
+              ),
+            ),
+            _arrow('›', '다음 달', onNext),
+          ],
+        ),
+      ),
+      SizedBox(
+        width: 40,
+        child: InkWell(
+          onTap: onToday,
+          child: Text(
+            '오늘',
+            textAlign: TextAlign.right,
+            style: WdText.raw(13, FontWeight.w700, 20).copyWith(color: WdColors.green),
+          ),
+        ),
+      ),
     ],
   );
 
@@ -197,7 +309,7 @@ class _MonthHeader extends StatelessWidget {
         child: Center(
           child: Text(
             glyph,
-            style: WdText.raw(18, FontWeight.w400, 24).copyWith(color: onTap == null ? WdColors.line : WdColors.muted),
+            style: WdText.raw(22, FontWeight.w400, 28).copyWith(color: onTap == null ? WdColors.grayLight : WdColors.muted),
           ),
         ),
       ),
@@ -205,84 +317,133 @@ class _MonthHeader extends StatelessWidget {
   );
 }
 
-/// 이번 주(월~일) 요일별 주행 거리 막대. 오늘 막대만 진하다(Figma I1).
-class _WeekChart extends StatelessWidget {
-  const _WeekChart({required this.meters, required this.todayIndex});
+/// 일요일부터 시작하는 6주 달력. 달린 날은 연두 도장, 오늘은 테두리, 앞뒤 달 날짜는 흐리게.
+class _Calendar extends StatelessWidget {
+  const _Calendar({required this.month, required this.runDays, required this.today});
 
-  final List<double> meters;
-  final int todayIndex;
+  final DateTime month;
+  final Set<int> runDays;
+  final DateTime today;
 
-  static const _days = ['월', '화', '수', '목', '금', '토', '일'];
-  static const _height = 64.0;
+  static const _weekdays = ['일', '월', '화', '수', '목', '금', '토'];
 
   @override
   Widget build(BuildContext context) {
-    final most = meters.fold(0.0, (a, b) => a > b ? a : b);
+    // 1일이 무슨 요일인지에 따라 앞 달 날짜를 채운다(일요일 0)
+    final leading = DateTime(month.year, month.month).weekday % 7;
+    final days = [for (var i = 0; i < 42; i++) DateTime(month.year, month.month, 1 - leading + i)];
     return Column(
-      spacing: WdSpace.s6,
       children: [
-        SizedBox(
-          height: _height,
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            spacing: WdSpace.s6,
-            children: [
-              for (var i = 0; i < 7; i++)
-                Expanded(
-                  child: Semantics(
-                    label: '${_days[i]} ${(meters[i] / 1000).toStringAsFixed(1)}km',
-                    child: Container(
-                      // 거리가 있으면 가장 긴 날 대비 높이, 없으면 막대 없음
-                      height: most == 0 || meters[i] == 0 ? 0 : (_height * meters[i] / most).clamp(6.0, _height),
-                      decoration: BoxDecoration(
-                        color: i == todayIndex ? WdColors.ink : WdColors.soft,
-                        borderRadius: BorderRadius.circular(WdRadius.r8),
-                      ),
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
         Row(
-          spacing: WdSpace.s6,
           children: [
-            for (final day in _days)
+            for (final d in _weekdays)
               Expanded(
-                child: Text(
-                  day,
-                  textAlign: TextAlign.center,
-                  style: WdText.label12.copyWith(color: WdColors.muted),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: WdSpace.s8, bottom: WdSpace.s6),
+                  child: Text(
+                    d,
+                    textAlign: TextAlign.center,
+                    style: WdText.raw(12, FontWeight.w500, 16).copyWith(color: WdColors.muted),
+                  ),
                 ),
               ),
           ],
         ),
+        for (var w = 0; w < 6; w++)
+          Row(children: [for (final day in days.skip(w * 7).take(7)) Expanded(child: _cell(day))]),
       ],
+    );
+  }
+
+  Widget _cell(DateTime day) {
+    final inMonth = day.month == month.month;
+    final ran = inMonth && runDays.contains(day.day);
+    final isToday = day.year == today.year && day.month == today.month && day.day == today.day;
+    final label = Text(
+      '${day.day}',
+      style: WdText.raw(14, ran || isToday ? FontWeight.w700 : FontWeight.w500, 18)
+          .copyWith(color: inMonth ? WdColors.ink : WdColors.grayLight),
+    );
+    return SizedBox(
+      height: 46,
+      child: Center(
+        child: Semantics(
+          label: ran ? '${day.month}월 ${day.day}일 달림' : null,
+          child: Container(
+            width: 38,
+            height: 38,
+            alignment: Alignment.center,
+            decoration: ran
+                ? const BoxDecoration(color: WdColors.lime, shape: BoxShape.circle)
+                : isToday
+                ? BoxDecoration(shape: BoxShape.circle, border: Border.all(color: WdColors.ink, width: 1.5))
+                : null,
+            child: label,
+          ),
+        ),
+      ),
     );
   }
 }
 
-/// Figma I1 기록 카드: 썸네일 · 제목(코스 이름 또는 자유 러닝) · 거리 · 시간 · 페이스 · 결과 태그 · 날짜,
-/// 코스 러닝이면 아래에 [코스 상세] · [리뷰 쓰기].
+/// "10월 분석" 카드: 그 달 거리 / 시간 / 페이스 / 칼로리.
+class _MonthAnalysis extends StatelessWidget {
+  const _MonthAnalysis({required this.month, required this.totals});
+
+  final DateTime month;
+  final RunTotals totals;
+
+  @override
+  Widget build(BuildContext context) => WdSurface(
+    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: WdSpace.s16),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      spacing: WdSpace.s4,
+      children: [
+        Text('${month.month}월 분석', style: WdText.raw(15, FontWeight.w700, 22).copyWith(color: WdColors.ink)),
+        Text(
+          '${(totals.distanceMeters / 1000).toStringAsFixed(2)}km  /  ${formatRunTime(totals.elapsed)}  /  '
+          '${formatRunPace(totals.paceSecondsPerKm)}  /  —kcal',
+          style: WdText.raw(14, FontWeight.w500, 20).copyWith(color: WdColors.green),
+        ),
+      ],
+    ),
+  );
+}
+
+/// Figma I1 기록 줄: 요일 · 날짜 | 제목(코스 이름 또는 자유 러닝) · 시간 · 거리 · 페이스 | 결과 태그.
+/// 코스 러닝이면 아래에 [코스 상세] · [리뷰 쓰기]. 누르면 기록 상세.
 class RunRecordCard extends ConsumerWidget {
   const RunRecordCard(this.row, {super.key});
 
   final RunHistoryRow row;
 
+  static const _weekdays = ['월', '화', '수', '목', '금', '토', '일'];
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final course = row.course;
+    final started = row.startedAt.toLocal();
     return WdSurface(
-      padding: const EdgeInsets.symmetric(horizontal: WdSpace.s14, vertical: 13),
+      padding: const EdgeInsets.symmetric(horizontal: WdSpace.s16, vertical: WdSpace.s14),
       onTap: () => context.push(Routes.myRecord(row.id)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        spacing: WdSpace.s8,
+        spacing: WdSpace.s12,
         children: [
           Row(
-            spacing: WdSpace.s12,
+            spacing: WdSpace.s14,
             children: [
-              const WdRouteThumbnail(width: 52, height: 52),
+              Column(
+                children: [
+                  Text(
+                    _weekdays[started.weekday - 1],
+                    style: WdText.raw(11, FontWeight.w700, 16).copyWith(color: WdColors.green),
+                  ),
+                  Text('${started.day}', style: WdText.raw(22, FontWeight.w700, 26).copyWith(color: WdColors.green)),
+                ],
+              ),
+              const SizedBox(height: 34, child: VerticalDivider(width: 1, thickness: 1, color: WdColors.map)),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -293,10 +454,10 @@ class RunRecordCard extends ConsumerWidget {
                       course?.courseName ?? (row.synced ? '자유 러닝' : '러닝'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: WdText.ko16Bold.copyWith(color: WdColors.ink),
+                      style: WdText.raw(15, FontWeight.w700, 22).copyWith(color: WdColors.ink),
                     ),
                     Text(
-                      '${(row.distanceMeters / 1000).toStringAsFixed(2)}km · ${formatRunTime(row.elapsed)} · '
+                      '${formatRunTime(row.elapsed)} · ${(row.distanceMeters / 1000).toStringAsFixed(2)}km · '
                       '${formatRunPace(row.paceSecondsPerKm)}/km',
                       style: WdText.raw(12, FontWeight.w400, 18).copyWith(color: WdColors.muted),
                     ),
@@ -306,7 +467,6 @@ class RunRecordCard extends ConsumerWidget {
               _resultTag(),
             ],
           ),
-          Text(recordDate(row.startedAt), style: WdText.label12.copyWith(color: WdColors.muted)),
           if (course != null)
             Row(
               spacing: WdSpace.s8,
@@ -339,13 +499,6 @@ class RunRecordCard extends ConsumerWidget {
   }
 }
 
-/// "09.08 (화)". 기록을 시작한 날(기기 시간대).
-String recordDate(DateTime startedAt) {
-  final t = startedAt.toLocal();
-  const weekdays = ['월', '화', '수', '목', '금', '토', '일'];
-  return '${t.month.toString().padLeft(2, '0')}.${t.day.toString().padLeft(2, '0')} (${weekdays[t.weekday - 1]})';
-}
-
 /// 카드 안 흰 버튼(Figma I1 [코스 상세] · [리뷰 쓰기]).
 class _CardButton extends StatelessWidget {
   const _CardButton(this.label, {required this.onTap});
@@ -361,7 +514,7 @@ class _CardButton extends StatelessWidget {
       padding: const EdgeInsets.symmetric(vertical: WdSpace.s10),
       onTap: onTap,
       child: Center(
-        child: Text(label, style: WdText.raw(13, FontWeight.w600, 18).copyWith(color: WdColors.ink)),
+        child: Text(label, style: WdText.raw(13, FontWeight.w500, 18).copyWith(color: WdColors.ink)),
       ),
     ),
   );

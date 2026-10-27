@@ -1165,7 +1165,8 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  Future<void> loadHistory({bool more = false}) async {
+  /// [pageSize]를 비우면 서버 기본 개수로 받는다(MY I1은 기록을 끝까지 받아 50개씩 받는다).
+  Future<void> loadHistory({bool more = false, int? pageSize}) async {
     if (_disposed ||
         loadingHistory ||
         currentOwner == null ||
@@ -1178,7 +1179,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     loadingHistory = true;
     _notify();
     try {
-      final page = await api.history(member, cursor: more ? nextCursor : null);
+      final page = await api.history(member, cursor: more ? nextCursor : null, size: pageSize);
       if (currentOwner != member || _disposed) return;
       final items = (page['content'] as List)
           .map((r) => (r as Map).cast<String, dynamic>())

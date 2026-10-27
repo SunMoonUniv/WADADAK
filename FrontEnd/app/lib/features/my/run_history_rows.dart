@@ -119,36 +119,41 @@ enum RunType {
   };
 }
 
-/// 한 달 요약(I1 위 3칸). [paceSecondsPerKm]은 움직인 시간 합 ÷ 거리 합이라, 기록마다의 페이스를 평균 낸 것과 다르다.
-typedef MonthSummary = ({double distanceMeters, int runs, double? paceSecondsPerKm});
+/// 기록 여러 개의 합계(I1 위쪽 전체 기간 요약 · "N월 분석").
+class RunTotals {
+  const RunTotals({required this.distanceMeters, required this.elapsed, required this.moving, required this.runs});
 
-/// [month]의 해 · 달(기기 시간대)에 시작한 기록을 더한다.
-MonthSummary monthSummary(Iterable<RunHistoryRow> rows, DateTime month) {
-  var meters = 0.0, runs = 0;
-  var moving = Duration.zero;
-  for (final row in rows) {
-    final t = row.startedAt.toLocal();
-    if (t.year != month.year || t.month != month.month) continue;
-    meters += row.distanceMeters;
-    moving += row.moving;
-    runs++;
+  /// 기록을 모두 더한다.
+  factory RunTotals.of(Iterable<RunHistoryRow> rows) {
+    var meters = 0.0, runs = 0;
+    var elapsed = Duration.zero, moving = Duration.zero;
+    for (final row in rows) {
+      meters += row.distanceMeters;
+      elapsed += row.elapsed;
+      moving += row.moving;
+      runs++;
+    }
+    return RunTotals(distanceMeters: meters, elapsed: elapsed, moving: moving, runs: runs);
   }
-  return (
-    distanceMeters: meters,
-    runs: runs,
-    paceSecondsPerKm: meters > 0 ? moving.inMilliseconds / meters : null,
-  );
+
+  final double distanceMeters;
+
+  /// 총 소요 시간(일시정지 포함). 화면의 "시간"이다.
+  final Duration elapsed;
+  final Duration moving;
+  final int runs;
+
+  /// 움직인 시간 합 ÷ 거리 합(초/km). 기록마다의 페이스를 평균 낸 것과 다르다. 거리가 없으면 null.
+  double? get paceSecondsPerKm => distanceMeters > 0 ? moving.inMilliseconds / distanceMeters : null;
 }
 
-/// [today]가 든 주(월~일, 기기 시간대)의 요일별 거리(m). 0이 월요일이다.
-List<double> weekDistances(Iterable<RunHistoryRow> rows, DateTime today) {
-  final day = DateTime(today.year, today.month, today.day);
-  final monday = day.subtract(Duration(days: day.weekday - 1));
-  final meters = List.filled(7, 0.0);
-  for (final row in rows) {
-    final t = row.startedAt.toLocal();
-    final index = DateTime(t.year, t.month, t.day).difference(monday).inDays;
-    if (index >= 0 && index < 7) meters[index] += row.distanceMeters;
-  }
-  return meters;
-}
+/// [month]의 해 · 달(기기 시간대)에 시작한 기록만.
+Iterable<RunHistoryRow> inMonth(Iterable<RunHistoryRow> rows, DateTime month) => rows.where((row) {
+  final t = row.startedAt.toLocal();
+  return t.year == month.year && t.month == month.month;
+});
+
+/// [month]에 달린 날(달력 도장).
+Set<int> runDays(Iterable<RunHistoryRow> rows, DateTime month) => {
+  for (final row in inMonth(rows, month)) row.startedAt.toLocal().day,
+};

@@ -64,7 +64,7 @@ class TestApi extends RunApiClient {
   TestApi() : super(Dio());
   final historyOwners = <String>[];
   @override
-  Future<Map<String, dynamic>> history(String owner, {String? cursor}) async {
+  Future<Map<String, dynamic>> history(String owner, {String? cursor, int? size}) async {
     historyOwners.add(owner);
     return {'content': <Object>[], 'nextCursor': null};
   }
