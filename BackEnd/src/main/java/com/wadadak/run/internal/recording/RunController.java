@@ -37,6 +37,10 @@ class RunController {
     @GetMapping("/records/{id}/course-source") ApiResult<CourseSource> courseSource(@AuthenticationPrincipal Jwt jwt,@PathVariable UUID id) {
         return ApiResult.success(runs.courseSource(owner(jwt),id));
     }
+    /** 구간 분석(D3·D5·D6): 결과 랩마다 케이던스·고도 변화·누적 상승 */
+    @GetMapping("/records/{id}/splits") ApiResult<Splits> splits(@AuthenticationPrincipal Jwt jwt,@PathVariable UUID id) {
+        return ApiResult.success(runs.splits(owner(jwt),id));
+    }
     @DeleteMapping("/records/{id}") ApiResult<Deleted> delete(@AuthenticationPrincipal Jwt jwt,@PathVariable UUID id) {
         return ApiResult.success(runs.delete(owner(jwt),id));
     }

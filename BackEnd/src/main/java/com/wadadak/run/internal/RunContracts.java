@@ -123,6 +123,16 @@ public final class RunContracts {
     public record CourseSource(UUID recordId, double distanceMeters, List<List<SourcePoint>> segments) {}
     /** 지점별 GPS 원본 값. 정확도·고도는 없으면 null */
     public record SourcePoint(double lat, double lng, Double accuracyM, Double altitudeM, Double altitudeAccuracyM) {}
+    /** 구간 분석(D3·D5·D6). [laps]는 결과 `laps`와 같은 번호·순서다 */
+    public record Splits(String version, List<Split> laps) {}
+    /**
+     * 1 km 랩 하나의 케이던스·고도. 측정하지 못했으면 null(화면은 `—`).
+     *
+     * @param cadence          랩 안 걸음 센서 측정 구간의 걸음 수/측정 시간×60(spm, MET-04)
+     * @param elevationChangeM 랩 끝 높이 − 시작 높이. 끊긴 고도 자료끼리 잇지 않고 이어진 부분마다 더하며, 고도로 이어진 시간이 랩 이동시간의 90% 미만이면 null
+     * @param cumulativeGainM  기록 시작부터 이 랩 끝까지의 상승 고도. 마지막 랩은 결과 `stats.elevationGainM`과 같다
+     */
+    public record Split(int number, Double cadence, Double elevationChangeM, Double cumulativeGainM) {}
     /** Owner-only derived playback. Does not modify the source result or publish events. */
     public enum GhostSpanState { TRACKED, PAUSED, UNKNOWN }
     public enum OwnGhostSort { BEST, RECENT }

@@ -18,8 +18,11 @@ import com.wadadak.run.internal.RunContracts.CourseSource;
 import com.wadadak.run.internal.RunContracts.CourseSnapshot;
 import com.wadadak.run.internal.RunContracts.Input;
 import com.wadadak.run.internal.RunContracts.Kind;
+import com.wadadak.run.internal.RunContracts.Lap;
 import com.wadadak.run.internal.RunContracts.Prepare;
 import com.wadadak.run.internal.RunContracts.RecordSummary;
+import com.wadadak.run.internal.RunContracts.Split;
+import com.wadadak.run.internal.RunContracts.Splits;
 import com.wadadak.run.internal.RunContracts.Upload;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -392,6 +395,38 @@ class CourseRunTest {
                 .andExpect(jsonPath("$.data.segments.length()").value(2))
                 .andExpect(jsonPath("$.data.segments[0][0].accuracyM").value(5.0))
                 .andExpect(jsonPath("$.data.segments[0][0].altitudeM").value(0.0));
+    }
+
+    @Test
+    void splitsGiveEachStoredLapItsElevationFromTheRawRecord() throws Exception {
+        // 북쪽 1.5 km, 고도는 북쪽 1m마다 0.01m씩 오른다(1 km 랩 +10 m). 걸음 센서 없음
+        List<Input> inputs = new ArrayList<>();
+        inputs.add(new Input(0, Kind.START, 0, startedAt, null, null, null));
+        long ms = 0;
+        for (double y = 0; y <= 1500 + 1e-9; y += 5) {
+            inputs.add(new Input(inputs.size(), Kind.GPS, ms, startedAt.plusMillis(ms), new GeoPoint(LAT0 + y * LAT_PER_M, LNG0),
+                    5.0, null, null, null, null, null, null, y * 0.01, 3.0));
+            ms += 2000;
+        }
+        inputs.add(new Input(inputs.size(), Kind.END, ms, startedAt.plusMillis(ms), null, null, "INTERRUPTED"));
+        runs.prepare(owner, id, new Prepare(startedAt, "FREE"));
+        runs.upload(owner, id, new Upload(inputs.size() - 1, inputs));
+        runs.process(id);
+
+        Splits splits = runs.splits(owner, id);
+        assertThat(splits.laps()).extracting(Split::number)
+                .containsExactlyElementsOf(runs.result(owner, id).laps().stream().map(Lap::number).toList());
+        assertThat(splits.laps().getFirst().elevationChangeM()).isCloseTo(10, within(1.0));
+        assertThat(splits.laps().getFirst().cadence()).isNull();
+        assertThat(splits.laps().getLast().cumulativeGainM()).isEqualTo(runs.result(owner, id).stats().elevationGainM());
+
+        assertThatThrownBy(() -> runs.splits(UUID.randomUUID(), id)) // 남의 기록
+                .isInstanceOfSatisfying(AppException.class, e -> assertThat(e.getErrorCode()).isEqualTo(RunErrorCode.NOT_FOUND));
+        mvc.perform(get("/api/v1/runs/records/" + id + "/splits").with(jwt().jwt(j -> j.subject(owner.toString()))))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.version").value("SPLITS_V1"))
+                .andExpect(jsonPath("$.data.laps.length()").value(2))
+                .andExpect(jsonPath("$.data.laps[0].number").value(1));
     }
 
     @Test

@@ -11,9 +11,12 @@ import java.util.ArrayList;
 import java.util.List;
 
 public final class FreeRunCalculator {
-    /** @param samples segments와 같은 모양의 원본 GPS 입력(정확도·고도 포함). 코스 등록용 경로(course-source)에 쓴다 */
+    /**
+     * @param samples segments와 같은 모양의 원본 GPS 입력(정확도·고도 포함). 코스 등록용 경로(course-source)에 쓴다
+     * @param cadence 평균 케이던스에 넣은 걸음 표본. 구간 분석(splits)에 쓴다
+     */
     public record Calculation(Metrics metrics, List<List<GeoPoint>> segments, Instant endedAt, String endReason, List<Lap> laps, ResultStats stats,
-                              List<List<Input>> samples) {}
+                              List<List<Input>> samples, List<Input> cadence) {}
     record Travel(long start, long end, double distance) {}
     record Span(long start, long end) { long before(long ms) { return Math.clamp(ms-start,0,end-start); } }
     private static long movingAt(long ms, List<Span> pauses, MotionPace motion, boolean v2) {
@@ -60,6 +63,7 @@ public final class FreeRunCalculator {
         List<GeoPoint> segment = null;
         List<List<Input>> samples = new ArrayList<>();
         List<Input> sampleSegment = null;
+        List<Input> cadence = new ArrayList<>();
         for (int i = 0; i < inputs.size(); i++) {
             Input p = inputs.get(i);
             if (p.seq() != i || p.elapsedMs() < lastMs || p.elapsedMs() > 7L*86400000 ||
@@ -81,7 +85,7 @@ public final class FreeRunCalculator {
                     long sampleEnd = p.sampleEndMs()==null?p.elapsedMs():p.sampleEndMs();
                     if (sampleEnd>p.elapsedMs() || sampleEnd<p.durationMs()) invalid();
                     if (!paused && sampleEnd-p.durationMs()>=Math.max(lastResume,cadenceEnd)) {
-                        coverage+=p.durationMs(); steps+=p.steps(); cadenceEnd=sampleEnd;
+                        coverage+=p.durationMs(); steps+=p.steps(); cadenceEnd=sampleEnd; cadence.add(p);
                     }
                 }
                 case PAUSE -> { if (paused) invalid(); paused = true; pauseAt = p.elapsedMs(); previous = null; segment = null; }
@@ -123,7 +127,7 @@ public final class FreeRunCalculator {
             distanceM > 0 && movingMs > 0 ? movingMs/distanceM : null, movingMs,
             distanceM > 0 ? lastMs/distanceM : null, coverage>0?steps*60000.0/coverage:null, coverage, steps),
             segments, end.measuredAt(), end.reason(), laps,
-            RunResultStatsCalculator.calculate(inputs,v2?motion.samples:samples,laps), v2?motion.samples:samples);
+            RunResultStatsCalculator.calculate(inputs,v2?motion.samples:samples,laps), v2?motion.samples:samples, List.copyOf(cadence));
     }
     static double distance(GeoPoint a, GeoPoint b) {
         return a.distanceMeters(b);
