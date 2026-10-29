@@ -241,7 +241,7 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
                     tabs: ['정보', reviewCount == null ? '리뷰' : '리뷰 ${formatCount(reviewCount)}', '랭킹'],
                   ),
                   if (_tab == 0)
-                    _info(summary)
+                    _info(course, summary)
                   else if (_tab == 1)
                     CourseReviewsTab(
                       summary: summary,
@@ -320,10 +320,11 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
         ),
       );
 
-  /// 정보 탭. 리뷰가 있으면 러너 평가(항목 평균), 없으면 아직 달린 사람이 없다는 안내(Figma B1-1).
+  /// 정보 탭. 리뷰가 있으면 러너 평가(항목 평균)다. 없으면 아무도 완주하지 않았을 때 아직 달린 사람이 없다는 안내(Figma B1-1),
+  /// 완주가 있으면 리뷰 탭과 같은 안내다(B1-1의 `처음 완주하면`이 맞지 않는다, 4.1 B1-03 · Figma B1-1).
   /// 고도 프로필은 GPS 코스만 보이는데(B1-03) 보류해서 아직 없다(정책 문서 4.1 B1 범위).
   /// 받아 둔 요약이 있으면 다시 받다 실패해도 그대로 보이고, 그 아래에 다시 시도를 준다(B8-02와 같다).
-  Widget _info(AsyncValue<ReviewSummary> summary) {
+  Widget _info(CourseDetail course, AsyncValue<ReviewSummary> summary) {
     final value = summary.value;
     if (value == null && summary.hasError) {
       return Column(
@@ -349,10 +350,14 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
         crossAxisAlignment: CrossAxisAlignment.stretch,
         spacing: WdSpace.s16,
         children: [
-          const CourseEmptyCard(
-            title: CourseDetailScreen.noRunnerTitle,
-            message: CourseDetailScreen.noRunnerMessage,
-          ),
+          // 평균 페이스는 완주가 있어야 생긴다(헤더와 같은 코스 통계)
+          if (course.averagePaceSecondsPerKm != null)
+            const CourseEmptyCard(title: CourseReviewsTab.emptyTitle, message: CourseReviewsTab.emptyMessage)
+          else
+            const CourseEmptyCard(
+              title: CourseDetailScreen.noRunnerTitle,
+              message: CourseDetailScreen.noRunnerMessage,
+            ),
           ?stale,
         ],
       );
