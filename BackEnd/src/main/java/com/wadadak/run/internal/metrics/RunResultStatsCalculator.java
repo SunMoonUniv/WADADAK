@@ -9,12 +9,15 @@ import java.util.List;
 /** RESULT_V3. Keep thresholds, interpolation and tie handling identical to Dart. */
 public final class RunResultStatsCalculator {
     public static final String VERSION = "RESULT_V3";
+    /** 고도·최고 페이스 분석에 쓰는 이동 구간. 예전 계산 버전 기록에도 지금 이동 확인을 따로 적용한다 */
+    static List<List<Input>> analysisSegments(List<Input> inputs, List<List<Input>> segments) {
+        if (!inputs.isEmpty() && MotionPace.usesMotion(inputs.getFirst().reason())) return segments;
+        MotionPace motion = new MotionPace();
+        for (Input p : inputs) motion.add(p);
+        return motion.samples;
+    }
     static ResultStats calculate(List<Input> inputs, List<List<Input>> segments, List<Lap> laps) {
-        if (inputs.isEmpty() || !MotionPace.usesMotion(inputs.getFirst().reason())) {
-            MotionPace motion = new MotionPace();
-            for (Input p : inputs) motion.add(p);
-            segments = motion.samples;
-        }
+        segments = analysisSegments(inputs, segments);
         List<Long> gaps = gapTimes(inputs);
         Lap best = null;
         long lapStart = 0;
@@ -30,13 +33,11 @@ public final class RunResultStatsCalculator {
         Double bestPace = null;
         double distance = 0, covered = 0, gain = 0;
         boolean measured = false, usedPressure = false, usedGps = false;
-        List<Input> pressure = pressureSamples(inputs);
-        int pressureIndex = 0;
-        for (List<Input> segment : segments) {
+        List<List<ElevationBlock>> elevation = elevationBlocks(inputs, segments);
+        for (int s = 0; s < segments.size(); s++) {
+            List<Input> segment = segments.get(s);
             if (segment.isEmpty()) continue;
-            double[] distances = new double[segment.size()];
-            for (int i = 1; i < segment.size(); i++)
-                distances[i] = distances[i - 1] + FreeRunCalculator.distance(segment.get(i - 1).location(), segment.get(i).location());
+            double[] distances = distances(segment);
             distance += distances[distances.length - 1];
             for (Input p : segment) {
                 for (long end : new long[] {p.elapsedMs(), p.elapsedMs() + 30000}) {
@@ -48,40 +49,16 @@ public final class RunResultStatsCalculator {
                     }
                 }
             }
-            while (pressureIndex < pressure.size() && pressure.get(pressureIndex).sampleEndMs() < segment.getFirst().elapsedMs()) pressureIndex++;
-            int pressureStart = pressureIndex;
-            while (pressureIndex < pressure.size() && pressure.get(pressureIndex).sampleEndMs() <= segment.getLast().elapsedMs()) pressureIndex++;
-            ElevationResult barometer = barometerElevation(pressure.subList(pressureStart,pressureIndex),segment,distances);
-            if (barometer.gainM() != null) {
-                measured = true; usedPressure = true; covered += barometer.coveredM(); gain += barometer.gainM();
-                continue;
-            }
-            List<Input> block = new ArrayList<>();
-            double blockDistance = 0;
-            // The sentinel closes the last altitude block without joining segments.
-            for (int i = 0; i <= segment.size(); i++) {
-                Input p = i == segment.size() ? null : segment.get(i);
-                Double accuracy = p == null ? null : p.altitudeAccuracyM();
-                boolean usable = p != null && p.altitudeM() != null && Double.isFinite(p.altitudeM()) &&
-                    (accuracy == null || (Double.isFinite(accuracy) && accuracy >= 0 && accuracy <= 20));
-                boolean jump = false;
-                if (usable && !block.isEmpty()) {
-                    Input previous = block.getLast();
-                    long dt = p.elapsedMs() - previous.elapsedMs();
-                    double delta = Math.abs(p.altitudeM() - previous.altitudeM());
-                    double uncertainty = (accuracy == null ? 0 : accuracy) +
-                        (previous.altitudeAccuracyM() == null ? 0 : previous.altitudeAccuracyM());
-                    jump = dt <= 0 || dt > 10000 || (delta > Math.max(10, uncertainty) && delta * 1000 / dt > 3);
-                }
-                if (!usable || jump) {
-                    if (block.size() >= 3 && block.getLast().elapsedMs() - block.getFirst().elapsedMs() >= 2000) {
-                        measured = true; usedGps = true; covered += blockDistance; gain += gain(gpsPoints(block),false);
-                    }
-                    block.clear(); blockDistance = 0;
-                    continue;
-                }
-                if (!block.isEmpty()) blockDistance += FreeRunCalculator.distance(block.getLast().location(), p.location());
-                block.add(p);
+            List<ElevationBlock> blocks = elevation.get(s);
+            if (blocks.isEmpty()) continue;
+            measured = true;
+            if (blocks.getFirst().barometric()) {
+                // 기압 구간은 구간 안에서 먼저 더한다(Dart와 같은 덧셈 순서)
+                double segmentGain = 0, segmentCovered = 0;
+                for (ElevationBlock b : blocks) { segmentGain += gain(b.points(),true); segmentCovered += b.coveredM(); }
+                usedPressure = true; covered += segmentCovered; gain += segmentGain;
+            } else {
+                for (ElevationBlock b : blocks) { usedGps = true; covered += b.coveredM(); gain += gain(b.points(),false); }
             }
         }
         return new ResultStats(VERSION, measured ? gain : null,
@@ -101,7 +78,14 @@ public final class RunResultStatsCalculator {
         return distances[lo] + (distances[lo + 1] - distances[lo]) * (ms - a) / (b - a);
     }
 
-    private static List<Long> gapTimes(List<Input> inputs) {
+    private static double[] distances(List<Input> segment) {
+        double[] distances = new double[segment.size()];
+        for (int i = 1; i < segment.size(); i++)
+            distances[i] = distances[i - 1] + FreeRunCalculator.distance(segment.get(i - 1).location(), segment.get(i).location());
+        return distances;
+    }
+
+    static List<Long> gapTimes(List<Input> inputs) {
         List<Long> result = new ArrayList<>();
         boolean v2 = !inputs.isEmpty() && MotionPace.usesMotion(inputs.getFirst().reason()), paused = false;
         Input previous = null;
@@ -124,8 +108,58 @@ public final class RunResultStatsCalculator {
         return result;
     }
 
-    private record ElevationPoint(long elapsedMs, double height, Double accuracyM, double distanceM) {}
-    private record ElevationResult(Double gainM, double coveredM) {}
+    /** @param distanceM 이동 구간 안의 누적 수평 거리 */
+    record ElevationPoint(long elapsedMs, double height, Double accuracyM, double distanceM) {}
+    /** 끊김 없이 이어진 고도 자료 한 덩어리(기압 또는 GPS 고도). 덩어리 사이 높이는 잇지 않는다 */
+    record ElevationBlock(List<ElevationPoint> points, boolean barometric) {
+        double coveredM() { return points.getLast().distanceM() - points.getFirst().distanceM(); }
+    }
+    /**
+     * [analysisSegments]마다 분석할 고도 덩어리. 기압 자료가 분석되는 이동 구간은 기압만, 아니면 GPS 고도만 쓴다.
+     * 최소 3개 · 2초가 안 되는 덩어리는 뺀다
+     */
+    static List<List<ElevationBlock>> elevationBlocks(List<Input> inputs, List<List<Input>> segments) {
+        List<List<ElevationBlock>> result = new ArrayList<>();
+        List<Input> pressure = pressureSamples(inputs);
+        int pressureIndex = 0;
+        for (List<Input> segment : segments) {
+            if (segment.isEmpty()) { result.add(List.of()); continue; }
+            while (pressureIndex < pressure.size() && pressure.get(pressureIndex).sampleEndMs() < segment.getFirst().elapsedMs()) pressureIndex++;
+            int pressureStart = pressureIndex;
+            while (pressureIndex < pressure.size() && pressure.get(pressureIndex).sampleEndMs() <= segment.getLast().elapsedMs()) pressureIndex++;
+            List<ElevationBlock> barometer = barometerBlocks(pressure.subList(pressureStart,pressureIndex),segment,distances(segment));
+            result.add(barometer.isEmpty() ? gpsBlocks(segment) : barometer);
+        }
+        return result;
+    }
+    private static List<ElevationBlock> gpsBlocks(List<Input> segment) {
+        List<ElevationBlock> blocks = new ArrayList<>();
+        List<Input> block = new ArrayList<>();
+        // The sentinel closes the last altitude block without joining segments.
+        for (int i = 0; i <= segment.size(); i++) {
+            Input p = i == segment.size() ? null : segment.get(i);
+            Double accuracy = p == null ? null : p.altitudeAccuracyM();
+            boolean usable = p != null && p.altitudeM() != null && Double.isFinite(p.altitudeM()) &&
+                (accuracy == null || (Double.isFinite(accuracy) && accuracy >= 0 && accuracy <= 20));
+            boolean jump = false;
+            if (usable && !block.isEmpty()) {
+                Input previous = block.getLast();
+                long dt = p.elapsedMs() - previous.elapsedMs();
+                double delta = Math.abs(p.altitudeM() - previous.altitudeM());
+                double uncertainty = (accuracy == null ? 0 : accuracy) +
+                    (previous.altitudeAccuracyM() == null ? 0 : previous.altitudeAccuracyM());
+                jump = dt <= 0 || dt > 10000 || (delta > Math.max(10, uncertainty) && delta * 1000 / dt > 3);
+            }
+            if (!usable || jump) {
+                if (block.size() >= 3 && block.getLast().elapsedMs() - block.getFirst().elapsedMs() >= 2000)
+                    blocks.add(new ElevationBlock(gpsPoints(block),false));
+                block.clear();
+                continue;
+            }
+            block.add(p);
+        }
+        return blocks;
+    }
     private static List<Input> pressureSamples(List<Input> inputs) {
         List<Input> samples = new ArrayList<>();
         boolean paused = false;
@@ -142,10 +176,9 @@ public final class RunResultStatsCalculator {
         }
         return samples;
     }
-    private static ElevationResult barometerElevation(List<Input> samples, List<Input> segment, double[] distances) {
+    private static List<ElevationBlock> barometerBlocks(List<Input> samples, List<Input> segment, double[] distances) {
+        List<ElevationBlock> blocks = new ArrayList<>();
         List<ElevationPoint> block = new ArrayList<>();
-        double gain = 0, covered = 0;
-        boolean measured = false;
         for (int i = 0; i <= samples.size(); i++) {
             Input p = i == samples.size() ? null : samples.get(i);
             boolean usable = p != null && p.pressureHpa() != null && Double.isFinite(p.pressureHpa()) &&
@@ -157,15 +190,14 @@ public final class RunResultStatsCalculator {
                 jump = dt <= 0 || dt > 10000 || Math.abs(height-block.getLast().height())*1000/dt > 3;
             }
             if (!usable || jump) {
-                if (block.size() >= 3 && block.getLast().elapsedMs()-block.getFirst().elapsedMs() >= 2000) {
-                    measured = true; gain += gain(block,true); covered += block.getLast().distanceM()-block.getFirst().distanceM();
-                }
-                block.clear();
+                if (block.size() >= 3 && block.getLast().elapsedMs()-block.getFirst().elapsedMs() >= 2000)
+                    blocks.add(new ElevationBlock(block,true));
+                block = new ArrayList<>();
                 continue;
             }
             block.add(new ElevationPoint(p.sampleEndMs(),height,null,distanceAt(segment,distances,p.sampleEndMs())));
         }
-        return new ElevationResult(measured ? gain : null, covered);
+        return blocks;
     }
     private static List<ElevationPoint> gpsPoints(List<Input> points) {
         List<ElevationPoint> result = new ArrayList<>();
