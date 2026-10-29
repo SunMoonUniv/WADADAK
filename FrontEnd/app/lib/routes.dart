@@ -56,6 +56,9 @@ abstract final class Routes {
 
   /// I1에서 고른 기록 하나(달리기 결과 화면을 기록 보기로). 하단 탭을 덮는다.
   static String myRecord(String id) => '/my/record/${Uri.encodeComponent(id)}';
+
+  /// F6 프로필 편집. E3 [편집]에서 연다. 하단 탭을 덮는다.
+  static const myProfileEdit = '/my/profile-edit';
   static const runSettings = '/my/run-settings';
 
   /// I5 · 지역 주간 전체 순위

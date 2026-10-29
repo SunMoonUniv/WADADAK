@@ -15,6 +15,14 @@ import '../../core/upload/photo_uploader.dart';
 import 'birth_year_sheet.dart';
 import 'consent_screen.dart';
 
+/// 닉네임이 서버 규칙(2~10자, 한글 · 영문 · 숫자)에 어긋나면 안내 문구. 비었으면 null이다. F2 · F6가 같이 쓴다.
+String? nicknameProblem(String value) {
+  if (value.isEmpty) return null;
+  if (!RegExp(r'^[가-힣a-zA-Z0-9]+$').hasMatch(value)) return '한글 · 영문 · 숫자만 쓸 수 있어요';
+  if (value.length < 2) return '2자 이상 입력해 주세요';
+  return null;
+}
+
 /// F2 · 프로필 초기 설정. "시작하기"를 누르면 동의 내용과 함께 가입한다.
 /// 프로필 사진은 선택이다. 고른 사진은 가입할 때 올린다.
 /// 신체 정보도 선택이다. 동의해야 입력할 수 있고, 동의하면 네 값을 모두 넣어야 시작할 수 있다(정책 공통 9).
@@ -26,9 +34,6 @@ class ProfileSetupScreen extends ConsumerStatefulWidget {
 }
 
 class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
-  /// 서버 규칙과 같다: 2~10자, 한글 · 영문 · 숫자.
-  static final _nicknamePattern = RegExp(r'^[가-힣a-zA-Z0-9]+$');
-
   final _nickname = TextEditingController();
   final _bio = TextEditingController();
   final _region = TextEditingController();
@@ -62,13 +67,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
 
   String get _nicknameValue => _nickname.text.trim();
 
-  String? get _nicknameProblem {
-    final value = _nicknameValue;
-    if (value.isEmpty) return null;
-    if (!_nicknamePattern.hasMatch(value)) return '한글 · 영문 · 숫자만 쓸 수 있어요';
-    if (value.length < 2) return '2자 이상 입력해 주세요';
-    return null;
-  }
+  String? get _nicknameProblem => nicknameProblem(_nicknameValue);
 
   /// 동의했고 네 값이 모두 범위 안이면 보낼 신체 정보.
   BodyInfo? get _bodyInfo {
