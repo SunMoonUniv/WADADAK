@@ -27,7 +27,7 @@ class WdAppBarAction {
         primary = false,
         _kind = _Kind.text;
 
-  /// 알약 버튼 — Back + Title + Button. 화면의 주 동작(저장)은 [primary].
+  /// 알약 버튼 — Back + Title + Button. 화면의 주 동작(저장)은 [primary]. [onTap]이 null이면 회색 비활성.
   const WdAppBarAction.button(String this.label, {required this.onTap, this.primary = false})
       : icon = null,
         semanticLabel = null,
@@ -61,17 +61,27 @@ class WdAppBarAction {
             onTap: onTap,
             child: Text(label!, style: WdText.raw(12, FontWeight.w500, 18).copyWith(color: WdColors.muted)),
           ),
+        // onTap이 null이면 WdButton과 같은 비활성 회색.
         _Kind.button => Semantics(
             button: true,
+            enabled: onTap != null,
             child: WdSurface(
-              color: primary ? WdColors.lime : WdColors.soft,
+              color: onTap == null
+                  ? WdColors.disabledBg
+                  : primary
+                      ? WdColors.lime
+                      : WdColors.soft,
               radius: WdRadius.full,
               height: 36,
               padding: const EdgeInsets.symmetric(horizontal: 14),
               onTap: onTap,
               child: Center(
                 widthFactor: 1,
-                child: Text(label!, style: WdText.raw(13, FontWeight.w700, 18).copyWith(color: WdColors.ink)),
+                child: Text(
+                  label!,
+                  style: WdText.raw(13, FontWeight.w700, 18)
+                      .copyWith(color: onTap == null ? WdColors.disabledText : WdColors.ink),
+                ),
               ),
             ),
           ),

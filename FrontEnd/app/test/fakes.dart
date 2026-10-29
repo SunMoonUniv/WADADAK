@@ -132,6 +132,43 @@ class FakeMemberApi implements MemberApiClient {
     if (meError != null) throw meError!;
     return MyProfile.fromJson(profile);
   }
+
+  /// F6 저장 때 보낸 값. [editError]가 있으면 대신 실패한다.
+  /// 성공하면 [profile]의 같은 이름 칸(닉네임 · 소개 · 소속 · 경력 · 신체 정보)도 바뀐다. 지역 · 사진은 그대로다.
+  Map<String, Object?>? edited;
+  ApiException? editError;
+
+  @override
+  Future<MyProfile> editProfile({
+    required String nickname,
+    required String? bio,
+    required String regionCode,
+    required String? affiliation,
+    required RunningExperience runningExperience,
+    required String? profileImageKey,
+    required BodyInfo? bodyInfo,
+  }) async {
+    edited = {
+      'nickname': nickname,
+      'bio': bio,
+      'regionCode': regionCode,
+      'affiliation': affiliation,
+      'runningExperience': runningExperience.apiName,
+      'profileImageKey': profileImageKey,
+      'bodyInfo': bodyInfo?.toJson(),
+    };
+    if (editError != null) throw editError!;
+    profile = {...profile, ...edited!};
+    return MyProfile.fromJson(profile);
+  }
+
+  int myPhotoForms = 0;
+
+  @override
+  Future<UploadForm> photoUploadForm() async {
+    myPhotoForms++;
+    return UploadForm.fromJson({'url': 'https://files.test/wadadak', 'key': 'member/new.jpg', 'fields': <String, String>{}});
+  }
 }
 
 /// 1×1 PNG. 미리보기가 그림으로 읽을 수 있는 사진이다.

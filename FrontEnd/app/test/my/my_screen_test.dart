@@ -83,7 +83,7 @@ void main() {
   late _HistoryApi history;
   late MemoryTokenStorage tokens;
 
-  /// E3을 띄운다. I1은 이름만 보이는 화면으로 바꿔 어디로 갔는지만 본다.
+  /// E3을 띄운다. I1 · F6은 이름만 보이는 화면으로 바꿔 어디로 갔는지만 본다.
   Future<void> openMy(WidgetTester tester) async {
     tester.view
       ..physicalSize = const Size(402, 874)
@@ -97,6 +97,7 @@ void main() {
       routes: [
         GoRoute(path: Routes.my, builder: (_, _) => const MyScreen()),
         GoRoute(path: Routes.myRecords, builder: (_, _) => const Text('I1')),
+        GoRoute(path: Routes.myProfileEdit, builder: (_, _) => const Text('F6')),
       ],
     );
     addTearDown(router.dispose);
@@ -165,10 +166,6 @@ void main() {
     await tester.pump();
     expect(find.text('저장한 코스 화면은 준비 중이에요.'), findsOneWidget);
 
-    await tester.tap(find.text('편집'));
-    await tester.pump();
-    expect(find.text('프로필 편집 화면은 준비 중이에요.'), findsOneWidget);
-
     await tester.tap(find.bySemanticsLabel('설정'));
     await tester.pump();
     expect(find.text('설정 화면은 준비 중이에요.'), findsOneWidget);
@@ -176,6 +173,14 @@ void main() {
     await tester.tap(find.text('내 러닝 기록'));
     await tester.pumpAndSettle();
     expect(find.text('I1'), findsOneWidget);
+  });
+
+  testWidgets('edit opens F6', (tester) async {
+    await openMy(tester);
+
+    await tester.tap(find.text('편집'));
+    await tester.pumpAndSettle();
+    expect(find.text('F6'), findsOneWidget);
   });
 
   testWidgets('a failed profile can be loaded again', (tester) async {

@@ -22,7 +22,7 @@ final myProfileProvider = FutureProvider<MyProfile>((ref) async {
 /// - 프로필 아래 줄의 러닝 경력은 가입 때 고른 값이다(`러닝 6개월+`).
 /// - 총 거리 · 러닝 횟수는 I1처럼 내 기록을 끝까지 받아 앱이 더한다([AllRunHistory]). 다 받기 전에는 `—`다.
 /// - 등록 코스 · 내가 등록한 코스 · 저장한 코스는 코스 쪽 API가 아직 없어 `—`로 자리만 둔다.
-/// - 설정(F4) · 편집(F6)도 아직 없어 누르면 준비 중 안내를 띄운다.
+/// - 설정(F4)은 아직 없어 누르면 준비 중 안내를 띄운다. [편집]은 F6을 연다.
 /// - 로그아웃은 Figma E3에 없지만 F4 설정이 생길 때까지 맨 아래에 임시로 둔다.
 /// (2026-10-29 사용자 결정)
 class MyScreen extends ConsumerStatefulWidget {
@@ -48,7 +48,7 @@ class _MyScreenState extends ConsumerState<MyScreen> with AllRunHistory {
     body: ListView(
       padding: const EdgeInsets.fromLTRB(WdSpace.s24, WdSpace.s20, WdSpace.s24, WdSpace.s24),
       children: [
-        _Profile(onEdit: () => _soon('프로필 편집')),
+        _Profile(onEdit: () => context.push(Routes.myProfileEdit)),
         const SizedBox(height: WdSpace.s16),
         ListenableBuilder(
           listenable: runs,

@@ -94,6 +94,12 @@ enum Gender {
 class BodyInfo {
   const BodyInfo({required this.birthYear, required this.heightCm, required this.weightKg, required this.gender});
 
+  BodyInfo.fromJson(Map json)
+      : birthYear = json['birthYear'] as int,
+        heightCm = json['heightCm'] as int,
+        weightKg = json['weightKg'] as int,
+        gender = Gender.values.firstWhere((gender) => gender.apiName == json['gender']);
+
   final int birthYear, heightCm, weightKg;
   final Gender gender;
 
@@ -111,16 +117,26 @@ class BodyInfo {
       {'birthYear': birthYear, 'heightCm': heightCm, 'weightKg': weightKg, 'gender': gender.apiName};
 }
 
-/// 내 정보(`GET /members/me`). E3 마이페이지 · F6 프로필 편집 · F4 설정이 쓴다. 지금은 E3가 쓰는 값만 읽는다.
+/// 내 정보(`GET /members/me`). E3 마이페이지 · F6 프로필 편집 · F4 설정이 쓴다. 지금은 E3 · F6가 쓰는 값만 읽는다.
 class MyProfile {
   MyProfile.fromJson(Map json)
       : nickname = json['nickname'] as String,
+        nicknameChangeableAt = DateTime.tryParse(json['nicknameChangeableAt'] as String? ?? ''),
+        bio = json['bio'] as String?,
         region = json['region'] == null ? null : Region.fromJson(json['region'] as Map),
         affiliation = json['affiliation'] as String?,
         runningExperience = RunningExperience.fromApi(json['runningExperience'] as String?),
-        profileImageUrl = json['profileImageUrl'] as String?;
+        profileImageKey = json['profileImageKey'] as String?,
+        profileImageUrl = json['profileImageUrl'] as String?,
+        bodyInfo = json['bodyInfo'] == null ? null : BodyInfo.fromJson(json['bodyInfo'] as Map);
 
   final String nickname;
+
+  /// 닉네임을 다시 바꿀 수 있는 시각(F6 "다음 변경 가능"). 지금 바꿀 수 있으면 없다.
+  final DateTime? nicknameChangeableAt;
+
+  /// 한 줄 소개. 선택 입력이다.
+  final String? bio;
 
   /// 활동 지역. 지역 목록에서 코드가 사라졌으면 없다.
   final Region? region;
@@ -128,7 +144,13 @@ class MyProfile {
   /// 소속(예: 선문대학교). 선택 입력이다.
   final String? affiliation;
   final RunningExperience? runningExperience;
+
+  /// 사진을 그대로 두고 F6를 저장할 때 다시 보내는 키.
+  final String? profileImageKey;
   final String? profileImageUrl;
+
+  /// 신체 정보. 동의하지 않았으면 없다.
+  final BodyInfo? bodyInfo;
 }
 
 /// 회원 API(`/api/v1/members`). 서버 모듈 prefix 하나에 클라이언트 하나(개발 정책 9장).
@@ -143,6 +165,31 @@ class MemberApiClient {
   static const _me = '/api/v1/members/me';
 
   Future<MyProfile> me() async => MyProfile.fromJson(await callApi(() => _authDio().get(_me)) as Map);
+
+  /// F6 저장. 화면 값을 통째로 보낸다. [profileImageKey]는 그대로 두면 지금 키, 새 사진이면 올린 키, 지우면 null.
+  /// [bodyInfo]가 null이면 저장된 신체 정보가 지워진다. 닉네임 30일 규칙에 걸리면 MEMBER-010, 중복이면 MEMBER-006.
+  Future<MyProfile> editProfile({
+    required String nickname,
+    required String? bio,
+    required String regionCode,
+    required String? affiliation,
+    required RunningExperience runningExperience,
+    required String? profileImageKey,
+    required BodyInfo? bodyInfo,
+  }) async =>
+      MyProfile.fromJson(await callApi(() => _authDio().put(_me, data: {
+            'nickname': nickname,
+            'bio': bio,
+            'regionCode': regionCode,
+            'affiliation': affiliation,
+            'runningExperience': runningExperience.apiName,
+            'profileImageKey': profileImageKey,
+            'bodyInfo': bodyInfo?.toJson(),
+          })) as Map);
+
+  /// F6 새 프로필 사진 업로드 폼. 올린 키를 [editProfile]에 담는다.
+  Future<UploadForm> photoUploadForm() async =>
+      UploadForm.fromJson(await callApi(() => _authDio().post('$_me/photo-uploads')) as Map);
 
   Future<LoginResult> login(SocialProvider provider, String socialToken) async {
     final data = await callApi(
