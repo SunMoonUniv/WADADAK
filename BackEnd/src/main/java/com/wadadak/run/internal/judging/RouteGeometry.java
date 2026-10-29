@@ -91,6 +91,14 @@ final class RouteGeometry {
         return distinct;
     }
 
+    /** Heading evidence used only by the opt-in free ghost matcher. */
+    double directionCosine(GeoPoint from, GeoPoint to, int segment) {
+        Point a=toLocal(from),b=toLocal(to),u=vertices[segment],v=vertices[segment+1];
+        double dx=b.x()-a.x(),dy=b.y()-a.y(),rx=v.x()-u.x(),ry=v.y()-u.y();
+        double scale=Math.hypot(dx,dy)*Math.hypot(rx,ry);
+        return scale<1e-9?1:Math.clamp((dx*rx+dy*ry)/scale,-1,1);
+    }
+
     /** 판정용 평면 좌표(m) */
     record Point(double x, double y) {
         double distanceTo(Point o) {

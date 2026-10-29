@@ -89,7 +89,10 @@ class GhostPlayback {
   }
 
   final String? version;
-  bool get supported => version=='GHOST_PLAYBACK_V1' || version=='GHOST_PLAYBACK_FREE_V1';
+  bool get supported =>
+      version == 'GHOST_PLAYBACK_V1' ||
+      version == 'GHOST_PLAYBACK_FREE_V1' ||
+      version == 'GHOST_PLAYBACK_FREE_V2';
   final bool eligible;
   final int? durationMs;
   final List<String> reasons;
@@ -98,10 +101,7 @@ class GhostPlayback {
 
   GhostMoment at(int elapsedMs) {
     final end = durationMs;
-    if (!eligible ||
-        !supported ||
-        end == null ||
-        spans.isEmpty) {
+    if (!eligible || !supported || end == null || spans.isEmpty) {
       return const GhostMoment(GhostPlaybackState.unavailable, null);
     }
     if (elapsedMs < 0) {

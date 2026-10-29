@@ -114,6 +114,108 @@ class FreeGhostTest {
         assertThatThrownBy(()->free.prepare(UUID.randomUUID(),enough)).isInstanceOf(AppException.class);
     }
 
+    @Test void rejectedOverlappingFreePathExplainsRecognizedDistanceWithoutChangingPlayback() throws Exception {
+        var raw=new ArrayList<>(raw(original,1200,1200,1000,"USER",Set.of(),0));
+        // Synthetic nearby outbound/return legs with deterministic sub-metre noise; no user locations.
+        int index=0;var random=new Random(1);
+        for(int i=0;i<raw.size();i++) {
+            var p=raw.get(i);if(p.kind()!=Kind.GPS)continue;
+            double north=index<=400?index:index<=600?400-(index-400):200+(index-600);
+            double east=(index<=400?0:index<=600?5:10)+random.nextGaussian()*.8;
+            north+=random.nextGaussian()*.8;index++;
+            var point=new GeoPoint(37+Math.toDegrees(north/GeoPoint.EARTH_RADIUS_M),
+                127+Math.toDegrees(east/(GeoPoint.EARTH_RADIUS_M*Math.cos(Math.toRadians(37)))));
+            raw.set(i,new Input(p.seq(),p.kind(),p.elapsedMs(),p.measuredAt(),point,3.0,null));
+        }
+        upload(source,original,raw);
+        var p=free.prepare(owner,source);
+        assertThat(p.playback().eligible()).isFalse();
+        assertThat(p.playback().unavailableReasons()).containsExactly("REFERENCE_NOT_REPRODUCIBLE");
+        assertThat(p.diagnostics().reason()).isEqualTo("DISTANCE_SHORT");
+        assertThat(p.diagnostics().recognizedPercent()).isLessThan(95);
+        var built=new com.wadadak.run.internal.ghost.GhostPlaybackBuilder()
+            .buildReference(runs.result(owner,source),p.playback().course(),raw);
+        assertThat(p.playback()).isEqualTo(built);
+        var expectedHash=HexFormat.of().formatHex(java.security.MessageDigest.getInstance("SHA-256")
+            .digest(json.writeValueAsString(built).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+        assertThat(p.referenceHash()).isEqualTo(expectedHash);
+        String before=json.writeValueAsString(runs.result(owner,source));
+        mvc.perform(get("/api/v1/runs/records/"+source+"/free-ghost-playback")
+            .with(jwt().jwt(j->j.subject(owner.toString()))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.diagnostics.reason").value("DISTANCE_SHORT"))
+            .andExpect(jsonPath("$.data.diagnostics.recognizedDistanceM").isNumber())
+            .andExpect(jsonPath("$.data.diagnostics.referenceDistanceM").isNumber())
+            .andExpect(jsonPath("$.data.diagnostics.recognizedPercent").isNumber());
+        assertThat(json.writeValueAsString(runs.result(owner,source))).isEqualTo(before);
+    }
+
+    List<Input> v2Fixture(String name,Instant at)throws Exception {
+        var fixture=json.readTree(java.nio.file.Files.readString(java.nio.file.Path.of("../run/fixtures/free_ghost_tracker_v2.json")));
+        for(var c:fixture.get("cases"))if(name.equals(c.get("name").asText())) {
+            var raw=Arrays.asList(json.treeToValue(c.get("inputs"),Input[].class));
+            return raw.stream().map(p->new Input(p.seq(),p.kind(),p.elapsedMs(),at.plusMillis(p.elapsedMs()),
+                p.location(),p.accuracyM(),p.reason())).toList();
+        }
+        throw new AssertionError(name);
+    }
+
+    @Test void v2SourceAndIdenticalRunnerUseTheSameCompletionAndDrawWithoutCourseSideEffects(AssertablePublishedEvents events)throws Exception {
+        var raw=v2Fixture("dense_nearby_legs",original);upload(source,original,raw);
+        String before=json.writeValueAsString(runs.result(owner,source));
+        assertThat(free.prepare(owner,source).playback().eligible()).isFalse();
+        var p=free.prepare(owner,source,"GHOST_PLAYBACK_FREE_V2");
+        assertThat(p.playback().eligible()).as(p.playback().unavailableReasons().toString()).isTrue();
+        assertThat(p.playback().version()).isEqualTo("GHOST_PLAYBACK_FREE_V2");
+        assertThat(p.playback().durationMs()).isLessThan(p.originalElapsedMs());
+        mvc.perform(get("/api/v1/runs/records/"+source+"/free-ghost-playback")
+            .with(jwt().jwt(j->j.subject(owner.toString()))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.playback.version").value("GHOST_PLAYBACK_FREE_V1"));
+        mvc.perform(get("/api/v1/runs/records/"+source+"/free-ghost-playback").param("playbackVersion","GHOST_PLAYBACK_FREE_V2")
+            .with(jwt().jwt(j->j.subject(owner.toString()))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.playback.eligible").value(true));
+        var request=new GhostStart(null,1L,source,now,"GHOST_PLAYBACK_FREE_V2",p.referenceHash());
+        mvc.perform(post("/api/v1/runs/sessions/"+id+"/ghost/start")
+            .with(jwt().jwt(j->j.subject(owner.toString()))).contentType(MediaType.APPLICATION_JSON)
+            .content(json.writeValueAsString(request))).andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.playback.version").value("GHOST_PLAYBACK_FREE_V2"));
+        var approval=starts.start(owner,id,request);
+        upload(id,now,v2Fixture("dense_nearby_legs",now));
+        var result=runs.result(owner,id);
+        assertThat(result.course()).isNull();
+        assertThat(result.ghost().completed()).isTrue();
+        assertThat(result.ghost().outcome()).isEqualTo(GhostVerdict.DRAW);
+        assertThat(result.ghost().courseElapsedSeconds()).isEqualTo(p.playback().courseElapsedSeconds());
+        assertThat(result.ghost().sourceDurationMs()).isEqualTo(p.playback().durationMs());
+        assertThat(json.writeValueAsString(runs.result(owner,source))).isEqualTo(before);
+        assertThat(db.queryForObject("SELECT count(*) FROM run.course_attempts",Long.class)).isZero();
+        assertThat(events.ofType(CourseRunStartedEvent.class)).isEmpty();
+        assertThat(events.ofType(RunSessionEndedEvent.class)).allMatch(e->e.courseId()==null && !e.completed());
+        runs.delete(owner,source);
+        assertThat(starts.start(owner,id,request)).isEqualTo(approval);
+        assertThat(results.get(owner,id)).isEqualTo(result.ghost());
+        verifyNoInteractions(courseApi);
+    }
+
+    @Test void alreadyApprovedV1DuelKeepsItsMatcherAndCannotBeUpgradedByRetry() {
+        upload(source,original,raw(original,220,1200,2000,"INTERRUPTED",Set.of(),0));
+        var p=free.prepare(owner,source);var request=request(p);var approval=starts.start(owner,id,request);
+        var modern=free.prepare(owner,source,"GHOST_PLAYBACK_FREE_V2");
+        assertThatThrownBy(()->starts.start(owner,id,new GhostStart(null,1L,source,now,"GHOST_PLAYBACK_FREE_V2",modern.referenceHash())))
+            .isInstanceOf(AppException.class);
+        assertThat(starts.start(owner,id,request)).isEqualTo(approval);
+        upload(id,now,raw(now,220,1200,2000,"INTERRUPTED",Set.of(),0));
+        assertThat(results.get(owner,id).outcome()).isEqualTo(GhostVerdict.DRAW);
+        assertThat(results.get(owner,id).courseElapsedSeconds()).isEqualTo(p.playback().courseElapsedSeconds());
+        assertThat(free.receipt(owner,id).orElseThrow().playback().version()).isEqualTo("GHOST_PLAYBACK_FREE_V1");
+    }
+
+    @Test void unknownFreeMatcherVersionIsRejectedInsteadOfSilentlyDowngraded()throws Exception {
+        upload(source,original,raw(original,220,1200,2000,"INTERRUPTED",Set.of(),0));
+        mvc.perform(get("/api/v1/runs/records/"+source+"/free-ghost-playback").param("playbackVersion","FUTURE")
+            .with(jwt().jwt(j->j.subject(owner.toString())))).andExpect(status().isBadRequest());
+    }
+
     @Test void gapsKeepDisconnectedGeometryAndRespectThirtySecondBoundary() {
         Set<Integer> missing=new HashSet<>();for(int i=100;i<114;i++) missing.add(i);
         upload(source,original,raw(original,600,3400,2000,"INTERRUPTED",missing,0));

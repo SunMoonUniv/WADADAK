@@ -18,6 +18,8 @@ import java.util.stream.Collectors;
 public final class GhostPlaybackBuilder {
     public static final String VERSION = "GHOST_PLAYBACK_V1";
     public static final String FREE_VERSION = "GHOST_PLAYBACK_FREE_V1";
+    public static final String FREE_VERSION_V2 = "GHOST_PLAYBACK_FREE_V2";
+    public static boolean freeVersion(String version) {return FREE_VERSION.equals(version)||FREE_VERSION_V2.equals(version);}
     private static final String SOURCE_POLICY_VERSION = "2026-10-14";
     private static final double EPSILON = 1e-6;
 
@@ -44,14 +46,32 @@ public final class GhostPlaybackBuilder {
         return compose(source,snapshot,inputs,analysis,VERSION);
     }
 
+    public record ReferencePlayback(GhostPlayback playback, CourseJudge.Judgement judgement) {}
+
     public GhostPlayback buildReference(Result source, CourseSnapshot snapshot, List<Input> inputs) {
-        var analysis = new CourseJudge().analyze(snapshot.route(),snapshot.breaks(),inputs);
-        if (!analysis.judgement().completed()) return unavailableReference(source,snapshot,"REFERENCE_NOT_REPRODUCIBLE");
-        return compose(source,snapshot,inputs,analysis,FREE_VERSION);
+        return buildReferenceWithJudgement(source,snapshot,inputs).playback();
+    }
+
+    public ReferencePlayback buildReferenceWithJudgement(Result source, CourseSnapshot snapshot, List<Input> inputs) {
+        return buildReferenceWithJudgement(source,snapshot,inputs,FREE_VERSION);
+    }
+
+    public ReferencePlayback buildReferenceWithJudgement(Result source, CourseSnapshot snapshot, List<Input> inputs,String version) {
+        if(!freeVersion(version))throw new IllegalArgumentException("Unsupported free playback version");
+        var judge=FREE_VERSION_V2.equals(version)?CourseJudge.freeGhostV2():new CourseJudge();
+        var analysis = judge.analyze(snapshot.route(),snapshot.breaks(),inputs);
+        GhostPlayback playback = !analysis.judgement().completed()
+                ? unavailableReference(source,snapshot,"REFERENCE_NOT_REPRODUCIBLE",version)
+                : compose(source,snapshot,inputs,analysis,version);
+        return new ReferencePlayback(playback,analysis.judgement());
     }
 
     public GhostPlayback unavailableReference(Result source, CourseSnapshot snapshot, String reason) {
-        return new GhostPlayback(source.id(),snapshot,FREE_VERSION,source.policyVersion(),source.calculationVersion(),
+        return unavailableReference(source,snapshot,reason,FREE_VERSION);
+    }
+    public GhostPlayback unavailableReference(Result source, CourseSnapshot snapshot, String reason,String version) {
+        if(!freeVersion(version))throw new IllegalArgumentException("Unsupported free playback version");
+        return new GhostPlayback(source.id(),snapshot,version,source.policyVersion(),source.calculationVersion(),
                 0,null,false,List.of(reason),null,List.of(),List.of());
     }
 

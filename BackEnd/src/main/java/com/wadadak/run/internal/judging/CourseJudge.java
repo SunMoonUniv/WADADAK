@@ -50,15 +50,19 @@ public final class CourseJudge {
     public record Analysis(Judgement judgement, List<CourseSample> samples, long courseElapsedMs) {}
 
     private final JudgingConfig config;
+    private final boolean freeGhostV2;
 
     /** 주행 검증 전 개발용 기준값({@link JudgingConfig#DEFAULTS}) */
     public CourseJudge() {
         this(JudgingConfig.DEFAULTS);
     }
 
-    CourseJudge(JudgingConfig config) {
-        this.config = config;
+    CourseJudge(JudgingConfig config) {this(config,false);}
+    private CourseJudge(JudgingConfig config, boolean freeGhostV2) {
+        this.config=config;this.freeGhostV2=freeGhostV2;
     }
+    /** Explicit opt-in; ordinary courses and already approved FREE_V1 duels keep the old tracker. */
+    public static CourseJudge freeGhostV2() {return new CourseJudge(JudgingConfig.DEFAULTS,true);}
 
     public Judgement judge(CourseRouteSnapshot course, List<Input> inputs) {
         return analyze(course, inputs).judgement();
@@ -70,7 +74,7 @@ public final class CourseJudge {
     /** Run-owned reference geometry. Breaks have no inferred connecting segment or distance. */
     public Analysis analyze(List<com.wadadak.common.geo.GeoPoint> reference, List<Integer> breaks, List<Input> inputs) {
         RouteGeometry route = new RouteGeometry(reference,breaks);
-        List<Point> points = new CourseTracker(route, config).track(inputs);
+        List<Point> points = freeGhostV2?new FreeGhostTracker(route,config).track(inputs):new CourseTracker(route, config).track(inputs);
         RecognizedDistance recognized = RecognizedDistance.of(points);
         double length = route.length();
 

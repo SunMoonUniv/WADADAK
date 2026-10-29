@@ -37,11 +37,20 @@ class FreeGhostApi implements FreeGhostSource {
   }
 
   @override
-  Future<Map<String, dynamic>> prepare(String owner, String id) async =>
-      ((await callApi(
-        () => client.dio.get<Object?>(
-          '/api/v1/runs/records/$id/free-ghost-playback',
-          options: client.options(owner),
-        ),
-      )) as Map).cast<String, dynamic>();
+  Future<Map<String, dynamic>> prepare(String owner, String id) async {
+    final response = ((await callApi(
+      () => client.dio.get<Object?>(
+        '/api/v1/runs/records/$id/free-ghost-playback',
+        queryParameters: {'playbackVersion': 'GHOST_PLAYBACK_FREE_V2'},
+        options: client.options(owner),
+      ),
+    )) as Map).cast<String, dynamic>();
+    if ((response['playback'] as Map?)?['version'] !=
+        'GHOST_PLAYBACK_FREE_V2') {
+      throw const FormatException(
+        'Free ghost playback version was not negotiated',
+      );
+    }
+    return response;
+  }
 }

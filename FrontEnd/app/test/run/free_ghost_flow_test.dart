@@ -34,11 +34,14 @@ import 'ghost_recovery_support.dart';
 import 'recording/run_controller_test.dart' show FailingStore, until;
 import 'recording/course_run_start_test.dart' show CourseApi;
 
-Map<String, dynamic> preparation({bool eligible = true}) {
+Map<String, dynamic> preparation({
+  bool eligible = true,
+  String version = 'GHOST_PLAYBACK_FREE_V1',
+}) {
   final base = ghostApproval(ghostIntent());
   final replay = {
     ...(base['playback'] as Map).cast<String, dynamic>(),
-    'version': 'GHOST_PLAYBACK_FREE_V1',
+    'version': version,
     'course': {
       ...ghostCourse(sourceId).toJson(),
       'courseId': null,
@@ -61,12 +64,13 @@ Map<String, dynamic> approval(GhostStartIntent i) => {
   'version': 'GHOST_START_FREE_V1',
   'playback': {
     ...(ghostApproval(i)['playback'] as Map).cast<String, dynamic>(),
-    'version': 'GHOST_PLAYBACK_FREE_V1',
+    'version': i.playbackVersion,
   },
 };
 
 class Choices implements FreeGhostSource {
   bool eligible = true;
+  Map<String, dynamic>? response;
   int reads = 0;
   Completer<Map<String, dynamic>>? gate;
   @override
@@ -91,7 +95,9 @@ class Choices implements FreeGhostSource {
   @override
   Future<Map<String, dynamic>> prepare(String owner, String id) async {
     reads++;
-    return gate == null ? preparation(eligible: eligible) : gate!.future;
+    return gate == null
+        ? response ?? preparation(eligible: eligible)
+        : gate!.future;
   }
 }
 
@@ -280,7 +286,7 @@ void main() {
       choices.eligible = false;
       await mount(tester);
       await choose(tester);
-      expect(find.textContaining('GPS 공백이 많은 기록'), findsOneWidget);
+      expect(find.textContaining('위치를 알 수 없는 시간이 5%를 초과'), findsOneWidget);
       expect(
         tester
             .widget<WdButton>(find.widgetWithText(WdButton, '이 기록과 대결하기'))
@@ -299,6 +305,37 @@ void main() {
       expect(runs.selectedFreeGhost, isNull);
     },
   );
+  testWidgets('specific distance failure fits 320px and keeps duel disabled', (
+    tester,
+  ) async {
+    choices.response = {
+      ...preparation(eligible: false),
+      'playback': {
+        ...preparation(eligible: false)['playback'] as Map,
+        'unavailableReasons': ['REFERENCE_NOT_REPRODUCIBLE'],
+      },
+      'diagnostics': {
+        'reason': 'DISTANCE_SHORT',
+        'recognizedPercent': 78.690075,
+        'recognizedDistanceM': 1390.8532,
+        'referenceDistanceM': 1767.5078,
+      },
+    };
+    await mount(tester, width: 320);
+    await choose(tester);
+    expect(find.textContaining('78.69%'), findsOneWidget);
+    expect(find.textContaining('95%'), findsOneWidget);
+    expect(
+      tester
+          .widget<WdButton>(find.widgetWithText(WdButton, '이 기록과 대결하기'))
+          .onPressed,
+      isNull,
+    );
+    await png(tester, '320-unavailable');
+    expect(tester.takeException(), isNull);
+    expect(runs.selectedFreeGhost, isNull);
+    expect(starts.posts, isEmpty);
+  });
   test('free approval rejects a changed route break', () {
     final p = PreparedFreeGhost('alice', preparation());
     final c = p.reference;
