@@ -20,7 +20,8 @@ class OwnGhostCandidateController {
     OwnGhostCandidateController(OwnGhostCandidates candidates) { this.candidates = candidates; }
 
     @Operation(summary = "내 코스 완주 고스트 후보",
-        description = "같은 코스/경로 버전의 본인 완주만 조회합니다. RECENT는 실제 시작 시각순, BEST는 코스 정수 초순. "
+        description = "현재 준비 버전의 같은 코스 본인 완주를 조회합니다. 과거 버전은 저장된 경로 순서·거리가 현재와 정확히 같을 때 포함합니다. "
+            + "RECENT는 실제 시작 시각순, BEST는 코스 정수 초순. "
             + "커서 기본 20개/최대 50개이며 선택한 한 건의 ghost-playback에서 재생 적합성을 확인합니다.")
     @GetMapping("/own")
     ApiResult<OwnGhostCandidatePage> own(@AuthenticationPrincipal Jwt jwt,

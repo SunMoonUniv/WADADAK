@@ -6,6 +6,7 @@ import 'package:sqflite/sqflite.dart';
 import '../domain/recording_models.dart';
 import '../domain/run_voice.dart';
 import '../domain/ghost_run.dart';
+import '../domain/course_run.dart';
 import '../../../core/time/monotonic_clock.dart';
 
 abstract interface class RunGhostStore {
@@ -60,13 +61,14 @@ class RunLocalStore implements RunStore, RunHistoryStore, RunGhostStore {
       databasePath ??
           path.join(await dbFactory.getDatabasesPath(), 'runs_v1.db'),
       options: OpenDatabaseOptions(
-        version: 4,
+        version: 5,
         onUpgrade: (db, old, _) async {
           if (old < 2) await _createExtras(db);
           if (old < 3) {
             await db.execute('ALTER TABLE sessions ADD COLUMN summary TEXT');
           }
           if (old < 4) await _createGhostStorage(db);
+          if (old < 5) await _createCourseStarts(db);
         },
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON');
@@ -87,6 +89,7 @@ class RunLocalStore implements RunStore, RunHistoryStore, RunGhostStore {
           await _createExtras(db);
           await db.execute('ALTER TABLE sessions ADD COLUMN summary TEXT');
           await _createGhostStorage(db);
+          await _createCourseStarts(db);
         },
       ),
     );
@@ -96,6 +99,23 @@ class RunLocalStore implements RunStore, RunHistoryStore, RunGhostStore {
   Future<void> create(LocalRun run, RunInput start) async {
     final db = await database;
     await db.transaction((tx) async {
+      final courseDrafts = await tx.query(
+        'course_start_intents',
+        where: 'owner=?',
+        whereArgs: [run.owner],
+      );
+      if (courseDrafts.isNotEmpty) {
+        final intent = CourseStartIntent.fromJson(
+          (jsonDecode(courseDrafts.single['intent'] as String) as Map)
+              .cast<String, dynamic>(),
+        );
+        if (run.ghost != null ||
+            intent.id != run.id ||
+            intent.owner != run.owner ||
+            intent.startedAt != run.startedAt) {
+          throw StateError('확인 중인 코스 시작을 먼저 복구해 주세요.');
+        }
+      }
       final drafts = await tx.query(
         'ghost_start_intents',
         where: 'owner=?',
@@ -142,6 +162,11 @@ class RunLocalStore implements RunStore, RunHistoryStore, RunGhostStore {
         'seq': start.seq,
         'payload': jsonEncode(start.toJson()),
       });
+      await tx.delete(
+        'course_start_intents',
+        where: 'id=? AND owner=?',
+        whereArgs: [run.id, run.owner],
+      );
       if (run.ghost != null) {
         await tx.delete(
           'ghost_start_intents',
@@ -460,6 +485,19 @@ class RunLocalStore implements RunStore, RunHistoryStore, RunGhostStore {
   @override
   Future<void> deleteRecord(String owner, String id) async {
     await (await database).transaction((tx) async {
+      final courseDraft = await tx.query(
+        'course_start_intents',
+        where: 'id=?',
+        whereArgs: [id],
+      );
+      if (courseDraft.isNotEmpty && courseDraft.single['owner'] != owner) {
+        throw StateError('다른 계정의 시작 정보예요.');
+      }
+      await tx.delete(
+        'course_start_intents',
+        where: 'id=? AND owner=?',
+        whereArgs: [id, owner],
+      );
       final draft = await tx.query(
         'ghost_start_intents',
         where: 'id=?',
@@ -537,6 +575,71 @@ class RunLocalStore implements RunStore, RunHistoryStore, RunGhostStore {
     }
   }
 
+  static Future<void> _createCourseStarts(Database db) async {
+    await db.execute(
+      'CREATE TABLE course_start_intents (id TEXT PRIMARY KEY, owner TEXT NOT NULL UNIQUE, intent TEXT NOT NULL)',
+    );
+  }
+
+  Future<void> saveCourseIntent(CourseStartIntent intent) async {
+    await (await database).transaction((tx) async {
+      if ((await tx.query(
+            'run_deletions',
+            where: 'id=?',
+            whereArgs: [intent.id],
+          )).isNotEmpty ||
+          (await tx.query(
+            'sessions',
+            where: 'owner=? AND phase<>?',
+            whereArgs: [intent.owner, 'ended'],
+          )).isNotEmpty ||
+          (await tx.query(
+            'ghost_start_intents',
+            where: 'owner=?',
+            whereArgs: [intent.owner],
+          )).isNotEmpty) {
+        throw StateError('코스 시작 정보를 저장할 수 없어요.');
+      }
+      final old = await tx.query(
+        'course_start_intents',
+        where: 'id=? OR owner=?',
+        whereArgs: [intent.id, intent.owner],
+      );
+      final payload = jsonEncode(intent.toJson());
+      if (old.isNotEmpty) {
+        if (old.length != 1 ||
+            old.single['owner'] != intent.owner ||
+            old.single['intent'] != payload) {
+          throw StateError('이미 확인 중인 코스 시작이 있어요.');
+        }
+        return;
+      }
+      await tx.insert('course_start_intents', {
+        'id': intent.id,
+        'owner': intent.owner,
+        'intent': payload,
+      });
+    });
+  }
+
+  Future<List<CourseStartIntent>> pendingCourseStarts(String owner) async => [
+    for (final row in await (await database).query(
+      'course_start_intents',
+      where: 'owner=?',
+      whereArgs: [owner],
+    ))
+      _courseIntent(row),
+  ];
+  static CourseStartIntent _courseIntent(Map<String, Object?> row) {
+    final intent = CourseStartIntent.fromJson(
+      (jsonDecode(row['intent'] as String) as Map).cast<String, dynamic>(),
+    );
+    if (intent.owner != row['owner'] || intent.id != row['id']) {
+      throw const FormatException('Invalid course owner');
+    }
+    return intent;
+  }
+
   static Future<void> _createGhostStorage(Database db) async {
     await db.execute('ALTER TABLE sessions ADD COLUMN ghost_context TEXT');
     await db.execute('ALTER TABLE sessions ADD COLUMN recovery_anchor TEXT');
@@ -555,6 +658,11 @@ class RunLocalStore implements RunStore, RunHistoryStore, RunGhostStore {
   Future<void> saveGhostIntent(GhostStartIntent intent) async {
     await (await database).transaction((tx) async {
       if ((await tx.query(
+            'course_start_intents',
+            where: 'owner=?',
+            whereArgs: [intent.owner],
+          )).isNotEmpty ||
+          (await tx.query(
             'run_deletions',
             where: 'id=?',
             whereArgs: [intent.id],

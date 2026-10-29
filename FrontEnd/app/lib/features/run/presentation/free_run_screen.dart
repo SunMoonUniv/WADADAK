@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../../routes.dart';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -22,6 +23,7 @@ import 'course_start_view.dart';
 import 'free_run_live_view.dart';
 import 'free_run_result_view.dart';
 import 'ghost_prep_view.dart';
+import 'ghost_start_rejected_alert.dart';
 
 /// C5 → H4 → C4 / 일시정지 → D1-2. 측정 상태는 화면 밖에서 유지한다.
 class FreeRunScreen extends ConsumerWidget {
@@ -42,82 +44,89 @@ class FreeRunScreen extends ConsumerWidget {
             courseStart != null ||
             run.state == RunState.running ||
             run.state == RunState.paused;
-        return AnnotatedRegion<SystemUiOverlayStyle>(
-          value: dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
-          child: controller.preparing
-              ? _Countdown(
-                  value: controller.countdown,
-                  gpsStatus: controller.gpsStatus,
-                  course:
-                      (courseStart?.course ?? controller.selectedCourse)?.name,
-                  onCancel: controller.canCancelStart
-                      ? controller.cancelStart
-                      : null,
-                )
-              : switch (run.state) {
-                  RunState.ready when courseStart != null => CourseStartView(
-                    start: courseStart,
-                    onStart: controller.prepareStart,
-                    onCancel: controller.cancelCourseStart,
-                    error: controller.error,
-                    ghost:
-                        controller.selectedGhost != null ||
-                        controller.selectedFreeGhost != null,
-                    pendingGhost: controller.hasPendingGhostStart,
-                  ),
-                  RunState.ready => _Preparation(
-                    onStart: controller.prepareStart,
-                    error: controller.error,
-                    onSettings: controller.hasSettingsAction
-                        ? controller.openSettings
+        return GhostStartRejectedAlert(
+          message: controller.ghostStartRejection,
+          onConfirm: controller.acknowledgeGhostStartRejection,
+          child: AnnotatedRegion<SystemUiOverlayStyle>(
+            value: dark
+                ? SystemUiOverlayStyle.light
+                : SystemUiOverlayStyle.dark,
+            child: controller.preparing
+                ? _Countdown(
+                    value: controller.countdown,
+                    gpsStatus: controller.gpsStatus,
+                    course: (courseStart?.course ?? controller.selectedCourse)
+                        ?.name,
+                    onCancel: controller.canCancelStart
+                        ? controller.cancelStart
                         : null,
-                    recent: controller.recent,
-                    course: controller.selectedCourse,
-                    courseMode: controller.selectedCourse != null || courseTab,
-                    onCourseTab: ref.read(courseTabProvider.notifier).set,
-                    ghostMode:
-                        controller.selectedGhost != null ||
-                        controller.selectedFreeGhost != null ||
-                        ghostTab ||
-                        controller.hasPendingGhostStart,
-                    ghost: controller.selectedGhost,
-                    freeGhost: controller.selectedFreeGhost,
-                    pendingGhost: controller.hasPendingGhostStart,
-                    onGhostTab: ref.read(ghostTabProvider.notifier).set,
-                    onClearGhost: controller.clearGhost,
-                    onClearCourse: controller.clearCourse,
-                  ),
-                  RunState.finished => FreeRunResultView(
-                    run: run,
-                    onConfirm: controller.newRun,
-                    pendingCourse: controller.courseOf(run)?.name,
-                    onRetryGhost: controller.retrySync,
-                  ),
-                  _ => CourseDeviationAlert(
-                    open: controller.deviationAlert,
-                    onConfirm: controller.acknowledgeDeviation,
-                    onMute: controller.muteDeviation,
-                    child: FreeRunLiveView(
-                      run: run,
-                      course: controller.courseLive,
-                      courseNotice: controller.courseNotice,
-                      ghostOpponent: controller.ghostOpponent,
-                      ghostPosition: controller.ghostComparison?.position,
-                      ghostGap: controller.ghostComparison == null
-                          ? null
-                          : '거리 ${controller.ghostComparison!.distance} · 시간 ${controller.ghostComparison!.time}',
-                      onPause: controller.storageFault
-                          ? null
-                          : controller.pause,
-                      onResume: controller.storageFault
-                          ? null
-                          : controller.resume,
-                      onStop: controller.storageFault
-                          ? null
-                          : () => _confirmStop(context, controller),
+                  )
+                : switch (run.state) {
+                    RunState.ready when courseStart != null => CourseStartView(
+                      start: courseStart,
+                      onStart: controller.prepareStart,
+                      onCancel: controller.cancelCourseStart,
+                      error: controller.error,
+                      ghost:
+                          controller.selectedGhost != null ||
+                          controller.selectedFreeGhost != null,
+                      pendingGhost: controller.hasPendingGhostStart,
                     ),
-                  ),
-                },
+                    RunState.ready => _Preparation(
+                      onStart: controller.prepareStart,
+                      error: controller.error,
+                      onSettings: controller.hasSettingsAction
+                          ? controller.openSettings
+                          : null,
+                      recent: controller.recent,
+                      course: controller.selectedCourse,
+                      courseMode:
+                          controller.selectedCourse != null || courseTab,
+                      onCourseTab: ref.read(courseTabProvider.notifier).set,
+                      ghostMode:
+                          controller.selectedGhost != null ||
+                          controller.selectedFreeGhost != null ||
+                          ghostTab ||
+                          controller.hasPendingGhostStart,
+                      ghost: controller.selectedGhost,
+                      freeGhost: controller.selectedFreeGhost,
+                      pendingGhost: controller.hasPendingGhostStart,
+                      onGhostTab: ref.read(ghostTabProvider.notifier).set,
+                      onClearGhost: controller.clearGhost,
+                      onClearCourse: controller.clearCourse,
+                    ),
+                    RunState.finished => FreeRunResultView(
+                      run: run,
+                      onConfirm: controller.newRun,
+                      pendingCourse: controller.courseOf(run)?.name,
+                      onRetryGhost: controller.retrySync,
+                    ),
+                    _ => CourseDeviationAlert(
+                      open: controller.deviationAlert,
+                      onConfirm: controller.acknowledgeDeviation,
+                      onMute: controller.muteDeviation,
+                      child: FreeRunLiveView(
+                        run: run,
+                        course: controller.courseLive,
+                        courseNotice: controller.courseNotice,
+                        ghostOpponent: controller.ghostOpponent,
+                        ghostPosition: controller.ghostComparison?.position,
+                        ghostGap: controller.ghostComparison == null
+                            ? null
+                            : '거리 ${controller.ghostComparison!.distance} · 시간 ${controller.ghostComparison!.time}',
+                        onPause: controller.storageFault
+                            ? null
+                            : controller.pause,
+                        onResume: controller.storageFault
+                            ? null
+                            : controller.resume,
+                        onStop: controller.storageFault
+                            ? null
+                            : () => _confirmStop(context, controller),
+                      ),
+                    ),
+                  },
+          ),
         );
       },
     );
@@ -634,6 +643,7 @@ class RunHoldToStart extends StatefulWidget {
 class _RunHoldToStartState extends State<RunHoldToStart> {
   Timer? _hold;
   int? _pointer;
+  Offset? _downPosition;
 
   @override
   void didUpdateWidget(RunHoldToStart oldWidget) {
@@ -669,7 +679,22 @@ class _RunHoldToStartState extends State<RunHoldToStart> {
         final onStart = widget.onStart;
         if (_pointer != null || onStart == null) return;
         setState(() => _pointer = event.pointer);
-        _hold = Timer(const Duration(seconds: 1), onStart);
+        _downPosition = event.position;
+        _hold = Timer(const Duration(seconds: 1), () {
+          if (mounted && _pointer == event.pointer) widget.onStart?.call();
+        });
+      },
+      onPointerMove: (event) {
+        if (_pointer != event.pointer) return;
+        final box = context.findRenderObject() as RenderBox?;
+        if (_downPosition == null ||
+            (event.position - _downPosition!).distance > kTouchSlop ||
+            box == null ||
+            !(Offset.zero & box.size).contains(
+              box.globalToLocal(event.position),
+            )) {
+          _release(event);
+        }
       },
       onPointerUp: _release,
       onPointerCancel: _release,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,7 +13,8 @@ import 'package:wadadak/features/run/domain/recording_models.dart';
 import 'package:wadadak/features/run/presentation/course_start_view.dart';
 import 'package:wadadak/features/run/presentation/free_run_screen.dart';
 
-import 'run_controller_test.dart' show FailingStore, TestApi, TestLocation, until;
+import 'run_controller_test.dart'
+    show FailingStore, TestApi, TestLocation, until;
 
 /// 코스 러닝 서버 연결(F6, 정책 D-08·RCR-01): 준비 → 측정 전(출발점 안내) → 반경 안에서 카운트다운 → 시작 신호 → 측정.
 /// 연결이 안 되면 시작하지 않는다.
@@ -24,7 +27,11 @@ class CourseApi extends TestApi {
   double startLat = 36;
 
   @override
-  Future<Map<String, dynamic>> prepareCourse(String owner, String id, String courseId) async {
+  Future<Map<String, dynamic>> prepareCourse(
+    String owner,
+    String id,
+    String courseId,
+  ) async {
     if (prepareError != null) throw prepareError!;
     prepared.add((owner, id, courseId));
     return {
@@ -112,27 +119,35 @@ void main() {
     expect(api.started.single.$3, run.startedAt);
     expect(controller.courseRunId, run.id);
     expect(controller.course?.name, '테스트 코스');
-    expect(controller.courseTracker?.route.route.first, const GeoPoint(36, 127)); // 준비 응답 경로로 진행도를 따라간다
+    expect(
+      controller.courseTracker?.route.route.first,
+      const GeoPoint(36, 127),
+    ); // 준비 응답 경로로 진행도를 따라간다
     expect(controller.courseStart, isNull);
     expect(controller.selectedCourse, isNull);
   });
 
-  test('cannot start outside the start radius and can after reaching it', () async {
-    api.startLat = 36.001; // 약 111 m 북쪽
-    await openCourse();
-    expect(controller.courseStart!.nearStart, false);
+  test(
+    'cannot start outside the start radius and can after reaching it',
+    () async {
+      api.startLat = 36.001; // 약 111 m 북쪽
+      await openCourse();
+      expect(controller.courseStart!.nearStart, false);
 
-    await controller.prepareStart();
-    expect(controller.recorder.active, false);
-    expect(api.started, isEmpty);
+      await controller.prepareStart();
+      expect(controller.recorder.active, false);
+      expect(api.started, isEmpty);
 
-    location.streams.last.add(location.point(36.00095)); // 출발점까지 약 6 m
-    await until(() => controller.courseStart!.nearStart);
-    await controller.prepareStart();
+      location.streams.last.add(location.point(36.00095)); // 출발점까지 약 6 m
+      await until(() => controller.courseStart!.nearStart);
+      location.pendingReady = Completer<Position>()
+        ..complete(location.point(36.00095));
+      await controller.prepareStart();
 
-    expect(controller.recorder.active, true);
-    expect(api.started, hasLength(1));
-  });
+      expect(controller.recorder.active, true);
+      expect(api.started, hasLength(1));
+    },
+  );
 
   test('free run does not call course APIs', () async {
     await controller.prepareStart();
@@ -154,7 +169,11 @@ void main() {
   });
 
   test('unavailable course does not open the start point and shows the server message', () async {
-    api.prepareError = const ApiException('COURSE-002', '비공개되었거나 삭제된 코스입니다.', status: 409);
+    api.prepareError = const ApiException(
+      'COURSE-002',
+      '비공개되었거나 삭제된 코스입니다.',
+      status: 409,
+    );
     await openCourse();
 
     expect(controller.courseStart, isNull);
@@ -163,16 +182,19 @@ void main() {
     expect(controller.selectedCourse?.courseId, 'course-1');
   });
 
-  test('leaving the start point stops watching the location and keeps the course', () async {
-    await openCourse();
-    final approach = location.streams.last;
-    controller.cancelCourseStart();
+  test(
+    'leaving the start point stops watching the location and keeps the course',
+    () async {
+      await openCourse();
+      final approach = location.streams.last;
+      controller.cancelCourseStart();
 
-    expect(controller.courseStart, isNull);
-    expect(controller.selectedCourse?.courseId, 'course-1');
-    await until(() => !approach.hasListener);
-    expect(api.started, isEmpty);
-  });
+      expect(controller.courseStart, isNull);
+      expect(controller.selectedCourse?.courseId, 'course-1');
+      await until(() => !approach.hasListener);
+      expect(api.started, isEmpty);
+    },
+  );
 
   test('course cannot be changed while a run is active', () async {
     await controller.prepareStart();
@@ -186,7 +208,9 @@ void main() {
     await controller.prepareStart();
   }
 
-  RunInput? segmentEnd() => controller.run!.inputs.where((i) => i.kind == RunKind.segmentEnd).firstOrNull;
+  RunInput? segmentEnd() => controller.run!.inputs
+      .where((i) => i.kind == RunKind.segmentEnd)
+      .firstOrNull;
 
   test('reaching the end of the route ends the course segment and keeps recording as a free run (RUN-08)', () async {
     await startCourse();
@@ -204,15 +228,26 @@ void main() {
 
     location.clock += 2000;
     location.streams.last.add(location.point(36.0101));
-    await until(() => controller.run!.inputs.where((i) => i.kind == RunKind.gps).length >= 3);
-    expect(controller.run!.inputs.where((i) => i.kind == RunKind.segmentEnd), hasLength(1));
+    await until(
+      () =>
+          controller.run!.inputs.where((i) => i.kind == RunKind.gps).length >=
+          3,
+    );
+    expect(
+      controller.run!.inputs.where((i) => i.kind == RunKind.segmentEnd),
+      hasLength(1),
+    );
   });
 
   test('the start point is not the end even when standing still', () async {
     await startCourse();
     location.clock += 2000;
     location.streams.last.add(location.point(36));
-    await until(() => controller.run!.inputs.where((i) => i.kind == RunKind.gps).length >= 2);
+    await until(
+      () =>
+          controller.run!.inputs.where((i) => i.kind == RunKind.gps).length >=
+          2,
+    );
 
     expect(segmentEnd(), isNull);
     expect(controller.onCourse, true);
@@ -229,7 +264,10 @@ void main() {
     await until(() => api.segmentEnds.isNotEmpty);
 
     await controller.endCourse('COURSE_ONLY'); // 두 번 눌러도 한 번만
-    expect(controller.run!.inputs.where((i) => i.kind == RunKind.segmentEnd), hasLength(1));
+    expect(
+      controller.run!.inputs.where((i) => i.kind == RunKind.segmentEnd),
+      hasLength(1),
+    );
   });
 
   test('a free run has no course segment to end', () async {
@@ -245,20 +283,26 @@ void main() {
     var gps = 1;
     Future<void> move(double eastM) async {
       location.clock += 2000;
-      location.streams.last.add(Position(
-        latitude: 36.0001,
-        longitude: 127 + eastM / 90063, // 위도 36°에서 경도 1° ≈ 90 km
-        timestamp: location.utc,
-        accuracy: 3,
-        altitude: 0,
-        altitudeAccuracy: 0,
-        heading: 0,
-        headingAccuracy: 0,
-        speed: 0,
-        speedAccuracy: 0,
-      ));
+      location.streams.last.add(
+        Position(
+          latitude: 36.0001,
+          longitude: 127 + eastM / 90063, // 위도 36°에서 경도 1° ≈ 90 km
+          timestamp: location.utc,
+          accuracy: 3,
+          altitude: 0,
+          altitudeAccuracy: 0,
+          heading: 0,
+          headingAccuracy: 0,
+          speed: 0,
+          speedAccuracy: 0,
+        ),
+      );
       gps++;
-      await until(() => controller.run!.inputs.where((i) => i.kind == RunKind.gps).length >= gps);
+      await until(
+        () =>
+            controller.run!.inputs.where((i) => i.kind == RunKind.gps).length >=
+            gps,
+      );
     }
 
     for (var east = 5.0; east <= 40; east += 5) {
@@ -291,38 +335,50 @@ void main() {
     );
   });
 
-  testWidgets('start point view turns the start button on only inside the radius', (tester) async {
-    Future<void> show(GeoPoint position) => tester.pumpWidget(
-      ProviderScope(
-        overrides: [mapEngineProvider.overrideWithValue(MapEngine.dev)],
-        child: MaterialApp(
-          home: CourseStartView(
-            start: CourseStart(
-              'run-1',
-              const CourseSelection('course-1', '한강 야경 5K'),
-              const CourseSnapshot(route: [GeoPoint(36, 127), GeoPoint(36.01, 127)], totalDistanceMeters: 1112),
-              position,
+  testWidgets(
+    'start point view turns the start button on only inside the radius',
+    (tester) async {
+      Future<void> show(GeoPoint position) => tester.pumpWidget(
+        ProviderScope(
+          overrides: [mapEngineProvider.overrideWithValue(MapEngine.dev)],
+          child: MaterialApp(
+            home: CourseStartView(
+              start: CourseStart(
+                'run-1',
+                const CourseSelection('course-1', '한강 야경 5K'),
+                const CourseSnapshot(
+                  route: [GeoPoint(36, 127), GeoPoint(36.01, 127)],
+                  totalDistanceMeters: 1112,
+                ),
+                position,
+              ),
+              onStart: () {},
+              onCancel: () {},
             ),
-            onStart: () {},
-            onCancel: () {},
           ),
         ),
-      ),
-    );
+      );
 
-    // C11 출발점 이동
-    await show(const GeoPoint(35.999, 127));
-    expect(find.text('출발점으로 이동해 주세요'), findsOneWidget);
-    expect(find.text('111'), findsOneWidget);
-    expect(find.text('준비'), findsOneWidget);
-    expect(find.text('한강 야경 5K'), findsOneWidget);
-    expect(tester.widget<RunHoldToStart>(find.byType(RunHoldToStart)).onStart, isNull);
+      // C11 출발점 이동
+      await show(const GeoPoint(35.999, 127));
+      expect(find.text('출발점으로 이동해 주세요'), findsOneWidget);
+      expect(find.text('111'), findsOneWidget);
+      expect(find.text('준비'), findsOneWidget);
+      expect(find.text('한강 야경 5K'), findsOneWidget);
+      expect(
+        tester.widget<RunHoldToStart>(find.byType(RunHoldToStart)).onStart,
+        isNull,
+      );
 
-    // C12 출발점 도착
-    await show(const GeoPoint(36.0001, 127));
-    expect(find.text('출발점에 도착했어요'), findsOneWidget);
-    expect(find.text('11'), findsOneWidget);
-    expect(find.text('시작 가능'), findsOneWidget);
-    expect(tester.widget<RunHoldToStart>(find.byType(RunHoldToStart)).onStart, isNotNull);
-  });
+      // C12 출발점 도착
+      await show(const GeoPoint(36.0001, 127));
+      expect(find.text('출발점에 도착했어요'), findsOneWidget);
+      expect(find.text('11'), findsOneWidget);
+      expect(find.text('시작 가능'), findsOneWidget);
+      expect(
+        tester.widget<RunHoldToStart>(find.byType(RunHoldToStart)).onStart,
+        isNotNull,
+      );
+    },
+  );
 }

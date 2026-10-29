@@ -51,6 +51,9 @@ class FreeRunController extends ChangeNotifier {
   bool get canCancelStart => _recording?.canCancelStart ?? preparing;
   bool get storageFault => _recording?.storageFault ?? false;
   String? get error => _recording?.error;
+  String? get ghostStartRejection => _recording?.ghostStartRejection;
+  void acknowledgeGhostStartRejection() =>
+      _recording?.acknowledgeGhostStartRejection();
 
   /// 코스 상세에서 고른 코스(F6). 있으면 시작이 코스 러닝이 된다
   CourseSelection? get selectedCourse => _recording?.selectedCourse;

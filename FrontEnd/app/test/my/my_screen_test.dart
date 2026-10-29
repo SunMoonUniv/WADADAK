@@ -8,6 +8,7 @@ import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/features/my/my_screen.dart';
 import 'package:wadadak/features/run/application/run_controller.dart';
 import 'package:wadadak/features/run/domain/ghost_run.dart';
+import 'package:wadadak/features/run/domain/course_run.dart';
 import 'package:wadadak/features/run/domain/recording_models.dart' as recording;
 import 'package:wadadak/features/run/domain/run_voice.dart';
 import 'package:wadadak/routes.dart';
@@ -55,6 +56,9 @@ class _LocalStore extends fake.FailingStore {
 
   @override
   Future<List<PendingGhostStart>> pendingGhostStarts(String owner) async => [];
+
+  @override
+  Future<List<CourseStartIntent>> pendingCourseStarts(String owner) async => [];
 
   @override
   Future<List<String>> pendingGhostClosures(String owner) async => [];

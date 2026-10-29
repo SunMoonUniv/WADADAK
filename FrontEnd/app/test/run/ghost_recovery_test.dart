@@ -108,6 +108,107 @@ void main() {
     await directory.delete(recursive: true);
   });
 
+  for (final refusal in [
+    ('RUN-002', 404),
+    ('RUN-004', 409),
+    ('RUN-003', 409),
+    ('COURSE-002', 409),
+  ]) {
+    test(
+      'definitive ${refusal.$1} with no receipt durably cancels the attempt immediately',
+      () async {
+        api.onStart = (_) async {
+          throw ApiException(refusal.$1, 'denied', status: refusal.$2);
+        };
+        api.onGet = (_, _) async =>
+            throw const ApiException('RUN-002', 'no approval', status: 404);
+        await expectLater(
+          flow.begin(ghostIntent()),
+          throwsA(isA<GhostStartRejected>()),
+        );
+        expect(await store.pendingGhostStarts('alice'), isEmpty);
+        expect(await store.pendingDeletions('alice'), [ghostId]);
+        expect(await store.list('alice'), isEmpty);
+        expect(recorder.active, false);
+        await expectLater(
+          store.saveGhostIntent(ghostIntent()),
+          throwsStateError,
+        );
+        expect(api.posts, hasLength(1));
+      },
+    );
+  }
+
+  test('receipt survives a conflicting POST response and starts exactly the saved duel', () async {
+    api.onStart = (_) async =>
+        throw const ApiException('RUN-003', 'conflict', status: 409);
+    api.onGet = (_, _) async => ghostApproval(ghostIntent());
+    expect(await flow.begin(ghostIntent()), true);
+    expect(recorder.current!.id, ghostId);
+    expect(await store.pendingDeletions('alice'), isEmpty);
+    expect(api.posts, hasLength(1));
+    expect(api.gets, hasLength(1));
+  });
+
+  test(
+    'an uncertain receipt after refusal retains the same pending request',
+    () async {
+      api.onStart = (_) async =>
+          throw const ApiException('RUN-004', 'denied', status: 409);
+      api.onGet = (_, _) async =>
+          throw const ApiException('NETWORK', 'lost receipt');
+      await expectLater(
+        flow.begin(ghostIntent()),
+        throwsA(isA<ApiException>()),
+      );
+      expect(await store.pendingGhostStarts('alice'), hasLength(1));
+      expect(await store.pendingDeletions('alice'), isEmpty);
+      expect(recorder.active, false);
+    },
+  );
+
+  test('a recovered pending POST that is definitively refused becomes selectable without waiting 60 seconds', () async {
+    await store.saveGhostIntent(ghostIntent());
+      api.onGet = (_, _) async =>
+        throw const ApiException('RUN-002', 'no approval', status: 404);
+    api.onStart = (_) async =>
+        throw const ApiException('RUN-004', 'denied', status: 409);
+    await expectLater(
+      flow.recover('alice'),
+      throwsA(isA<GhostStartRejected>()),
+    );
+    expect(await store.pendingGhostStarts('alice'), isEmpty);
+    expect(await store.pendingDeletions('alice'), [ghostId]);
+    expect(recorder.active, false);
+  });
+
+  test('a mismatching saved receipt never cancels the pending start', () async {
+    api.onStart = (_) async =>
+        throw const ApiException('RUN-004', 'denied', status: 409);
+      api.onGet = (_, _) async => {
+      ...ghostApproval(ghostIntent()),
+      'sourceRecordId': 'wrong-source',
+    };
+    await expectLater(flow.begin(ghostIntent()), throwsFormatException);
+    expect(await store.pendingGhostStarts('alice'), hasLength(1));
+    expect(await store.pendingDeletions('alice'), isEmpty);
+    expect(recorder.active, false);
+  });
+
+  test('an account switch during refusal confirmation preserves the original owner request', () async {
+    api.onStart = (_) async =>
+        throw const ApiException('RUN-004', 'denied', status: 409);
+      api.onGet = (_, _) async {
+      member = 'bob';
+      throw const ApiException('RUN-002', 'missing', status: 404);
+    };
+    await expectLater(flow.begin(ghostIntent()), throwsA(isA<ApiException>()));
+    expect(await store.pendingGhostStarts('alice'), hasLength(1));
+    expect(await store.pendingDeletions('alice'), isEmpty);
+    expect(await store.pendingGhostStarts('bob'), isEmpty);
+    expect(recorder.active, false);
+  });
+
   test('intent precedes HTTP and receipt/START move together into the durable session', () async {
     api.onStart = (intent) async {
       expect(
@@ -482,7 +583,8 @@ void main() {
     await db.execute('DROP TABLE ghost_start_intents');
     await db.execute('ALTER TABLE sessions DROP COLUMN ghost_context');
     await db.execute('ALTER TABLE sessions DROP COLUMN recovery_anchor');
-    await db.execute('PRAGMA user_version=3');
+    await db.execute('DROP TABLE course_start_intents');
+      await db.execute('PRAGMA user_version=3');
     await restart();
     final recovered = (await recorder.recover('alice')).single;
     expect(recovered.endReason, 'INTERRUPTED');
@@ -499,7 +601,7 @@ void main() {
           : run.inputs.first.toJson(),
     );
     expect(await store.deletedIds('bob'), {'deleted-remote'});
-    expect((await store.database).getVersion(), completion(4));
+    expect((await store.database).getVersion(), completion(5));
     expect(jsonEncode(recovered.inputs.last.toJson()), contains('INTERRUPTED'));
   });
 

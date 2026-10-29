@@ -10,6 +10,7 @@ import org.springframework.context.ApplicationEventPublisher;
 import java.time.Clock;
 import com.wadadak.run.internal.RunContracts.*;
 import com.wadadak.run.RunErrorCode;
+import com.wadadak.run.internal.RunInputTime;
 import com.wadadak.common.geo.GeoPoint;
 import com.wadadak.course.GpsGapCheck;
 import com.wadadak.run.internal.metrics.FreeRunCalculator;
@@ -104,7 +105,7 @@ class RunService {
     @Transactional
     public Status prepare(UUID owner, UUID id, Prepare request) {
         locks.member(owner); ensureActiveMember(owner); locks.session(id); ensureNotDeleted(id);
-        if(request.startedAt()==null || request.startedAt().isAfter(clock.instant().plusSeconds(300))) invalid();
+        if(request.startedAt()==null || request.startedAt().isBefore(Instant.EPOCH) || request.startedAt().isAfter(clock.instant().plusSeconds(300))) invalid();
         courseRuns.checkPrepare(owner,id,request.mode(),request.startedAt()); // COURSE는 시작 신호를 보낸 세션만
         // The advisory ID lock protects first creation and retries, including different owners.
         RunSession s=sessions.findById(id).orElseGet(()->sessions.save(new RunSession(id,owner,request.startedAt())));
@@ -120,7 +121,7 @@ class RunService {
         Map<Long,Input> existing=inputs.findExisting(id,request.inputs().stream().map(Input::seq).toList());
         Map<Long,Input> pending=new LinkedHashMap<>();
         for(Input p:request.inputs()) {
-            validate(p,request.finalSeq());
+            validate(p,request.finalSeq(),s.getStartedAt());
             Input previous=existing.get(p.seq());
             if(previous==null) previous=pending.get(p.seq());
             if(previous!=null) {
@@ -139,8 +140,8 @@ class RunService {
         if("PROCESSING".equals(s.getProcessing())) courseRuns.releaseOnUpload(id);
         return statusOf(s);
     }
-    private static void validate(Input p,long finalSeq) {
-            if(p.seq()>finalSeq || p.elapsedMs()>7L*86400000 ||
+    private static void validate(Input p,long finalSeq,Instant startedAt) {
+            if(!RunInputTime.valid(startedAt,p) || p.seq()<0 || p.seq()>finalSeq || p.elapsedMs()>7L*86400000 ||
                 (p.kind()==Kind.GPS && (p.location()==null || p.accuracyM()==null)) ||
                 (p.accuracyM()!=null && (!Double.isFinite(p.accuracyM()) || p.accuracyM()<0)) ||
                 (p.altitudeM()!=null && (!Double.isFinite(p.altitudeM()) || p.kind()!=Kind.GPS)) ||
@@ -180,6 +181,7 @@ class RunService {
         FreeRunCalculator.Calculation calculation;
         try { calculation=FreeRunCalculator.calculate(session.getStartedAt(),raw); }
         catch(AppException e) { session.fail(e.getErrorCode().getCode()); return; }
+        catch(java.time.DateTimeException | ArithmeticException e) { session.fail(RunErrorCode.INVALID.getCode()); return; }
         Instant registered=clock.instant().truncatedTo(java.time.temporal.ChronoUnit.MICROS);
         // 코스 러닝이면 시작 때 저장한 코스 스냅샷으로 서버가 완주·인정 거리·리뷰 자격을 판정한다(정책 5.3)
         CourseOutcome course=courseRuns.judge(id,raw);

@@ -31,6 +31,8 @@ void main() {
     await c.load();
     await c.select(c.candidates.first);
     expect(source.playbackRequests, [c.candidates.first.id]);
+    expect(source.playbackCourses.single!.id, c.course.id);
+    expect(source.playbackCourses.single!.version, c.course.version);
     expect(c.prepared!.owner, 'owner-a');
     expect(c.prepared!.replay.payloadJson, contains('GHOST_PLAYBACK_V1'));
     expect(c.prepared!.course.id, fixtureCourse().id);

@@ -95,8 +95,8 @@ class GhostStartStore {
         else if(!candidate.runRecordId().equals(request.sourceRecordId()) || request.publicPeriod()==null) conflict();
         GhostPlayback replay = candidate==null?replays.own(owner,request.sourceRecordId()):replays.publicReplay(owner,candidate);
         Long sourceCourseVersion=replay.course()==null?null:replay.course().version();
-        if(candidate!=null) replay=PublicGhostService.forCourse(current,replay);
         if (!replay.eligible()) throw new AppException(RunErrorCode.GHOST_UNAVAILABLE);
+        replay=GhostCourseCompatibility.forCourse(current,replay);
         if (!request.playbackVersion().equals(replay.version()) || replay.course() == null
                 || !course.courseId().equals(replay.course().courseId())
                 || course.version() != replay.course().version()

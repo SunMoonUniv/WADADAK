@@ -49,7 +49,7 @@ class _CourseStartViewState extends State<CourseStartView> {
             WdRunHeader(
               title: start.course?.name ?? start.snapshot.name ?? '내 자유 기록 대결',
               subtitle: widget.ghost ? '고스트 대결' : '코스 러닝',
-              badge: widget.pendingGhost
+              badge: widget.pendingGhost || start.intent != null
                   ? '시작 확인 중'
                   : near
                   ? '시작 가능'
@@ -181,6 +181,8 @@ class _CourseStartViewState extends State<CourseStartView> {
                   // 1초 누르기 → 3초 카운트다운(RUN-04)
                   if (widget.pendingGhost)
                     WdButton('같은 고스트 시작 확인', onPressed: widget.onStart)
+                  else if (start.intent != null)
+                    WdButton('코스 시작 다시 확인', onPressed: widget.onStart)
                   else
                     RunHoldToStart(
                       label: widget.ghost ? '고스트 대결 시작' : '코스 러닝 시작',

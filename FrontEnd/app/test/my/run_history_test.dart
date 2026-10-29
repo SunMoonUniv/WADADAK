@@ -11,6 +11,7 @@ import 'package:wadadak/features/run/application/free_run_controller.dart';
 import 'package:wadadak/features/run/application/run_controller.dart';
 import 'package:wadadak/features/run/domain/recording_models.dart' as recording;
 import 'package:wadadak/features/run/domain/ghost_run.dart';
+import 'package:wadadak/features/run/domain/course_run.dart';
 import 'package:wadadak/features/run/domain/run_voice.dart';
 import 'package:wadadak/routes.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
@@ -83,6 +84,9 @@ class _LocalStore extends fake.FailingStore {
   // This in-memory history fixture has no pending ghost starts or closures.
   @override
   Future<List<PendingGhostStart>> pendingGhostStarts(String owner) async => [];
+
+  @override
+  Future<List<CourseStartIntent>> pendingCourseStarts(String owner) async => [];
 
   @override
   Future<List<String>> pendingGhostClosures(String owner) async => [];

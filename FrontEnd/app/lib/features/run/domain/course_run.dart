@@ -4,6 +4,7 @@ library;
 import 'dart:math' as math;
 
 import '../../../core/map/geo_point.dart';
+import '../../../core/time/monotonic_clock.dart';
 import 'course_tracker.dart';
 import 'route_guidance.dart';
 
@@ -67,8 +68,44 @@ class CourseSnapshot {
 }
 
 /// 준비를 마치고 측정을 시작하기 전(RCR-01). 출발점 반경 안에 들어와야 시작할 수 있다.
+class CourseStartIntent {
+  const CourseStartIntent(
+    this.owner,
+    this.id,
+    this.startedAt,
+    this.snapshot,
+    this.clock,
+  );
+  final String owner, id;
+  final DateTime startedAt;
+  final CourseSnapshot snapshot;
+  final RunClockSample clock;
+  Map<String, dynamic> toJson() => {
+    'owner': owner,
+    'id': id,
+    'startedAt': startedAt.toUtc().toIso8601String(),
+    'snapshot': snapshot.toJson(),
+    'clock': clock.toJson(),
+  };
+  factory CourseStartIntent.fromJson(Map<String, dynamic> j) =>
+      CourseStartIntent(
+        j['owner'] as String,
+        j['id'] as String,
+        DateTime.parse(j['startedAt'] as String),
+        CourseSnapshot.fromJson((j['snapshot'] as Map).cast<String, dynamic>()),
+        RunClockSample.fromJson((j['clock'] as Map).cast<String, dynamic>()),
+      );
+}
+
 class CourseStart {
-  CourseStart(this.runId, this.course, this.snapshot, this.position);
+  CourseStart(
+    this.runId,
+    this.course,
+    this.snapshot,
+    this.position, {
+    this.intent,
+  });
+  CourseStartIntent? intent;
 
   /// 출발점 반경(m). 서버 경로 일치 오차(20m) 이하라야 여기서 시작한 기록의 출발이 서버에서도 확인된다(RCR-01).
   /// 주행 검증 전 개발값.

@@ -4,6 +4,8 @@ import com.wadadak.TestcontainersConfiguration;
 import com.wadadak.common.exception.AppException;
 import com.wadadak.common.paging.Cursorable;
 import com.wadadak.course.CourseApi;
+import com.wadadak.course.CourseRouteSnapshot;
+import com.wadadak.common.geo.GeoPoint;
 import com.wadadak.run.internal.RunContracts.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,6 +25,7 @@ import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.when;
+import static org.mockito.ArgumentMatchers.any;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -53,8 +56,14 @@ class OwnGhostCandidatesTest {
         fixture=json.readTree(Files.readString(Path.of("../run/fixtures/own_ghost_candidates_v1.json")));
         owner=UUID.fromString(fixture.get("owner").asText());
         courseId=UUID.fromString(fixture.get("course").get("courseId").asText());
-        for (var row:fixture.get("records")) insert(row, owner, courseId, 3, true, "DONE");
+        when(courseApi.getRouteForRun(any())).thenAnswer(call -> new CourseRouteSnapshot(call.getArgument(0),"합성 코스",route(),5200,3));
+        for (var row:fixture.get("records")) {
+            UUID id=insert(row, owner, courseId, 3, true, "DONE");
+            db.update("INSERT INTO run.course_attempts(session_id,member_id,course_id,course_name,course_version,route_json,total_distance_meters) VALUES (?,?,?,'합성 코스',3,?,5200)",
+                id,owner,courseId,json.writeValueAsString(route()));
+        }
     }
+    List<GeoPoint> route() { return List.of(new GeoPoint(36,127),new GeoPoint(36.0468,127)); }
 
     UUID insert(JsonNode row, UUID member, UUID course, long version, boolean completed, String processing) throws Exception {
         UUID id=UUID.fromString(row.get("id").asText());
@@ -116,7 +125,30 @@ class OwnGhostCandidatesTest {
 
     @Test void otherCourseAndVersionNeverReturnThisCoursesOwnedRecords() {
         assertThat(candidates.list(owner,UUID.randomUUID(),3,OwnGhostSort.RECENT,OwnGhostPeriod.ALL,new Cursorable(null,20)).content()).isEmpty();
+        assertThatThrownBy(()->candidates.list(owner,courseId,4,OwnGhostSort.RECENT,OwnGhostPeriod.ALL,new Cursorable(null,20)))
+            .isInstanceOf(AppException.class);
+    }
+
+    @Test void metadataVersionChangeKeepsExactHistoricalRoutesAndWholeSummaryWithoutRewritingSource() {
+        var before=db.queryForList("SELECT result_json FROM run.records ORDER BY id");
+        when(courseApi.getRouteForRun(courseId)).thenReturn(new CourseRouteSnapshot(courseId,"이름 변경",route(),5200,4));
+        var actual=candidates.list(owner,courseId,4,OwnGhostSort.RECENT,OwnGhostPeriod.ALL,new Cursorable(null,2));
+        assertThat(actual.summary().count()).isEqualTo(6);
+        assertThat(actual.content()).allMatch(c->c.courseVersion()==4);
+        assertThat(actual.nextCursor()).isNotNull();
+        var next=candidates.list(owner,courseId,4,OwnGhostSort.RECENT,OwnGhostPeriod.ALL,new Cursorable(actual.nextCursor(),20));
+        assertThat(next.content()).hasSize(4);
+        assertThat(db.queryForList("SELECT result_json FROM run.records ORDER BY id")).isEqualTo(before);
+    }
+
+    @Test void historicalCompatibilityRequiresExactOrderedPathDistanceAndSourceSnapshot() {
+        when(courseApi.getRouteForRun(courseId)).thenReturn(new CourseRouteSnapshot(courseId,"코스",route().reversed(),5200,4));
         assertThat(candidates.list(owner,courseId,4,OwnGhostSort.RECENT,OwnGhostPeriod.ALL,new Cursorable(null,20)).content()).isEmpty();
+        when(courseApi.getRouteForRun(courseId)).thenReturn(new CourseRouteSnapshot(courseId,"코스",route(),5201,4));
+        assertThat(candidates.list(owner,courseId,4,OwnGhostSort.RECENT,OwnGhostPeriod.ALL,new Cursorable(null,20)).content()).isEmpty();
+        when(courseApi.getRouteForRun(courseId)).thenReturn(new CourseRouteSnapshot(courseId,"코스",route(),5200,4));
+        db.update("DELETE FROM run.course_attempts WHERE session_id=?",ids("recentIds").getFirst());
+        assertThat(candidates.list(owner,courseId,4,OwnGhostSort.RECENT,OwnGhostPeriod.ALL,new Cursorable(null,20)).summary().count()).isEqualTo(5);
     }
 
     @Test void excludesForeignFreeIncompleteDifferentVersionDeletedAndProcessingRecords() throws Exception {

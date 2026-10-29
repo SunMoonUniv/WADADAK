@@ -65,9 +65,17 @@ void main() {
     expect(request.extra['runOwner'], 'owner-a');
     expect(request.method, 'GET');
     server.data = replayJson(page.content.first);
-    final selected = await api.playback('owner-a', page.content.first.id);
+    final selected = await api.playback(
+      'owner-a',
+      page.content.first.id,
+      course: fixtureCourse(),
+    );
     expect(selected.sourceId, page.content.first.id);
     expect(server.requests.last.extra['runOwner'], 'owner-a');
+    expect(server.requests.last.queryParameters, {
+      'courseId': fixtureCourse().id,
+      'courseVersion': 3,
+    });
     expect(
       server.requests.last.path,
       '/api/v1/runs/records/${selected.sourceId}/ghost-playback',

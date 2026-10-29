@@ -841,6 +841,8 @@ PK는 `(session_id, stream_seq)`, `session_id`만 같은 run 스키마 sessions�
 
 2026-10-27 공개 코스 확장: `V20261027_2200__run_public_ghosts.sql`은 `ghost_starts.public_period VARCHAR(8)`(null=기존 본인, ALL/MONTH/WEEK=공개)을 추가하고 과거 원본의 합법적인 계산 버전 null을 보존하도록 `source_calculation_version`의 NOT NULL만 해제한다. `V20261027_2300__run_public_ghost_source_version.sql`은 `source_course_version BIGINT`를 추가한다. 현재 기준 코스 버전과 별도로 상대 원본 재현에 사용한 버전을 보존하며 원본을 수정하지 않는다. 기존 적용 마이그레이션을 고치지 않고 후속 파일로 확장한다.
 
+2026-10-29 보완: `source_course_version`은 내 코스 고스트에도 저장 당시 원본 버전을 보존한다. 같은 코스 ID·순서 있는 경로·정수 거리의 과거 원본을 현재 준비 버전에 맞춘 파생 재생으로 승인해도 원본 결과는 바꾸지 않는다. 새 테이블·마이그레이션은 추가하지 않는다. [호환·거절 복구 계약](<run/내 고스트 버전 호환·시작 거절 복구 보완 - 2026-10-29.md>)
+
 #### `run.member_visibility_copies` — 공개 고스트 접근용 회원 공개 복사본 (2026-10-27)
 
 `V20261027_2200__run_public_ghosts.sql`: `member_id UUID PK`, `visible BOOLEAN NOT NULL`, `source_version BIGINT NOT NULL`, 공통 감사 컬럼. `MemberVisibilityChangedEvent`를 회원 잠금 안에서 큰 버전만 반영하며 탈퇴 후 지연 이벤트로 복원하지 않는다. 공개 재생·새 시작은 RankingApi의 현재 공개 대표 후보와 이 run 소유 차단 상태를 모두 확인한다. 본인/상대 회원 ID를 정렬해 잠근 뒤 시도·원본 세션을 잠그고, 승인된 동일 요청 재시도는 상대의 현재 공개·삭제 상태와 무관하게 저장 승인을 반환한다. 타 스키마 FK·제품 코드의 member 스키마 직접 조회·자료 만료 컬럼은 없다. [공개 고스트 계약](<run/공개 코스 고스트 재생·시작 승인 - 2026-10-27.md>)

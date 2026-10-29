@@ -97,7 +97,7 @@ class CourseRunService {
         lockActive(owner, id);
         CourseAttempt attempt = attempts.findByIdAndMemberId(id, owner)
                 .orElseThrow(() -> new AppException(RunErrorCode.NOT_FOUND));
-        if (startedAt.isAfter(clock.instant().plusSeconds(300))) {
+        if (startedAt == null || startedAt.isBefore(Instant.EPOCH) || startedAt.isAfter(clock.instant().plusSeconds(300))) {
             throw new AppException(RunErrorCode.INVALID);
         }
         if (attempt.getStartedAt() != null) {
