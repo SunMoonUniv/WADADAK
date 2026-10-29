@@ -211,6 +211,16 @@ void main() {
     expect(text('러너 평가'), findsNothing);
   });
 
+  testWidgets('says there is no review yet once someone has finished it (B1-03)', (tester) async {
+    courses.details = {'c1': detail(pace: 314)};
+    reviews.result = reviewSummary();
+    await openDetail(tester);
+
+    expect(text(CourseReviewsTab.emptyTitle), findsOneWidget, reason: '랭킹이 있는데 달린 사람이 없다고 하지 않는다');
+    expect(text(CourseReviewsTab.emptyMessage), findsOneWidget);
+    expect(text(CourseDetailScreen.noRunnerTitle), findsNothing);
+  });
+
   testWidgets('shows a withdrawn creator as such (common 4)', (tester) async {
     courses.details = {'c1': detail(nickname: '탈퇴한 사용자')};
     await openDetail(tester);
