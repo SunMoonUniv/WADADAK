@@ -188,7 +188,8 @@ class RunService {
             session.fail("ZERO_DISTANCE"); return;
         }
         Result result=new Result(id,session.getStartedAt(),calculation.endedAt(),registered,calculation.endReason(),calculation.metrics(),calculation.segments(),calculation.laps(),POLICY_VERSION,raw.getFirst().reason(),calculation.stats(),course,null,ghost);
-        RunRecord record=records.save(new RunRecord(id,registered,json.writeValueAsString(result),json.writeValueAsString(RecordSummary.from(result))));
+        var summary=RecordSummary.from(result,RunRouteThumbnail.create(calculation.segments()));
+        RunRecord record=records.save(new RunRecord(id,registered,json.writeValueAsString(result),json.writeValueAsString(summary)));
         publishRegistration(member.get(),record,result);
         session.complete();
     }
@@ -228,7 +229,9 @@ class RunService {
         RunRecord record=records.findById(id).orElse(null);
         if(record==null) return;
         Result updated=json.readValue(record.getResultJson(),Result.class).withGpsGap(check);
-        record.replaceJson(json.writeValueAsString(updated),json.writeValueAsString(RecordSummary.from(updated)));
+        // 목록 전용 파생 값은 결과 JSON에 없으므로, 저장된 요약에서 판단만 갱신한다.
+        RecordSummary summary=json.readValue(record.getSummaryJson(),RecordSummary.class).withGpsGap(check);
+        record.replaceJson(json.writeValueAsString(updated),json.writeValueAsString(summary));
     }
     /** GPS 코스 등록용 원본 경로. 결과 화면 지도와 같은 구간을 원본 입력에서 다시 만들어 지점별 정확도·고도를 붙인다 */
     @Transactional(readOnly=true)

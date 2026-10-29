@@ -787,7 +787,7 @@ PK는 `(session_id, stream_seq)`, `session_id`만 같은 run 스키마 sessions�
 | `id` | UUID PK/FK | sessions ID와 같은 기록 ID |
 | `registered_at` | TIMESTAMPTZ | 최초 서버 등록 시각. 재전송으로 바꾸지 않음 |
 | `result_json` | TEXT | 상세 경로·랩·시간·거리·케이던스·정책/계산 버전 |
-| `summary_json` | TEXT | 목록용 RecordSummary. 경로·랩 없음. 코스 러닝이면 `course` 요약(아래). `gpsGap` `{passed, version}`: GPS 코스 등록 끊긴 구간 판단(아래) |
+| `summary_json` | TEXT | 목록용 RecordSummary. 전체 경로·랩 없음. 선택 `routeThumbnail` `{version, segments}`: 구간 분리를 보존한 카드용 경로(전체 최대 128점, 과거 기록 누락·null 허용). 코스 러닝이면 `course` 요약(아래). `gpsGap` `{passed, version}`: GPS 코스 등록 끊긴 구간 판단(아래). 판단 갱신 시 저장된 썸네일을 보존한다 |
 | `registration_published` | BOOLEAN | 등록 이벤트의 동일 트랜잭션 발행 완료 표시 |
 
 목록은 `summary_json`만 읽는다. `(registered_at DESC, id DESC)` 인덱스를 사용하고 공통 Cursorable/CursorSlice 계약을 따른다. summary는 이미 저장된 결과에서 생성하며 거리 계산을 소급 변경하지 않는다. 새 결과의 정책 버전은 사용자 승인 날짜 `2026-10-14`, 계산 버전은 START의 `PACE_V2` 등이다. 과거 저장 결과에 없는 버전은 새 버전으로 소급 표기하지 않는다.

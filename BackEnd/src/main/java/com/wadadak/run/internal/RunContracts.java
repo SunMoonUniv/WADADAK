@@ -185,8 +185,15 @@ public final class RunContracts {
                     course.progressPercent(), course.reviewEligible());
         }
     }
+    /** 목록 카드 전용 경로. segments 사이는 연결하지 않는다. 원본·코스 등록 경로를 대체하지 않는다. */
+    public record RouteThumbnail(String version, List<List<GeoPoint>> segments) {}
     public record RecordSummary(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt,
-                                String endReason, Metrics metrics, ResultStats stats, CourseSummary course, GpsGapCheck gpsGap, GhostOutcome ghost) {
+                                String endReason, Metrics metrics, ResultStats stats, CourseSummary course, GpsGapCheck gpsGap, GhostOutcome ghost,
+                                RouteThumbnail routeThumbnail) {
+        public RecordSummary(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason,
+                             Metrics metrics, ResultStats stats, CourseSummary course, GpsGapCheck gpsGap, GhostOutcome ghost) {
+            this(id,startedAt,endedAt,registeredAt,endReason,metrics,stats,course,gpsGap,ghost,null);
+        }
         public RecordSummary(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason,
                              Metrics metrics, ResultStats stats, CourseSummary course, GpsGapCheck gpsGap) {
             this(id,startedAt,endedAt,registeredAt,endReason,metrics,stats,course,gpsGap,null);
@@ -201,8 +208,14 @@ public final class RunContracts {
             this(id,startedAt,endedAt,registeredAt,endReason,metrics,null);
         }
         public static RecordSummary from(Result result) {
+            return from(result,null);
+        }
+        public static RecordSummary from(Result result, RouteThumbnail routeThumbnail) {
             return new RecordSummary(result.id(),result.startedAt(),result.endedAt(),result.registeredAt(),result.endReason(),result.metrics(),result.stats(),
-                    CourseSummary.from(result.course()),result.gpsGap(),result.ghost());
+                    CourseSummary.from(result.course()),result.gpsGap(),result.ghost(),routeThumbnail);
+        }
+        public RecordSummary withGpsGap(GpsGapCheck value) {
+            return new RecordSummary(id,startedAt,endedAt,registeredAt,endReason,metrics,stats,course,value,ghost,routeThumbnail);
         }
     }
 }
