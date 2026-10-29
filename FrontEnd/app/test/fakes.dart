@@ -114,6 +114,24 @@ class FakeMemberApi implements MemberApiClient {
 
   @override
   Future<void> logout(String refreshToken) async => logouts++;
+
+  /// `GET /members/me`가 돌려줄 내 정보. [meError]가 있으면 대신 실패한다.
+  Map<String, Object?> profile = {
+    'nickname': 'wonehgus',
+    'region': {'code': '1129000000', 'name': '성북구', 'fullName': '서울특별시 성북구'},
+    'affiliation': '선문대학교',
+    'runningExperience': 'MONTHS_6',
+    'profileImageUrl': null,
+  };
+  ApiException? meError;
+  int meCalls = 0;
+
+  @override
+  Future<MyProfile> me() async {
+    meCalls++;
+    if (meError != null) throw meError!;
+    return MyProfile.fromJson(profile);
+  }
 }
 
 /// 1×1 PNG. 미리보기가 그림으로 읽을 수 있는 사진이다.

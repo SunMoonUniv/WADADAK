@@ -13,6 +13,7 @@ import 'features/course/detail/course_rankings_screen.dart';
 import 'features/home/course_filter_screen.dart';
 import 'features/home/course_search_screen.dart';
 import 'features/home/home_screen.dart';
+import 'features/my/my_screen.dart';
 import 'features/my/run_history_screen.dart';
 import 'features/my/run_record_screen.dart';
 import 'features/onboarding/consent_screen.dart';
@@ -96,7 +97,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(routes: [
             GoRoute(
               path: Routes.my,
-              builder: (_, _) => const MyPlaceholderTab(),
+              builder: (_, _) => const MyScreen(),
               routes: [GoRoute(path: 'records', builder: (_, _) => const MyRunHistoryScreen())],
             ),
           ]),
