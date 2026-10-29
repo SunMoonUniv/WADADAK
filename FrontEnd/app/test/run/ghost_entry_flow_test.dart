@@ -85,8 +85,11 @@ class EntryGhostSource implements OwnGhostSource {
     if (unavailable) 'unavailableReasons': ['TOTAL_GAP_EXCEEDED'],
   });
   @override
-  Future<OwnGhostReplay> playback(String owner, String recordId) async =>
-      delayed == null ? replay() : await delayed!.future;
+  Future<OwnGhostReplay> playback(
+    String owner,
+    String recordId, {
+    GhostCourseContext? course,
+  }) async => delayed == null ? replay() : await delayed!.future;
 }
 
 void main() {

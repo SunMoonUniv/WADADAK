@@ -152,6 +152,7 @@ void main() {
       await db.execute('DROP TABLE ghost_start_intents');
       await db.execute('ALTER TABLE sessions DROP COLUMN ghost_context');
       await db.execute('ALTER TABLE sessions DROP COLUMN recovery_anchor');
+      await db.execute('DROP TABLE course_start_intents');
       await db.execute('PRAGMA user_version=2');
       await disk.close();
       disk = RunLocalStore(factory: databaseFactoryFfi, databasePath: path);

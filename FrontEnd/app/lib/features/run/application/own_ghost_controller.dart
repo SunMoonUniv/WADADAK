@@ -143,7 +143,7 @@ class OwnGhostController extends ChangeNotifier {
     _retry = null;
     _notify();
     try {
-      final replay = await source.playback(owner, candidate.id);
+      final replay = await source.playback(owner, candidate.id, course: course);
       if (_disposed || epoch != _selectEpoch) return;
       if (!replay.playback.eligible) {
         unavailableReasons = replay.playback.reasons.isEmpty

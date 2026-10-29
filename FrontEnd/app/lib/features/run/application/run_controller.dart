@@ -164,6 +164,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
 
   /// 코스 러닝 준비를 마치고 측정 전(RCR-01). 지도에 출발점까지 안내하고 반경 안에서만 시작한다
   CourseStart? courseStart;
+  CourseStartIntent? _liveCourseIntent;
   StreamSubscription<Position>? _approach;
 
   /// 마지막으로 시작한 코스 러닝의 코스와 세션 ID. 결과 화면의 "서버 판정 대기"에 쓴다
@@ -191,6 +192,12 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   List<LocalRun> records = [];
   List<Map<String, dynamic>> remoteRecords = [];
   String? currentOwner, error, gpsNotice, nextCursor, historyNotice;
+  String? ghostStartRejection;
+  void acknowledgeGhostStartRejection() {
+    ghostStartRejection = null;
+    _notify();
+  }
+
   int? countdown;
   bool preparing = false, syncing = false, loadingHistory = false;
   bool _disposed = false, _ticking = false, _syncDisabled = false;
@@ -224,6 +231,11 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         if (member == currentOwner) return;
         final previousOwner = currentOwner;
         if (previousOwner != null) {
+          for (final pending in await store.pendingCourseStarts(
+            previousOwner,
+          )) {
+            await store.deleteRecord(previousOwner, pending.id);
+          }
           for (final pending in await store.pendingGhostStarts(previousOwner)) {
             await store.deleteRecord(previousOwner, pending.intent.id);
           }
@@ -232,6 +244,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         cancelCourseStart();
         await _stopWatchingStart();
         courseStart = null;
+        _liveCourseIntent = null;
         if (previousOwner != null) {
           selectedCourse = null;
         }
@@ -241,6 +254,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         routeGuidance = null;
         courseEndReason = null;
         currentOwner = null;
+        ghostStartRejection = null;
         selectedGhost = null;
         _ghostPreparation = null;
         _ghostSelectionGeneration++;
@@ -290,6 +304,8 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         if (!recorder.active) {
           try {
             await ghostStarts.recover(member);
+          } on GhostStartRejected catch (e) {
+            await _operationError(e);
           } on ApiException catch (e) {
             error = e.message;
           }
@@ -298,6 +314,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
             .isNotEmpty;
         if (await owner() != member) continue;
         await _restoreGhostRun();
+        await _restoreCourseStart(member);
         remoteRecords = [];
         nextCursor = null;
         _notify();
@@ -424,7 +441,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
     final start = courseStart;
-    if (start != null && !start.nearStart) return;
+    if (start != null && start.intent == null && !start.nearStart) return;
     final generation = ++_generation;
     // 코스 러닝은 세션 ID를 먼저 만들어 서버 준비·시작 신호와 기록에 같은 ID를 쓴다
     final selection = start == null ? selectedCourse : null;
@@ -488,7 +505,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       _lastFixAt = _utcNow();
       _gapOpen = false;
       locationToken = _startLocation();
-      for (var value = 3; value > 0; value--) {
+      for (var value = start?.intent == null ? 3 : 0; value > 0; value--) {
         if (generation != _generation || _disposed) return;
         countdown = value;
         _notify();
@@ -512,7 +529,14 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       if (generation != _generation || _disposed || await owner() != member) {
         return;
       }
-      final startedAt = _utcNow();
+      if (start != null && start.intent == null) {
+        start.position = GeoPoint(_latest!.latitude, _latest!.longitude);
+        if (!start.nearStart) {
+          throw const DeviceSetupException('출발점 20m 안으로 이동한 뒤 다시 시작해 주세요.');
+        }
+      }
+      var startedAt = _utcNow();
+      int? courseOriginMs;
       final ghost = selectedGhost;
       if ((ghost != null || freeGhost != null) && start != null) {
         _committing = true;
@@ -541,17 +565,55 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
           return;
         }
       } else if (start != null) {
-        // 시작 신호(도전 수·현재 러너 수). 기록의 시작 시각과 같은 값을 보내야 업로드가 코스 기록으로 맞는다
+        // Save the exact request and monotonic origin before sending an irreversible start signal.
+        _committing = true;
+        countdown = null;
+        _notify();
+        var intent = start.intent;
+        if (intent == null) {
+          final clock = await _recoveryClock();
+          startedAt = _utcNow();
+          intent = CourseStartIntent(
+            member,
+            runId,
+            startedAt,
+            start.snapshot,
+            clock,
+          );
+          try {
+            await store.saveCourseIntent(intent);
+          } on Object catch (e) {
+            throw RunStorageFailure(e);
+          }
+          start.intent = intent;
+          _liveCourseIntent = intent;
+        }
+        startedAt = intent.startedAt;
+        await _checkCourseIntent(intent);
+        if (generation != _generation || _disposed || await owner() != member) {
+          return;
+        }
         await _courseCall(() => api.startCourse(member, runId, startedAt));
         if (generation != _generation || _disposed || await owner() != member) {
           return;
         }
+        await _checkCourseIntent(intent);
+        if (_lifecycleState() != AppLifecycleState.resumed) {
+          throw const DeviceSetupException('앱으로 돌아온 뒤 코스 시작을 다시 확인해 주세요.');
+        }
+        courseOriginMs = intent.clock.elapsedMs;
       }
       _committing = true;
       countdown = null;
       _notify();
       if (ghost == null && freeGhost == null) {
-        await recorder.start(runId, member, startedAt);
+        await recorder.start(
+          runId,
+          member,
+          startedAt,
+          originMs: courseOriginMs,
+        );
+        _liveCourseIntent = null;
       }
       course = start?.course;
       courseRunId = start == null ? null : runId;
@@ -574,6 +636,10 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       }
       await _refreshExtras();
       final latest = _latest!;
+      if (!RunLocationPolicy.usable(latest, _utcNow())) {
+        await _markGap('START_WAIT');
+        return;
+      }
       await recorder.gps(
         latest.latitude,
         latest.longitude,
@@ -598,7 +664,12 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         await _stopLocation(expectedToken: locationToken);
       }
       // 코스 러닝 시작이 실패하면 측정 전으로 돌아가 다시 출발점을 안내한다
-      if (!recorder.active && courseStart != null && !_disposed) _watchStart();
+      if (!recorder.active &&
+          courseStart != null &&
+          !_disposed &&
+          _lifecycleState() == AppLifecycleState.resumed) {
+        _watchStart();
+      }
       _notify();
     }
   }
@@ -821,9 +892,78 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   /// 서버에 남은 준비만 한 시도는 지우지 않는다(서버 연결 문서 7장)
   void cancelCourseStart() {
     if (preparing || courseStart == null) return;
+    final intent = courseStart!.intent;
+    if (intent != null) {
+      preparing = true;
+      unawaited(() async {
+        try {
+          await _cancelCourseIntent(intent);
+        } on Object catch (e) {
+          await _operationError(e);
+        } finally {
+          preparing = false;
+          _notify();
+          unawaited(sync());
+        }
+      }());
+      return;
+    }
     courseStart = null;
     unawaited(_stopWatchingStart());
     _notify();
+  }
+
+  Future<void> _cancelCourseIntent(CourseStartIntent intent) async {
+    await store.deleteRecord(intent.owner, intent.id);
+    if (currentOwner != intent.owner) return;
+    if (courseStart?.runId == intent.id) courseStart = null;
+    _liveCourseIntent = null;
+    await _stopWatchingStart();
+    await _reloadLocal();
+    _notify();
+    unawaited(sync());
+  }
+
+  Future<void> _checkCourseIntent(CourseStartIntent intent) async {
+    final reading = await _recoveryClock();
+    final age =
+        reading.since(intent.clock) ??
+        (identical(_liveCourseIntent, intent) &&
+                reading.bootId == null &&
+                intent.clock.bootId == null
+            ? reading.elapsedMs - intent.clock.elapsedMs
+            : null);
+    if (age == null || age < 0 || age > 60000) {
+      await _cancelCourseIntent(intent);
+      throw const DeviceSetupException('중단된 코스 시작을 취소했어요. 다시 시작해 주세요.');
+    }
+  }
+
+  Future<void> _restoreCourseStart(String member) async {
+    if (recorder.active || _disposed) return;
+    for (final intent in await store.pendingCourseStarts(member)) {
+      if (await owner() != member || _disposed) return;
+      final reading = await _recoveryClock();
+      final age = reading.since(intent.clock);
+      if (age == null || age > 60000) {
+        await _cancelCourseIntent(intent);
+        error = '중단된 코스 시작을 취소했어요. 다시 시작해 주세요.';
+        continue;
+      }
+      final selection = CourseSelection(
+        intent.snapshot.courseId!,
+        intent.snapshot.name ?? '코스 러닝',
+      );
+      selectedCourse = selection;
+      courseStart = CourseStart(
+        intent.id,
+        selection,
+        intent.snapshot,
+        intent.snapshot.route.first,
+        intent: intent,
+      );
+      error = '코스 시작을 확인하지 못했어요. 다시 시도해 주세요.';
+    }
   }
 
   /// 측정 전 현재 위치. 측정하지 않으므로 기록 중 알림 없이 화면이 켜진 동안만 받는다
@@ -840,7 +980,11 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         )
         .listen((p) {
           final start = courseStart;
-          if (start == null || _disposed) return;
+          if (start == null ||
+              _disposed ||
+              !RunLocationPolicy.usable(p, _utcNow())) {
+            return;
+          }
           start.position = GeoPoint(p.latitude, p.longitude);
           _notify();
         }, onError: (Object e) => unawaited(_operationError(e)));
@@ -1045,7 +1189,24 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> _operationError(Object e) async {
-    if (e is RunStorageFailure || recorder.faulted) {
+    if (e is GhostStartRejected) {
+      if (e.owner != currentOwner ||
+          await owner() != e.owner ||
+          recorder.active) {
+        return;
+      }
+      hasPendingGhostStart = (await store.pendingGhostStarts(e.owner))
+          .isNotEmpty;
+      if (hasPendingGhostStart) return;
+      await _stopWatchingStart();
+      courseStart = null;
+      selectedGhost = null;
+      _ghostPreparation = null;
+      _ghostSelectionGeneration++;
+      error = e.message;
+      ghostStartRejection = e.message;
+      setupAction = null;
+    } else if (e is RunStorageFailure || recorder.faulted) {
       storageFault = true;
       await _stopLocation();
       await _stopExtras();

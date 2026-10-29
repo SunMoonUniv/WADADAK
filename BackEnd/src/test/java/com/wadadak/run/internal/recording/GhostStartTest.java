@@ -188,10 +188,29 @@ class GhostStartTest {
         }
     }
 
-    @Test void differentSourceCourseVersionCannotApproveEvenWhenItsReplayIsValid() {
+    @Test void historicalOwnSourceSurvivesMetadataChangeThroughReplayApprovalAndSavedRetry() throws Exception {
+        String original=db.queryForObject("SELECT result_json FROM run.records WHERE id=?",String.class,source);
         db.update("UPDATE run.course_attempts SET course_version=4 WHERE session_id=?", id);
         when(courseApi.getRouteForRun(any())).thenReturn(new CourseRouteSnapshot(courseId, "코스", current.route(), 1000, 4));
-        error(() -> starts.start(owner, id, new GhostStart(courseId, 4L, source, start, "GHOST_PLAYBACK_V1")), RunErrorCode.CONFLICT);
+        mvc.perform(get("/api/v1/runs/records/"+source+"/ghost-playback").with(jwt().jwt(j->j.subject(owner.toString())))
+            .param("courseId",courseId.toString()).param("courseVersion","4"))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.course.version").value(4));
+        mvc.perform(get("/api/v1/runs/records/"+source+"/ghost-playback").with(jwt().jwt(j->j.subject(owner.toString()))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.course.version").value(3));
+        var request=new GhostStart(courseId,4L,source,start,"GHOST_PLAYBACK_V1");
+        var receipt=starts.start(owner,id,request);
+        assertThat(receipt.playback().course().version()).isEqualTo(4);
+        assertThat(db.queryForObject("SELECT source_course_version FROM run.ghost_starts WHERE session_id=?",Long.class,id)).isEqualTo(3);
+        assertThat(db.queryForObject("SELECT result_json FROM run.records WHERE id=?",String.class,source)).isEqualTo(original);
+        runs.delete(owner,source);
+        assertThat(starts.start(owner,id,request)).isEqualTo(receipt);
+    }
+
+    @Test void compatibleVersionCannotHideAnActualSourcePathChange() throws Exception {
+        db.update("UPDATE run.course_attempts SET course_version=4 WHERE session_id=?",id);
+        when(courseApi.getRouteForRun(any())).thenReturn(new CourseRouteSnapshot(courseId,"코스",current.route().reversed(),1000,4));
+        db.update("UPDATE run.course_attempts SET route_json=? WHERE session_id=?",json.writeValueAsString(current.route().reversed()),id);
+        error(()->starts.start(owner,id,new GhostStart(courseId,4L,source,start,"GHOST_PLAYBACK_V1")),RunErrorCode.GHOST_UNAVAILABLE);
         notStarted();
     }
 

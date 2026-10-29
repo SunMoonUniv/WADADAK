@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:wadadak/core/api/run_api_client.dart';
+import 'package:wadadak/core/api/api_client.dart';
 import 'package:wadadak/core/time/monotonic_clock.dart';
 import 'package:wadadak/features/run/application/run_controller.dart';
 import 'package:wadadak/features/run/application/free_run_controller.dart';
@@ -94,6 +95,30 @@ void main() {
   tearDown(() async {
     await close();
     await directory.delete(recursive: true);
+  });
+  test('a refused private source can be chosen again immediately without registering a course', () async {
+    await runs.bindOwner();
+    runs.selectFreeGhost(PreparedFreeGhost('alice', preparation()));
+    await runs.prepareStart();
+    starts.onStart = (_) async =>
+        throw const ApiException('RUN-004', 'denied', status: 409);
+      starts.onGet = (_, _) async =>
+        throw const ApiException('RUN-002', 'missing', status: 404);
+    await runs.prepareStart();
+    expect(runs.canSelectGhost, true);
+    expect(runs.selectedFreeGhost, isNull);
+    expect(runs.courseStart, isNull);
+    expect(runs.recorder.active, false);
+    expect(await runs.store.pendingGhostStarts('alice'), isEmpty);
+    runs.acknowledgeGhostStartRejection();
+    starts.onStart = (i) async => approval(i);
+    runs.selectFreeGhost(PreparedFreeGhost('alice', preparation()));
+    await runs.prepareStart();
+    await runs.prepareStart();
+    expect(runs.recorder.active, true);
+    expect(starts.posts[0].id, isNot(starts.posts[1].id));
+    expect(api.prepared, isEmpty);
+    expect(api.started, isEmpty);
   });
   test('private reference resumes offline within sixty seconds without course IDs or new approval', () async {
     await begin();

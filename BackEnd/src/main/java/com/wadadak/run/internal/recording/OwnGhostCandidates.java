@@ -2,6 +2,7 @@ package com.wadadak.run.internal.recording;
 
 import com.wadadak.common.exception.AppException;
 import com.wadadak.common.paging.Cursorable;
+import com.wadadak.course.CourseApi;
 import com.wadadak.run.RunErrorCode;
 import com.wadadak.run.internal.RunContracts.*;
 import java.sql.ResultSet;
@@ -13,6 +14,7 @@ import java.util.*;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.databind.json.JsonMapper;
 
 /** F9 projection over existing records. Never loads GPS inputs or builds replay for a page. */
 @Service
@@ -21,8 +23,12 @@ class OwnGhostCandidates {
     private final RunLocks locks;
     private final WithdrawnRunMemberRepository withdrawals;
     private final Clock clock;
-    OwnGhostCandidates(NamedParameterJdbcTemplate db, RunLocks locks, WithdrawnRunMemberRepository withdrawals, Clock clock) {
+    private final CourseApi courses;
+    private final JsonMapper json;
+    OwnGhostCandidates(NamedParameterJdbcTemplate db, RunLocks locks, WithdrawnRunMemberRepository withdrawals, Clock clock,
+                       CourseApi courses, JsonMapper json) {
         this.db = db; this.locks = locks; this.withdrawals = withdrawals; this.clock = clock;
+        this.courses=courses; this.json=json;
     }
 
     private record Position(long seconds, Instant startedAt, UUID id) {}
@@ -52,6 +58,10 @@ class OwnGhostCandidates {
             OwnGhostPeriod period, Cursorable page) {
         if (version < 0 || sort == null || period == null || page.size() < 1 || page.size() > Cursorable.MAX_SIZE)
             throw new AppException(RunErrorCode.INVALID);
+        // Read-only preparation: no run/course start, source rewrite, GPS scan or event publication.
+        var current = courses.getRouteForRun(courseId);
+        if (!courseId.equals(current.courseId()) || current.version()!=version)
+            throw new AppException(RunErrorCode.CONFLICT);
         LocalDate today = LocalDate.now(clock.withZone(ZoneId.of("Asia/Seoul")));
         LocalDate first = switch (period) {
             case ALL -> null;
@@ -65,6 +75,8 @@ class OwnGhostCandidates {
         if (withdrawals.existsById(owner)) throw new AppException(RunErrorCode.NOT_FOUND);
         Map<String, Object> args = new HashMap<>();
         args.put("owner", owner); args.put("courseId", courseId.toString()); args.put("version", Long.toString(version));
+        args.put("courseUuid", courseId); args.put("numericVersion", version);
+        args.put("distance", current.totalDistanceMeters()); args.put("route", json.writeValueAsString(current.route()));
         args.put("limit", page.size() + 1);
         String periodWhere = "";
         if (from != null) {
@@ -81,10 +93,17 @@ class OwnGhostCandidates {
                        (r.result_json::jsonb #>> '{course,courseDistanceMeters}')::integer distance,
                        (r.result_json::jsonb #>> '{metrics,averageCadence}')::double precision cadence
                 FROM run.records r JOIN run.sessions s ON s.id = r.id
+                LEFT JOIN run.course_attempts c ON c.session_id=r.id AND c.member_id=s.member_id
                 WHERE s.member_id = :owner AND s.processing = 'DONE'
                   AND r.result_json::jsonb #>> '{course,completed}' = 'true'
                   AND r.result_json::jsonb #>> '{course,courseId}' = :courseId
-                  AND r.result_json::jsonb #>> '{course,courseVersion}' = :version
+                  AND (r.result_json::jsonb #>> '{course,courseVersion}' = :version
+                    OR ((r.result_json::jsonb #>> '{course,courseVersion}')::bigint < :numericVersion
+                      AND c.course_id=:courseUuid
+                      AND c.course_version=(r.result_json::jsonb #>> '{course,courseVersion}')::bigint
+                      AND c.total_distance_meters=:distance
+                      AND (r.result_json::jsonb #>> '{course,courseDistanceMeters}')::integer=:distance
+                      AND c.route_json::jsonb=CAST(:route AS jsonb)))
                   AND NOT EXISTS (SELECT 1 FROM run.deleted_records d WHERE d.id = r.id)
             """ + periodWhere + ") ";
         // Summary includes every matching completion, not only the currently loaded page.

@@ -5,7 +5,15 @@ import '../data/ghost_start_api.dart';
 import '../domain/ghost_run.dart';
 import 'run_recorder.dart';
 
-/// A pending request is durable before POST; GET 404 never permits a new session ID.
+/// The server definitively refused this attempt and its absence was confirmed before cancellation.
+class GhostStartRejected implements Exception {
+  const GhostStartRejected(this.owner, this.id, this.failure);
+  final String owner, id;
+  final ApiException failure;
+  String get message => '사용할 수 없는 고스트입니다. 다른 기록을 선택해 주세요.';
+}
+
+/// A pending request is durable before POST; GET 404 alone never permits a new session ID.
 class GhostStartFlow {
   GhostStartFlow(this.store, this.api, this.recorder, this.clock, this.owner);
   final RunLocalStore store;
@@ -14,13 +22,45 @@ class GhostStartFlow {
   final Future<RunClockSample> Function() clock;
   final Future<String?> Function() owner;
   bool _busy = false;
+  static bool _definitive(ApiException error) =>
+      switch ((error.code, error.status)) {
+        ('RUN-001', 400) ||
+        ('RUN-002', 404) ||
+        ('RUN-003', 409) ||
+        ('RUN-004', 409) ||
+        ('COURSE-001', 404) ||
+        ('COURSE-002', 409) => true,
+        _ => false,
+      };
+
+  Future<Map<String, dynamic>> _post(GhostStartIntent intent) async {
+    try {
+      return await api.start(intent);
+    } on ApiException catch (failure) {
+      if (!_definitive(failure) || await owner() != intent.owner) rethrow;
+      try {
+        // An already committed receipt wins over a failed/late retry response.
+        return await api.receipt(intent.owner, intent.id);
+      } on ApiException catch (check) {
+        if (check.code != 'RUN-002' ||
+            check.status != 404 ||
+            await owner() != intent.owner) {
+          rethrow;
+        }
+        // Keep the cancellation durable: late uploads/approvals must not resurrect this ID.
+        await store.deleteRecord(intent.owner, intent.id);
+        throw GhostStartRejected(intent.owner, intent.id, failure);
+      }
+    }
+  }
+
   Future<bool> begin(GhostStartIntent intent) async {
     if (_busy) throw StateError('고스트 시작을 확인하고 있어요.');
     _busy = true;
     try {
       if (await owner() != intent.owner) return false;
       await store.saveGhostIntent(intent);
-      final response = await api.start(intent);
+      final response = await _post(intent);
       if (await owner() != intent.owner) return false;
       final context = GhostRunContext(intent, response);
       final reading = await clock();
@@ -61,7 +101,7 @@ class GhostStartFlow {
               await store.deleteRecord(member, intent.id);
               return false;
             }
-            response = await api.start(intent);
+            response = await _post(intent);
           }
           if (await owner() != member) return false;
           context = GhostRunContext(intent, response);

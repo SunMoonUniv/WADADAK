@@ -59,9 +59,9 @@ void main() {
     }
   }
 
-  PreparedOwnGhost selection() {
+  PreparedOwnGhost selection([String record = sourceId]) {
     final candidate = OwnGhostCandidate.fromJson({
-      'id': sourceId,
+      'id': record,
       'courseId': courseId,
       'courseVersion': 0,
       'startedAt': ghostEpoch
@@ -73,9 +73,11 @@ void main() {
       'courseElapsedSeconds': 230,
       'courseDistanceMeters': 1112,
     });
-    final replay = OwnGhostReplay.fromJson(
-      (ghostApproval(ghostIntent())['playback'] as Map).cast<String, dynamic>(),
-    );
+    final replay = OwnGhostReplay.fromJson({
+      ...(ghostApproval(ghostIntent())['playback'] as Map)
+          .cast<String, dynamic>(),
+      'sourceRecordId': record,
+    });
     return PreparedOwnGhost(
       'alice',
       const GhostCourseContext(courseId, 0),
@@ -111,6 +113,58 @@ void main() {
   tearDown(() async {
     await close();
     await directory.delete(recursive: true);
+  });
+
+  for (final refusal in [('RUN-002', 404), ('RUN-004', 409)]) {
+    test(
+      'controller clears definitive ${refusal.$1} and can choose a different source immediately',
+      () async {
+        await controller.bindOwner();
+        controller.selectGhost(selection());
+        await controller.prepareStart();
+        ghostApi.onStart = (_) async {
+          throw ApiException(refusal.$1, 'denied', status: refusal.$2);
+        };
+        ghostApi.onGet = (_, _) async =>
+            throw const ApiException('RUN-002', 'no approval', status: 404);
+        await controller.prepareStart();
+        final rejectedId = ghostApi.posts.single.id;
+        expect(controller.hasPendingGhostStart, false);
+        expect(controller.canSelectGhost, true);
+        expect(controller.courseStart, isNull);
+        expect(controller.selectedGhost, isNull);
+        expect(controller.recorder.active, false);
+        expect(controller.ghostStartRejection, contains('사용할 수 없는 고스트입니다.'));
+        expect(await controller.store.pendingGhostStarts('alice'), isEmpty);
+        const nextSource = '019e0000-0000-7000-8000-000000000099';
+        controller.acknowledgeGhostStartRejection();
+        controller.selectGhost(selection(nextSource));
+        ghostApi.onStart = (intent) async => ghostApproval(intent);
+        await controller.prepareStart();
+        expect(controller.courseStart!.runId, isNot(rejectedId));
+        await controller.prepareStart();
+        expect(controller.recorder.active, true);
+        expect(controller.run!.ghost!.intent.sourceId, nextSource);
+        expect(ghostApi.posts, hasLength(2));
+        expect(courseApi.started, isEmpty);
+      },
+    );
+  }
+
+  test('a refused saved start is cleared during account binding and allows a fresh selection', () async {
+    await controller.store.saveGhostIntent(ghostIntent());
+      ghostApi.onGet = (_, _) async =>
+        throw const ApiException('RUN-002', 'missing', status: 404);
+    ghostApi.onStart = (_) async =>
+        throw const ApiException('RUN-004', 'denied', status: 409);
+    await controller.bindOwner();
+    expect(controller.hasPendingGhostStart, false);
+    expect(controller.canSelectGhost, true);
+    expect(controller.ghostStartRejection, isNotNull);
+    expect(controller.recorder.active, false);
+    controller.acknowledgeGhostStartRejection();
+    controller.selectGhost(selection());
+    expect(controller.selectedGhost, isNotNull);
   });
 
   test('existing F6 preparation starts a ghost with its own approval API and persists the full course identity', () async {

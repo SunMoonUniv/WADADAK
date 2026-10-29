@@ -55,12 +55,16 @@ class RunRecorder {
 
   RunMetrics get metrics => calculator.at(elapsedMs);
   bool get active => current != null && current!.phase != RunPhase.ended;
-  Future<void> start(String id, String owner, DateTime utc) =>
+  Future<void> start(String id, String owner, DateTime utc, {int? originMs}) =>
       _serial(() async {
         if (active) {
           throw StateError('진행 중인 러닝이 있어요.');
         }
-        final origin = await nowMs();
+        final now = await nowMs();
+        final origin = originMs ?? now;
+        if (origin > now || now - origin > 60000) {
+          throw StateError('코스 시작 시간을 다시 확인해 주세요.');
+        }
         final run = LocalRun(id: id, owner: owner, startedAt: utc.toUtc());
         final start = RunInput(
           seq: 0,
@@ -78,6 +82,14 @@ class RunRecorder {
         _lastPressureMs = -1;
         elapsedMs = 0;
         _autoResume.reset();
+        if (originMs != null && now > origin) {
+          // The request wait counts as elapsed time, with an explicit unmeasured gap.
+          await _commit(
+            _recoveryGap(run, now - origin),
+            RunPhase.running,
+            now - origin,
+          );
+        }
         changes.add(null);
       });
   Future<void> tick({bool persist = false}) => _serial(() async {
@@ -278,7 +290,7 @@ class RunRecorder {
       [_input(RunKind.end, ms, reason: reason)],
       RunPhase.ended,
       ms,
-      pending: calculator.distanceM > 0 || current!.ghost!=null,
+      pending: calculator.distanceM > 0 || current!.ghost != null,
       reason: reason,
     );
     confirmingEnd = false;
@@ -338,14 +350,14 @@ class RunRecorder {
               [end],
               RunPhase.ended,
               ms,
-              pending: calc.distanceM > 0 || run.ghost!=null,
+              pending: calc.distanceM > 0 || run.ghost != null,
               endReason: 'INTERRUPTED',
             ),
           );
           run.inputs.add(end);
           run.phase = RunPhase.ended;
           run.endReason = 'INTERRUPTED';
-          run.pending = calc.distanceM > 0 || run.ghost!=null;
+          run.pending = calc.distanceM > 0 || run.ghost != null;
         }
         return summaryOnly ? store.list(owner, summaryOnly: true) : runs;
       });

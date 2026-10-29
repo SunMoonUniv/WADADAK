@@ -10,7 +10,11 @@ abstract interface class OwnGhostSource {
     required OwnGhostPeriod period,
     String? cursor,
   });
-  Future<OwnGhostReplay> playback(String owner, String recordId);
+  Future<OwnGhostReplay> playback(
+    String owner,
+    String recordId, {
+    GhostCourseContext? course,
+  });
 }
 
 /// Reuses the authenticated RunApiClient transport and its account-bound request options.
@@ -43,10 +47,17 @@ class OwnGhostApi implements OwnGhostSource {
   }
 
   @override
-  Future<OwnGhostReplay> playback(String owner, String recordId) async {
+  Future<OwnGhostReplay> playback(
+    String owner,
+    String recordId, {
+    GhostCourseContext? course,
+  }) async {
     final body = await callApi(
       () => client.dio.get<Object?>(
         '/api/v1/runs/records/$recordId/ghost-playback',
+        queryParameters: course == null
+            ? null
+            : {'courseId': course.id, 'courseVersion': course.version},
         options: client.options(owner),
       ),
     );

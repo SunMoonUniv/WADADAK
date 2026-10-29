@@ -538,6 +538,43 @@ class RunIngestionTest {
         }
     }
 
+    @Test void extremeInputTimestampsAreRejectedBeforeStorage() throws Exception {
+        for (Instant time : List.of(Instant.MIN, Instant.MAX)) {
+            var invalid = new Input(1,Kind.GPS,1000,time,inputs.get(1).location(),3.0,null);
+            mvc.perform(post("/api/v1/runs/sessions/"+id+"/record")
+                .with(jwt().jwt(j->j.subject(owner.toString())))
+                .contentType("application/json")
+                .content(json.writeValueAsString(new Upload(2,List.of(inputs.getFirst(),invalid)))))
+                .andExpect(status().isBadRequest());
+        }
+        assertThat(db.queryForObject("SELECT count(*) FROM run.inputs WHERE session_id=?",Long.class,id)).isZero();
+        assertThat(runs.status(owner,id).processing()).isEqualTo("PREPARED");
+        assertThatThrownBy(()->runs.prepare(owner,UUID.randomUUID(),new Prepare(Instant.MIN,"FREE"))).isInstanceOf(AppException.class);
+    }
+
+    @Test void tenPreviouslyStoredExtremeTimestampsFailAndReleaseTheQueueForNormalRecords() {
+        var broken = new ArrayList<UUID>();
+        for (int index=0; index<10; index++) {
+            UUID bad=UUID.randomUUID(); broken.add(bad);
+            Instant began=start.minusSeconds(10);
+            runs.prepare(owner,bad,new Prepare(began,"FREE"));
+            var raw=List.of(new Input(0,Kind.START,0,began,null,null,null),
+                new Input(1,Kind.GPS,1000,Instant.MAX,inputs.get(1).location(),3.0,null),
+                new Input(2,Kind.END,2000,began.plusSeconds(2),null,null,"INTERRUPTED"));
+            for (Input point:raw) db.update("INSERT INTO run.inputs(session_id,stream_seq,payload) VALUES (?,?,?)",bad,point.seq(),json.writeValueAsString(point));
+            db.update("UPDATE run.sessions SET processing='PROCESSING',final_seq=2 WHERE id=?",bad);
+        }
+        runs.upload(owner,id,new Upload(9,inputs));
+        runs.waiting().forEach(runs::process);
+        for (UUID bad:broken) {
+            assertThat(runs.status(owner,bad).processing()).isEqualTo("FAILED");
+            assertThat(runs.status(owner,bad).failure()).isEqualTo("RUN-001");
+        }
+        runs.waiting().forEach(runs::process);
+        assertThat(runs.status(owner,id).processing()).isEqualTo("DONE");
+        assertThat(runs.waiting()).isEmpty();
+    }
+
     @Test void invalidPressureFieldsRollBackBeforeDurableStorage() {
         for (Input p : List.of(
             new Input(1,Kind.BAROMETER,1000,start.plusMillis(1000),null,null,null,null,null,null,null,1000L,null,null,Double.NaN,3),

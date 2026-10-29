@@ -5,7 +5,7 @@ import com.wadadak.common.geo.GeoPoint;
 import com.wadadak.run.internal.GpsQuality;
 import com.wadadak.run.internal.RunContracts.*;
 import com.wadadak.run.RunErrorCode;
-import java.time.Duration;
+import com.wadadak.run.internal.RunInputTime;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -63,7 +63,7 @@ public final class FreeRunCalculator {
         for (int i = 0; i < inputs.size(); i++) {
             Input p = inputs.get(i);
             if (p.seq() != i || p.elapsedMs() < lastMs || p.elapsedMs() > 7L*86400000 ||
-                (p.kind() == Kind.GPS ? !freshFix(startedAt,p) : Math.abs(Duration.between(startedAt.plusMillis(p.elapsedMs()), p.measuredAt()).toMillis()) > 1000) ||
+                !RunInputTime.valid(startedAt,p) ||
                 (i > 0 && p.kind() == Kind.START) || (i < inputs.size()-1 && p.kind() == Kind.END)) invalid();
             if (!paused) activeMs += p.elapsedMs() - lastMs;
             lastMs = p.elapsedMs();
@@ -124,10 +124,6 @@ public final class FreeRunCalculator {
             distanceM > 0 ? lastMs/distanceM : null, coverage>0?steps*60000.0/coverage:null, coverage, steps),
             segments, end.measuredAt(), end.reason(), laps,
             RunResultStatsCalculator.calculate(inputs,v2?motion.samples:samples,laps), v2?motion.samples:samples);
-    }
-    private static boolean freshFix(Instant start, Input p) {
-        long age=Duration.between(p.measuredAt(),start.plusMillis(p.elapsedMs())).toMillis();
-        return age>=-5000 && age<=10000;
     }
     static double distance(GeoPoint a, GeoPoint b) {
         return a.distanceMeters(b);

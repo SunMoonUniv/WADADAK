@@ -62,6 +62,7 @@ class FakeOwnGhostSource implements OwnGhostSource {
         })
       >[];
   final playbackRequests = <String>[];
+  final playbackCourses = <GhostCourseContext?>[];
 
   @override
   Future<OwnGhostPage> candidates(
@@ -84,8 +85,13 @@ class FakeOwnGhostSource implements OwnGhostSource {
   }
 
   @override
-  Future<OwnGhostReplay> playback(String owner, String recordId) async {
+  Future<OwnGhostReplay> playback(
+    String owner,
+    String recordId, {
+    GhostCourseContext? course,
+  }) async {
     playbackRequests.add(recordId);
+    playbackCourses.add(course);
     if (onPlayback != null) return onPlayback!(owner, recordId);
     final c = [
       ...page.content,
