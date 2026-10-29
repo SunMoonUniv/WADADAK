@@ -15,6 +15,7 @@ import com.wadadak.common.geo.GeoPoint;
 import com.wadadak.course.GpsGapCheck;
 import com.wadadak.run.internal.metrics.FreeRunCalculator;
 import com.wadadak.run.internal.metrics.RunResultStatsCalculator;
+import com.wadadak.run.internal.metrics.SplitCalculator;
 import org.springframework.data.domain.PageRequest;
 import java.util.Map;
 import java.util.LinkedHashMap;
@@ -245,6 +246,14 @@ class RunService {
             .map(segment->segment.stream().map(p->new SourcePoint(p.location().lat(),p.location().lng(),p.accuracyM(),p.altitudeM(),p.altitudeAccuracyM())).toList())
             .toList();
         return new CourseSource(id,stored.metrics().distanceM(),segments);
+    }
+    /** 구간 분석(D3·D5·D6). 저장된 랩 경계로 원본에서 요청 때 계산한다(결과에 저장하지 않는다) */
+    @Transactional(readOnly=true)
+    public Splits splits(UUID owner, UUID id) {
+        session(owner,id,false);
+        RunRecord record=records.findById(id).orElseThrow(()->new AppException(RunErrorCode.NOT_FOUND));
+        Result stored=json.readValue(record.getResultJson(),Result.class);
+        return SplitCalculator.calculate(stored.startedAt(),inputs.findAll(id),stored.laps());
     }
     @Transactional(readOnly=true)
     public CursorSlice<RecordSummary> history(UUID owner, Cursorable page) {
