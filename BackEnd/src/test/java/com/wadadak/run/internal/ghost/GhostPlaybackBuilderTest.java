@@ -133,6 +133,31 @@ class GhostPlaybackBuilderTest {
         assertThat(builder.build(source(raw), snapshot(), raw).quality().gapMs()).isEqualTo(10_001);
     }
 
+    GhostPlayback freeV2(List<Input> raw) {
+        var reference=new CourseSnapshot(recordId,null,"free",route,1000,1);
+        return builder.buildReferenceWithJudgement(source(raw),reference,raw,GhostPlaybackBuilder.FREE_VERSION_V2).playback();
+    }
+    @Test void freeV2PreservesThirtySecondFivePercentAndTenSecondBoundaryPolicies() {
+        for(long length:List.of(30_000L,30_001L)) {
+            var replay=freeV2(qualityRun(List.of(new long[]{100_000,100_000+length})));
+            assertThat(replay.durationMs()).isEqualTo(2_000_000L);
+            assertThat(replay.quality().maxGapMs()).isEqualTo(length);
+            assertThat(replay.eligible()).as(replay.unavailableReasons().toString()).isEqualTo(length==30_000);
+        }
+        for(long extra:List.of(0L,1L)) {
+            var replay=freeV2(qualityRun(List.of(new long[]{100_000,130_000},new long[]{300_000,330_000},
+                new long[]{500_000,530_000},new long[]{700_000,710_000+extra})));
+            assertThat(replay.durationMs()).isEqualTo(2_000_000L);
+            assertThat(replay.quality().gapMs()).isEqualTo(100_000+extra);
+            assertThat(replay.eligible()).as(replay.unavailableReasons().toString()).isEqualTo(extra==0);
+        }
+        var exact=new ArrayList<Input>();
+        for(var p:qualityRun(List.of(new long[]{100_000,110_000})))if(p.kind()!=Kind.GAP)
+            exact.add(input(exact.size(),p.kind(),p.elapsedMs(),p.location(),p.reason()));
+        assertThat(freeV2(exact).quality().gapMs()).isZero();
+        assertThat(freeV2(qualityRun(List.of(new long[]{100_000,110_001}))).quality().gapMs()).isEqualTo(10_001);
+    }
+
     @Test void missingInputsAndChangedSnapshotFailClosedWithoutRewritingTheSavedTime() {
         var raw = qualityRun(List.of());
         Result source = source(raw);

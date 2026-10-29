@@ -28,7 +28,10 @@ class PreparedFreeGhost {
       endReason = j['endReason'] as String,
       referenceHash = j['referenceHash'] as String {
     if (!replay.playback.eligible ||
-        replay.playback.version != 'GHOST_PLAYBACK_FREE_V1' ||
+        ![
+          'GHOST_PLAYBACK_FREE_V1',
+          'GHOST_PLAYBACK_FREE_V2',
+        ].contains(replay.playback.version) ||
         replay.courseId != null ||
         originalDistanceM < 1000 ||
         !originalDistanceM.isFinite ||

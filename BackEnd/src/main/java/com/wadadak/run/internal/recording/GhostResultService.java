@@ -27,7 +27,10 @@ class GhostResultService {
         var free=freeGhosts.find(id);
         if(free.isPresent()) {
             var r=free.get().approval().course();
-            var j=new com.wadadak.run.internal.judging.CourseJudge().analyze(r.route(),r.breaks(),inputs).judgement();
+            var judge="GHOST_PLAYBACK_FREE_V2".equals(free.get().approval().playback().version())
+                ? com.wadadak.run.internal.judging.CourseJudge.freeGhostV2()
+                : new com.wadadak.run.internal.judging.CourseJudge();
+            var j=judge.analyze(r.route(),r.breaks(),inputs).judgement();
             // Internal comparison only: never attach this to Result.course or publish course completion.
             course=new CourseOutcome(null,r.name(),r.version(),r.totalDistanceMeters(),j.completed(),j.reason().name(),
                 j.recognizedM(),j.progressPercent(),j.completedAt(),j.courseElapsedSeconds(),j.courseMovingSeconds(),false);

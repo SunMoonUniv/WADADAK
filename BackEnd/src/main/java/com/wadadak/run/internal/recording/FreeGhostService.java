@@ -55,27 +55,45 @@ class FreeGhostService {
 
     @Transactional(readOnly=true)
     public FreeGhostPreparation prepare(UUID owner, UUID id) {
+        return prepare(owner,id,GhostPlaybackBuilder.FREE_VERSION);
+    }
+    @Transactional(readOnly=true)
+    public FreeGhostPreparation prepare(UUID owner, UUID id,String playbackVersion) {
+        if(!GhostPlaybackBuilder.freeVersion(playbackVersion))throw new AppException(RunErrorCode.INVALID);
         lock(owner,id);
         var session=sessions.findByIdAndMemberId(id,owner).orElseThrow(()->new AppException(RunErrorCode.NOT_FOUND));
         if(!"DONE".equals(session.getProcessing())) throw new AppException(RunErrorCode.GHOST_UNAVAILABLE);
         var record=records.findById(id).orElseThrow(()->new AppException(RunErrorCode.NOT_FOUND));
         Result source=json.readValue(record.getResultJson(),Result.class);
         GhostPlayback replay;
+        FreeGhostDiagnostics diagnostics=null;
         if(source.course()!=null || attempts.existsById(id))
-            replay=builder.unavailableReference(source,null,"NOT_FREE_RECORD");
+            replay=builder.unavailableReference(source,null,"NOT_FREE_RECORD",playbackVersion);
         else if(source.metrics().distanceM()<1000)
-            replay=builder.unavailableReference(source,null,"DISTANCE_BELOW_1000M");
+            replay=builder.unavailableReference(source,null,"DISTANCE_BELOW_1000M",playbackVersion);
         else {
+            String sourceFailure="SOURCE_INPUTS_INVALID";
             try {
                 var raw=inputs.findAll(id);
-                if(raw.isEmpty() || !Objects.equals(source.calculationVersion(),raw.getFirst().reason())
-                    || (source.calculationVersion()!=null
-                        && !List.of("PACE_V1","PACE_V2","PACE_V3").contains(source.calculationVersion())))
+                if(raw.isEmpty()) {
+                    sourceFailure="SOURCE_INPUTS_MISSING";
+                    throw new IllegalArgumentException("Missing source inputs");
+                }
+                if(!Objects.equals(source.calculationVersion(),raw.getFirst().reason())) {
+                    sourceFailure="SOURCE_CALCULATION_MISMATCH";
+                    throw new IllegalArgumentException("Source calculation mismatch");
+                }
+                if(source.calculationVersion()!=null
+                    && !List.of("PACE_V1","PACE_V2","PACE_V3").contains(source.calculationVersion())) {
+                    sourceFailure="SOURCE_CALCULATION_UNSUPPORTED";
                     throw new IllegalArgumentException("Unsupported source calculation");
+                }
                 var calculation=FreeRunCalculator.calculate(source.startedAt(),raw);
                 if(Math.abs(calculation.metrics().distanceM()-source.metrics().distanceM())>1e-6
-                    || calculation.metrics().elapsedMs()!=source.metrics().elapsedMs())
+                    || calculation.metrics().elapsedMs()!=source.metrics().elapsedMs()) {
+                    sourceFailure="SOURCE_RESULT_MISMATCH";
                     throw new IllegalArgumentException("Source metrics mismatch");
+                }
                 List<GeoPoint> route=new ArrayList<>();
                 List<Integer> breaks=new ArrayList<>();
                 double length=0;
@@ -87,16 +105,23 @@ class FreeGhostService {
                         if(i>0) length+=segment.get(i-1).location().distanceMeters(segment.get(i).location());
                     }
                 }
-                if(route.size()<2 || length<=0 || !Double.isFinite(length) || length>Integer.MAX_VALUE)
+                if(route.size()<2 || length<=0 || !Double.isFinite(length) || length>Integer.MAX_VALUE) {
+                    sourceFailure="REFERENCE_GEOMETRY_MISSING";
                     throw new IllegalArgumentException("No reference geometry");
+                }
                 var reference=new CourseSnapshot(id,null,"내 자유 러닝",route,(int)Math.ceil(length),1,breaks);
-                replay=builder.buildReference(source,reference,raw);
+                var built=builder.buildReferenceWithJudgement(source,reference,raw,playbackVersion);
+                replay=built.playback();
+                var judgement=built.judgement();
+                if(!judgement.completed()) diagnostics=new FreeGhostDiagnostics(judgement.reason().name(),
+                    judgement.recognizedM(),judgement.courseLengthM(),judgement.progressPercent());
             } catch(AppException | IllegalArgumentException e) {
-                replay=builder.unavailableReference(source,null,"MISSING_SOURCE_INPUTS");
+                replay=builder.unavailableReference(source,null,"MISSING_SOURCE_INPUTS",playbackVersion);
+                diagnostics=new FreeGhostDiagnostics(sourceFailure,null,null,null);
             }
         }
         return new FreeGhostPreparation(replay,source.metrics().distanceM(),source.metrics().elapsedMs(),
-            source.endReason(),fingerprint(replay));
+            source.endReason(),fingerprint(replay),diagnostics);
     }
 
     private String fingerprint(GhostPlayback replay) {
@@ -117,17 +142,17 @@ class FreeGhostService {
                 || !approval.startedAt().equals(request.startedAt()) || request.courseId()!=null
                 || !Objects.equals(request.courseVersion(),approval.course().version())
                 || !Objects.equals(saved.referenceHash(),request.referenceHash())
-                || request.publicPeriod()!=null || !GhostPlaybackBuilder.FREE_VERSION.equals(request.playbackVersion())) conflict();
+                || request.publicPeriod()!=null || !approval.playback().version().equals(request.playbackVersion())) conflict();
             return approval;
         }
         if(sessions.existsById(id) || attempts.existsById(id)) conflict();
         if(id.equals(request.sourceRecordId()) || request.startedAt()==null || request.startedAt().getNano()%1000!=0
             || request.startedAt().isAfter(clock.instant().plusSeconds(300)) || request.courseId()!=null
-            || request.publicPeriod()!=null || !GhostPlaybackBuilder.FREE_VERSION.equals(request.playbackVersion()))
+            || request.publicPeriod()!=null || !GhostPlaybackBuilder.freeVersion(request.playbackVersion()))
             throw new AppException(RunErrorCode.INVALID);
         // Ownership is established before the source session lock (same member lock order as deletion).
         sessions.findByIdAndMemberId(request.sourceRecordId(),owner).orElseThrow(()->new AppException(RunErrorCode.NOT_FOUND));
-        var prepared=prepare(owner,request.sourceRecordId());
+        var prepared=prepare(owner,request.sourceRecordId(),request.playbackVersion());
         if(!prepared.playback().eligible()) throw new AppException(RunErrorCode.GHOST_UNAVAILABLE);
         if(!prepared.referenceHash().equals(request.referenceHash())
             || !Objects.equals(request.courseVersion(),prepared.playback().course().version())) conflict();

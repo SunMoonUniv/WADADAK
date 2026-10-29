@@ -553,6 +553,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
           sourceSeconds: freeGhost?.replay.seconds ?? ghost!.seconds,
           publicPeriod: ghost?.publicPeriod,
           referenceHash: freeGhost?.referenceHash,
+          playbackVersion: freeGhost?.replay.playback.version,
           clock: reading,
         );
         final continued = await ghostStarts.begin(intent);
@@ -620,7 +621,12 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       final geometry = start == null
           ? null
           : RouteGeometry(start.snapshot.route, breaks: start.snapshot.breaks);
-      courseTracker = geometry == null ? null : CourseTracker(geometry);
+      courseTracker = geometry == null
+          ? null
+          : CourseTracker(
+              geometry,
+              freeGhostV2: recorder.current?.ghost?.intent.freeGhostV2 == true,
+            );
       routeGuidance = geometry == null ? null : RouteGuidance(geometry);
       courseEndReason = null;
       courseStart = null;
@@ -781,7 +787,10 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     final courseInputs = current.inputs
         .takeWhile((i) => i.kind != RunKind.segmentEnd)
         .toList();
-    courseTracker = CourseTracker(geometry)..feed(courseInputs);
+    courseTracker = CourseTracker(
+      geometry,
+      freeGhostV2: context.intent.freeGhostV2,
+    )..feed(courseInputs);
     routeGuidance = RouteGuidance(geometry)..feed(courseInputs);
     routeGuidance!.alertOpen = false; // Do not replay historical alerts/audio.
     _latest = null;

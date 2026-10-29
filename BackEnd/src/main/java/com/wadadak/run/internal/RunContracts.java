@@ -144,7 +144,7 @@ public final class RunContracts {
     /** After course preparation, approve one own opponent. Reuse every field when retrying. */
     public record GhostStart(UUID courseId, @Min(0) Long courseVersion,
                              @NotNull UUID sourceRecordId, @NotNull Instant startedAt,
-                             @NotNull @Pattern(regexp="GHOST_PLAYBACK_V1|GHOST_PLAYBACK_FREE_V1") String playbackVersion,
+                             @NotNull @Pattern(regexp="GHOST_PLAYBACK_V1|GHOST_PLAYBACK_FREE_V1|GHOST_PLAYBACK_FREE_V2") String playbackVersion,
                              @Size(max=64) String referenceHash, com.wadadak.ranking.RankingPeriod publicPeriod) {
         public GhostStart(UUID courseId, Long courseVersion, UUID sourceRecordId, Instant startedAt, String playbackVersion) {
             this(courseId,courseVersion,sourceRecordId,startedAt,playbackVersion,null,null);
@@ -156,8 +156,12 @@ public final class RunContracts {
     public record FreeGhostCandidate(UUID id, Instant startedAt, Instant registeredAt, String endReason,
                                      double distanceM, long elapsedMs, boolean distanceEligible) {}
     public record FreeGhostPage(List<FreeGhostCandidate> content, String nextCursor) {}
+    /** Display-only explanation, outside playback so replay identity and start validation stay unchanged. */
+    public record FreeGhostDiagnostics(String reason, Double recognizedDistanceM,
+                                       Double referenceDistanceM, Double recognizedPercent) {}
     public record FreeGhostPreparation(GhostPlayback playback, double originalDistanceM,
-                                       long originalElapsedMs, String endReason, String referenceHash) {}
+                                       long originalElapsedMs, String endReason, String referenceHash,
+                                       FreeGhostDiagnostics diagnostics) {}
     /** Durable approval receipt, not the live running state or a completion verdict. */
     public record GhostStartApproval(String version, UUID sessionId, UUID sourceRecordId,
                                      Instant startedAt, Instant approvedAt, Instant courseValidatedAt,

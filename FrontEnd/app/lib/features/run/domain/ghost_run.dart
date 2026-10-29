@@ -16,8 +16,19 @@ class GhostStartIntent {
     required this.clock,
     this.referenceHash,
     this.publicPeriod,
-  }) {
-    if (owner.isEmpty ||
+    String? playbackVersion,
+  }) : playbackVersion =
+           playbackVersion ??
+           (course.courseId == null
+               ? 'GHOST_PLAYBACK_FREE_V1'
+               : 'GHOST_PLAYBACK_V1') {
+    if ((course.courseId == null
+            ? ![
+                'GHOST_PLAYBACK_FREE_V1',
+                'GHOST_PLAYBACK_FREE_V2',
+              ].contains(this.playbackVersion)
+            : this.playbackVersion != 'GHOST_PLAYBACK_V1') ||
+        owner.isEmpty ||
         id.isEmpty ||
         id == sourceId ||
         sourceId.isEmpty ||
@@ -40,8 +51,8 @@ class GhostStartIntent {
   final String? referenceHash;
   final String? publicPeriod;
   bool get isFree => course.courseId == null;
-  String get playbackVersion =>
-      isFree ? 'GHOST_PLAYBACK_FREE_V1' : 'GHOST_PLAYBACK_V1';
+  final String playbackVersion;
+  bool get freeGhostV2 => isFree && playbackVersion == 'GHOST_PLAYBACK_FREE_V2';
   final int sourceSeconds;
   final DateTime startedAt;
   final CourseSnapshot course;
@@ -57,6 +68,7 @@ class GhostStartIntent {
   };
   Map<String, dynamic> toJson() => {
     'version': 'GHOST_DEVICE_V1',
+    'playbackVersion': playbackVersion,
     'owner': owner,
     'id': id,
     'startedAt': startedAt.toUtc().toIso8601String(),
@@ -81,6 +93,7 @@ class GhostStartIntent {
       sourceId: j['sourceId'] as String,
       sourceSeconds: j['sourceSeconds'] as int,
       referenceHash: j['referenceHash'] as String?,
+      playbackVersion: j['playbackVersion'] as String?,
       publicPeriod: j['publicPeriod'] as String?,
       clock: RunClockSample.fromJson(
         (j['clock'] as Map).cast<String, dynamic>(),

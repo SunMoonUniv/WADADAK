@@ -8,6 +8,8 @@ import 'dart:math' as math;
 import '../../../core/map/geo_point.dart';
 import 'recording_models.dart';
 
+part 'free_ghost_tracker.dart';
+
 /// 서버 `JudgingConfig.DEFAULTS`·`GpsQuality`와 같은 값(주행 검증 전 개발값).
 const _routeToleranceM = 20.0;
 const _maxSpeedMps = 12.0;
@@ -164,9 +166,13 @@ class TrackPoint {
 /// 윈도우 추적(서버 CourseTracker). 서버는 기록 전체를 한 번에 보지만 앱은 [feed]로 새 입력만 이어서 본다.
 /// 보류했던 표본은 가설이 하나로 모이면 소급해 정한다(순환 코스 출발점 등).
 class CourseTracker {
-  CourseTracker(this.route);
+  CourseTracker(this.route, {bool freeGhostV2 = false}) {
+    if (freeGhostV2) _freeV2 = _FreeGhostTracker(route);
+  }
   final RouteGeometry route;
-  final points = <TrackPoint>[];
+  _FreeGhostTracker? _freeV2;
+  final _points = <TrackPoint>[];
+  List<TrackPoint> get points => _freeV2?.points ?? _points;
 
   int _fed = 0;
   bool _paused = false, _done = false;
@@ -180,6 +186,10 @@ class CourseTracker {
 
   /// 같은 기록의 입력 목록을 계속 넘긴다. 앞서 본 입력은 건너뛴다. `SEGMENT_END`·`END` 뒤는 버린다.
   void feed(List<RunInput> inputs) {
+    if (_freeV2 != null) {
+      _freeV2!.feed(inputs);
+      return;
+    }
     for (; _fed < inputs.length && !_done; _fed++) {
       final input = inputs[_fed];
       switch (input.kind) {

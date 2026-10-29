@@ -75,9 +75,16 @@ void main() {
     }
   }
 
-  Future<void> begin() async {
+  Future<void> begin({bool v2 = false}) async {
     await runs.bindOwner();
-    runs.selectFreeGhost(PreparedFreeGhost('alice', preparation()));
+    runs.selectFreeGhost(
+      PreparedFreeGhost(
+        'alice',
+        preparation(
+          version: v2 ? 'GHOST_PLAYBACK_FREE_V2' : 'GHOST_PLAYBACK_FREE_V1',
+        ),
+      ),
+    );
     await runs.prepareStart();
     expect(runs.courseStart, isNotNull);
     await runs.prepareStart();
@@ -102,7 +109,7 @@ void main() {
     await runs.prepareStart();
     starts.onStart = (_) async =>
         throw const ApiException('RUN-004', 'denied', status: 409);
-      starts.onGet = (_, _) async =>
+    starts.onGet = (_, _) async =>
         throw const ApiException('RUN-002', 'missing', status: 404);
     await runs.prepareStart();
     expect(runs.canSelectGhost, true);
@@ -144,6 +151,25 @@ void main() {
     expect(api.prepared, isEmpty);
     expect(api.started, isEmpty);
   });
+  test(
+    'V2 start survives SQLite restart and offline recovery without becoming V1',
+    () async {
+      await begin(v2: true);
+      expect(runs.run!.ghost!.intent.freeGhostV2, true);
+      expect(starts.posts.single.playbackVersion, 'GHOST_PLAYBACK_FREE_V2');
+      await close();
+      connect(130000);
+      await runs.bindOwner();
+      expect(runs.recorder.active, true);
+      expect(runs.run!.ghost!.intent.freeGhostV2, true);
+      expect(
+        runs.run!.ghost!.replay.playback.version,
+        'GHOST_PLAYBACK_FREE_V2',
+      );
+      expect(starts.posts, hasLength(1));
+      expect(runs.courseTracker, isNotNull);
+    },
+  );
   test('recovery beyond sixty seconds closes a private duel and keeps it pending for server verdict', () async {
     await begin();
     await close();

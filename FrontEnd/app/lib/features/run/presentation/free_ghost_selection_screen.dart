@@ -12,6 +12,7 @@ import '../application/course_run_entry.dart';
 import '../application/run_controller.dart';
 import '../data/free_ghost_api.dart';
 import '../domain/free_ghost.dart';
+import 'free_ghost_unavailable.dart';
 import '../domain/run_models.dart';
 
 final freeGhostSourceProvider = Provider<FreeGhostSource>(
@@ -121,12 +122,7 @@ class _FreeGhostSelectionScreenState
       if (!valid(token)) return;
       final replay = (j['playback'] as Map);
       if (replay['eligible'] != true) {
-        final reasons = (replay['unavailableReasons'] as List).cast<String>();
-        throw StateError(
-          reasons.any((r) => r.contains('GAP'))
-              ? 'GPS 공백이 많은 기록이에요. 다른 기록을 선택해 주세요.'
-              : '경로와 시간을 재현할 수 없는 기록이에요. 다른 기록을 선택해 주세요.',
-        );
+        throw StateError(freeGhostUnavailableMessage(j));
       }
       final p = PreparedFreeGhost(owner!, j);
       if (p.replay.sourceId != c.id ||

@@ -22,8 +22,9 @@ class FreeGhostController {
     }
     @Operation(summary="내 자유 기록 고스트 준비",description="1,000m 이상·중단 원본 허용. 저장된 경로 조각과 동일 완주 기준의 비교 시간·원본 시간·공백 품질을 제공. 원본 수정·코스 등록 없음.")
     @GetMapping("/records/{id}/free-ghost-playback")
-    ApiResult<FreeGhostPreparation> prepare(@AuthenticationPrincipal Jwt jwt,@PathVariable UUID id) {
-        return ApiResult.success(ghosts.prepare(owner(jwt),id));
+    ApiResult<FreeGhostPreparation> prepare(@AuthenticationPrincipal Jwt jwt,@PathVariable UUID id,
+        @RequestParam(defaultValue="GHOST_PLAYBACK_FREE_V1") String playbackVersion) {
+        return ApiResult.success(ghosts.prepare(owner(jwt),id,playbackVersion));
     }
     private static UUID owner(Jwt jwt) {
         try {return UUID.fromString(jwt.getSubject());}
