@@ -19,7 +19,9 @@ String? registerBlocker(RunSnapshot run, RegistrationQuota? quota) {
   final passed = run.gpsGapPassed;
   if (passed == null) return '기록을 서버에 올린 뒤 등록할 수 있어요'; // 동기화 대기(판단 전 포함)
   if (!passed) return 'GPS가 끊긴 구간이 있어 등록할 수 없어요';
-  if (quota?.usedRunRecordIds.contains(run.sessionId) ?? false) return '이미 코스로 등록한 기록이에요';
+  if (quota?.usedRunRecordIds.contains(run.sessionId) ?? false) {
+    return '이미 코스로 등록한 기록이에요';
+  }
   return null;
 }
 
@@ -39,20 +41,33 @@ class CourseRegisterCard extends ConsumerWidget {
     }
     if (quota != null && quota.gps.remaining <= 0) {
       messenger.showSnackBar(
-        SnackBar(content: Text('오늘은 달린 기록으로 코스를 ${quota.gps.limit}개까지 등록할 수 있어요. 내일 다시 등록해 주세요.')),
+        SnackBar(
+          content: Text(
+            '오늘은 달린 기록으로 코스를 ${quota.gps.limit}개까지 등록할 수 있어요. 내일 다시 등록해 주세요.',
+          ),
+        ),
       );
       return;
     }
-    if (context.mounted) context.push(Routes.gpsCourseInfo(run.sessionId!)); // 버튼이 켜졌으면 서버에 올린 기록이다
+    if (context.mounted) {
+      context.push(
+        Routes.gpsCourseInfo(run.sessionId!),
+      ); // 버튼이 켜졌으면 서버에 올린 기록이다
+    }
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // 한도·이미 등록됨은 다른 사유가 없을 때만 받는다(결과 화면마다 코스 API를 부르지 않게)
-    final blocker = registerBlocker(run, null) ?? registerBlocker(run, ref.watch(_quotaProvider).value);
+    final blocker =
+        registerBlocker(run, null) ??
+        registerBlocker(run, ref.watch(_quotaProvider).value);
     return WdSurface(
       radius: WdRadius.r12,
-      padding: const EdgeInsets.symmetric(horizontal: WdSpace.s14, vertical: WdSpace.s12),
+      padding: const EdgeInsets.symmetric(
+        horizontal: WdSpace.s14,
+        vertical: WdSpace.s12,
+      ),
       onTap: blocker == null ? () => _register(context, ref) : null,
       child: Row(
         spacing: WdSpace.s10,
@@ -63,14 +78,22 @@ class CourseRegisterCard extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               spacing: WdSpace.s2,
               children: [
-                Text(blocker == null ? '코스로 등록할 수 있어요' : '코스로 등록할 수 없어요', style: WdText.run13W700H16),
-                Text(blocker ?? '달린 경로가 그대로 코스가 돼요', style: WdText.ko12.copyWith(color: WdColors.muted)),
+                Text(
+                  blocker == null ? '코스로 등록할 수 있어요' : '코스로 등록할 수 없어요',
+                  style: WdText.run13W700H16,
+                ),
+                Text(
+                  blocker ?? '달린 경로가 그대로 코스가 돼요',
+                  style: WdText.ko12.copyWith(color: WdColors.muted),
+                ),
               ],
             ),
           ),
           Text(
-            '코스로 등록',
-            style: WdText.ko13.copyWith(color: blocker == null ? WdColors.ink : WdColors.disabledText),
+            '코스로 등록 ›',
+            style: WdText.ko13.copyWith(
+              color: blocker == null ? WdColors.green : WdColors.disabledText,
+            ),
           ),
         ],
       ),

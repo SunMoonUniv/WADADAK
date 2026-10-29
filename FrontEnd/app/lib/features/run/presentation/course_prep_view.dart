@@ -38,7 +38,7 @@ class CourseRunPrep extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            ghost ? '지난 기록과 다시 달려보세요.' : '익숙한 코스, 새로운 기록.',
+            ghost ? '같은 코스, 새로운 도전.' : '익숙한 코스, 새로운 기록.',
             style: WdText.ko22Bold,
           ),
           const SizedBox(height: WdSpace.s4),
@@ -46,7 +46,7 @@ class CourseRunPrep extends ConsumerWidget {
             '달릴 코스를 골라 주세요.',
             style: WdText.ko12.copyWith(color: WdColors.muted),
           ),
-          const SizedBox(height: WdSpace.s8),
+          SizedBox(height: ghost ? WdSpace.s16 : WdSpace.s8),
           GestureDetector(
             onTap: () => context.push(Routes.runCourseSelect),
             child: WdSelectedCourseCard(
@@ -79,7 +79,7 @@ class CourseRunPrep extends ConsumerWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          ghost ? '지난 기록과 다시 달려보세요.' : '익숙한 코스, 새로운 기록.',
+          ghost ? '같은 코스, 새로운 도전.' : '익숙한 코스, 새로운 기록.',
           style: WdText.ko22Bold,
         ),
         const SizedBox(height: WdSpace.s4),
@@ -87,7 +87,7 @@ class CourseRunPrep extends ConsumerWidget {
           '${course.name}${objectParticle(course.name)} 따라 끝까지 달려보세요.',
           style: WdText.ko12.copyWith(color: WdColors.muted),
         ),
-        const SizedBox(height: WdSpace.s8),
+        SizedBox(height: ghost ? WdSpace.s16 : WdSpace.s8),
         WdSelectedCourseCard(
           title: course.name,
           meta: detail == null
@@ -104,8 +104,8 @@ class CourseRunPrep extends ConsumerWidget {
           thumbnail: detail == null ? null : CourseRouteThumbnail(detail.route),
           onChange: () => context.push(Routes.runCourseSelect),
         ),
-        const SizedBox(height: WdSpace.s8),
-        if (!ghost)
+        if (!ghost) ...[
+          const SizedBox(height: WdSpace.s8),
           WdRecordCard(
             overline: '코스 최고 기록',
             title: '이 코스의 내 최고 기록',
@@ -125,22 +125,23 @@ class CourseRunPrep extends ConsumerWidget {
               extra: (courseName: course.name, period: RankingPeriod.all),
             ),
           ),
-        const SizedBox(height: WdSpace.s8),
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          spacing: WdSpace.s10,
-          children: [
-            const WdIcon(WdIcons.ghostInfo, size: 18),
-            Expanded(
-              // Figma 문구("30 m 이상 벗어난 채 달리면 완주로 인정되지 않아요")는 정책과 달라 고쳤다:
-              // 벗어난 구간만 인정 거리에서 빠지고, 돌아와 95%를 채우면 완주다(7.3)
-              child: Text(
-                '코스를 벗어나 달린 구간은 완주 거리로 인정되지 않아요.',
-                style: WdText.ko12.copyWith(color: WdColors.muted),
+          const SizedBox(height: WdSpace.s8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: WdSpace.s10,
+            children: [
+              const WdIcon(WdIcons.ghostInfo, size: 18),
+              Expanded(
+                // Figma 문구("30 m 이상 벗어난 채 달리면 완주로 인정되지 않아요")는 정책과 달라 고쳤다:
+                // 벗어난 구간만 인정 거리에서 빠지고, 돌아와 95%를 채우면 완주다(7.3)
+                child: Text(
+                  '코스를 벗어나 달린 구간은 완주 거리로 인정되지 않아요.',
+                  style: WdText.ko12.copyWith(color: WdColors.muted),
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
+        ],
       ],
     );
   }

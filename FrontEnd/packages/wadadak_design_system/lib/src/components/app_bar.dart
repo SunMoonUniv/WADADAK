@@ -102,7 +102,7 @@ class WdAppBarAction {
 /// | Title + Action(settings) · Large | 위 + `large: true` |
 /// | (Figma에 없음) 제목 아래 작은 글씨 | `subtitle: ..` — B1 등록자 |
 class WdAppBar extends StatelessWidget implements PreferredSizeWidget {
-  const WdAppBar({super.key, required this.title, this.subtitle, this.onBack, this.action, this.large = false});
+  const WdAppBar({super.key, required this.title, this.subtitle, this.onBack, this.action, this.actions = const [], this.large = false});
 
   final String title;
 
@@ -112,6 +112,9 @@ class WdAppBar extends StatelessWidget implements PreferredSizeWidget {
   /// null이 아니면 뒤로 가기 아이콘을 보인다.
   final VoidCallback? onBack;
   final WdAppBarAction? action;
+
+  /// Additional trailing controls, before the primary action.
+  final List<Widget> actions;
 
   /// MY 같은 최상위 탭용 큰 앱 바 (높이 76).
   final bool large;
@@ -166,6 +169,7 @@ class WdAppBar extends StatelessWidget implements PreferredSizeWidget {
                 ),
               // Back + 원형 동작 변형만 제목이 양 끝 사이 가운데에 온다.
               Expanded(child: onBack != null && _circle ? Center(child: titleText) : titleText),
+              ...actions,
               if (action != null) action!._build(),
             ],
           ),

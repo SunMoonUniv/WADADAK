@@ -95,11 +95,17 @@ class WdStatSummary extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   spacing: WdSpace.s6,
                   children: [
-                    Text(label, style: WdText.raw(12, FontWeight.w500, 16).copyWith(color: WdColors.muted)),
-                    Text.rich(_value(value),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: WdText.raw(22, FontWeight.w700, 28).copyWith(color: WdColors.ink)),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(label, maxLines: 1, style: WdText.raw(12, FontWeight.w500, 16).copyWith(color: WdColors.muted)),
+                    ),
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text.rich(_value(value), maxLines: 1,
+                          style: WdText.raw(22, FontWeight.w700, 28).copyWith(color: WdColors.ink)),
+                    ),
                   ],
                 ),
               ),

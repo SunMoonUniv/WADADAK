@@ -14,6 +14,8 @@ import '../data/own_ghost_api.dart';
 import '../domain/course_run.dart';
 import '../domain/own_ghost.dart';
 import 'own_ghost_selection_view.dart';
+import 'ghost_runner_selection_view.dart';
+import '../../../core/api/ranking_api_client.dart';
 
 final ownGhostSourceProvider = Provider<OwnGhostSource>(
   (ref) => OwnGhostApi(ref.watch(runControllerProvider).api),
@@ -59,7 +61,7 @@ class _OwnGhostSelectionScreenState
       _loading = false;
       _error = '계정이나 코스가 바뀌었어요. 달리기 준비에서 다시 선택해 주세요.';
     });
-    if (!_runs.canSelectGhost) _returnToRun();
+    _returnToRun();
   }
 
   Future<void> _load() async {
@@ -124,6 +126,23 @@ class _OwnGhostSelectionScreenState
     _back();
   }
 
+  Future<void> _moreOwn() async {
+    final choices = _choices, course = _course;
+    if (choices == null || course == null || !_valid) return;
+    final selected = await Navigator.push<PreparedOwnGhost>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => OwnGhostSelectionView(
+          controller: choices,
+          courseName: course.name,
+          onBack: () => Navigator.pop(context),
+          onPrepared: (p) => Navigator.pop(context, p),
+        ),
+      ),
+    );
+    if (mounted && _valid && selected != null) _select(selected);
+  }
+
   @override
   void dispose() {
     _epoch++;
@@ -136,11 +155,19 @@ class _OwnGhostSelectionScreenState
   Widget build(BuildContext context) {
     final choices = _choices;
     if (!_loading && choices != null && _valid) {
-      return OwnGhostSelectionView(
+      return GhostRunnerSelectionView(
         controller: choices,
         courseName: _course!.name,
         onBack: _back,
         onPrepared: _select,
+        onMoreOwn: _moreOwn,
+        onPublic: (candidate) => runPublicGhost(
+          context,
+          ref,
+          _course!,
+          candidate,
+          RankingPeriod.all,
+        ),
       );
     }
     return Scaffold(

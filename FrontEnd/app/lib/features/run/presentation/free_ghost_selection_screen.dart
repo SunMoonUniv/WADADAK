@@ -13,6 +13,7 @@ import '../application/run_controller.dart';
 import '../data/free_ghost_api.dart';
 import '../domain/free_ghost.dart';
 import 'free_ghost_unavailable.dart';
+import 'free_ghost_record_choice.dart';
 import '../domain/run_models.dart';
 
 final freeGhostSourceProvider = Provider<FreeGhostSource>(
@@ -147,7 +148,7 @@ class _FreeGhostSelectionScreenState
       if (replay['eligible'] != true) {
         throw StateError(freeGhostUnavailableMessage(j));
       }
-      final p = PreparedFreeGhost(owner!, j);
+      final p = PreparedFreeGhost(owner!, j, startedAt: c.startedAt);
       if (p.replay.sourceId != c.id ||
           p.originalDistanceM != c.distanceM ||
           p.originalElapsedMs != c.elapsedMs) {
@@ -191,12 +192,20 @@ class _FreeGhostSelectionScreenState
     final p = prepared;
     return Scaffold(
       backgroundColor: WdColors.paper,
-      appBar: WdAppBar(title: '내 자유 기록 선택', onBack: back),
+      appBar: WdAppBar(title: '내 자유러닝 기록', onBack: back),
       body: ListView(
-        padding: const EdgeInsets.all(WdSpace.s24),
+        padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
         children: [
+          const Text('어느 날의 나와 달릴까요?', style: WdText.ko22Bold),
+          const SizedBox(height: 4),
+          Text(
+            '대결할 자유러닝 기록을 골라 주세요.',
+            style: WdText.ko12.copyWith(color: WdColors.muted),
+          ),
+          const SizedBox(height: 16),
           Wrap(
-            spacing: WdSpace.s6,
+            spacing: 6,
+            runSpacing: 6,
             children: [
               for (final option in [
                 ('ALL', '전체 기간'),
@@ -213,50 +222,26 @@ class _FreeGhostSelectionScreenState
                 ),
             ],
           ),
-          const SizedBox(height: WdSpace.s16),
-          const WdInfoBanner(
-            '1km 이상 달린 내 자유 기록을 골라 같은 경로로 대결해요. 중단된 기록도 재생할 수 있으면 선택할 수 있어요.',
-            plain: true,
-          ),
-          const SizedBox(height: WdSpace.s16),
-          const WdSectionHeading('내 자유 기록', actionLabel: '최근 달린 순'),
-          const SizedBox(height: WdSpace.s12),
+          const SizedBox(height: 20),
+          const WdSectionHeading('내 자유러닝 기록', actionLabel: '최근 달린 순'),
+          const SizedBox(height: 12),
           if (loading)
             const Center(child: CircularProgressIndicator())
           else if (rows.isEmpty && error == null)
             const WdInfoBanner('저장된 자유 러닝 기록이 없어요. 서버 동기화를 확인해 주세요.')
           else
-            WdSurface(
-              padding: const EdgeInsets.symmetric(horizontal: WdSpace.s12),
-              child: Column(
-                children: [
-                  for (final c in rows)
-                    Semantics(
-                      enabled: c.distanceEligible && selecting == null,
-                      child: Opacity(
-                        opacity: c.distanceEligible ? 1 : 0.5,
-                        child: WdRankRow(
-                          WdRank(
-                            rank: p?.replay.sourceId == c.id ? '✓' : '',
-                            name: date(c.startedAt),
-                            meta: !c.distanceEligible
-                                ? '1km 미만 · 선택 불가'
-                                : '${(c.distanceM / 1000).toStringAsFixed(2)}km · ${c.endReason == 'USER' ? '종료 기록' : '중단 기록'}',
-                            value: selecting == c.id
-                                ? '확인 중'
-                                : formatRunTime(
-                                    Duration(milliseconds: c.elapsedMs),
-                                  ),
-                          ),
-                          onTap: c.distanceEligible && selecting == null
-                              ? () => select(c)
-                              : null,
-                        ),
-                      ),
-                    ),
-                ],
+            for (var i = 0; i < rows.length; i++) ...[
+              if (i > 0) const SizedBox(height: 8),
+              FreeGhostRecordChoice(
+                key: ValueKey('free-ghost-record-${rows[i].id}'),
+                record: rows[i],
+                prepared: p,
+                checking: selecting == rows[i].id,
+                onTap: rows[i].distanceEligible && selecting == null && !loading
+                    ? () => select(rows[i])
+                    : null,
               ),
-            ),
+            ],
           if (cursor != null)
             WdButton(
               more ? '불러오는 중' : '기록 더 보기',
@@ -264,7 +249,7 @@ class _FreeGhostSelectionScreenState
               onPressed: more ? null : () => load(append: true),
             ),
           if (error != null) ...[
-            const SizedBox(height: WdSpace.s12),
+            const SizedBox(height: 12),
             WdInfoBanner(error!, tone: WdBannerTone.warning),
             WdButton(
               '다시 불러오기',
@@ -272,45 +257,88 @@ class _FreeGhostSelectionScreenState
               onPressed: () => load(),
             ),
           ],
-          if (p != null) ...[
-            const SizedBox(height: WdSpace.s16),
-            WdRecordCard(
-              overline: '대결 비교 시간',
-              title: '선택한 내 자유 기록',
-              time: formatRunTime(Duration(seconds: p.replay.seconds)),
-              caption:
-                  '원래 기록 ${formatRunTime(Duration(milliseconds: p.originalElapsedMs))}',
-              footer: '같은 완주 기준까지 비교 · 원래 기록은 보존해요',
-            ),
-            const SizedBox(height: WdSpace.s12),
-            SizedBox(
-              height: 200,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(WdRadius.r12),
-                child: MapView(
-                  initialCenter: p.reference.route.first,
-                  lines: [
-                    for (var i = 0; i < p.reference.routeSegments.length; i++)
-                      MapLine(
-                        id: 'reference-$i',
-                        points: p.reference.routeSegments[i],
+          const SizedBox(height: 16),
+          Text(p == null ? '경로 미리보기' : '선택한 기록의 경로', style: WdText.ko14Bold),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 120,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: p == null
+                  ? WdSurface(
+                      color: WdColors.map,
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          spacing: 8,
+                          children: [
+                            const WdIcon(WdIcons.ghostInfo, size: 24),
+                            Text(
+                              '기록을 고르면 경로를 확인할 수 있어요.',
+                              style: WdText.ko12.copyWith(
+                                color: WdColors.muted,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                  ],
-                ),
-              ),
+                    )
+                  : MapView(
+                      initialCenter: p.reference.route.first,
+                      lines: [
+                        for (
+                          var i = 0;
+                          i < p.reference.routeSegments.length;
+                          i++
+                        )
+                          MapLine(
+                            id: 'reference-$i',
+                            points: p.reference.routeSegments[i],
+                          ),
+                      ],
+                    ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (p == null)
+            Text(
+              '1km 이상이며 경로를 재생할 수 있는 기록을 선택해요.',
+              style: WdText.ko12.copyWith(color: WdColors.muted),
+            )
+          else ...[
+            Text(
+              '대결 비교 시간',
+              style: WdText.ko12.copyWith(color: WdColors.muted),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${(p.originalDistanceM / 1000).toStringAsFixed(2)} km · ${formatRunTime(Duration(seconds: p.replay.seconds))}',
+              style: WdText.ko14Bold.copyWith(color: WdColors.green),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '원래 기록 ${formatRunTime(Duration(milliseconds: p.originalElapsedMs))}',
+              style: WdText.ko12.copyWith(color: WdColors.muted),
+            ),
+            const SizedBox(height: 8),
+            const WdInfoBanner(
+              '같은 완주 기준까지 비교해요. 중단된 기록도 재생할 수 있으면 선택할 수 있고, 원래 기록은 그대로 보존돼요.',
+              plain: true,
             ),
           ],
         ],
       ),
-      bottomNavigationBar: SafeArea(
-        minimum: const EdgeInsets.all(WdSpace.s16),
-        child: WdButton(
-          '이 기록과 대결하기',
+      bottomNavigationBar: WdBottomBar.pinned(
+        primary: WdButton(
+          '이 기록 선택하기',
           onPressed: p == null || !runs.canSelectGhost
               ? null
               : () {
                   if (owner != runs.currentOwner) return;
                   runs.selectFreeGhost(p);
+                  ref
+                      .read(ghostRecordKindProvider.notifier)
+                      .set(GhostRecordKind.personal);
                   ref.read(ghostTabProvider.notifier).set(true);
                   ref.read(courseTabProvider.notifier).set(false);
                   back();
@@ -318,10 +346,5 @@ class _FreeGhostSelectionScreenState
         ),
       ),
     );
-  }
-
-  static String date(DateTime t) {
-    final k = t.toUtc().add(const Duration(hours: 9));
-    return '${k.year}.${k.month.toString().padLeft(2, '0')}.${k.day.toString().padLeft(2, '0')}';
   }
 }

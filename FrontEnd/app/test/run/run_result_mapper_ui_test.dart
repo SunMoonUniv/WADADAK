@@ -73,6 +73,11 @@ void main() {
           ),
         );
         await tester.pump(const Duration(milliseconds: 500));
+        await tester.tap(find.text('구간 상세 분석'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('측정 상세 및 기준'));
+        await tester.tap(find.text('측정 상세 및 기준'));
+        await tester.pumpAndSettle();
         expect(
           find.textContaining('걸음 센서가 측정되지 않은 구간'),
           missingMs > 0 ? findsOneWidget : findsNothing,
@@ -108,10 +113,10 @@ void main() {
         await tester.ensureVisible(find.text('케이던스'));
         await tester.pump(const Duration(milliseconds: 500));
         expect(find.text('180 spm'), findsOneWidget);
-        await tester.ensureVisible(find.text('랩 기록'));
-        await tester.pump(const Duration(milliseconds: 500));
+        await tester.tap(find.text('구간 상세 분석'));
+        await tester.pumpAndSettle();
         expect(find.text('마지막 0.23 km'), findsOneWidget);
-        expect(find.text('1 km'), findsOneWidget);
+        expect(find.text('1 km'), findsWidgets);
         expect(tester.takeException(), isNull);
       },
     );

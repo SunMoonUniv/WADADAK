@@ -34,11 +34,18 @@ class FreeRunScreen extends ConsumerWidget {
     final controller = ref.watch(freeRunControllerProvider);
     final courseTab = ref.watch(courseTabProvider);
     final ghostTab = ref.watch(ghostTabProvider);
+    final ghostKind = ref.watch(ghostRecordKindProvider);
     return ListenableBuilder(
       listenable: controller,
       builder: (context, _) {
         final run = controller.snapshot;
         final courseStart = controller.courseStart;
+        final resolvedGhostKind = controller.selectedFreeGhost != null
+            ? GhostRecordKind.personal
+            : controller.selectedGhost != null ||
+                  controller.selectedCourse != null
+            ? GhostRecordKind.course
+            : ghostKind;
         final dark =
             controller.preparing ||
             courseStart != null ||
@@ -88,6 +95,16 @@ class FreeRunScreen extends ConsumerWidget {
                           controller.selectedFreeGhost != null ||
                           ghostTab ||
                           controller.hasPendingGhostStart,
+                      ghostKind: resolvedGhostKind,
+                      onGhostKind: (kind) {
+                        if (kind == resolvedGhostKind) return;
+                        if (kind == GhostRecordKind.personal) {
+                          controller.clearCourse();
+                        } else {
+                          controller.clearGhost();
+                        }
+                        ref.read(ghostRecordKindProvider.notifier).set(kind);
+                      },
                       ghost: controller.selectedGhost,
                       freeGhost: controller.selectedFreeGhost,
                       pendingGhost: controller.hasPendingGhostStart,
@@ -223,6 +240,8 @@ class _Preparation extends StatelessWidget {
     this.pendingGhost = false,
     this.onGhostTab,
     this.onClearGhost,
+    required this.ghostKind,
+    this.onGhostKind,
   });
   final VoidCallback onStart;
   final String? error;
@@ -237,6 +256,8 @@ class _Preparation extends StatelessWidget {
   final ValueChanged<bool>? onCourseTab;
   final VoidCallback? onClearCourse;
   final bool ghostMode, pendingGhost;
+  final GhostRecordKind ghostKind;
+  final ValueChanged<GhostRecordKind>? onGhostKind;
   final PreparedCourseGhost? ghost;
   final PreparedFreeGhost? freeGhost;
   final ValueChanged<bool>? onGhostTab;
@@ -287,6 +308,20 @@ class _Preparation extends StatelessWidget {
             ),
           ),
         ),
+        if (ghostMode)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: WdSpace.s24),
+            child: IgnorePointer(
+              ignoring: pendingGhost,
+              child: WdSegmentedControl(
+                items: const ['내 기록', '코스 기록'],
+                selectedIndex: ghostKind == GhostRecordKind.personal ? 0 : 1,
+                style: WdSegmentStyle.light,
+                onChanged: (index) =>
+                    onGhostKind?.call(GhostRecordKind.values[index]),
+              ),
+            ),
+          ),
         Expanded(
           child: LayoutBuilder(
             builder: (context, constraints) => SingleChildScrollView(
@@ -314,7 +349,7 @@ class _Preparation extends StatelessWidget {
                             course: course,
                             ghost: ghost,
                             freeGhost: freeGhost,
-                            onClearFree: onClearGhost,
+                            kind: ghostKind,
                             locked: pendingGhost,
                           ),
                         ] else if (courseMode) ...[
@@ -473,13 +508,16 @@ class _Preparation extends StatelessWidget {
                             pendingGhost
                                 ? '같은 고스트 시작 확인'
                                 : ghostMode
-                                ? '고스트 대결 시작'
+                                ? '고스트와 달리기'
                                 : '코스 러닝 시작',
                             onPressed:
                                 pendingGhost ||
-                                    (ghostMode && freeGhost != null) ||
-                                    course != null &&
-                                        (!ghostMode || ghost != null)
+                                    (ghostMode &&
+                                            ghostKind ==
+                                                GhostRecordKind.personal
+                                        ? freeGhost != null
+                                        : course != null &&
+                                              (!ghostMode || ghost != null))
                                 ? onStart
                                 : null,
                           )
@@ -490,6 +528,11 @@ class _Preparation extends StatelessWidget {
                           child: Text(
                             pendingGhost
                                 ? '새 대결을 만들지 않고 기존 시작을 확인해요'
+                                : ghostMode &&
+                                      ghostKind == GhostRecordKind.personal
+                                ? freeGhost == null
+                                      ? '내 자유러닝 기록을 고르면 시작할 수 있어요'
+                                      : '출발점으로 이동한 뒤 시작해요'
                                 : ghostMode && (course == null || ghost == null)
                                 ? '코스와 상대 기록을 고르면 시작할 수 있어요'
                                 : (ghostMode || courseMode) && course != null

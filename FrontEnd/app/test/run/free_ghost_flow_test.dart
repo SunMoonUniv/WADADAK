@@ -24,6 +24,7 @@ import 'package:wadadak/features/run/domain/run_models.dart';
 import 'package:wadadak/features/run/presentation/free_run_result_view.dart';
 import 'package:wadadak/features/run/presentation/free_run_screen.dart';
 import 'package:wadadak/features/run/presentation/free_ghost_selection_screen.dart';
+import 'package:wadadak/features/run/presentation/free_ghost_record_choice.dart';
 import 'package:wadadak/features/run/presentation/course_start_view.dart';
 import 'package:wadadak/routes.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
@@ -114,6 +115,9 @@ void main() {
       );
     }
     await fonts.load();
+    final iconsFont = FontLoader('MaterialIcons')
+      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+    await iconsFont.load();
   });
   late RunController runs;
   late FreeRunController ui;
@@ -185,6 +189,7 @@ void main() {
         child: RepaintBoundary(
           key: capture,
           child: MaterialApp.router(
+            debugShowCheckedModeBanner: false,
             theme: WdTheme.light(),
             routerConfig: router,
           ),
@@ -199,7 +204,7 @@ void main() {
   }
 
   Future<void> choose(WidgetTester tester) async {
-    await tester.tap(find.byType(WdRankRow).at(1));
+    await tester.tap(find.byType(FreeGhostRecordChoice).at(1));
     await tester.pumpAndSettle();
   }
 
@@ -223,10 +228,14 @@ void main() {
     (tester) async {
       await mount(tester, width: 320);
       expect(
-        tester.widget<WdRankRow>(find.byType(WdRankRow).first).onTap,
+        tester
+            .widget<FreeGhostRecordChoice>(
+              find.byType(FreeGhostRecordChoice).first,
+            )
+            .onTap,
         isNull,
       );
-      await tester.tap(find.byType(WdRankRow).first);
+      await tester.tap(find.byType(FreeGhostRecordChoice).first);
       await tester.pumpAndSettle();
       expect(choices.reads, 0);
       await choose(tester);
@@ -234,8 +243,9 @@ void main() {
       expect(find.text('원래 기록 04:20'), findsOneWidget);
       await png(tester, '320-selected');
       expect(tester.takeException(), isNull);
-      await tester.tap(find.text('이 기록과 대결하기'));
+      await tester.tap(find.text('이 기록 선택하기'));
       await tester.pumpAndSettle();
+      await png(tester, '320-free-preparation');
       expect(runs.selectedCourse, isNull);
       expect(runs.selectedFreeGhost!.endReason, 'INTERRUPTED');
       expect(courses.prepared, isEmpty);
@@ -248,9 +258,10 @@ void main() {
       await mount(tester);
       await choose(tester);
       await png(tester, '402-selected');
-      await tester.tap(find.text('이 기록과 대결하기'));
+      await tester.tap(find.text('이 기록 선택하기'));
       await tester.pumpAndSettle();
-      final start = find.widgetWithText(WdButton, '고스트 대결 시작');
+      await png(tester, '402-free-preparation');
+      final start = find.widgetWithText(WdButton, '고스트와 달리기');
       await tester.ensureVisible(start);
       await tester.runAsync(() async {
         await tester.tap(start);
@@ -289,12 +300,12 @@ void main() {
       expect(find.textContaining('위치를 알 수 없는 시간이 5%를 초과'), findsOneWidget);
       expect(
         tester
-            .widget<WdButton>(find.widgetWithText(WdButton, '이 기록과 대결하기'))
+            .widget<WdButton>(find.widgetWithText(WdButton, '이 기록 선택하기'))
             .onPressed,
         isNull,
       );
       choices.gate = Completer();
-      await tester.tap(find.byType(WdRankRow).at(1));
+      await tester.tap(find.byType(FreeGhostRecordChoice).at(1));
       await tester.pump();
       await tester.runAsync(() async {
         member = 'bob';
@@ -311,11 +322,11 @@ void main() {
       final first = Completer<Map<String, dynamic>>();
       choices.gate = first;
       await mount(tester);
-      final row = find.byType(WdRankRow).at(1);
+      final row = find.byType(FreeGhostRecordChoice).at(1);
       await tester.tap(row);
       await tester.pump();
       expect(find.text('확인 중'), findsOneWidget);
-      expect(tester.widget<WdRankRow>(row).onTap, isNull);
+      expect(tester.widget<FreeGhostRecordChoice>(row).onTap, isNull);
       expect(choices.reads, 1);
       await tester.pump(const Duration(milliseconds: 14999));
       expect(find.text('확인 중'), findsOneWidget);
@@ -325,7 +336,7 @@ void main() {
         find.text(freeGhostPreparationTimeoutError.message),
         findsOneWidget,
       );
-      expect(tester.widget<WdRankRow>(row).onTap, isNotNull);
+      expect(tester.widget<FreeGhostRecordChoice>(row).onTap, isNotNull);
       expect(find.text('대결 비교 시간'), findsNothing);
 
       final second = Completer<Map<String, dynamic>>();
@@ -352,7 +363,7 @@ void main() {
   ) async {
     choices.gate = Completer();
     await mount(tester);
-    await tester.tap(find.byType(WdRankRow).at(1));
+    await tester.tap(find.byType(FreeGhostRecordChoice).at(1));
     await tester.pump();
     await tester.pump(const Duration(seconds: 14));
     choices.gate!.complete(preparation());
@@ -368,7 +379,7 @@ void main() {
   ) async {
     choices.gate = Completer();
     await mount(tester);
-    await tester.tap(find.byType(WdRankRow).at(1));
+    await tester.tap(find.byType(FreeGhostRecordChoice).at(1));
     await tester.pump();
     router.go(Routes.run);
     await tester.pumpAndSettle();
@@ -401,7 +412,7 @@ void main() {
     expect(find.textContaining('95%'), findsOneWidget);
     expect(
       tester
-          .widget<WdButton>(find.widgetWithText(WdButton, '이 기록과 대결하기'))
+          .widget<WdButton>(find.widgetWithText(WdButton, '이 기록 선택하기'))
           .onPressed,
       isNull,
     );
@@ -410,6 +421,38 @@ void main() {
     expect(runs.selectedFreeGhost, isNull);
     expect(starts.posts, isEmpty);
   });
+  testWidgets(
+    'switching record kinds cannot start a duel with the previous source',
+    (tester) async {
+      await mount(tester, width: 320);
+      await choose(tester);
+      await tester.tap(find.text('이 기록 선택하기'));
+      await tester.pumpAndSettle();
+      expect(runs.selectedFreeGhost, isNotNull);
+      final selected = runs.selectedFreeGhost;
+      await tester.tap(find.text('내 기록').first);
+      await tester.pumpAndSettle();
+      expect(runs.selectedFreeGhost, same(selected));
+      await tester.tap(find.text('코스 기록'));
+      await tester.pumpAndSettle();
+      expect(runs.selectedFreeGhost, isNull);
+      expect(runs.selectedGhost, isNull);
+      expect(find.text('코스를 골라 주세요'), findsOneWidget);
+      expect(
+        tester
+            .widget<WdButton>(find.widgetWithText(WdButton, '고스트와 달리기'))
+            .onPressed,
+        isNull,
+      );
+      await tester.tap(find.text('내 기록').first);
+      await tester.pumpAndSettle();
+      expect(find.text('내 자유 기록 선택'), findsOneWidget);
+      expect(find.text('코스를 골라 주세요'), findsNothing);
+      expect(starts.posts, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   test('free approval rejects a changed route break', () {
     final p = PreparedFreeGhost('alice', preparation());
     final c = p.reference;
@@ -479,6 +522,9 @@ void main() {
         'sourceElapsedSeconds': 230,
       },
     );
+    expect(find.text('20초 뒤처짐'), findsOneWidget);
+    await tester.tap(find.text('대결 결과 보기 ›'));
+    await tester.pumpAndSettle();
     expect(find.text('패배'), findsOneWidget);
     expect(find.text('상대 03:50'), findsOneWidget);
     expect(find.text('판정 다시 확인'), findsNothing);

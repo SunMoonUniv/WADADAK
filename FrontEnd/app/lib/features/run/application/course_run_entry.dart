@@ -38,6 +38,17 @@ class GhostTab extends Notifier<bool> {
   void set(bool ghost) => state = ghost;
 }
 
+enum GhostRecordKind { personal, course }
+
+final ghostRecordKindProvider =
+    NotifierProvider<GhostRecordTab, GhostRecordKind>(GhostRecordTab.new);
+
+class GhostRecordTab extends Notifier<GhostRecordKind> {
+  @override
+  GhostRecordKind build() => GhostRecordKind.personal;
+  void set(GhostRecordKind kind) => state = kind;
+}
+
 /// 코스 상세(B1 · B9 · G3)의 `이 코스로 달리기`. 코스를 고르고 달리기 탭으로 간다.
 /// 진행 중인 러닝이 있으면 코스를 바꾸지 않고 그 러닝 화면을 보인다(RUN-05).
 void runCourse(BuildContext context, WidgetRef ref, CourseSelection course) {
