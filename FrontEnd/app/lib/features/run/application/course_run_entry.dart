@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../../routes.dart';
 import '../domain/course_run.dart';
+import '../../../core/api/ranking_api_client.dart';
+import 'run_controller.dart';
 
 /// 코스 상세에서 고른 코스. 달리기 컨트롤러가 받아 가고 비운다(`runControllerProvider`).
 final selectedCourseProvider =
@@ -43,4 +45,28 @@ void runCourse(BuildContext context, WidgetRef ref, CourseSelection course) {
   ref.read(courseTabProvider.notifier).set(true);
   ref.read(ghostTabProvider.notifier).set(false);
   GoRouter.maybeOf(context)?.go(Routes.run);
+}
+
+void runPublicGhost(
+  BuildContext context,
+  WidgetRef ref,
+  CourseSelection course,
+  GhostCandidate candidate,
+  RankingPeriod period,
+) {
+  final router = GoRouter.maybeOf(context);
+  if (router == null) return;
+  final runs = ref.read(runControllerProvider);
+  if (!runs.canSelectGhost) {
+    GoRouter.maybeOf(context)?.go(Routes.run);
+    return;
+  }
+  router.push(
+    Routes.runPublicGhost,
+    extra: (
+      course: course,
+      sourceId: candidate.runRecordId,
+      period: period.apiName,
+    ),
+  );
 }

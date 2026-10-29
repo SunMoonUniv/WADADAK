@@ -117,13 +117,13 @@ class FreeGhostService {
                 || !approval.startedAt().equals(request.startedAt()) || request.courseId()!=null
                 || !Objects.equals(request.courseVersion(),approval.course().version())
                 || !Objects.equals(saved.referenceHash(),request.referenceHash())
-                || !GhostPlaybackBuilder.FREE_VERSION.equals(request.playbackVersion())) conflict();
+                || request.publicPeriod()!=null || !GhostPlaybackBuilder.FREE_VERSION.equals(request.playbackVersion())) conflict();
             return approval;
         }
         if(sessions.existsById(id) || attempts.existsById(id)) conflict();
         if(id.equals(request.sourceRecordId()) || request.startedAt()==null || request.startedAt().getNano()%1000!=0
             || request.startedAt().isAfter(clock.instant().plusSeconds(300)) || request.courseId()!=null
-            || !GhostPlaybackBuilder.FREE_VERSION.equals(request.playbackVersion()))
+            || request.publicPeriod()!=null || !GhostPlaybackBuilder.FREE_VERSION.equals(request.playbackVersion()))
             throw new AppException(RunErrorCode.INVALID);
         // Ownership is established before the source session lock (same member lock order as deletion).
         sessions.findByIdAndMemberId(request.sourceRecordId(),owner).orElseThrow(()->new AppException(RunErrorCode.NOT_FOUND));

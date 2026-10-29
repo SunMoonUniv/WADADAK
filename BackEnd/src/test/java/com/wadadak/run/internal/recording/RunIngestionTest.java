@@ -43,6 +43,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @ActiveProfiles("test")
 @Import(TestcontainersConfiguration.class)
 class RunIngestionTest {
+    @org.springframework.test.context.bean.override.mockito.MockitoBean com.wadadak.ranking.RankingApi rankingApi;
     @Autowired RunService runs;
     @Autowired JdbcTemplate db;
     @Autowired JsonMapper json;
@@ -315,14 +316,79 @@ class RunIngestionTest {
     }
     @Test void listDoesNotReadRouteJsonAndUsesCommonPageSizeContract() throws Exception {
         runs.upload(owner,id,new Upload(9,inputs)); runs.process(id);
+        var thumbnail=runs.history(owner,new Cursorable(null,1)).content().getFirst().routeThumbnail();
         db.update("UPDATE run.records SET result_json='not route json' WHERE id=?",id);
+        db.update("DELETE FROM run.inputs WHERE session_id=?",id);
         assertThat(runs.history(owner,new Cursorable(null,1)).content()).hasSize(1);
+        assertThat(runs.history(owner,new Cursorable(null,1)).content().getFirst().routeThumbnail()).isEqualTo(thumbnail);
         mvc.perform(get("/api/v1/runs/records?size=1").with(jwt().jwt(t->t.subject(owner.toString()))))
             .andExpect(status().isOk()).andExpect(jsonPath("$.data.content[0].id").value(id.toString()))
+            .andExpect(jsonPath("$.data.content[0].routeThumbnail.version").value("RUN_ROUTE_THUMBNAIL_V1"))
+            .andExpect(jsonPath("$.data.content[0].routeThumbnail.segments.length()").value(2))
             .andExpect(jsonPath("$.data.items").doesNotExist())
             .andExpect(jsonPath("$.data.content[0].routeSegments").doesNotExist());
         mvc.perform(get("/api/v1/runs/records?size=51").with(jwt().jwt(t->t.subject(owner.toString()))))
             .andExpect(status().isBadRequest());
+    }
+
+    @Test void thumbnailIsStoredOnceWithSeparateSegmentsAndSurvivesUploadRetry() throws Exception {
+        runs.upload(owner,id,new Upload(9,inputs)); runs.process(id);
+        Result result=runs.result(owner,id);
+        String before=db.queryForObject("SELECT summary_json FROM run.records WHERE id=?",String.class,id);
+        RecordSummary stored=json.readValue(before,RecordSummary.class);
+        assertThat(stored.routeThumbnail().version()).isEqualTo("RUN_ROUTE_THUMBNAIL_V1");
+        assertThat(stored.routeThumbnail().segments()).containsExactly(
+            List.of(inputs.get(1).location(),inputs.get(2).location()),
+            List.of(inputs.get(6).location(),inputs.get(7).location()));
+        assertThat(result.routeSegments()).isEqualTo(stored.routeThumbnail().segments());
+        assertThat(stored.metrics()).isEqualTo(result.metrics());
+        assertThat(runs.history(owner,new Cursorable(null,1)).content()).containsExactly(stored);
+        runs.upload(owner,id,new Upload(9,inputs)); runs.process(id);
+        assertThat(db.queryForObject("SELECT summary_json FROM run.records WHERE id=?",String.class,id)).isEqualTo(before);
+        assertThat(runs.result(owner,id)).isEqualTo(result);
+        mvc.perform(get("/api/v1/runs/records?size=1").with(jwt().jwt(j->j.subject(owner.toString()))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.content[0].routeThumbnail.segments[0][0].lat").value(36.0))
+            .andExpect(jsonPath("$.data.content[0].routeThumbnail.segments[1][0].lat").value(36.1));
+        mvc.perform(get("/api/v1/runs/records?size=1").with(jwt().jwt(j->j.subject(UUID.randomUUID().toString()))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.content.length()").value(0));
+    }
+
+    @Test void gpsGapRefreshPreservesStoredThumbnailRatherThanRegeneratingIt() {
+        runs.upload(owner,id,new Upload(9,inputs)); runs.process(id);
+        Result result=runs.result(owner,id);
+        // 저장된 버전·모양이 현재 생성 규칙과 달라도 재계산하지 않고 보존한다.
+        var thumbnail=new RouteThumbnail("STORED_VERSION",List.of(List.of(inputs.get(1).location())));
+        RecordSummary summary=RecordSummary.from(result,thumbnail);
+        db.update("UPDATE run.records SET summary_json=? WHERE id=?",json.writeValueAsString(summary),id);
+        db.update("DELETE FROM run.inputs WHERE session_id=?",id);
+        for (boolean passed:List.of(true,false)) {
+            var check=new com.wadadak.course.GpsGapCheck(passed,"GPS_GAP_V1");
+            runs.saveGpsGap(id,check);
+            var refreshed=json.readValue(db.queryForObject("SELECT summary_json FROM run.records WHERE id=?",String.class,id),RecordSummary.class);
+            assertThat(refreshed).isEqualTo(summary.withGpsGap(check));
+            assertThat(runs.result(owner,id)).isEqualTo(result.withGpsGap(check));
+            assertThat(runs.history(owner,new Cursorable(null,1)).content()).containsExactly(refreshed);
+        }
+    }
+
+    @Test void legacySummaryWithoutThumbnailRemainsReadableAndDoesNotBackfillOnReadOrRefresh() throws Exception {
+        runs.upload(owner,id,new Upload(9,inputs)); runs.process(id);
+        Result result=runs.result(owner,id);
+        db.update("UPDATE run.records SET summary_json=(summary_json::jsonb - 'routeThumbnail')::text WHERE id=?",id);
+        String legacy=db.queryForObject("SELECT summary_json FROM run.records WHERE id=?",String.class,id);
+        assertThat(runs.history(owner,new Cursorable(null,1)).content().getFirst().routeThumbnail()).isNull();
+        mvc.perform(get("/api/v1/runs/records").with(jwt().jwt(j->j.subject(owner.toString()))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.content[0].routeThumbnail").doesNotExist());
+        assertThat(db.queryForObject("SELECT summary_json FROM run.records WHERE id=?",String.class,id)).isEqualTo(legacy);
+        db.update("DELETE FROM run.inputs WHERE session_id=?",id);
+        var check=new com.wadadak.course.GpsGapCheck(true,"GPS_GAP_V1");
+        runs.saveGpsGap(id,check);
+        RecordSummary refreshed=runs.history(owner,new Cursorable(null,1)).content().getFirst();
+        assertThat(refreshed.routeThumbnail()).isNull();
+        assertThat(refreshed.gpsGap()).isEqualTo(check);
+        assertThat(refreshed.metrics()).isEqualTo(result.metrics());
+        assertThat(refreshed.registeredAt()).isEqualTo(result.registeredAt());
     }
 
     @Test void altitudeFixturePersistsRawAndRetriesWithoutChangingRegistrationOrMetrics() throws Exception {
@@ -429,6 +495,12 @@ class RunIngestionTest {
         assertThat(stored.calculationVersion()).isEqualTo("PACE_V3");
         assertThat(stored.metrics().distanceM()).isCloseTo(54,within(.001));
         assertThat(stored.routeSegments()).hasSize(2);
+        var thumbnail=runs.history(owner,new Cursorable(null,1)).content().getFirst().routeThumbnail();
+        assertThat(thumbnail.segments()).hasSize(2);
+        for (int i=0;i<2;i++) {
+            assertThat(thumbnail.segments().get(i).getFirst()).isEqualTo(stored.routeSegments().get(i).getFirst());
+            assertThat(thumbnail.segments().get(i).getLast()).isEqualTo(stored.routeSegments().get(i).getLast());
+        }
         assertThat(stored.routeSegments().getFirst()).doesNotContain(raw.get(11).location());
         assertThat(stored.stats().elevationPartial()).isTrue();
         assertThat(db.query("SELECT payload FROM run.inputs WHERE session_id=? ORDER BY stream_seq",

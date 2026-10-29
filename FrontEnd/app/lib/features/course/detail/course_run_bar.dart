@@ -21,9 +21,6 @@ class CourseRunBar extends StatelessWidget {
 
   static const firstRunLabel = '첫 번째로 달리기 ▶';
 
-  /// 고스트 대결(C1)이 생길 때까지 `고스트 대결 ▶`을 누르면 알린다.
-  static const ghostNotReadyMessage = '고스트 대결은 아직 준비 중이에요.';
-
   /// 고스트를 고른 랭킹. B1 · B8은 전체 기간, B9 · G3은 고른 기간이다.
   final AsyncValue<CourseRankingSummary> ranking;
 
@@ -35,6 +32,9 @@ class CourseRunBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final run = WdButton('이 코스로 달리기', variant: WdButtonVariant.secondary, onPressed: onRun);
+    if (ranking.isLoading || ranking.hasError) {
+      return WdBottomBar.dual(secondary: run, primary: const WdButton('고스트 대결 ▶', onPressed: null));
+    }
     return switch (ranking) {
       AsyncValue(hasError: false, value: CourseRankingSummary(ghost: final ghost?)) =>
         WdBottomBar.dual(secondary: run, primary: WdButton('고스트 대결 ▶', onPressed: () => onGhost(ghost))),

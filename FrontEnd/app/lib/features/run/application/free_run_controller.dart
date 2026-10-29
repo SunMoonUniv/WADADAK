@@ -55,7 +55,7 @@ class FreeRunController extends ChangeNotifier {
   /// 코스 상세에서 고른 코스(F6). 있으면 시작이 코스 러닝이 된다
   CourseSelection? get selectedCourse => _recording?.selectedCourse;
   void clearCourse() => _recording?.clearCourse();
-  PreparedOwnGhost? get selectedGhost => _recording?.selectedGhost;
+  PreparedCourseGhost? get selectedGhost => _recording?.selectedGhost;
   PreparedFreeGhost? get selectedFreeGhost => _recording?.selectedFreeGhost;
   bool get privateGhost =>
       _recording?.run?.ghost?.intent.isFree == true ||
@@ -64,7 +64,7 @@ class FreeRunController extends ChangeNotifier {
   bool get hasPendingGhostStart => _recording?.hasPendingGhostStart ?? false;
   bool get onGhost => onCourse && _recording?.run?.ghost != null;
   String? get ghostOpponent => onGhost
-      ? '내 기록 ${formatRunTime(Duration(seconds: _recording!.run!.ghost!.intent.sourceSeconds))}'
+      ? '${_recording!.run!.ghost!.intent.publicPeriod == null ? '내 기록' : '공개 기록'} ${formatRunTime(Duration(seconds: _recording!.run!.ghost!.intent.sourceSeconds))}'
       : null;
   ({GeoPoint? position, String distance, String time})? get ghostComparison {
     final engine = _recording,
@@ -171,12 +171,14 @@ class FreeRunController extends ChangeNotifier {
 
   /// 코스 구간을 끝내고 자유 러닝으로 바뀐 뒤의 안내
   String? get courseNotice => switch (_recording?.courseEndReason) {
-    'ROUTE_END' => privateGhost
-        ? '기준 경로 끝에 도착했어요. 자유 러닝으로 이어서 기록해요.'
-        : '코스 끝에 도착했어요. 자유 러닝으로 이어서 기록해요.',
-    'COURSE_ONLY' => privateGhost
-        ? '대결만 종료했어요. 자유 러닝으로 이어서 기록해요.'
-        : '코스만 종료했어요. 자유 러닝으로 이어서 기록해요.',
+    'ROUTE_END' =>
+      privateGhost
+          ? '기준 경로 끝에 도착했어요. 자유 러닝으로 이어서 기록해요.'
+          : '코스 끝에 도착했어요. 자유 러닝으로 이어서 기록해요.',
+    'COURSE_ONLY' =>
+      privateGhost
+          ? '대결만 종료했어요. 자유 러닝으로 이어서 기록해요.'
+          : '코스만 종료했어요. 자유 러닝으로 이어서 기록해요.',
     _ => null,
   };
 

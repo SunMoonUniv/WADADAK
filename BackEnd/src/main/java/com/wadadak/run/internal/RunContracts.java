@@ -145,9 +145,12 @@ public final class RunContracts {
     public record GhostStart(UUID courseId, @Min(0) Long courseVersion,
                              @NotNull UUID sourceRecordId, @NotNull Instant startedAt,
                              @NotNull @Pattern(regexp="GHOST_PLAYBACK_V1|GHOST_PLAYBACK_FREE_V1") String playbackVersion,
-                             @Size(max=64) String referenceHash) {
+                             @Size(max=64) String referenceHash, com.wadadak.ranking.RankingPeriod publicPeriod) {
         public GhostStart(UUID courseId, Long courseVersion, UUID sourceRecordId, Instant startedAt, String playbackVersion) {
-            this(courseId,courseVersion,sourceRecordId,startedAt,playbackVersion,null);
+            this(courseId,courseVersion,sourceRecordId,startedAt,playbackVersion,null,null);
+        }
+        public GhostStart(UUID courseId, Long courseVersion, UUID sourceRecordId, Instant startedAt, String playbackVersion, String referenceHash) {
+            this(courseId,courseVersion,sourceRecordId,startedAt,playbackVersion,referenceHash,null);
         }
     }
     public record FreeGhostCandidate(UUID id, Instant startedAt, Instant registeredAt, String endReason,
@@ -158,7 +161,15 @@ public final class RunContracts {
     /** Durable approval receipt, not the live running state or a completion verdict. */
     public record GhostStartApproval(String version, UUID sessionId, UUID sourceRecordId,
                                      Instant startedAt, Instant approvedAt, Instant courseValidatedAt,
-                                     CourseSnapshot course, GhostPlayback playback) {}
+                                     CourseSnapshot course, GhostPlayback playback,
+                                     com.wadadak.ranking.RankingPeriod publicPeriod) {
+        public GhostStartApproval(String version, UUID sessionId, UUID sourceRecordId, Instant startedAt,
+                                  Instant approvedAt, Instant courseValidatedAt, CourseSnapshot course, GhostPlayback playback) {
+            this(version,sessionId,sourceRecordId,startedAt,approvedAt,courseValidatedAt,course,playback,null);
+        }
+    }
+    public record PublicGhostPreparation(com.wadadak.ranking.RankingPeriod publicPeriod,
+                                         com.wadadak.ranking.GhostCandidate candidate, GhostPlayback playback, long sourceCourseVersion) {}
     public enum GhostVerdict { WIN, LOSE, DRAW, INVALID }
     public enum GhostVerdictReason { COMPLETED_TIME_COMPARISON, VOLUNTARY_BEFORE_GHOST_FINISH,
         VOLUNTARY_AFTER_GHOST_FINISH, INVOLUNTARY_INCOMPLETE, FINISH_NOT_CONFIRMED }
@@ -174,8 +185,15 @@ public final class RunContracts {
                     course.progressPercent(), course.reviewEligible());
         }
     }
+    /** 목록 카드 전용 경로. segments 사이는 연결하지 않는다. 원본·코스 등록 경로를 대체하지 않는다. */
+    public record RouteThumbnail(String version, List<List<GeoPoint>> segments) {}
     public record RecordSummary(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt,
-                                String endReason, Metrics metrics, ResultStats stats, CourseSummary course, GpsGapCheck gpsGap, GhostOutcome ghost) {
+                                String endReason, Metrics metrics, ResultStats stats, CourseSummary course, GpsGapCheck gpsGap, GhostOutcome ghost,
+                                RouteThumbnail routeThumbnail) {
+        public RecordSummary(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason,
+                             Metrics metrics, ResultStats stats, CourseSummary course, GpsGapCheck gpsGap, GhostOutcome ghost) {
+            this(id,startedAt,endedAt,registeredAt,endReason,metrics,stats,course,gpsGap,ghost,null);
+        }
         public RecordSummary(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt, String endReason,
                              Metrics metrics, ResultStats stats, CourseSummary course, GpsGapCheck gpsGap) {
             this(id,startedAt,endedAt,registeredAt,endReason,metrics,stats,course,gpsGap,null);
@@ -190,8 +208,14 @@ public final class RunContracts {
             this(id,startedAt,endedAt,registeredAt,endReason,metrics,null);
         }
         public static RecordSummary from(Result result) {
+            return from(result,null);
+        }
+        public static RecordSummary from(Result result, RouteThumbnail routeThumbnail) {
             return new RecordSummary(result.id(),result.startedAt(),result.endedAt(),result.registeredAt(),result.endReason(),result.metrics(),result.stats(),
-                    CourseSummary.from(result.course()),result.gpsGap(),result.ghost());
+                    CourseSummary.from(result.course()),result.gpsGap(),result.ghost(),routeThumbnail);
+        }
+        public RecordSummary withGpsGap(GpsGapCheck value) {
+            return new RecordSummary(id,startedAt,endedAt,registeredAt,endReason,metrics,stats,course,value,ghost,routeThumbnail);
         }
     }
 }

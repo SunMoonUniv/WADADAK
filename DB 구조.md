@@ -787,7 +787,7 @@ PK는 `(session_id, stream_seq)`, `session_id`만 같은 run 스키마 sessions�
 | `id` | UUID PK/FK | sessions ID와 같은 기록 ID |
 | `registered_at` | TIMESTAMPTZ | 최초 서버 등록 시각. 재전송으로 바꾸지 않음 |
 | `result_json` | TEXT | 상세 경로·랩·시간·거리·케이던스·정책/계산 버전 |
-| `summary_json` | TEXT | 목록용 RecordSummary. 경로·랩 없음. 코스 러닝이면 `course` 요약(아래). `gpsGap` `{passed, version}`: GPS 코스 등록 끊긴 구간 판단(아래) |
+| `summary_json` | TEXT | 목록용 RecordSummary. 전체 경로·랩 없음. 선택 `routeThumbnail` `{version, segments}`: 구간 분리를 보존한 카드용 경로(전체 최대 128점, 과거 기록 누락·null 허용). 코스 러닝이면 `course` 요약(아래). `gpsGap` `{passed, version}`: GPS 코스 등록 끊긴 구간 판단(아래). 판단 갱신 시 저장된 썸네일을 보존한다 |
 | `registration_published` | BOOLEAN | 등록 이벤트의 동일 트랜잭션 발행 완료 표시 |
 
 목록은 `summary_json`만 읽는다. `(registered_at DESC, id DESC)` 인덱스를 사용하고 공통 Cursorable/CursorSlice 계약을 따른다. summary는 이미 저장된 결과에서 생성하며 거리 계산을 소급 변경하지 않는다. 새 결과의 정책 버전은 사용자 승인 날짜 `2026-10-14`, 계산 버전은 START의 `PACE_V2` 등이다. 과거 저장 결과에 없는 버전은 새 버전으로 소급 표기하지 않는다.
@@ -828,7 +828,7 @@ PK는 `(session_id, stream_seq)`, `session_id`만 같은 run 스키마 sessions�
 
 `course_id` UUID PK, `version` BIGINT. 러너 수가 바뀔 때마다 1씩 올려 `CourseActiveRunnersChangedEvent.version`으로 보낸다(수신 측은 큰 version만 반영). 이 행을 먼저 잠그고 수를 세서 같은 코스의 증감을 트랜잭션 순서대로 세운다. 수 자체는 저장하지 않는다.
 
-#### `run.ghost_starts` · `run.ghost_start_playbacks` — 내 고스트 시작 승인 (2026-10-26)
+#### `run.ghost_starts` · `run.ghost_start_playbacks` — 내·공개 코스 고스트 시작 승인 (2026-10-26, 2026-10-27 확장)
 
 `V20261026_2000__run_ghost_starts.sql`로 추가한다. 기존 코스 준비의 `course_attempts.session_id` 하나에 승인 하나를 저장한다. 업로드 전에는 `sessions`가 없으므로 `ghost_starts.session_id`는 같은 run 스키마 `course_attempts`에 FK/ON DELETE CASCADE, 상세 `ghost_start_playbacks.session_id`는 승인에 FK/ON DELETE CASCADE다. 기존 데이터 변경·타 스키마 참조는 없다.
 
@@ -838,6 +838,12 @@ PK는 `(session_id, stream_seq)`, `session_id`만 같은 run 스키마 sessions�
 - 본인 대결 삭제·회원 탈퇴는 시도 삭제를 통해 승인·상세와 아래 결과 요약을 함께 정리한다. 최소 비교 시간/버전과 상세를 분리했다. 최종 승패 저장은 아래 결과 구현에 연결한다. 자료는 기존 정책 9.1의 세션 종료 및 종료 후 결과 비교를 위해 보존하며 별도 기간 만료를 추가하지 않는다.
 
 계약과 경합 기준은 [고스트 시작 승인 계약](<run/고스트 시작 승인 계약 v1 - 2026-10-26.md>) 참조. 위 시작 승인 단계 이후의 최종 판정 저장은 아래 `ghost_results` 구현으로 연결한다.
+
+2026-10-27 공개 코스 확장: `V20261027_2200__run_public_ghosts.sql`은 `ghost_starts.public_period VARCHAR(8)`(null=기존 본인, ALL/MONTH/WEEK=공개)을 추가하고 과거 원본의 합법적인 계산 버전 null을 보존하도록 `source_calculation_version`의 NOT NULL만 해제한다. `V20261027_2300__run_public_ghost_source_version.sql`은 `source_course_version BIGINT`를 추가한다. 현재 기준 코스 버전과 별도로 상대 원본 재현에 사용한 버전을 보존하며 원본을 수정하지 않는다. 기존 적용 마이그레이션을 고치지 않고 후속 파일로 확장한다.
+
+#### `run.member_visibility_copies` — 공개 고스트 접근용 회원 공개 복사본 (2026-10-27)
+
+`V20261027_2200__run_public_ghosts.sql`: `member_id UUID PK`, `visible BOOLEAN NOT NULL`, `source_version BIGINT NOT NULL`, 공통 감사 컬럼. `MemberVisibilityChangedEvent`를 회원 잠금 안에서 큰 버전만 반영하며 탈퇴 후 지연 이벤트로 복원하지 않는다. 공개 재생·새 시작은 RankingApi의 현재 공개 대표 후보와 이 run 소유 차단 상태를 모두 확인한다. 본인/상대 회원 ID를 정렬해 잠근 뒤 시도·원본 세션을 잠그고, 승인된 동일 요청 재시도는 상대의 현재 공개·삭제 상태와 무관하게 저장 승인을 반환한다. 타 스키마 FK·제품 코드의 member 스키마 직접 조회·자료 만료 컬럼은 없다. [공개 고스트 계약](<run/공개 코스 고스트 재생·시작 승인 - 2026-10-27.md>)
 
 #### `run.ghost_results` — 고스트 서버 확정 요약 (2026-10-27)
 

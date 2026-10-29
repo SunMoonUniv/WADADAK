@@ -5,7 +5,6 @@ import 'package:wadadak/core/api/api_client.dart';
 import 'package:wadadak/core/api/ranking_api_client.dart';
 import 'package:wadadak/features/course/detail/course_ranking_tab.dart';
 import 'package:wadadak/features/course/detail/course_rankings_screen.dart';
-import 'package:wadadak/features/course/detail/course_run_bar.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../../fakes.dart';
@@ -152,11 +151,12 @@ void main() {
     expect(find.text(CourseRankingTab.staleMessage), findsNothing);
   });
 
-  testWidgets('tells ghost racing is not ready yet', (tester) async {
+  testWidgets('no longer shows the obsolete ghost placeholder', (tester) async {
     await openRankings(tester);
 
     await tester.tap(find.text('고스트 대결 ▶'));
     await tester.pumpAndSettle();
-    expect(find.text(CourseRunBar.ghostNotReadyMessage), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 }

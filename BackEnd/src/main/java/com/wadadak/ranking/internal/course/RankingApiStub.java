@@ -59,6 +59,14 @@ class RankingApiStub implements RankingApi, CourseRankingReader, StubImplementat
     }
 
     @Override
+    public java.util.Optional<GhostCandidate> findPublicGhostCandidate(UUID courseId, RankingPeriod period,
+                                                                     UUID requesterId, UUID runRecordId) {
+        return ranking(courseId,period,requesterId).stream()
+            .filter(r->!r.memberId().equals(requesterId) && r.runRecordId().equals(runRecordId))
+            .map(r->new GhostCandidate(r.runRecordId(),r.memberId(),r.rank(),r.courseElapsedSeconds())).findFirst();
+    }
+
+    @Override
     public CourseRankingSummary summary(UUID courseId, RankingPeriod period, UUID requesterId) {
         boolean visible = !PRIVATE_COURSE_ID.equals(courseId);
         RankedRecord privateRecord = visible || !MINE.containsKey(period) ? null : mine(requesterId, period).toRecord(0);

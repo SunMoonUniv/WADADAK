@@ -123,8 +123,6 @@ void main() {
   /// G2에서 돌아올 때처럼 요약 · 미리보기를 다시 받게 한다.
   ProviderContainer container(WidgetTester tester) =>
       ProviderScope.containerOf(tester.element(find.byType(CourseDetailScreen)));
-  String snackBar(WidgetTester tester) =>
-      ((tester.widget<SnackBar>(find.byType(SnackBar)).content as Text).data)!;
   /// 아래 버튼(라벨, 켜짐).
   List<(String, bool)> bottomButtons(WidgetTester tester) => [
         for (final button in tester.widgetList<WdButton>(
@@ -229,7 +227,7 @@ void main() {
     expect(text('한강 야경 5K'), findsOneWidget);
   });
 
-  testWidgets('picks this course for the run tab and tells ghost racing is not ready yet', (tester) async {
+  testWidgets('picks this course and no longer shows the obsolete ghost placeholder', (tester) async {
     await openDetail(tester);
 
     await tester.tap(text('이 코스로 달리기'));
@@ -238,7 +236,8 @@ void main() {
     expect((picked?.courseId, picked?.name), ('c1', '한강 야경 5K'));
     await tester.tap(text('고스트 대결 ▶'));
     await tester.pumpAndSettle();
-    expect(snackBar(tester), CourseRunBar.ghostNotReadyMessage);
+    expect(find.byType(SnackBar), findsNothing);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('does not open the public period sheet (B11) from the period notice', (tester) async {

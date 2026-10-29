@@ -29,14 +29,16 @@ class GhostStartStore {
     private final CourseRunService courses;
     private final JsonMapper json;
     private final Clock clock;
+    private final PublicGhostAccess publicAccess;
 
     GhostStartStore(GhostStartRepository approvals, CourseAttemptRepository attempts,
                     RunSessionRepository sessions, DeletedRunRecordRepository deletions,
                     WithdrawnRunMemberRepository withdrawals, RunLocks locks, GhostPlaybackService replays,
-                    CourseRunService courses, JsonMapper json, Clock clock) {
+                    CourseRunService courses, JsonMapper json, Clock clock, PublicGhostAccess publicAccess) {
         this.approvals = approvals; this.attempts = attempts; this.sessions = sessions;
         this.deletions = deletions; this.withdrawals = withdrawals; this.locks = locks;
         this.replays = replays; this.courses = courses; this.json = json; this.clock = clock;
+        this.publicAccess=publicAccess;
     }
 
     @Transactional(readOnly = true)
@@ -54,6 +56,19 @@ class GhostStartStore {
     @Transactional
     public GhostStartApproval approve(UUID owner, UUID id, GhostStart request,
                                       CourseRouteSnapshot current, Instant validatedAt) {
+        if(request.publicPeriod()!=null) throw new AppException(RunErrorCode.INVALID);
+        return approveLocked(owner,id,request,current,validatedAt,null);
+    }
+
+    @Transactional
+    public GhostStartApproval approvePublic(UUID owner,UUID id,GhostStart request,CourseRouteSnapshot current,
+                                            Instant validatedAt,com.wadadak.ranking.GhostCandidate candidate){
+        publicAccess.lockMembers(owner,candidate);
+        return approveLocked(owner,id,request,current,validatedAt,candidate);
+    }
+
+    private GhostStartApproval approveLocked(UUID owner, UUID id, GhostStart request,CourseRouteSnapshot current,
+                                              Instant validatedAt,com.wadadak.ranking.GhostCandidate candidate){
         CourseAttempt attempt = lock(owner, id);
         var existing = approvals.find(id);
         if (existing.isPresent()) return same(existing.get(), request);
@@ -73,11 +88,14 @@ class GhostStartStore {
                 || course.totalDistanceMeters() != current.totalDistanceMeters()
                 || !course.route().equals(current.route())) conflict();
 
-        // Own-only playback rechecks source ownership/deletion/completion/quality under the same member lock.
-        // Check ownership before taking a second session lock: cross-owner swapped IDs must not deadlock.
-        sessions.findByIdAndMemberId(request.sourceRecordId(), owner)
-                .orElseThrow(() -> new AppException(RunErrorCode.NOT_FOUND));
-        GhostPlayback replay = replays.own(owner, request.sourceRecordId());
+        // Playback rechecks source ownership, access, deletion, completion and quality under member locks.
+        // Private playback checks ownership before a second session lock; public playback already holds both members.
+        if(candidate==null) sessions.findByIdAndMemberId(request.sourceRecordId(),owner)
+            .orElseThrow(()->new AppException(RunErrorCode.NOT_FOUND));
+        else if(!candidate.runRecordId().equals(request.sourceRecordId()) || request.publicPeriod()==null) conflict();
+        GhostPlayback replay = candidate==null?replays.own(owner,request.sourceRecordId()):replays.publicReplay(owner,candidate);
+        Long sourceCourseVersion=replay.course()==null?null:replay.course().version();
+        if(candidate!=null) replay=PublicGhostService.forCourse(current,replay);
         if (!replay.eligible()) throw new AppException(RunErrorCode.GHOST_UNAVAILABLE);
         if (!request.playbackVersion().equals(replay.version()) || replay.course() == null
                 || !course.courseId().equals(replay.course().courseId())
@@ -86,8 +104,8 @@ class GhostStartStore {
                 || !course.route().equals(replay.course().route())) conflict();
 
         GhostStartApproval approval = new GhostStartApproval(VERSION, id, request.sourceRecordId(),
-                request.startedAt(), clock.instant().truncatedTo(ChronoUnit.MICROS), validatedAt, course, replay);
-        approvals.save(approval);
+                request.startedAt(), clock.instant().truncatedTo(ChronoUnit.MICROS), validatedAt, course, replay,request.publicPeriod());
+        approvals.save(approval,sourceCourseVersion);
         // Existing F6 start: one attempt, one challenge event and one runner increment. Same transaction.
         courses.start(owner, id, request.startedAt());
         return approval;
@@ -107,7 +125,8 @@ class GhostStartStore {
                 || !saved.startedAt().equals(request.startedAt())
                 || !saved.course().courseId().equals(request.courseId())
                 || !java.util.Objects.equals(saved.course().version(),request.courseVersion())
-                || !saved.playback().version().equals(request.playbackVersion())) conflict();
+                || !saved.playback().version().equals(request.playbackVersion())
+                || saved.publicPeriod()!=request.publicPeriod()) conflict();
         return saved;
     }
 

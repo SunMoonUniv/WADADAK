@@ -111,6 +111,20 @@ class CourseRankingServiceTest {
     }
 
     @Test
+    void publicSelectionRecheckHasNoTopTenLimitAndRejectsOtherPeriodsAndPrivateRecords(){
+        UUID lateMember=UUID.randomUUID();
+        for(int i=0;i<12;i++)insert(UUID.randomUUID(),350+i,THIS_WEEK);
+        UUID late=insert(lateMember,600,THIS_WEEK);
+        assertThat(rankingApi.getPublicGhostCandidates(course,RankingPeriod.ALL,me,10)).extracting(GhostCandidate::runRecordId).doesNotContain(late);
+        assertThat(rankingApi.findPublicGhostCandidate(course,RankingPeriod.ALL,me,late)).isPresent();
+        assertThat(rankingApi.findPublicGhostCandidate(course,RankingPeriod.ALL,lateMember,late)).isEmpty();
+        UUID old=insert(UUID.randomUUID(),700,LAST_MONTH);
+        assertThat(rankingApi.findPublicGhostCandidate(course,RankingPeriod.WEEK,me,old)).isEmpty();
+        jdbc.update("INSERT INTO ranking.member_visibility_copies VALUES (?,FALSE,1,now(),now())",lateMember);
+        assertThat(rankingApi.findPublicGhostCandidate(course,RankingPeriod.ALL,me,late)).isEmpty();
+    }
+
+    @Test
     void periodsCountByRegisteredAt() {
         assertThat(reader.summary(course, RankingPeriod.MONTH, me).top())
                 .extracting(CourseRankingEntry::memberId).containsExactly(b, a, me);

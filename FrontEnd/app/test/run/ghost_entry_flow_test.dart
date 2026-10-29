@@ -279,7 +279,7 @@ void main() {
       await mount(tester);
       await choose(tester);
       await png(tester, '402-selected');
-      expect(runs.selectedGhost!.candidate.id, sourceId);
+      expect(runs.selectedGhost!.sourceId, sourceId);
       expect(courses.prepared, hasLength(1));
       expect(starts.posts, isEmpty);
       expect(location.streams, isEmpty);

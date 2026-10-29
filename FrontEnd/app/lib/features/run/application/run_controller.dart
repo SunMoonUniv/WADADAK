@@ -142,9 +142,9 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   late final GhostStartFlow ghostStarts;
   late final Future<RunClockSample> Function() _recoveryClock;
   PreparedFreeGhost? selectedFreeGhost;
-  PreparedOwnGhost? _selectedGhost;
-  PreparedOwnGhost? get selectedGhost => _selectedGhost;
-  set selectedGhost(PreparedOwnGhost? value) {
+  PreparedCourseGhost? _selectedGhost;
+  PreparedCourseGhost? get selectedGhost => _selectedGhost;
+  set selectedGhost(PreparedCourseGhost? value) {
     _selectedGhost = value;
     selectedFreeGhost = null;
   }
@@ -525,8 +525,9 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
           id: runId,
           startedAt: startedAt,
           course: start.snapshot,
-          sourceId: freeGhost?.replay.sourceId ?? ghost!.candidate.id,
-          sourceSeconds: freeGhost?.replay.seconds ?? ghost!.candidate.seconds,
+          sourceId: freeGhost?.replay.sourceId ?? ghost!.sourceId,
+          sourceSeconds: freeGhost?.replay.seconds ?? ghost!.seconds,
+          publicPeriod: ghost?.publicPeriod,
           referenceHash: freeGhost?.referenceHash,
           clock: reading,
         );
@@ -638,12 +639,12 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// Entry adapter for the existing own-ghost selection component. Uses the F6 preparation flow.
-  void selectGhost(PreparedOwnGhost prepared) {
+  void selectGhost(PreparedCourseGhost prepared) {
     if (!canSelectGhost) {
       return;
     }
     if (prepared.owner != currentOwner ||
-        prepared.replay.sourceId != prepared.candidate.id ||
+        prepared.replay.sourceId != prepared.sourceId ||
         !prepared.replay.playback.eligible) {
       throw StateError('고스트 선택을 다시 확인해 주세요.');
     }
@@ -1179,7 +1180,11 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     loadingHistory = true;
     _notify();
     try {
-      final page = await api.history(member, cursor: more ? nextCursor : null, size: pageSize);
+      final page = await api.history(
+        member,
+        cursor: more ? nextCursor : null,
+        size: pageSize,
+      );
       if (currentOwner != member || _disposed) return;
       final items = (page['content'] as List)
           .map((r) => (r as Map).cast<String, dynamic>())

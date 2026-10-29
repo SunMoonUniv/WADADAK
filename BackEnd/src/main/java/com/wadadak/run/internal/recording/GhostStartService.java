@@ -17,9 +17,11 @@ class GhostStartService {
     private final CourseApi courses;
     private final Clock clock;
     private final FreeGhostService freeGhosts;
+    private final PublicGhostService publicGhosts;
 
-    GhostStartService(GhostStartStore store, CourseApi courses, Clock clock, FreeGhostService freeGhosts) {
+    GhostStartService(GhostStartStore store, CourseApi courses, Clock clock, FreeGhostService freeGhosts, PublicGhostService publicGhosts) {
         this.store = store; this.courses = courses; this.clock = clock; this.freeGhosts=freeGhosts;
+        this.publicGhosts=publicGhosts;
     }
 
     @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -30,14 +32,18 @@ class GhostStartService {
         if(request.courseVersion()==null || !"GHOST_PLAYBACK_V1".equals(request.playbackVersion()))
             throw new com.wadadak.common.exception.AppException(com.wadadak.run.RunErrorCode.INVALID);
         CourseRouteSnapshot current;
+        com.wadadak.ranking.GhostCandidate candidate;
         try {
             current = courses.getRouteForRun(request.courseId());
+            candidate=request.publicPeriod()==null?null:publicGhosts.candidate(owner,request.courseId(),request.publicPeriod(),request.sourceRecordId());
         } catch (RuntimeException failure) {
             // A concurrent identical request may have committed while this course read failed.
             var committed = store.existing(owner, id, request);
             if (committed.isPresent()) return committed.get();
             throw failure;
         }
-        return store.approve(owner, id, request, current, clock.instant().truncatedTo(ChronoUnit.MICROS));
+        return candidate==null
+            ? store.approve(owner,id,request,current,clock.instant().truncatedTo(ChronoUnit.MICROS))
+            : store.approvePublic(owner,id,request,current,clock.instant().truncatedTo(ChronoUnit.MICROS),candidate);
     }
 }
