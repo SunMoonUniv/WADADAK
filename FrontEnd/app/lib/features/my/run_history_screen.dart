@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -7,22 +5,21 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../../routes.dart';
 import '../review/review_entry.dart';
-import '../run/application/run_controller.dart';
 import '../run/domain/run_models.dart';
+import 'run_history_loader.dart';
 import 'run_history_rows.dart';
 import 'run_month_sheet.dart';
 
 /// I1 · 내 러닝 기록 — 캘린더형(Figma `I1 · 내 러닝 기록 — 캘린더형 (10/27 회의)`). MY에서 연다(하단 탭이 보인다).
 ///
 /// 위에서부터 유형 탭 · 전체 기간 요약 · 달력(달 이동 · 달린 날 도장) · "N월 분석" · 그 달 기록이다.
-/// - 유형 탭(전체 · 자유 러닝 · 코스 러닝 · 고스트 대결)은 화면 전체에 적용한다. 고스트 대결은 F9가 생길 때까지 비어 있다.
+/// - 유형 탭(전체 · 자유 러닝 · 코스 러닝 · 고스트 대결)은 화면 전체에 적용한다.
 /// - 달을 바꾸면(‹ › · 오늘 · 연월 고르기) 달력 · N월 분석 · 아래 기록만 바뀐다. 위쪽 요약은 늘 전체 기간이다.
-/// - 합계는 앱이 낸다. run은 기록을 하나씩만 주므로(팀 결정) 처음에 내 기록을 끝까지(50개씩) 받는다.
+/// - 합계는 앱이 낸다. 처음에 내 기록을 끝까지 받는다([AllRunHistory]).
 /// - 칼로리는 계산식(달리기 담당)이 아직 없어 `—`다(정책 공통 9).
 /// (2026-10-27 회의 · 사용자 결정)
 ///
 /// 코스 러닝 기록의 [코스 상세]는 B1, [리뷰 쓰기]는 리뷰 진입(`openReviewWriter`)으로 간다.
-/// 기록 데이터(기기 · 서버 · 동기화 · 삭제)는 달리기 담당의 `runController`를 그대로 쓴다.
 class MyRunHistoryScreen extends ConsumerStatefulWidget {
   const MyRunHistoryScreen({super.key, this.now = DateTime.now});
 
@@ -33,11 +30,7 @@ class MyRunHistoryScreen extends ConsumerStatefulWidget {
   ConsumerState<MyRunHistoryScreen> createState() => _MyRunHistoryScreenState();
 }
 
-class _MyRunHistoryScreenState extends ConsumerState<MyRunHistoryScreen> {
-  /// 한 번에 받는 기록 수(서버 최대). 끝까지 받으므로 클수록 요청이 적다.
-  static const _pageSize = 50;
-
-  late final RunController _runs;
+class _MyRunHistoryScreenState extends ConsumerState<MyRunHistoryScreen> with AllRunHistory {
   var _type = RunType.all;
 
   /// 달력 · N월 분석 · 아래 기록이 보는 달(1일). 처음은 이번 달이다.
@@ -45,33 +38,9 @@ class _MyRunHistoryScreenState extends ConsumerState<MyRunHistoryScreen> {
 
   DateTime get _thisMonth => DateTime(widget.now().year, widget.now().month);
 
-  @override
-  void initState() {
-    super.initState();
-    _runs = ref.read(runControllerProvider)..addListener(_loadRest);
-    Future.microtask(() async {
-      await _runs.bindOwner();
-      if (!mounted) return;
-      await _runs.loadHistory(pageSize: _pageSize);
-      _loadRest();
-    });
-  }
-
-  @override
-  void dispose() {
-    _runs.removeListener(_loadRest);
-    super.dispose();
-  }
-
-  /// 한 페이지를 받을 때마다 다음 페이지를 이어 받는다. 실패하면 멈추고 배너로 다시 받게 한다.
-  void _loadRest() {
-    if (!mounted || _runs.loadingHistory || _runs.nextCursor == null || _runs.historyNotice != null) return;
-    unawaited(_runs.loadHistory(more: true, pageSize: _pageSize));
-  }
-
   Future<void> _refresh() async {
-    await _runs.sync(manual: true);
-    await _runs.loadHistory(pageSize: _pageSize);
+    await runs.sync(manual: true);
+    await runs.loadHistory(pageSize: AllRunHistory.pageSize);
   }
 
   Future<void> _pickMonth(DateTime first) async {
@@ -81,9 +50,9 @@ class _MyRunHistoryScreenState extends ConsumerState<MyRunHistoryScreen> {
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: _runs,
+    listenable: runs,
     builder: (context, _) {
-      final all = runHistoryRows(local: _runs.records, remote: _runs.remoteRecords, deletedIds: _runs.deletedIds);
+      final all = allRuns;
       final rows = all.where(_type.includes).toList();
       final thisMonth = _thisMonth;
       // 가장 오래된 기록이 있는 달까지만 뒤로 갈 수 있다(기록이 없으면 이번 달만)
@@ -91,7 +60,7 @@ class _MyRunHistoryScreenState extends ConsumerState<MyRunHistoryScreen> {
           ? thisMonth
           : DateTime(all.last.startedAt.toLocal().year, all.last.startedAt.toLocal().month);
       // 끝까지 받기 전에는 합계가 덜 나오므로 로딩으로 보인다
-      final loading = _runs.historyNotice == null && (_runs.nextCursor != null || _runs.loadingHistory);
+      final loading = loadingAllRuns;
       final monthRows = inMonth(rows, _month).toList();
       return DefaultTabController(
         length: RunType.values.length,
@@ -142,15 +111,15 @@ class _MyRunHistoryScreenState extends ConsumerState<MyRunHistoryScreen> {
                             _MonthAnalysis(month: _month, totals: RunTotals.of(monthRows)),
                             const SizedBox(height: WdSpace.s16),
                             Text('상세 기록', style: WdText.ko16Bold.copyWith(color: WdColors.muted)),
-                            if (_runs.historyNotice != null) ...[
+                            if (runs.historyNotice != null) ...[
                               const WdInfoBanner(
                                 '서버 기록을 불러오지 못했어요. 기기에 저장된 기록은 볼 수 있어요.',
                                 tone: WdBannerTone.warning,
                               ),
                               TextButton(
-                                onPressed: _runs.loadingHistory
+                                onPressed: runs.loadingHistory
                                     ? null
-                                    : () => _runs.loadHistory(more: _runs.nextCursor != null, pageSize: _pageSize),
+                                    : () => runs.loadHistory(more: runs.nextCursor != null, pageSize: AllRunHistory.pageSize),
                                 child: const Text('다시 불러오기'),
                               ),
                             ],

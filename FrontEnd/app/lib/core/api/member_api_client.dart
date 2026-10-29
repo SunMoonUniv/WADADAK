@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/token_storage.dart';
 import 'api_client.dart';
+import 'region_api_client.dart';
 import 'upload_form.dart';
 
 enum SocialProvider { kakao, google, apple }
@@ -76,6 +77,8 @@ enum RunningExperience {
   const RunningExperience(this.apiName, this.label);
   final String apiName;
   final String label;
+
+  static RunningExperience? fromApi(String? name) => values.where((e) => e.apiName == name).firstOrNull;
 }
 
 enum Gender {
@@ -108,12 +111,38 @@ class BodyInfo {
       {'birthYear': birthYear, 'heightCm': heightCm, 'weightKg': weightKg, 'gender': gender.apiName};
 }
 
+/// 내 정보(`GET /members/me`). E3 마이페이지 · F6 프로필 편집 · F4 설정이 쓴다. 지금은 E3가 쓰는 값만 읽는다.
+class MyProfile {
+  MyProfile.fromJson(Map json)
+      : nickname = json['nickname'] as String,
+        region = json['region'] == null ? null : Region.fromJson(json['region'] as Map),
+        affiliation = json['affiliation'] as String?,
+        runningExperience = RunningExperience.fromApi(json['runningExperience'] as String?),
+        profileImageUrl = json['profileImageUrl'] as String?;
+
+  final String nickname;
+
+  /// 활동 지역. 지역 목록에서 코드가 사라졌으면 없다.
+  final Region? region;
+
+  /// 소속(예: 선문대학교). 선택 입력이다.
+  final String? affiliation;
+  final RunningExperience? runningExperience;
+  final String? profileImageUrl;
+}
+
 /// 회원 API(`/api/v1/members`). 서버 모듈 prefix 하나에 클라이언트 하나(개발 정책 9장).
 class MemberApiClient {
-  MemberApiClient(this._publicDio);
+  MemberApiClient(this._publicDio, this._authDio);
 
   final Dio _publicDio;
+
+  /// 로그인한 요청용. 토큰 갱신이 이 클라이언트(`refresh`)를 쓰므로 만들 때가 아니라 부를 때 꺼낸다.
+  final Dio Function() _authDio;
   static const _auth = '/api/v1/members/auth';
+  static const _me = '/api/v1/members/me';
+
+  Future<MyProfile> me() async => MyProfile.fromJson(await callApi(() => _authDio().get(_me)) as Map);
 
   Future<LoginResult> login(SocialProvider provider, String socialToken) async {
     final data = await callApi(
@@ -163,4 +192,6 @@ class MemberApiClient {
       callApi(() => _publicDio.post('$_auth/logout', data: {'refreshToken': refreshToken}));
 }
 
-final memberApiClientProvider = Provider<MemberApiClient>((ref) => MemberApiClient(ref.watch(publicDioProvider)));
+// dioProvider가 토큰 갱신에 이 클라이언트를 쓰고 이 클라이언트도 dioProvider를 써서, 타입을 적어 순환 추론을 끊는다
+final Provider<MemberApiClient> memberApiClientProvider = Provider(
+    (ref) => MemberApiClient(ref.watch(publicDioProvider), () => ref.read(dioProvider)));
