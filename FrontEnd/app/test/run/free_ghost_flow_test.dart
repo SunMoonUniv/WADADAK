@@ -305,6 +305,80 @@ void main() {
       expect(runs.selectedFreeGhost, isNull);
     },
   );
+  testWidgets(
+    'selection expires at 15 seconds, ignores late data and can retry',
+    (tester) async {
+      final first = Completer<Map<String, dynamic>>();
+      choices.gate = first;
+      await mount(tester);
+      final row = find.byType(WdRankRow).at(1);
+      await tester.tap(row);
+      await tester.pump();
+      expect(find.text('확인 중'), findsOneWidget);
+      expect(tester.widget<WdRankRow>(row).onTap, isNull);
+      expect(choices.reads, 1);
+      await tester.pump(const Duration(milliseconds: 14999));
+      expect(find.text('확인 중'), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(find.text('확인 중'), findsNothing);
+      expect(
+        find.text(freeGhostPreparationTimeoutError.message),
+        findsOneWidget,
+      );
+      expect(tester.widget<WdRankRow>(row).onTap, isNotNull);
+      expect(find.text('대결 비교 시간'), findsNothing);
+
+      final second = Completer<Map<String, dynamic>>();
+      choices.gate = second;
+      await tester.tap(row);
+      await tester.pump();
+      expect(choices.reads, 2);
+      first.complete(preparation());
+      await tester.pumpAndSettle();
+      expect(find.text('확인 중'), findsOneWidget);
+      expect(find.text('대결 비교 시간'), findsNothing);
+      second.complete(preparation(version: 'GHOST_PLAYBACK_FREE_V2'));
+      await tester.pumpAndSettle();
+      expect(find.text('확인 중'), findsNothing);
+      expect(find.text('대결 비교 시간'), findsOneWidget);
+      expect(find.text(freeGhostPreparationTimeoutError.message), findsNothing);
+      expect(starts.posts, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('selection completed before deadline stays selected afterwards', (
+    tester,
+  ) async {
+    choices.gate = Completer();
+    await mount(tester);
+    await tester.tap(find.byType(WdRankRow).at(1));
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 14));
+    choices.gate!.complete(preparation());
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 2));
+    expect(find.text('대결 비교 시간'), findsOneWidget);
+    expect(find.text(freeGhostPreparationTimeoutError.message), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('leaving a pending selection cancels its screen deadline', (
+    tester,
+  ) async {
+    choices.gate = Completer();
+    await mount(tester);
+    await tester.tap(find.byType(WdRankRow).at(1));
+    await tester.pump();
+    router.go(Routes.run);
+    await tester.pumpAndSettle();
+    choices.gate!.completeError(StateError('late source failure'));
+    await tester.pump(const Duration(seconds: 15));
+    expect(find.byType(FreeGhostSelectionScreen), findsNothing);
+    expect(runs.selectedFreeGhost, isNull);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('specific distance failure fits 320px and keeps duel disabled', (
     tester,
   ) async {

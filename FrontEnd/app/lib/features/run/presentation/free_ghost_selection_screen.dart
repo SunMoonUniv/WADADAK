@@ -36,6 +36,13 @@ class _FreeGhostSelectionScreenState
   PreparedFreeGhost? prepared;
   bool loading = true, more = false;
   int epoch = 0;
+  Timer? selectionDeadline;
+
+  void cancelSelectionDeadline() {
+    selectionDeadline?.cancel();
+    selectionDeadline = null;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -45,7 +52,9 @@ class _FreeGhostSelectionScreenState
 
   void changed() {
     if (owner != null && (owner != runs.currentOwner || !runs.canSelectGhost)) {
+      cancelSelectionDeadline();
       epoch++;
+      selecting = null;
       prepared = null;
       rows = [];
       owner = null;
@@ -65,6 +74,7 @@ class _FreeGhostSelectionScreenState
       runs.canSelectGhost;
   Future<void> load({bool append = false}) async {
     if (append && (more || cursor == null)) return;
+    cancelSelectionDeadline();
     final token = ++epoch;
     setState(() {
       error = null;
@@ -110,12 +120,25 @@ class _FreeGhostSelectionScreenState
   }
 
   Future<void> select(FreeGhostCandidate c) async {
-    if (!c.distanceEligible || loading || owner == null) return;
+    if (!c.distanceEligible || loading || owner == null || selecting != null) {
+      return;
+    }
     final token = ++epoch;
     setState(() {
       selecting = c.id;
       prepared = null;
       error = null;
+    });
+    selectionDeadline = Timer(freeGhostPreparationTimeout, () {
+      if (!valid(token)) return;
+      // Invalidate a late response before allowing another selection.
+      epoch++;
+      selectionDeadline = null;
+      setState(() {
+        selecting = null;
+        prepared = null;
+        error = freeGhostPreparationTimeoutError.message;
+      });
     });
     try {
       final j = await ref.read(freeGhostSourceProvider).prepare(owner!, c.id);
@@ -140,7 +163,10 @@ class _FreeGhostSelectionScreenState
             : '기록을 확인하지 못했어요. 다시 선택해 주세요.';
       }
     } finally {
-      if (mounted && token == epoch) setState(() => selecting = null);
+      if (mounted && token == epoch) {
+        cancelSelectionDeadline();
+        setState(() => selecting = null);
+      }
     }
   }
 
@@ -154,6 +180,7 @@ class _FreeGhostSelectionScreenState
 
   @override
   void dispose() {
+    cancelSelectionDeadline();
     epoch++;
     runs.removeListener(changed);
     super.dispose();
@@ -205,7 +232,7 @@ class _FreeGhostSelectionScreenState
                 children: [
                   for (final c in rows)
                     Semantics(
-                      enabled: c.distanceEligible,
+                      enabled: c.distanceEligible && selecting == null,
                       child: Opacity(
                         opacity: c.distanceEligible ? 1 : 0.5,
                         child: WdRankRow(
@@ -221,7 +248,9 @@ class _FreeGhostSelectionScreenState
                                     Duration(milliseconds: c.elapsedMs),
                                   ),
                           ),
-                          onTap: c.distanceEligible ? () => select(c) : null,
+                          onTap: c.distanceEligible && selecting == null
+                              ? () => select(c)
+                              : null,
                         ),
                       ),
                     ),
