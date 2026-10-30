@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wadadak/core/map/dev_map_view.dart';
 import 'package:wadadak/core/map/map_view.dart';
 import 'package:wadadak/features/run/domain/run_models.dart';
 import 'package:wadadak/features/run/presentation/free_run_live_view.dart';
@@ -87,4 +88,32 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  testWidgets('running map follows me again after I drag it away', (tester) async {
+    Future<void> live(List<RunPoint> route) => tester.pumpWidget(
+      ProviderScope(
+        overrides: [mapEngineProvider.overrideWithValue(MapEngine.dev)],
+        child: MaterialApp(
+          theme: WdTheme.light(),
+          home: Scaffold(
+            body: SizedBox(height: 400, child: RunRouteView(run: snapshot(RunState.running, [route]), dark: true)),
+          ),
+        ),
+      ),
+    );
+    Offset me() => tester.getCenter(find.byKey(DevMapView.myLocationKey));
+    final centre = tester.getCenter;
+
+    await live([a, b]);
+    await tester.pumpAndSettle();
+    expect(me(), centre(find.byType(MapView))); // 처음부터 따라간다
+
+    await tester.drag(find.byType(MapView), const Offset(120, 0));
+    await tester.pumpAndSettle();
+    expect(me(), isNot(centre(find.byType(MapView)))); // 끌면 따라가기가 꺼진다
+
+    await live([a, b, RunPoint(36.0012, 127)]); // 다음 위치
+    await tester.pumpAndSettle();
+    expect(me(), centre(find.byType(MapView)));
+  });
 }

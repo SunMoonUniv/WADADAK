@@ -389,7 +389,7 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
 }
 
 /// 위치를 수집하기 전에는 시안의 예시 경로를 실제 기록처럼 보여주지 않는다.
-class RunRouteView extends StatelessWidget {
+class RunRouteView extends StatefulWidget {
   const RunRouteView({
     super.key,
     required this.run,
@@ -399,14 +399,38 @@ class RunRouteView extends StatelessWidget {
     this.ghostPosition,
   });
   final RunSnapshot run;
-  final bool dark, showDistanceMarkers;
+
+  /// 달리는 중 지도. 내 위치를 따라간다(결과 화면 지도는 경로 전체를 맞춰 보인다)
+  final bool dark;
+  final bool showDistanceMarkers;
   final GeoPoint? ghostPosition;
 
   /// 코스 러닝이면 코스 경로(주행선 아래)·코스 출발점·코스 km 표지를 그린다. km 표지는 주행 거리 대신 코스 기준이다
   final CourseLive? course;
+
+  @override
+  State<RunRouteView> createState() => _RunRouteViewState();
+}
+
+class _RunRouteViewState extends State<RunRouteView> {
+  MapController? _map;
+  bool _following = false;
+
+  @override
+  void didUpdateWidget(RunRouteView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // 지도를 끌거나 확대해 따라가기가 꺼져도 다음 위치에서 다시 내 위치를 따라간다(확대·축소는 그대로).
+    // 지도가 새 위치를 받은 뒤에 켠다
+    if (widget.dark && !_following) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && !_following) _map?.showMyLocation();
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final course = this.course;
+    final RunRouteView(:run, :dark, :showDistanceMarkers, :ghostPosition, :course) = widget;
     if (!run.hasLocation) return RunRouteEmpty(dark: dark);
     final location =
         run.inputs.reversed
@@ -465,7 +489,7 @@ class RunRouteView extends StatelessWidget {
           if (ghostPosition != null)
             MapMarker(
               id: 'ghost-opponent',
-              position: ghostPosition!,
+              position: ghostPosition,
               imageKey: 'ghost-opponent',
               child: const WdIcon(WdIcons.brandGhost, size: 24),
             ),
@@ -511,7 +535,9 @@ class RunRouteView extends StatelessWidget {
               child: _endpoint('종료'),
             ),
         ],
+        onFollowingChanged: (following) => _following = following,
         onCreated: (controller) async {
+          _map = controller;
           if (dark) {
             controller.showMyLocation();
           } else if (points.length > 1) {
