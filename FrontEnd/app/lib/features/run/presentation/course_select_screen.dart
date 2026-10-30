@@ -17,6 +17,7 @@ import '../application/run_controller.dart';
 import '../domain/course_run.dart';
 import '../domain/run_models.dart';
 import 'course_prep_view.dart';
+import 'route_preview_map.dart';
 
 enum _Source { recent, nearby }
 
@@ -200,6 +201,13 @@ class _CourseSelectScreenState extends ConsumerState<CourseSelectScreen> {
                   onPressed: () => setState(() => _shown += 6),
                 ),
               const SizedBox(height: WdSpace.s12),
+              if (_picked != null) ...[
+                _SelectedCourseMap(
+                  key: ValueKey(_picked!.courseId),
+                  course: _picked!,
+                ),
+                const SizedBox(height: WdSpace.s16),
+              ],
               const WdInfoBanner('코스를 고르지 않으면 자유 러닝으로 달려요.', plain: true),
             ],
           ),
@@ -364,6 +372,51 @@ class _PickCard extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Always fetch the full detail route; list thumbnails may be simplified.
+class _SelectedCourseMap extends ConsumerWidget {
+  const _SelectedCourseMap({super.key, required this.course});
+  final CourseSelection course;
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final detail = ref.watch(runCourseDetailProvider(course.courseId));
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('선택한 코스의 경로', style: WdText.ko14Bold),
+        const SizedBox(height: WdSpace.s8),
+        SizedBox(
+          height: 200,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(WdRadius.r16),
+            child: detail.when(
+              skipLoadingOnRefresh: false,
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (_, _) => WdSurface(
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('코스 경로를 불러오지 못했어요.', style: WdText.ko12),
+                      WdButton(
+                        '경로 다시 불러오기',
+                        variant: WdButtonVariant.secondary,
+                        onPressed: () => ref.invalidate(
+                          runCourseDetailProvider(course.courseId),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              data: (c) => RunRoutePreviewMap(segments: [c.route]),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

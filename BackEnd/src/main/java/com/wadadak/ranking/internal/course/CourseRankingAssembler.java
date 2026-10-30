@@ -66,6 +66,24 @@ final class CourseRankingAssembler {
                 .toList();
     }
 
+    static CursorSlice<PublicGhostCandidate> publicGhostPage(List<RankedRecord> ranking, UUID requesterId,
+            Integer baselineSeconds, PublicGhostSort sort, Cursorable page,
+            Function<Set<UUID>, Map<UUID, MemberProfile>> profiles) {
+        var others = ranking.stream().filter(r -> !r.memberId().equals(requesterId));
+        // Stream.sorted is stable: equal gaps keep the existing rank/registration/id order.
+        if (sort == PublicGhostSort.SIMILAR && baselineSeconds != null) {
+            others = others.sorted(java.util.Comparator.comparingLong(
+                    r -> Math.abs((long) r.courseElapsedSeconds() - baselineSeconds)));
+        }
+        var slice = CursorSlice.ofOffset(others.toList(), page);
+        var found = profiles.apply(memberIds(slice.content()));
+        return slice.map(r -> {
+            var p = found.get(r.memberId());
+            return new PublicGhostCandidate(r.runRecordId(), r.memberId(), r.rank(), r.courseElapsedSeconds(),
+                    p == null ? null : p.nickname(), p == null ? null : p.profileImageUrl(), pace(r), r.completedAt());
+        });
+    }
+
     private static MyCourseRanking me(List<RankedRecord> ranking, UUID requesterId, boolean requesterVisible,
                                       RankedRecord privateRecord, MemberProfile profile) {
         String nickname = profile == null ? null : profile.nickname();

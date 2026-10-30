@@ -14,6 +14,10 @@ interface CourseRankingReader {
 
     CourseRankingSummary summary(UUID courseId, RankingPeriod period, UUID requesterId);
 
+    /** Other runners' public representatives, without the internal top-ten candidate cap. */
+    CursorSlice<PublicGhostCandidate> ghostCandidates(UUID courseId, RankingPeriod period, UUID requesterId,
+                                                      PublicGhostSort sort, Cursorable page);
+
     /** 순위순. 같은 순위끼리의 순서는 페이지를 넘겨도 바뀌지 않는다. */
     CursorSlice<CourseRankingEntry> entries(UUID courseId, RankingPeriod period, UUID requesterId, Cursorable page);
 }

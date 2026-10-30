@@ -210,6 +210,28 @@ class GhostCandidate {
   final int courseElapsedSeconds;
 }
 
+enum PublicGhostSort {
+  fastest('FASTEST'),
+  similar('SIMILAR');
+
+  const PublicGhostSort(this.apiName);
+  final String apiName;
+}
+
+class PublicGhostCandidate extends GhostCandidate {
+  PublicGhostCandidate.fromJson(super.json)
+    : nickname = json['nickname'] as String?,
+      profileImageUrl = json['profileImageUrl'] as String?,
+      paceSecondsPerKm = json['paceSecondsPerKm'] as int,
+      completedAt = DateTime.parse(json['completedAt'] as String),
+      super.fromJson();
+  final String? nickname, profileImageUrl;
+  final int paceSecondsPerKm;
+  final DateTime completedAt;
+}
+
+typedef PublicGhostPage = ({List<PublicGhostCandidate> entries, String? nextCursor});
+
 /// 코스 랭킹 요약(B9 · G3 상단, B1 · B8 · B9 · G3 고스트 대결 버튼). 내 정보 비공개 회원은 모두 빠진다.
 class CourseRankingSummary {
   CourseRankingSummary.fromJson(Map json)
@@ -269,6 +291,26 @@ class RankingApiClient {
         queryParameters: {'period': period.apiName, 'cursor': ?cursor})) as Map;
     return (
       entries: [for (final entry in data['content'] as List) CourseRankingEntry.fromJson(entry as Map)],
+      nextCursor: data['nextCursor'] as String?,
+    );
+  }
+
+  Future<PublicGhostPage> publicGhostCandidates(
+    String courseId,
+    RankingPeriod period, {
+    PublicGhostSort sort = PublicGhostSort.fastest,
+    String? cursor,
+    required String owner,
+  }) async {
+    final data = await callApi(
+      () => _dio.get(
+        '$_base/courses/${Uri.encodeComponent(courseId)}/ghost-candidates',
+        queryParameters: {'period': period.apiName, 'sort': sort.apiName, 'cursor': ?cursor},
+        options: Options(extra: {'runOwner': owner}),
+      ),
+    ) as Map;
+    return (
+      entries: [for (final row in data['content'] as List) PublicGhostCandidate.fromJson(row as Map)],
       nextCursor: data['nextCursor'] as String?,
     );
   }

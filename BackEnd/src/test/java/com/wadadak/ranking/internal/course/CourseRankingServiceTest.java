@@ -179,6 +179,35 @@ class CourseRankingServiceTest {
         assertThat(summary.top()).extracting(CourseRankingEntry::nickname).containsOnlyNulls();
     }
 
+    @Test
+    void publicPagesUseRepresentativesVisibilityAndStableRankingOrder() {
+        var page = reader.ghostCandidates(course, RankingPeriod.ALL, me, PublicGhostSort.FASTEST, new Cursorable(null, 2));
+        assertThat(page.content()).extracting(PublicGhostCandidate::memberId).containsExactly(b, a);
+        assertThat(page.content()).allSatisfy(row -> {
+            assertThat(row.nickname()).startsWith("닉-");
+            assertThat(rankingApi.findPublicGhostCandidate(course, RankingPeriod.ALL, me, row.runRecordId())).isPresent();
+        });
+        var last = reader.ghostCandidates(course, RankingPeriod.ALL, me, PublicGhostSort.FASTEST, new Cursorable(page.nextCursor(), 2));
+        assertThat(last.content()).extracting(PublicGhostCandidate::memberId).containsExactly(c);
+        assertThat(last.nextCursor()).isNull();
+        assertThat(reader.ghostCandidates(course, RankingPeriod.MONTH, me, PublicGhostSort.FASTEST, new Cursorable(null, 20)).content())
+                .extracting(PublicGhostCandidate::memberId).containsExactly(b, a);
+        jdbc.update("INSERT INTO ranking.course_status_copies VALUES (?, 'HIDDEN', 1, now(), now())", course);
+        assertThat(reader.ghostCandidates(course, RankingPeriod.ALL, me, PublicGhostSort.FASTEST, new Cursorable(null, 20)).content()).isEmpty();
+    }
+
+    @Test
+    void similarityUsesPrivateOwnBestWithoutExposingItAndFallsBackWithoutRecord() {
+        jdbc.update("INSERT INTO ranking.member_visibility_copies VALUES (?, FALSE, 1, now(), now())", me);
+        assertThat(reader.ghostCandidates(course, RankingPeriod.ALL, me, PublicGhostSort.SIMILAR, new Cursorable(null, 20)).content())
+                .extracting(PublicGhostCandidate::memberId).containsExactly(c, b, a);
+        assertThat(reader.ghostCandidates(course, RankingPeriod.ALL, UUID.randomUUID(), PublicGhostSort.SIMILAR, new Cursorable(null, 20)).content())
+                .extracting(PublicGhostCandidate::memberId).containsExactly(b, a, c);
+        willThrow(new IllegalStateException("profile unavailable")).given(memberApi).getProfiles(any());
+        assertThat(reader.ghostCandidates(course, RankingPeriod.ALL, me, PublicGhostSort.FASTEST, new Cursorable(null, 20)).content())
+                .extracting(PublicGhostCandidate::nickname).containsOnlyNulls();
+    }
+
     /** 기록 등록 1시간 전에 완주했다고 둔다. 코스 거리가 1000m라 페이스와 시간이 같다. */
     private UUID insert(UUID memberId, int elapsedSeconds, Instant registeredAt) {
         UUID runRecordId = UUID.randomUUID();

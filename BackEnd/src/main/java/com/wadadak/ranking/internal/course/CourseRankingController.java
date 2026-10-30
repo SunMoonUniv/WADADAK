@@ -44,6 +44,21 @@ class CourseRankingController {
         return ApiResult.success(reader.summary(courseId, period, UUID.fromString(jwt.getSubject())));
     }
 
+    @Operation(summary = "공개 고스트 후보 목록 (C2·C10)",
+            description = "같은 코스·선택 기간의 러너별 공개 대표 완주 기록. 본인·비공개·삭제 기록을 제외한다. "
+                    + "FASTEST는 순위순, SIMILAR는 요청자의 같은 기간 최고 총 소요시간과 차이가 작은 순이다. "
+                    + "내 기록이 없으면 FASTEST와 같다. 동률은 기존 순위·등록 순서를 유지한다. "
+                    + "기본 20·최대 50개 커서 페이징. 재생 적합성은 선택 후 run 공개 재생 API에서 다시 검증한다. "
+                    + "목록은 GPS 원본·케이던스를 조회하거나 공개하지 않는다.")
+    @GetMapping("/ghost-candidates")
+    ApiResult<CursorSlice<PublicGhostCandidate>> ghostCandidates(
+            @AuthenticationPrincipal Jwt jwt, @PathVariable UUID courseId,
+            @RequestParam(defaultValue = "ALL") RankingPeriod period,
+            @RequestParam(defaultValue = "FASTEST") PublicGhostSort sort,
+            @ParameterObject @Valid Cursorable page) {
+        return ApiResult.success(reader.ghostCandidates(courseId, period, UUID.fromString(jwt.getSubject()), sort, page));
+    }
+
     @Operation(summary = "코스 전체 순위 (G3)",
             description = "순위순 커서 페이징. 화면 진입·기간 변경·새로고침 때는 cursor 없이 첫 페이지부터 다시 조회한다. "
                     + "rank는 공동순위면 같은 값이고 다음 순위는 그 인원만큼 건너뛴다(1·2·2·4). mine=true인 내 행은 눌러도 프로필로 가지 않는다. "

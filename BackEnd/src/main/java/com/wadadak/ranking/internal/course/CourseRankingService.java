@@ -69,6 +69,18 @@ class CourseRankingService implements RankingApi, CourseRankingReader {
         return CourseRankingAssembler.entries(ranking(courseId, from(period)), requesterId, page, this::profiles);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public CursorSlice<PublicGhostCandidate> ghostCandidates(UUID courseId, RankingPeriod period, UUID requesterId,
+                                                            PublicGhostSort sort, Cursorable page) {
+        Instant from = from(period);
+        var ranked = ranking(courseId, from);
+        Integer baseline = sort == PublicGhostSort.SIMILAR && !repository.isHidden(courseId)
+                ? repository.best(courseId, requesterId, from).map(RankedRecord::courseElapsedSeconds).orElse(null)
+                : null;
+        return CourseRankingAssembler.publicGhostPage(ranked, requesterId, baseline, sort, page, this::profiles);
+    }
+
     private List<RankedRecord> ranking(UUID courseId, Instant from) {
         return repository.isHidden(courseId) ? List.of() : repository.ranking(courseId, from);
     }
