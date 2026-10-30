@@ -1,3 +1,5 @@
+import 'package:wadadak/features/run/presentation/own_ghost_selection_view.dart';
+
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as image_ui;
@@ -26,7 +28,7 @@ import 'package:wadadak/features/run/presentation/course_select_screen.dart';
 import 'package:wadadak/features/run/presentation/course_start_view.dart';
 import 'package:wadadak/features/run/presentation/free_run_screen.dart';
 import 'package:wadadak/features/run/presentation/own_ghost_selection_screen.dart';
-import 'package:wadadak/features/run/presentation/own_ghost_selection_view.dart';
+import 'package:wadadak/features/run/presentation/ghost_runner_selection_view.dart';
 import 'package:wadadak/routes.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
@@ -105,6 +107,9 @@ void main() {
       );
     }
     await fonts.load();
+    final iconsFont = FontLoader('MaterialIcons')
+      ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+    await iconsFont.load();
   });
   late RunController runs;
   late FreeRunController ui;
@@ -194,6 +199,7 @@ void main() {
         child: RepaintBoundary(
           key: capture,
           child: MaterialApp.router(
+            debugShowCheckedModeBanner: false,
             theme: WdTheme.light(),
             routerConfig: router,
           ),
@@ -203,13 +209,15 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('고스트 대결'));
     await tester.pumpAndSettle();
+    await tester.tap(find.text('코스 기록'));
+    await tester.pumpAndSettle();
   }
 
   Future<void> openPicker(WidgetTester tester) async {
     await tester.ensureVisible(find.text('내 완주 기록 선택'));
     await tester.tap(find.text('내 완주 기록 선택'));
     await tester.pumpAndSettle();
-    expect(find.byType(OwnGhostSelectionView), findsOneWidget);
+    expect(find.byType(GhostRunnerSelectionView), findsOneWidget);
   }
 
   Future<void> png(WidgetTester tester, String name) async {
@@ -229,7 +237,7 @@ void main() {
 
   Future<void> choose(WidgetTester tester) async {
     await openPicker(tester);
-    await tester.tap(find.byType(WdMyRankCard));
+    await tester.tap(find.byKey(const ValueKey('ghost-choice-best')));
     await tester.pumpAndSettle();
     await tester.tap(find.text('이 고스트와 대결하기'));
     await tester.pumpAndSettle();
@@ -242,7 +250,7 @@ void main() {
       expect(find.text('코스를 골라 주세요'), findsOneWidget);
       expect(
         tester
-            .widget<WdButton>(find.widgetWithText(WdButton, '고스트 대결 시작'))
+            .widget<WdButton>(find.widgetWithText(WdButton, '고스트와 달리기'))
             .onPressed,
         isNull,
       );
@@ -270,7 +278,7 @@ void main() {
       await tester.tap(find.text('이 코스로 설정'));
       await tester.pumpAndSettle();
       expect(runs.selectedCourse!.courseId, courseId);
-      expect(find.text('고스트 대결 시작'), findsOneWidget);
+      expect(find.text('고스트와 달리기'), findsOneWidget);
       expect(runs.selectedGhost, isNull);
       expect(starts.posts, isEmpty);
     },
@@ -288,7 +296,7 @@ void main() {
       expect(location.streams, isEmpty);
       expect(runs.run, isNull);
       final id = courses.prepared.single.$2;
-      final button = find.widgetWithText(WdButton, '고스트 대결 시작');
+      final button = find.widgetWithText(WdButton, '고스트와 달리기');
       await tester.ensureVisible(button);
       await tester.runAsync(() async {
         await tester.tap(button);
@@ -337,7 +345,7 @@ void main() {
       source.empty = false;
       source.unavailable = true;
       await openPicker(tester);
-      await tester.tap(find.byType(WdMyRankCard));
+      await tester.tap(find.byKey(const ValueKey('ghost-choice-best')));
       await tester.pumpAndSettle();
       expect(find.text('GPS 공백이 많은 기록이에요. 다른 기록을 선택해 주세요.'), findsOneWidget);
       expect(runs.selectedGhost, isNull);
@@ -351,13 +359,13 @@ void main() {
     source.delayed = Completer<OwnGhostReplay>();
     await mount(tester);
     await openPicker(tester);
-    await tester.tap(find.byType(WdMyRankCard));
+    await tester.tap(find.byKey(const ValueKey('ghost-choice-best')));
     await tester.pump();
     runs.selectCourse(const CourseSelection('different-course', '다른 코스'));
     await tester.pump();
     source.delayed!.complete(source.replay());
     await tester.pumpAndSettle();
-    expect(find.byType(OwnGhostSelectionView), findsNothing);
+    expect(find.byType(GhostRunnerSelectionView), findsNothing);
     expect(runs.selectedGhost, isNull);
     expect(starts.posts, isEmpty);
   });
@@ -368,7 +376,7 @@ void main() {
       source.delayed = Completer<OwnGhostReplay>();
       await mount(tester);
       await openPicker(tester);
-      await tester.tap(find.byType(WdMyRankCard));
+      await tester.tap(find.byKey(const ValueKey('ghost-choice-best')));
       await tester.pump();
       member = 'bob';
       await tester.runAsync(() => runs.bindOwner());
@@ -376,10 +384,26 @@ void main() {
       await tester.pumpAndSettle();
       expect(runs.selectedGhost, isNull);
       expect(runs.selectedCourse, isNull);
-      expect(find.byType(OwnGhostSelectionView), findsNothing);
+      expect(find.byType(GhostRunnerSelectionView), findsNothing);
       expect(starts.posts, isEmpty);
     },
   );
+
+  testWidgets('account change also closes the complete own-record list', (
+    tester,
+  ) async {
+    await mount(tester);
+    await openPicker(tester);
+    await tester.tap(find.text('내 기록 전체 보기'));
+    await tester.pumpAndSettle();
+    expect(find.byType(OwnGhostSelectionView), findsOneWidget);
+    member = 'bob';
+    await tester.runAsync(() => runs.bindOwner());
+    await tester.pumpAndSettle();
+    expect(find.byType(OwnGhostSelectionView), findsNothing);
+    expect(find.byType(GhostRunnerSelectionView), findsNothing);
+    expect(runs.selectedGhost, isNull);
+  });
 
   testWidgets(
     'switching to ordinary course mode clears the opponent but preserves the course',
@@ -390,7 +414,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(runs.selectedGhost, isNull);
       expect(runs.selectedCourse!.courseId, courseId);
-      expect(find.text('고스트 대결 시작'), findsNothing);
+      expect(find.text('고스트와 달리기'), findsNothing);
       expect(starts.posts, isEmpty);
     },
   );
@@ -408,7 +432,7 @@ void main() {
       router.push(Routes.runOwnGhostSelect);
       await tester.pumpAndSettle();
       expect(router.routeInformationProvider.value.uri.path, Routes.run);
-      expect(find.byType(OwnGhostSelectionView), findsNothing);
+      expect(find.byType(GhostRunnerSelectionView), findsNothing);
       expect(runs.run!.id, id);
       expect(starts.posts, hasLength(1));
     },
@@ -424,7 +448,7 @@ void main() {
       runs.selectCourse(const CourseSelection('other-course', '다른 코스'));
       courses.gate!.complete();
       await tester.pumpAndSettle();
-      expect(find.byType(OwnGhostSelectionView), findsNothing);
+      expect(find.byType(GhostRunnerSelectionView), findsNothing);
       expect(runs.selectedCourse!.courseId, 'other-course');
       expect(source.queries, 0);
       expect(starts.posts, isEmpty);
@@ -448,7 +472,7 @@ void main() {
       courses.prepareError = null;
       await tester.tap(find.text('다시 시도'));
       await tester.pumpAndSettle();
-      expect(find.byType(OwnGhostSelectionView), findsOneWidget);
+      expect(find.byType(GhostRunnerSelectionView), findsOneWidget);
     },
   );
 }

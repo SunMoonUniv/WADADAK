@@ -1,6 +1,14 @@
+import 'package:dio/dio.dart';
+
 import '../../../core/api/api_client.dart';
 import '../../../core/api/run_api_client.dart';
 import '../domain/free_ghost.dart';
+
+const freeGhostPreparationTimeout = Duration(seconds: 15);
+const freeGhostPreparationTimeoutError = ApiException(
+  'FREE_GHOST_PREPARATION_TIMEOUT',
+  '기록 확인이 15초 안에 끝나지 않았어요. 기록을 다시 선택해 주세요.',
+);
 
 abstract interface class FreeGhostSource {
   Future<({List<FreeGhostCandidate> content, String? nextCursor})> candidates(
@@ -37,12 +45,34 @@ class FreeGhostApi implements FreeGhostSource {
   }
 
   @override
-  Future<Map<String, dynamic>> prepare(String owner, String id) async {
+  Future<Map<String, dynamic>> prepare(String owner, String id) {
+    final cancellation = CancelToken();
+    // Include authentication, download and JSON decoding in one deadline.
+    return _prepare(owner, id, cancellation).timeout(
+      freeGhostPreparationTimeout,
+      onTimeout: () {
+        cancellation.cancel(freeGhostPreparationTimeoutError);
+        throw freeGhostPreparationTimeoutError;
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> _prepare(
+    String owner,
+    String id,
+    CancelToken cancellation,
+  ) async {
     final response = ((await callApi(
       () => client.dio.get<Object?>(
         '/api/v1/runs/records/$id/free-ghost-playback',
         queryParameters: {'playbackVersion': 'GHOST_PLAYBACK_FREE_V2'},
-        options: client.options(owner),
+        cancelToken: cancellation,
+        options: client
+            .options(owner)
+            .copyWith(
+              // Also release a decoder isolate that never starts in debug mode.
+              transformTimeout: freeGhostPreparationTimeout,
+            ),
       ),
     )) as Map).cast<String, dynamic>();
     if ((response['playback'] as Map?)?['version'] !=

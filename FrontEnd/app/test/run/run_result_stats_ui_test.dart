@@ -70,10 +70,15 @@ void main() {
           ),
         ),
       );
-      expect(find.text('42 m'), findsOneWidget);
-      expect(find.text('기압 센서로 측정한 상승 고도예요.'), findsOneWidget);
-      expect(find.text('2–3 km'), findsOneWidget);
+      expect(find.text('+42 m'), findsOneWidget);
+      expect(find.text('3구간'), findsOneWidget);
       expect(find.text('4′35″'), findsOneWidget);
+      await tester.tap(find.text('구간 상세 분석'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('측정 상세 및 기준'));
+      await tester.tap(find.text('측정 상세 및 기준'));
+      await tester.pumpAndSettle();
+      expect(find.text('기압 센서로 측정한 상승 고도예요.'), findsOneWidget);
       expect(find.text('최고 구간 페이스 5′10″/km'), findsOneWidget);
       expect(find.textContaining('연속 30초 평균'), findsOneWidget);
       expect(find.text('상승 고도는 고도가 측정된 일부 구간만 포함해요.'), findsOneWidget);
@@ -97,27 +102,45 @@ void main() {
   testWidgets('missing, flat zero and short runs have distinct messages', (
     tester,
   ) async {
-    Future<void> show(RunResultStats? stats) => tester.pumpWidget(
-      ProviderScope(
-        overrides: [mapEngineProvider.overrideWithValue(MapEngine.dev)],
-        child: MaterialApp(
-          theme: WdTheme.light(),
-          home: FreeRunResultView(
-            run: snapshot(stats, distance: 100),
-            onConfirm: () {},
+    Future<void> show(RunResultStats? stats) async {
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [mapEngineProvider.overrideWithValue(MapEngine.dev)],
+          child: MaterialApp(
+            theme: WdTheme.light(),
+            home: FreeRunResultView(
+              run: snapshot(stats, distance: 100),
+              onConfirm: () {},
+            ),
           ),
         ),
-      ),
-    );
+      );
+    }
+
+    Future<void> details() async {
+      await tester.tap(find.text('구간 상세 분석'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('측정 상세 및 기준'));
+      await tester.tap(find.text('측정 상세 및 기준'));
+      await tester.pumpAndSettle();
+    }
+
     await show(const RunResultStats(elevationGainM: 0));
     await tester.scrollUntilVisible(find.text('0 m'), 150);
     expect(find.text('0 m'), findsOneWidget);
+    await details();
     expect(find.text('최고 구간은 1km 완주 후 표시돼요.'), findsOneWidget);
     expect(find.text('최고 페이스를 계산할 연속 30초 이동 기록이 없어요.'), findsOneWidget);
     expect(find.text('상승 고도를 계산할 고도 측정 데이터가 없어요.'), findsNothing);
+    await tester.tap(find.bySemanticsLabel('뒤로 가기'));
+    await tester.pumpAndSettle();
     await show(const RunResultStats());
+    await details();
     expect(find.text('상승 고도를 계산할 고도 측정 데이터가 없어요.'), findsOneWidget);
+    await tester.tap(find.bySemanticsLabel('뒤로 가기'));
+    await tester.pumpAndSettle();
     await show(null);
+    await details();
     expect(find.text('이 기록의 상세 지표를 계산할 원본 데이터가 없어요.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

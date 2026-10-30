@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../domain/course_run.dart';
-import 'course_register_card.dart';
 import '../domain/run_models.dart';
+import 'course_register_card.dart';
 import 'free_run_live_view.dart';
-import 'run_lap_list.dart';
+import 'ghost_result_screen.dart';
+import 'run_pace_bars.dart';
+import 'run_segment_analysis_screen.dart';
 
-/// Figma 1731:5635 — 자유 러닝 결과. 원본 ms의 두 시간 값을 그대로 표시한다.
+/// Figma D1 / D1-1 / D1-2. Measured values and the server verdict remain authoritative.
 class FreeRunResultView extends StatelessWidget {
   const FreeRunResultView({
     super.key,
@@ -22,8 +24,6 @@ class FreeRunResultView extends StatelessWidget {
   final VoidCallback onConfirm;
   final VoidCallback? onDelete;
   final bool history;
-
-  /// 방금 끝낸 코스 러닝의 코스 이름. 서버 판정([RunSnapshot.course])이 오기 전 "판정 대기"로 보인다(D-14)
   final String? pendingCourse;
   final VoidCallback? onRetryGhost;
 
@@ -33,14 +33,40 @@ class FreeRunResultView extends StatelessWidget {
     final startedLabel = start == null
         ? '—'
         : '${start.year}.${_two(start.month)}.${_two(start.day)} · ${_two(start.hour)}:${_two(start.minute)} 시작';
+    final courseRun = run.course != null || pendingCourse != null;
+    final ghost = run.ghost != null || run.ghostPending;
     final speed = run.hasLocation && run.movingTime.inMilliseconds > 0
         ? '${(run.distanceMeters * 3600 / run.movingTime.inMilliseconds).toStringAsFixed(1)} km/h'
         : '—';
+    final cadence = run.averageCadence == null
+        ? '—'
+        : '${run.averageCadence!.round()} spm';
+    final elevation = run.resultStats?.elevationGainM;
+    final gain = elevation == null
+        ? '—'
+        : '${elevation > 0 ? '+' : ''}${elevation.round()} m';
+    final best = run.resultStats?.bestLapNumber == null
+        ? '—'
+        : '${run.resultStats!.bestLapNumber}구간';
     return Scaffold(
       backgroundColor: WdColors.paper,
       appBar: WdAppBar(
         title: '러닝 결과',
         onBack: onConfirm,
+        actions: [
+          if (history)
+            IconButton(
+              tooltip: '기록 삭제',
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+              visualDensity: VisualDensity.standard,
+              onPressed: onDelete,
+              icon: const Icon(
+                Icons.delete_outline_rounded,
+                size: 22,
+                color: WdColors.ink,
+              ),
+            ),
+        ],
         action: WdAppBarAction.icon(
           WdIcons.share,
           semanticLabel: '러닝 결과 공유',
@@ -56,48 +82,15 @@ class FreeRunResultView extends StatelessWidget {
               width: double.infinity,
               constraints: const BoxConstraints(minHeight: 208),
               color: WdColors.lime,
-              padding: const EdgeInsets.all(WdSpace.s24),
+              padding: const EdgeInsets.all(24),
               child: Column(
-                spacing: WdSpace.s12,
+                spacing: 12,
                 children: [
-                  if (run.ghost != null || run.ghostPending) ...[
-                    WdRecordCard(
-                      overline: '고스트 대결 결과',
-                      title: switch (run.ghost?['outcome']) {
-                        'WIN' => '승리',
-                        'LOSE' => '패배',
-                        'DRAW' => '무승부',
-                        'INVALID' => '대결 무효',
-                        _ => '서버 판정 대기',
-                      },
-                      time: run.ghost == null
-                          ? '—'
-                          : formatRunTime(
-                              Duration(
-                                seconds:
-                                    (run.ghost!['courseElapsedSeconds'] as num)
-                                        .toInt(),
-                              ),
-                            ),
-                      caption: run.ghost == null
-                          ? '업로드 후 서버가 최종 결과를 판정해요.'
-                          : '상대 ${formatRunTime(Duration(seconds: (run.ghost!['sourceElapsedSeconds'] as num).toInt()))}',
-                      footer: run.ghost == null
-                          ? '연결되면 같은 대결의 결과를 확인해요.'
-                          : '정지를 포함한 동일 경로 비교 시간',
-                    ),
-                    if (run.ghost == null && onRetryGhost != null)
-                      WdButton(
-                        '판정 다시 확인',
-                        variant: WdButtonVariant.secondary,
-                        onPressed: onRetryGhost,
-                      ),
-                  ],
                   WdSurface(
                     color: WdColors.ink,
                     radius: WdRadius.full,
                     height: 30,
-                    padding: const EdgeInsets.symmetric(horizontal: WdSpace.s8),
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
                     child: Text(
                       '러닝 완료 · ${run.storageStatus}',
                       style: WdText.ko12Medium.copyWith(color: WdColors.lime),
@@ -111,182 +104,135 @@ class FreeRunResultView extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    '오늘도 한 걸음 더 달렸어요.',
+                    run.course?.completed == false
+                        ? '끝까지 달린 것만으로 충분해요.'
+                        : '오늘도 한 걸음 더 달렸어요.',
                     style: WdText.ko22Bold.copyWith(color: WdColors.ink),
+                    textAlign: TextAlign.center,
                   ),
                 ],
               ),
             ),
             Padding(
-              padding: const EdgeInsets.all(WdSpace.s24),
+              padding: const EdgeInsets.all(24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
-                spacing: WdSpace.s20,
+                spacing: 20,
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    spacing: WdSpace.s3,
-                    children: [
-                      Text(
-                        run.course != null || pendingCourse != null
-                            ? run.course?.courseName ?? pendingCourse ?? '코스 러닝'
-                            : '자유 러닝',
-                        style: WdText.ko16Bold,
-                      ),
-                      Text(switch ((run.course, pendingCourse)) {
-                        (final course?, _) =>
-                          '$startedLabel · ${course.completed ? '코스 완주' : '코스 미완주'}',
-                        (null, final String _) => '$startedLabel · 판정 대기',
-                        _ => startedLabel,
-                      }, style: WdText.ko12.copyWith(color: WdColors.muted)),
-                    ],
+                  WdStepRow(
+                    title: courseRun
+                        ? run.course?.courseName ?? pendingCourse ?? '코스 러닝'
+                        : '자유 러닝',
+                    description: switch ((run.course, pendingCourse)) {
+                      (final course?, _) =>
+                        '$startedLabel · ${course.completed ? '코스 완주' : '코스 미완주'}',
+                      (null, final String _) => '$startedLabel · 판정 대기',
+                      _ => startedLabel,
+                    },
                   ),
-                  if (run.course != null || pendingCourse != null)
-                    _CourseBadge(course: run.course),
-                  CourseRegisterCard(run: run),
+                  if (courseRun)
+                    _CourseBadge(course: run.course)
+                  else
+                    CourseRegisterCard(run: run),
                   WdSurface(
-                    padding: const EdgeInsets.all(WdSpace.s16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      spacing: WdSpace.s8,
+                    padding: const EdgeInsets.all(16),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      spacing: 24,
                       children: [
-                        Row(
-                          spacing: WdSpace.s24,
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: _resultMetric(
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            spacing: 8,
+                            children: [
+                              Text(
                                 '총 소요 시간 (기록)',
-                                formatRunTime(run.elapsed),
+                                style: WdText.ko12.copyWith(
+                                  color: WdColors.muted,
+                                ),
                               ),
-                            ),
-                            Expanded(
-                              child: _resultMetric(
-                                '평균 페이스',
-                                formatRunPace(run.paceSecondsPerKm),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                child: Text(
+                                  formatRunTime(run.elapsed),
+                                  style: WdText.run34W700H39,
+                                ),
                               ),
-                            ),
-                          ],
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  '달린 시간 ${formatRunTime(run.active)} · 일시정지 ${formatRunTime(run.elapsed - run.active)}',
+                                  maxLines: 1,
+                                  style: WdText.ko11.copyWith(
+                                    color: WdColors.muted,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
-                        Wrap(
-                          spacing: WdSpace.s8,
-                          children: [
-                            Text(
-                              '이동 시간 ${formatRunTime(run.movingTime)}',
-                              style: WdText.ko11.copyWith(
-                                color: WdColors.muted,
-                              ),
-                            ),
-                            Text(
-                              '달린 시간 ${formatRunTime(run.active)}',
-                              style: WdText.ko11.copyWith(
-                                color: WdColors.muted,
-                              ),
-                            ),
-                            Text(
-                              '일시정지 ${formatRunTime(run.elapsed - run.active)}',
-                              style: WdText.ko11.copyWith(
-                                color: WdColors.muted,
-                              ),
-                            ),
-                          ],
+                        Expanded(
+                          child: (courseRun || ghost)
+                              ? _ghostSummary(context)
+                              : Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  spacing: 8,
+                                  children: [
+                                    Text(
+                                      '평균 페이스',
+                                      style: WdText.ko12.copyWith(
+                                        color: WdColors.muted,
+                                      ),
+                                    ),
+                                    FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Text(
+                                        formatRunPace(run.paceSecondsPerKm),
+                                        style: WdText.run34W700H39,
+                                      ),
+                                    ),
+                                  ],
+                                ),
                         ),
                       ],
                     ),
                   ),
-                  _RunStatSummary([
-                    ('평균 속도', speed),
-                    (
-                      '케이던스',
-                      run.averageCadence == null
-                          ? '—'
-                          : '${run.averageCadence!.round()} spm',
-                    ),
-                    ('소모 칼로리', '—'),
-                  ]),
-                  if (run.averageCadence != null &&
-                      run.cadenceCoverageMs < run.active.inMilliseconds)
-                    const WdInfoBanner(
-                      '걸음 센서가 측정되지 않은 구간이 있어요. 평균 케이던스는 측정된 구간만 사용해요.',
-                      tone: WdBannerTone.warning,
-                    ),
-                  if (run.averageCadence == null)
-                    const Text('케이던스 측정 데이터가 없어요.'),
-                  _RunStatSummary([
-                    (
-                      '상승 고도',
-                      run.resultStats?.elevationGainM == null
-                          ? '—'
-                          : '${run.resultStats!.elevationGainM!.round()} m',
-                    ),
-                    (
-                      '최고 구간',
-                      run.resultStats?.bestLapNumber == null
-                          ? '—'
-                          : '${run.resultStats!.bestLapNumber! - 1}–${run.resultStats!.bestLapNumber} km',
-                    ),
-                    (
-                      '최고 페이스',
-                      formatRunPace(run.resultStats?.bestPaceSecondsPerKm),
-                    ),
-                  ]),
-                  Text(
-                    '최고 구간은 완주한 1km 랩, 최고 페이스는 연속 30초 평균 기준이에요.',
-                    style: WdText.ko12.copyWith(color: WdColors.muted),
+                  WdStatSummary(
+                    courseRun || ghost
+                        ? [
+                            ('평균 페이스', formatRunPace(run.paceSecondsPerKm)),
+                            ('평균 속도', speed),
+                            ('케이던스', cadence),
+                          ]
+                        : [
+                            ('평균 속도', speed),
+                            ('케이던스', cadence),
+                            ('소모 칼로리', '—'),
+                          ],
                   ),
-                  if (run.resultStats?.bestLapPaceSecondsPerKm != null)
-                    Text(
-                      '최고 구간 페이스 ${formatRunPace(run.resultStats!.bestLapPaceSecondsPerKm)}/km',
-                      style: WdText.ko12.copyWith(color: WdColors.muted),
-                    ),
-                  if (run.resultStats == null)
-                    Text(
-                      '이 기록의 상세 지표를 계산할 원본 데이터가 없어요.',
-                      style: WdText.ko12.copyWith(color: WdColors.muted),
-                    ),
-                  if (run.resultStats != null &&
-                      run.resultStats!.bestLapNumber == null)
-                    Text(
-                      run.distanceMeters < 1000
-                          ? '최고 구간은 1km 완주 후 표시돼요.'
-                          : 'GPS 공백 없는 완성된 1km 랩이 없어 최고 구간을 표시할 수 없어요.',
-                      style: WdText.ko12.copyWith(color: WdColors.muted),
-                    ),
-                  if (run.resultStats != null &&
-                      run.resultStats!.bestPaceSecondsPerKm == null)
-                    Text(
-                      '최고 페이스를 계산할 연속 30초 이동 기록이 없어요.',
-                      style: WdText.ko12.copyWith(color: WdColors.muted),
-                    ),
-                  if (run.resultStats != null &&
-                      run.resultStats!.elevationGainM == null)
-                    Text(
-                      '상승 고도를 계산할 고도 측정 데이터가 없어요.',
-                      style: WdText.ko12.copyWith(color: WdColors.muted),
-                    ),
-                  if (run.resultStats?.elevationSource == 'BAROMETER' ||
-                      run.resultStats?.elevationSource == 'MIXED')
-                    Text(
-                      run.resultStats?.elevationSource == 'BAROMETER'
-                          ? '기압 센서로 측정한 상승 고도예요.'
-                          : '구간별로 기압 센서와 GPS 고도를 사용했어요.',
-                      style: WdText.ko12.copyWith(color: WdColors.muted),
-                    ),
-                  if (run.resultStats?.elevationPartial == true)
-                    const WdInfoBanner(
-                      '상승 고도는 고도가 측정된 일부 구간만 포함해요.',
-                      tone: WdBannerTone.warning,
-                    ),
-                  _RunStatSummary([
-                    ('이동시간', formatRunTime(run.movingTime)),
-                    ('총 페이스', formatRunPace(run.elapsedPaceSecondsPerKm)),
-                    ('정지시간', formatRunTime(run.elapsed - run.movingTime)),
-                  ]),
-                  Text(
-                    '평균 페이스는 이동시간, 총 페이스는 정지를 포함한 총 시간 기준이에요.',
-                    style: WdText.ko12.copyWith(color: WdColors.muted),
+                  WdStatSummary(
+                    courseRun || ghost
+                        ? [('상승 고도', gain), ('소모 칼로리', '—'), ('최고 구간', best)]
+                        : [
+                            ('상승 고도', gain),
+                            ('최고 구간', best),
+                            (
+                              '최고 페이스',
+                              formatRunPace(
+                                run.resultStats?.bestPaceSecondsPerKm,
+                              ),
+                            ),
+                          ],
                   ),
-                  SizedBox(height: 180, child: RunRouteView(run: run)),
+                  SizedBox(
+                    height: 180,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(16),
+                      child: RunRouteView(run: run),
+                    ),
+                  ),
+                  RunPaceBars(run: run),
                   if (run.gapCount > 0)
                     WdInfoBanner(
                       'GPS 측정 공백 ${run.gapCount}곳의 확인하지 못한 거리는 포함하지 않았어요.',
@@ -297,99 +243,92 @@ class FreeRunResultView extends StatelessWidget {
                       '측정이 중단되어 마지막 저장 지점까지 기록했어요.',
                       tone: WdBannerTone.warning,
                     ),
-                  RunLapList(run: run),
-                  WdInfoBanner(
-                    run.storageStatus == '기기 저장' ||
-                            run.storageStatus.startsWith('기기 저장 ·')
-                        ? '이 기기에 기록을 저장했어요. 서버 등록을 기다리고 있어요.'
-                        : run.storageStatus == '측정 거리 없음'
-                        ? '측정된 거리가 없어 개인 기록을 저장하지 않았어요.'
-                        : run.storageStatus == '저장 전'
-                        ? '러닝 기록을 확인해 주세요.'
-                        : '기기와 서버에 기록을 저장했어요.',
-                    tone: WdBannerTone.warning,
-                  ),
+                  if (run.storageStatus == '기기 저장' ||
+                      run.storageStatus.startsWith('기기 저장 ·'))
+                    const WdInfoBanner(
+                      '이 기기에 기록을 저장했어요. 서버 등록을 기다리고 있어요.',
+                      tone: WdBannerTone.warning,
+                    ),
+                  if (run.storageStatus == '측정 거리 없음')
+                    const WdInfoBanner(
+                      '측정된 거리가 없어 개인 기록을 저장하지 않았어요.',
+                      tone: WdBannerTone.warning,
+                    ),
                 ],
               ),
             ),
           ],
         ),
       ),
-      bottomNavigationBar: history
-          ? WdBottomBar.dual(
-              secondary: WdButton(
-                '기록 삭제',
-                onPressed: onDelete,
-                variant: WdButtonVariant.secondary,
-              ),
-              primary: WdButton('확인', onPressed: onConfirm),
-            )
-          : WdBottomBar.pinned(primary: WdButton('확인', onPressed: onConfirm)),
+      bottomNavigationBar: WdBottomBar.dual(
+        secondary: WdButton(
+          '구간 상세 분석',
+          variant: WdButtonVariant.secondary,
+          onPressed: () => Navigator.push(
+            context,
+            MaterialPageRoute<void>(
+              builder: (_) => RunSegmentAnalysisScreen(run: run),
+            ),
+          ),
+        ),
+        primary: WdButton('확인', onPressed: onConfirm),
+      ),
     );
   }
 
-  Widget _resultMetric(String label, String value) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    spacing: WdSpace.s8,
-    children: [
-      Text(label, style: WdText.ko12.copyWith(color: WdColors.muted)),
-      FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: Alignment.centerLeft,
-        child: Text(
-          value,
-          style: WdText.run34W700H39.copyWith(color: WdColors.ink),
-        ),
+  Widget _ghostSummary(BuildContext context) {
+    final result = run.ghost;
+    final delta = result == null
+        ? 0
+        : (result['sourceElapsedSeconds'] as num).toInt() -
+              (result['courseElapsedSeconds'] as num).toInt();
+    final label = switch (result?['outcome']) {
+      'WIN' => '${delta.abs()}초 앞섬',
+      'LOSE' => '${delta.abs()}초 뒤처짐',
+      'DRAW' => '동시에 도착',
+      'INVALID' => '대결 무효',
+      _ => run.ghostPending ? '서버 판정 대기' : '대결 없음',
+    };
+    return InkWell(
+      onTap: result == null
+          ? null
+          : () => Navigator.push(
+              context,
+              MaterialPageRoute<void>(
+                builder: (_) => GhostResultScreen(run: run),
+              ),
+            ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: 8,
+        children: [
+          Text('고스트 대결', style: WdText.ko12.copyWith(color: WdColors.muted)),
+          Text(
+            label,
+            style: WdText.ko22Bold.copyWith(
+              color: result?['outcome'] == 'WIN'
+                  ? WdColors.green
+                  : WdColors.muted,
+            ),
+          ),
+          if (result != null)
+            Text(
+              '대결 결과 보기 ›',
+              style: WdText.ko12.copyWith(color: WdColors.green),
+            )
+          else if (run.ghostPending && onRetryGhost != null)
+            TextButton(
+              onPressed: onRetryGhost,
+              child: const Text('판정 다시 확인', style: WdText.ko12),
+            ),
+        ],
       ),
-    ],
-  );
+    );
+  }
 
   String _two(int value) => value.toString().padLeft(2, '0');
 }
 
-class _RunStatSummary extends StatelessWidget {
-  const _RunStatSummary(this.items);
-  final List<(String, String)> items;
-  @override
-  Widget build(BuildContext context) => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    spacing: WdSpace.s8,
-    children: [
-      for (final (label, value) in items)
-        Expanded(
-          child: WdSurface(
-            padding: const EdgeInsets.all(WdSpace.s12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              mainAxisSize: MainAxisSize.min,
-              spacing: WdSpace.s6,
-              children: [
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    label,
-                    style: WdText.ko12.copyWith(color: WdColors.muted),
-                  ),
-                ),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    value,
-                    style: WdText.numeric24.copyWith(color: WdColors.ink),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-    ],
-  );
-}
-
-/// Figma D1·D1-1 "Course record badge": 서버 코스 판정(정책 5.3). 앱은 완주를 판정하지 않고 서버 결과만 보인다.
-/// [course]가 없으면 업로드 전·판정 전이다(D-14 "판정 대기").
 class _CourseBadge extends StatelessWidget {
   const _CourseBadge({required this.course});
   final RunCourseResult? course;

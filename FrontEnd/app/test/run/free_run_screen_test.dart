@@ -128,7 +128,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('러닝 결과'), findsOneWidget);
     expect(find.text('02:00'), findsOneWidget);
-    expect(find.text('달린 시간 01:40'), findsOneWidget);
+    expect(find.textContaining('달린 시간 01:40'), findsOneWidget);
     await tester.tap(find.text('확인'));
     await tester.pump();
     expect(controller.snapshot.state, RunState.ready);

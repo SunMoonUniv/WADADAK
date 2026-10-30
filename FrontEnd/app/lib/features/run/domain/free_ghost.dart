@@ -19,7 +19,7 @@ class FreeGhostCandidate {
 }
 
 class PreparedFreeGhost {
-  PreparedFreeGhost(this.owner, Map<String, dynamic> j)
+  PreparedFreeGhost(this.owner, Map<String, dynamic> j, {this.startedAt})
     : replay = OwnGhostReplay.fromJson(
         (j['playback'] as Map).cast<String, dynamic>(),
       ),
@@ -41,6 +41,7 @@ class PreparedFreeGhost {
     }
   }
   final String owner, endReason, referenceHash;
+  final DateTime? startedAt;
   final OwnGhostReplay replay;
   final double originalDistanceM;
   final int originalElapsedMs;

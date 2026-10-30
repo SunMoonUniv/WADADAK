@@ -59,7 +59,7 @@ void main() {
     await show(tester, run(), quota);
     expect(find.text('코스로 등록할 수 있어요'), findsOneWidget);
     expect(find.text('달린 경로가 그대로 코스가 돼요'), findsOneWidget);
-    await tester.tap(find.text('코스로 등록'));
+    await tester.tap(find.text('코스로 등록 ›'));
     await tester.pumpAndSettle();
     expect(find.text('D4 r1'), findsOneWidget);
   });
@@ -70,7 +70,7 @@ void main() {
       run(),
       const RegistrationQuota(custom: TypeQuota(limit: 1, remaining: 1), gps: TypeQuota(limit: 3, remaining: 0)),
     );
-    await tester.tap(find.text('코스로 등록'));
+    await tester.tap(find.text('코스로 등록 ›'));
     await tester.pumpAndSettle();
     expect(find.textContaining('3개까지 등록할 수 있어요'), findsOneWidget);
     expect(find.textContaining('D4'), findsNothing);
@@ -81,7 +81,7 @@ void main() {
 
     expect(find.text('코스로 등록할 수 없어요'), findsOneWidget);
     expect(find.text('이미 코스로 등록한 기록이에요'), findsOneWidget);
-    await tester.tap(find.text('코스로 등록'));
+    await tester.tap(find.text('코스로 등록 ›'));
     await tester.pumpAndSettle();
     expect(find.byType(SnackBar), findsNothing);
   });

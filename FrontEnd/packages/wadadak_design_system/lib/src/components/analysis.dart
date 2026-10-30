@@ -93,7 +93,8 @@ class WdSegmentChart extends StatelessWidget {
                 spacing: WdSpace.s12,
                 children: [
                   Text('▮ ${legend.$1}', style: WdText.caption11.copyWith(color: WdColors.muted)),
-                  Text('--- ${legend.$2}', style: WdText.caption11.copyWith(color: WdColors.muted)),
+                  if (reference?.isNotEmpty ?? false)
+                    Text('--- ${legend.$2}', style: WdText.caption11.copyWith(color: WdColors.muted)),
                 ],
               ),
             ),
@@ -197,7 +198,7 @@ class WdSegmentTable extends StatelessWidget {
               Text(r.segment, style: WdText.raw(12, FontWeight.w500, 18).copyWith(color: WdColors.ink)),
               Text(r.pace, style: cell.copyWith(color: WdColors.ink)),
               Text(r.cadence, style: cell.copyWith(color: WdColors.muted)),
-              Text(r.delta, style: cell.copyWith(color: r.faster ? WdColors.green : WdColors.negative)),
+              Text(r.delta, style: cell.copyWith(color: r.delta == '—' ? WdColors.muted : r.faster ? WdColors.green : WdColors.negative)),
             ]),
           ],
         ],

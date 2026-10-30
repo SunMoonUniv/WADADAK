@@ -122,6 +122,7 @@ void main() {
           builder: (_, _) => Scaffold(
             body: SingleChildScrollView(
               child: GhostRunPrep(
+                kind: GhostRecordKind.course,
                 course: runs.selectedCourse,
                 ghost: runs.selectedGhost,
               ),

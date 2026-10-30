@@ -178,9 +178,16 @@ void main() {
         expect(find.text('러닝 완료 · 저장 전'), findsOneWidget);
         expect(find.byType(WdBottomNav), findsNothing);
         await capture('result');
+        await tester.tap(find.text('구간 상세 분석'));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('측정 상세 및 기준'));
+        await tester.tap(find.text('측정 상세 및 기준'));
+        await tester.pumpAndSettle();
         await tester.ensureVisible(find.text('랩 기록'));
         await tester.pumpAndSettle();
         await capture('result-details');
+        await tester.tap(find.bySemanticsLabel('뒤로 가기').last);
+        await tester.pumpAndSettle();
         await tester.tap(find.text('확인'));
         await tester.pumpAndSettle();
         expect(controller.snapshot.state, RunState.ready);
