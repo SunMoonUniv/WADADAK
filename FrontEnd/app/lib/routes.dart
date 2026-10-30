@@ -63,6 +63,9 @@ abstract final class Routes {
 
   /// F6 프로필 편집. E3 [편집]에서 연다. 하단 탭을 덮는다.
   static const myProfileEdit = '/my/profile-edit';
+
+  /// F4 설정. E3 오른쪽 위 설정 아이콘에서 연다. 하단 탭을 덮는다.
+  static const mySettings = '/my/settings';
   static const runSettings = '/my/run-settings';
 
   /// I5 · 지역 주간 전체 순위
