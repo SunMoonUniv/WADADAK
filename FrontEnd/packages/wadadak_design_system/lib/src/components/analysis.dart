@@ -162,17 +162,20 @@ class _ChartPainter extends CustomPainter {
 }
 
 class WdSegmentRow {
-  const WdSegmentRow(this.segment, this.pace, this.cadence, this.delta, {this.faster = true});
+  const WdSegmentRow(this.segment, this.pace, this.cadence, this.delta, {this.faster = true, this.deltaColor});
 
   final String segment;
   final String pace;
   final String cadence;
 
-  /// 예: "8초 빠름"
-  final String delta;
+  /// 예: "8초 빠름". 없으면 네 번째 칸을 두지 않는다(고스트 비교가 없는 기록).
+  final String? delta;
 
   /// false면 [delta]가 빨간색.
   final bool faster;
+
+  /// [delta] 색을 직접 정한다(고도 표의 경사도).
+  final Color? deltaColor;
 }
 
 /// Analysis / Segment table — 구간 · 페이스 · 케이던스 · 고스트 대비.
@@ -198,7 +201,8 @@ class WdSegmentTable extends StatelessWidget {
               Text(r.segment, style: WdText.raw(12, FontWeight.w500, 18).copyWith(color: WdColors.ink)),
               Text(r.pace, style: cell.copyWith(color: WdColors.ink)),
               Text(r.cadence, style: cell.copyWith(color: WdColors.muted)),
-              Text(r.delta, style: cell.copyWith(color: r.delta == '—' ? WdColors.muted : r.faster ? WdColors.green : WdColors.negative)),
+              if (r.delta case final delta?)
+                Text(delta, style: cell.copyWith(color: r.deltaColor ?? (delta == '—' ? WdColors.muted : r.faster ? WdColors.green : WdColors.negative))),
             ]),
           ],
         ],
