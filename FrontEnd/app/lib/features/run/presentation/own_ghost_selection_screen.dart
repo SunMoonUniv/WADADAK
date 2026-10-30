@@ -15,6 +15,8 @@ import '../domain/course_run.dart';
 import '../domain/own_ghost.dart';
 import 'own_ghost_selection_view.dart';
 import 'ghost_runner_selection_view.dart';
+import 'public_ghost_selection_view.dart';
+import '../application/public_ghost_candidates_controller.dart';
 import '../../../core/api/ranking_api_client.dart';
 
 final ownGhostSourceProvider = Provider<OwnGhostSource>(
@@ -129,7 +131,7 @@ class _OwnGhostSelectionScreenState
   Future<void> _moreOwn() async {
     final choices = _choices, course = _course;
     if (choices == null || course == null || !_valid) return;
-    final selected = await Navigator.push<PreparedOwnGhost>(
+    final selected = await Navigator.push<Object>(
       context,
       MaterialPageRoute(
         builder: (context) => OwnGhostSelectionView(
@@ -137,10 +139,44 @@ class _OwnGhostSelectionScreenState
           courseName: course.name,
           onBack: () => Navigator.pop(context),
           onPrepared: (p) => Navigator.pop(context, p),
+          onOtherRunners: () => Navigator.pop(context, 'public'),
         ),
       ),
     );
-    if (mounted && _valid && selected != null) _select(selected);
+    if (!mounted || !_valid) return;
+    if (selected is PreparedOwnGhost) _select(selected);
+    if (selected == 'public') await _morePublic();
+  }
+
+  Future<void> _morePublic() async {
+    final course = _course, owner = _owner;
+    if (course == null || owner == null || !_valid) return;
+    final choices = PublicGhostCandidatesController(
+      ref.read(rankingApiClientProvider),
+      owner: owner,
+      courseId: course.courseId,
+    );
+    final selected = await Navigator.push<Object>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PublicGhostSelectionView(
+          controller: choices,
+          courseName: course.name,
+          onBack: () => Navigator.pop(context),
+          onOwn: () => Navigator.pop(context, 'own'),
+          onSelected: (choice) => Navigator.pop(context, choice),
+        ),
+      ),
+    );
+    choices.dispose();
+    if (!mounted || !_valid) return;
+    if (selected == 'own') {
+      await _moreOwn();
+      return;
+    }
+    if (selected is PublicGhostChoice) {
+      runPublicGhost(context, ref, course, selected.candidate, selected.period);
+    }
   }
 
   @override
@@ -161,6 +197,7 @@ class _OwnGhostSelectionScreenState
         onBack: _back,
         onPrepared: _select,
         onMoreOwn: _moreOwn,
+        onMorePublic: _morePublic,
         onPublic: (candidate) => runPublicGhost(
           context,
           ref,

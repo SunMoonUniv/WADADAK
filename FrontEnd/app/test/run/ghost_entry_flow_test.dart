@@ -1,3 +1,8 @@
+import 'package:wadadak/features/run/presentation/public_ghost_selection_view.dart';
+import 'package:wadadak/features/run/presentation/public_ghost_entry_screen.dart';
+
+import 'public_ghost_flow_test.dart' show PublicSource;
+
 import 'package:wadadak/features/run/presentation/own_ghost_selection_view.dart';
 
 import 'dart:async';
@@ -145,6 +150,11 @@ void main() {
     router = GoRouter(
       initialLocation: Routes.run,
       routes: [
+        GoRoute(
+          path: Routes.runPublicGhost,
+          builder: (_, state) =>
+              PublicGhostEntryScreen(args: state.extra! as PublicGhostArgs),
+        ),
         GoRoute(path: Routes.run, builder: (_, _) => const FreeRunScreen()),
         GoRoute(
           path: Routes.runCourseSelect,
@@ -172,6 +182,8 @@ void main() {
     WidgetTester tester, {
     bool course = true,
     double width = 402,
+    FakeCourseRankingApi? rankings,
+    PublicSource? publicSource,
   }) async {
     tester.view.physicalSize = Size(width, 1104);
     tester.view.devicePixelRatio = 1;
@@ -191,9 +203,14 @@ void main() {
           }),
           freeRunControllerProvider.overrideWithValue(ui),
           ownGhostSourceProvider.overrideWithValue(source),
+          publicGhostSourceProvider.overrideWithValue(
+            publicSource ?? PublicSource(),
+          ),
           mapEngineProvider.overrideWithValue(MapEngine.dev),
           courseApiClientProvider.overrideWithValue(FakeCourseApi()),
-          rankingApiClientProvider.overrideWithValue(FakeCourseRankingApi()),
+          rankingApiClientProvider.overrideWithValue(
+            rankings ?? FakeCourseRankingApi(),
+          ),
           reviewApiClientProvider.overrideWithValue(FakeCourseReviewApi()),
         ],
         child: RepaintBoundary(
@@ -403,6 +420,101 @@ void main() {
     expect(find.byType(OwnGhostSelectionView), findsNothing);
     expect(find.byType(GhostRunnerSelectionView), findsNothing);
     expect(runs.selectedGhost, isNull);
+  });
+
+  testWidgets(
+    'C10 source beyond twenty retains period through public replay preparation',
+    (tester) async {
+      final other = PublicSource();
+      final api = FakeCourseRankingApi()
+        ..publicRows[RankingPeriod.week] = [
+          for (var i = 1; i <= 25; i++)
+            PublicGhostCandidate.fromJson({
+              'runRecordId': i == 25 ? sourceId : 'public-$i',
+              'memberId': 'other-$i',
+              'rank': i,
+              'courseElapsedSeconds': 230,
+              'nickname': '공개 러너$i',
+              'paceSecondsPerKm': 207,
+              'completedAt': '2026-10-29T00:00:00Z',
+            }),
+        ];
+      await mount(tester, rankings: api, publicSource: other);
+      await openPicker(tester);
+      await tester.ensureVisible(find.text('다른 러너 전체 보기'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('다른 러너 전체 보기'));
+      await tester.pumpAndSettle();
+      expect(find.byType(PublicGhostSelectionView), findsOneWidget);
+      await tester.tap(find.text('이번 주'));
+      await tester.pumpAndSettle();
+      await png(tester, '402-public-candidates');
+      await tester.dragUntilVisible(
+        find.text('러너 더 보기'),
+        find.byType(ListView).first,
+        const Offset(0, -600),
+      );
+      await tester.tap(find.text('러너 더 보기'));
+      await tester.pumpAndSettle();
+      await tester.dragUntilVisible(
+        find.text('공개 러너25'),
+        find.byType(ListView).first,
+        const Offset(0, -600),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('공개 러너25'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('이 고스트와 대결하기'));
+      await tester.pumpAndSettle();
+      await tester.runAsync(() async => until(() => runs.selectedGhost != null));
+      await tester.pumpAndSettle();
+      expect(other.calls.single, 'alice/$sourceId/$courseId/WEEK');
+      expect(runs.selectedGhost!.sourceId, sourceId);
+      expect(runs.selectedGhost!.publicPeriod, 'WEEK');
+      expect(router.routeInformationProvider.value.uri.path, Routes.run);
+      expect(starts.posts, isEmpty);
+    },
+  );
+
+  testWidgets('full own and public record tabs navigate both ways without starting a run', (tester) async {
+    await mount(tester);
+    await openPicker(tester);
+    await tester.tap(find.text('내 기록 전체 보기'));
+    await tester.pumpAndSettle();
+    expect(find.byType(OwnGhostSelectionView), findsOneWidget);
+    await tester.tap(find.text('다른 러너'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PublicGhostSelectionView), findsOneWidget);
+    await tester.tap(find.text('내 기록'));
+    await tester.pumpAndSettle();
+    expect(find.byType(OwnGhostSelectionView), findsOneWidget);
+    expect(starts.posts, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('account change closes the public list and ignores a late page', (
+    tester,
+  ) async {
+    final pending = Completer<PublicGhostPage>();
+    final api = FakeCourseRankingApi();
+    await mount(tester, rankings: api);
+    await openPicker(tester);
+    api.onPublicPage = (_, _, _) => pending.future;
+    await tester.ensureVisible(find.text('다른 러너 전체 보기'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('다른 러너 전체 보기'));
+    await tester.pump();
+    member = 'bob';
+    await tester.runAsync(() => runs.bindOwner());
+    await tester.pumpAndSettle();
+    pending.complete((
+      entries: const <PublicGhostCandidate>[],
+      nextCursor: null,
+    ));
+    await tester.pumpAndSettle();
+    expect(find.byType(PublicGhostSelectionView), findsNothing);
+    expect(runs.selectedGhost, isNull);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(

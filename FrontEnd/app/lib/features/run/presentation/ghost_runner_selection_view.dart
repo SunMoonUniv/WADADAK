@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,8 +7,8 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../../../core/api/ranking_api_client.dart';
 import '../../../routes.dart';
-import '../../course/detail/course_ranking_state.dart';
 import '../application/own_ghost_controller.dart';
+import '../application/public_ghost_candidates_controller.dart';
 import '../domain/own_ghost.dart';
 import '../domain/run_models.dart';
 
@@ -20,12 +22,14 @@ class GhostRunnerSelectionView extends ConsumerStatefulWidget {
     required this.onPrepared,
     required this.onMoreOwn,
     required this.onPublic,
+    this.onMorePublic,
   });
   final OwnGhostController controller;
   final String courseName;
   final VoidCallback onBack, onMoreOwn;
   final ValueChanged<PreparedOwnGhost> onPrepared;
   final ValueChanged<GhostCandidate> onPublic;
+  final VoidCallback? onMorePublic;
   @override
   ConsumerState<GhostRunnerSelectionView> createState() =>
       _GhostRunnerSelectionViewState();
@@ -33,7 +37,23 @@ class GhostRunnerSelectionView extends ConsumerStatefulWidget {
 
 class _GhostRunnerSelectionViewState
     extends ConsumerState<GhostRunnerSelectionView> {
-  String? publicId;
+  late final publics = PublicGhostCandidatesController(
+    ref.read(rankingApiClientProvider),
+    owner: widget.controller.owner,
+    courseId: widget.controller.course.id,
+  );
+  @override
+  void initState() {
+    super.initState();
+    unawaited(publics.load());
+  }
+
+  @override
+  void dispose() {
+    publics.dispose();
+    super.dispose();
+  }
+
   static String time(int seconds) => formatRunTime(Duration(seconds: seconds));
   static String date(DateTime at) {
     final d = at.toUtc().add(const Duration(hours: 9));
@@ -46,13 +66,8 @@ class _GhostRunnerSelectionViewState
 
   @override
   Widget build(BuildContext context) {
-    final rankingKey = (
-      courseId: widget.controller.course.id,
-      period: RankingPeriod.all,
-    );
-    final ranking = ref.watch(courseRankingProvider(rankingKey));
     return AnimatedBuilder(
-      animation: widget.controller,
+      animation: Listenable.merge([widget.controller, publics]),
       builder: (context, _) {
         final c = widget.controller, best = c.summary.best;
         final recent = c.candidates.isEmpty
@@ -60,21 +75,14 @@ class _GhostRunnerSelectionViewState
             : c.candidates.reduce(
                 (a, b) => a.startedAt.isAfter(b.startedAt) ? a : b,
               );
-        final summary = ranking.value;
-        final public = summary?.ghost;
-        final publicSelected = public != null && publicId == public.runRecordId;
+        final public = publics.selected;
+        final publicSelected = public != null;
         final ready = c.prepared;
         void selectOwn(OwnGhostCandidate candidate) {
-          setState(() => publicId = null);
+          publics.clearSelection();
           c.select(candidate);
         }
 
-        String? nickname;
-        if (public != null) {
-          for (final entry in summary!.top) {
-            if (entry.memberId == public.memberId) nickname = entry.nickname;
-          }
-        }
         return Scaffold(
           backgroundColor: WdColors.paper,
           appBar: WdAppBar(
@@ -130,14 +138,9 @@ class _GhostRunnerSelectionViewState
               const SizedBox(height: 16),
               const WdSectionHeading('다른 러너 기록', actionLabel: '공개 완주 기록'),
               const SizedBox(height: 16),
-              Row(
-                spacing: 6,
-                children: [WdFilterChip('빠른 순', selected: true, onTap: () {})],
-              ),
-              const SizedBox(height: 16),
-              if (ranking.isLoading)
+              if (publics.loading)
                 const Center(child: CircularProgressIndicator())
-              else if (ranking.hasError) ...[
+              else if (publics.error != null) ...[
                 const WdInfoBanner(
                   '공개 기록을 불러오지 못했어요.',
                   tone: WdBannerTone.warning,
@@ -145,29 +148,35 @@ class _GhostRunnerSelectionViewState
                 WdButton(
                   '공개 기록 다시 확인',
                   variant: WdButtonVariant.secondary,
-                  onPressed: () =>
-                      ref.invalidate(courseRankingProvider(rankingKey)),
+                  onPressed: () => publics.load(),
                 ),
-              ] else if (public != null)
-                GhostRunnerChoiceCard(
-                  key: const ValueKey('ghost-choice-public'),
-                  title: nickname ?? '공개 고스트',
-                  meta:
-                      '${time(public.courseElapsedSeconds)}${best == null ? '' : ' · 내 최고보다 ${(public.courseElapsedSeconds - best.seconds).abs()}초 ${public.courseElapsedSeconds < best.seconds
-                                ? '빠름'
-                                : public.courseElapsedSeconds > best.seconds
-                                ? '느림'
-                                : '동일'}'}',
-                  badge: '${public.rank}위',
-                  selected: publicSelected,
-                  onTap: () {
-                    c.clearSelection();
-                    setState(() => publicId = public.runRecordId);
-                  },
-                )
+              ] else if (publics.rows.isEmpty)
+                const WdInfoBanner('선택할 수 있는 다른 러너의 공개 기록이 없어요.', plain: true)
               else
-                const WdInfoBanner('선택할 수 있는 다른 러너의 공개 기록이 없어요.', plain: true),
-              const SizedBox(height: 16),
+                for (var i = 0; i < publics.rows.take(3).length; i++) ...[
+                  GhostRunnerChoiceCard(
+                    key: ValueKey(
+                      i == 0
+                          ? 'ghost-choice-public'
+                          : 'ghost-choice-public-${publics.rows[i].runRecordId}',
+                    ),
+                    title: publics.rows[i].nickname ?? '공개 고스트',
+                    meta: time(publics.rows[i].courseElapsedSeconds),
+                    badge: '${publics.rows[i].rank}위',
+                    selected: publics.selectedId == publics.rows[i].runRecordId,
+                    onTap: () {
+                      c.clearSelection();
+                      publics.select(publics.rows[i]);
+                    },
+                  ),
+                  const SizedBox(height: WdSpace.s12),
+                ],
+              WdButton(
+                '다른 러너 전체 보기',
+                variant: WdButtonVariant.secondary,
+                onPressed: widget.onMorePublic,
+              ),
+              const SizedBox(height: WdSpace.s16),
               WdButton(
                 '코스 전체 순위 보기',
                 variant: WdButtonVariant.secondary,
@@ -179,7 +188,7 @@ class _GhostRunnerSelectionViewState
                   ),
                 ),
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: WdSpace.s16),
               const WdSectionHeading('AI 추천 고스트', actionLabel: '준비 중'),
               const SizedBox(height: 16),
               WdSurface(

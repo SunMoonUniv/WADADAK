@@ -6,7 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../../../core/api/api_client.dart';
-import '../../../core/map/map_view.dart';
+import 'route_preview_map.dart';
 import '../../../routes.dart';
 import '../application/course_run_entry.dart';
 import '../application/run_controller.dart';
@@ -283,19 +283,10 @@ class _FreeGhostSelectionScreenState
                         ),
                       ),
                     )
-                  : MapView(
-                      initialCenter: p.reference.route.first,
-                      lines: [
-                        for (
-                          var i = 0;
-                          i < p.reference.routeSegments.length;
-                          i++
-                        )
-                          MapLine(
-                            id: 'reference-$i',
-                            points: p.reference.routeSegments[i],
-                          ),
-                      ],
+                  : RunRoutePreviewMap(
+                      key: ValueKey(p.replay.sourceId),
+                      segments: p.reference.routeSegments,
+                      showEndpoints: false,
                     ),
             ),
           ),

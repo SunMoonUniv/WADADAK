@@ -680,6 +680,43 @@ class FakeCourseRankingApi extends Fake implements RankingApiClient {
   Map<RankingPeriod, List<CourseRankingEntry>> rows = {};
   int pageSize = 20;
   ApiException? entriesError;
+  Map<RankingPeriod, List<PublicGhostCandidate>> publicRows = {};
+  final publicRequests = <(RankingPeriod, PublicGhostSort, String?, String)>[];
+  Future<PublicGhostPage> Function(RankingPeriod, PublicGhostSort, String?)? onPublicPage;
+
+  @override
+  Future<PublicGhostPage> publicGhostCandidates(
+    String courseId,
+    RankingPeriod period, {
+    PublicGhostSort sort = PublicGhostSort.fastest,
+    String? cursor,
+    required String owner,
+  }) async {
+    publicRequests.add((period, sort, cursor, owner));
+    if (onPublicPage != null) return onPublicPage!(period, sort, cursor);
+    await gate?.future;
+    if (error != null) throw error!;
+    if (entriesError != null) throw entriesError!;
+    final ghost = summaries[period]?.ghost;
+    final all = [...?publicRows[period]];
+    if (!publicRows.containsKey(period) && ghost != null) {
+      all.add(
+        PublicGhostCandidate.fromJson({
+          'runRecordId': ghost.runRecordId,
+          'memberId': ghost.memberId,
+          'rank': ghost.rank,
+          'courseElapsedSeconds': ghost.courseElapsedSeconds,
+          'nickname': '공개 고스트',
+          'paceSecondsPerKm': 300,
+          'completedAt': '2026-10-29T00:00:00Z',
+        }),
+      );
+    }
+    final from = int.parse(cursor ?? '0');
+    final to = (from + pageSize).clamp(0, all.length);
+    return (entries: all.sublist(from, to), nextCursor: to < all.length ? '$to' : null);
+  }
+
   final entryRequests = <(RankingPeriod, String?)>[];
 
   @override

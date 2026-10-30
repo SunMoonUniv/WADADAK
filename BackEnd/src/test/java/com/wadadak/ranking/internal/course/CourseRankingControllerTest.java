@@ -95,6 +95,27 @@ class CourseRankingControllerTest {
     }
 
     @Test
+    void publicCandidatesPageBeyondTenAndCarryExactSourceIds() {
+        var first = get(COURSE + "/ghost-candidates", "size", "10");
+        assertThat(first).hasStatusOk();
+        assertThat(first).bodyJson().extractingPath("$.data.content").asArray().hasSize(10);
+        assertThat(first).bodyJson().extractingPath("$.data.content[*].memberId").asArray().doesNotContain(ME.toString());
+        assertThat(first).bodyJson().extractingPath("$.data.content[0].runRecordId").asString().isNotBlank();
+        assertThat(first).bodyJson().extractingPath("$.data.content[0].nickname").isEqualTo("러너1");
+        assertThat(first).bodyJson().extractingPath("$.data.nextCursor").isEqualTo("10");
+        var last = get(COURSE + "/ghost-candidates", "size", "10", "cursor", "10");
+        assertThat(last).bodyJson().extractingPath("$.data.content").asArray().hasSize(1);
+        assertThat(last).bodyJson().extractingPath("$.data.nextCursor").isNull();
+        assertThat(get(COURSE + "/ghost-candidates", "sort", "SIMILAR"))
+                .bodyJson().extractingPath("$.data.content[0].courseElapsedSeconds").isEqualTo(312);
+        assertThat(get(COURSE + "/ghost-candidates", "sort", "WRONG")).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(get(COURSE + "/ghost-candidates", "cursor", "abc")).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(get(COURSE + "/ghost-candidates", "size", "51")).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(get(COURSE + "/ghost-candidates", "period", "YEAR")).hasStatus(HttpStatus.BAD_REQUEST);
+        assertThat(mvc.get().uri(COURSE + "/ghost-candidates")).hasStatus(HttpStatus.UNAUTHORIZED);
+    }
+
+    @Test
     void rejectsInvalidParameters() {
         assertThat(get(COURSE, "period", "YEAR")).hasStatus(HttpStatus.BAD_REQUEST)
                 .bodyJson().extractingPath("$.code").isEqualTo("COMMON-001");
