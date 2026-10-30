@@ -86,6 +86,11 @@ class RankingApiStub implements RankingApi, CourseRankingReader, StubImplementat
                 MINE.get(period), sort, page, profiles(requesterId));
     }
 
+    @Override
+    public RunnerCourseRecord runnerRecord(UUID courseId, UUID memberId, RankingPeriod period, UUID requesterId) {
+        return CourseRankingAssembler.runnerRecord(ranking(courseId, period, requesterId), memberId, MINE.get(period));
+    }
+
     /** 내 정보 비공개 회원은 빼고 코스 총 소요시간 순으로 공동순위를 매긴다(1·2·2·4). */
     private static List<RankedRecord> ranking(UUID courseId, RankingPeriod period, UUID requesterId) {
         if (NO_RECORD_COURSE_ID.equals(courseId)) {

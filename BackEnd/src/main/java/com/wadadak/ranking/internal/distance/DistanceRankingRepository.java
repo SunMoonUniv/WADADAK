@@ -101,6 +101,18 @@ class DistanceRankingRepository {
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
+    /** 회원 한 명의 {@code to} 전에 등록된 기록 거리 합과 기록 수 */
+    MemberTotal totalOf(UUID memberId, Instant to) {
+        return jdbc.sql("""
+                        SELECT COALESCE(sum(distance_meters), 0) AS meters, count(*) AS runs
+                        FROM ranking.distance_run_records
+                        WHERE NOT deleted AND member_id = :memberId AND registered_at < :to""")
+                .param("memberId", memberId)
+                .param("to", utc(to))
+                .query((rs, rowNum) -> new MemberTotal(rs.getDouble("meters"), rs.getInt("runs")))
+                .single();
+    }
+
     /** 이 중 내 정보 비공개 회원 */
     Set<UUID> hiddenOf(Collection<UUID> memberIds) {
         return jdbc.sql("SELECT member_id FROM ranking.member_visibility_copies WHERE member_id IN (:memberIds) AND NOT visible")
@@ -129,5 +141,9 @@ class DistanceRankingRepository {
         int meters() {
             return (int) Math.round(periodMeters);
         }
+    }
+
+    /** 회원 한 명의 거리 합(m)과 기록 수 */
+    record MemberTotal(double meters, int runs) {
     }
 }

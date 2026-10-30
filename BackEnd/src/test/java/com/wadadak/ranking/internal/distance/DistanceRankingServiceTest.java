@@ -238,6 +238,18 @@ class DistanceRankingServiceTest {
         assertThat(reader.weekDistances(Set.of(H), H)).containsExactly(new MemberWeekDistance(H, 30_000));
     }
 
+    @Test
+    void memberTotalCountsAllRecordsUntilMidnightAndHidesPrivateRunner() {
+        // A는 이번 주 10km + 지난달 5km. 오늘 등록한 id 11의 40km는 내일 들어간다
+        assertThat(reader.memberTotal(A, ME)).isEqualTo(new MemberDistanceTotal(A, 15_000, 2));
+        assertThat(reader.memberTotal(id(11), ME)).isEqualTo(new MemberDistanceTotal(id(11), 0, 0));
+        // 지운 기록은 세지 않는다
+        assertThat(reader.memberTotal(id(10), ME)).isEqualTo(new MemberDistanceTotal(id(10), 0, 0));
+        // H는 비공개라 다른 회원에게는 보이지 않고, 본인에게는 보인다
+        assertThat(reader.memberTotal(H, ME)).isEqualTo(new MemberDistanceTotal(H, null, null));
+        assertThat(reader.memberTotal(H, H)).isEqualTo(new MemberDistanceTotal(H, 30_000, 1));
+    }
+
     private static MemberProfile profile(UUID id) {
         return new MemberProfile(id, "러너" + id.getLeastSignificantBits(), null, false);
     }

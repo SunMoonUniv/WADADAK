@@ -17,6 +17,7 @@ import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -105,6 +106,15 @@ class DistanceRankingController {
             throw new AppException(CommonErrorCode.INVALID_REQUEST, "memberIds: 최대 " + MAX_MEMBER_IDS + "명입니다.");
         }
         return ApiResult.success(reader.weekDistances(ids, memberId(jwt)));
+    }
+
+    @Operation(summary = "회원 누적 거리 · 러닝 수 (I3)",
+            description = "다른 러너 프로필의 `총 거리` · `러닝`. 전체 랭킹 누적(ALL)과 같은 기준으로 오늘 자정(Asia/Seoul) 전에 등록된 "
+                    + "기록 전체다. 자유 러닝 · 미완주 기록도 센다. 기록이 없으면 0, 내 정보 비공개 회원은 둘 다 null"
+                    + "(요청자 본인은 비공개여도 준다). 거리는 m 정수. 잘못된 ID는 COMMON-001.")
+    @GetMapping("/distance/members/{memberId}")
+    ApiResult<MemberDistanceTotal> memberTotal(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID memberId) {
+        return ApiResult.success(reader.memberTotal(memberId, memberId(jwt)));
     }
 
     private Region region(String regionCode) {

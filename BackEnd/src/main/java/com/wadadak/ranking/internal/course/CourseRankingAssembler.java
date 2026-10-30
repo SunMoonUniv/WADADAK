@@ -84,6 +84,22 @@ final class CourseRankingAssembler {
         });
     }
 
+    /**
+     * 다른 러너의 이 코스 기록(I3).
+     *
+     * @param ranking                내 정보 공개 회원의 대표 기록, 순위순
+     * @param myCourseElapsedSeconds 요청자의 같은 기간 대표 기록 시간. 없으면 {@code null}
+     * @return 그 러너가 순위에 없으면(내 정보 비공개 · 그 기간 기록 없음 · 숨긴 코스) {@code null}
+     */
+    static RunnerCourseRecord runnerRecord(List<RankedRecord> ranking, UUID memberId, Integer myCourseElapsedSeconds) {
+        return ranking.stream()
+                .filter(record -> record.memberId().equals(memberId))
+                .findFirst()
+                .map(record -> new RunnerCourseRecord(record.runRecordId(), record.rank(), record.courseElapsedSeconds(),
+                        pace(record), record.completedAt(), myCourseElapsedSeconds))
+                .orElse(null);
+    }
+
     private static MyCourseRanking me(List<RankedRecord> ranking, UUID requesterId, boolean requesterVisible,
                                       RankedRecord privateRecord, MemberProfile profile) {
         String nickname = profile == null ? null : profile.nickname();

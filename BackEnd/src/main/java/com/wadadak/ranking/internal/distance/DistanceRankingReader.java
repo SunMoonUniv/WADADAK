@@ -24,4 +24,7 @@ interface DistanceRankingReader {
 
     /** 회원마다 이번 주 거리(G7). 개수 제한은 컨트롤러가 본다 */
     List<MemberWeekDistance> weekDistances(Set<UUID> memberIds, UUID requesterId);
+
+    /** 회원 한 명의 누적 거리 · 러닝 수(I3) */
+    MemberDistanceTotal memberTotal(UUID memberId, UUID requesterId);
 }

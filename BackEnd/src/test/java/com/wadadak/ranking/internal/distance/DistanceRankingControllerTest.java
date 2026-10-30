@@ -150,6 +150,15 @@ class DistanceRankingControllerTest {
     }
 
     @Test
+    void memberTotalForProfile() {
+        MvcTestResult result = get("/api/v1/rankings/distance/members/" + UUID.randomUUID());
+
+        assertThat(result).hasStatusOk();
+        assertThat(result).bodyJson().extractingPath("$.data.totalDistanceMeters").isEqualTo(642_000);
+        assertThat(result).bodyJson().extractingPath("$.data.runCount").isEqualTo(118);
+    }
+
+    @Test
     void rejectsEmptyMemberId() {
         // 쉼표 사이가 비면 스프링이 null로 바꿔 넘긴다
         assertThat(get("/api/v1/rankings/distance/members", "memberIds", ME + ",,")).hasStatus(HttpStatus.BAD_REQUEST)
