@@ -8,9 +8,13 @@ import org.springframework.stereotype.Repository;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /** 누적 거리 랭킹 SQL. 회원별 거리 합계만 세고 순위는 서비스가 매긴다. */
 @Repository
@@ -80,6 +84,29 @@ class DistanceRankingRepository {
                 .param("at", utc(at))
                 .query(String.class)
                 .optional();
+    }
+
+    /** 회원마다 {@code [from, to)}에 등록된 기록의 거리 합(m). 그동안 기록이 없는 회원은 빠진다 */
+    Map<UUID, Double> distancesOf(Collection<UUID> memberIds, Instant from, Instant to) {
+        return jdbc.sql("""
+                        SELECT member_id, sum(distance_meters) AS meters
+                        FROM ranking.distance_run_records
+                        WHERE NOT deleted AND member_id IN (:memberIds) AND registered_at >= :from AND registered_at < :to
+                        GROUP BY member_id""")
+                .param("memberIds", memberIds)
+                .param("from", utc(from))
+                .param("to", utc(to))
+                .query((rs, rowNum) -> Map.entry(rs.getObject("member_id", UUID.class), rs.getDouble("meters")))
+                .stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    }
+
+    /** 이 중 내 정보 비공개 회원 */
+    Set<UUID> hiddenOf(Collection<UUID> memberIds) {
+        return jdbc.sql("SELECT member_id FROM ranking.member_visibility_copies WHERE member_id IN (:memberIds) AND NOT visible")
+                .param("memberIds", memberIds)
+                .query(UUID.class)
+                .set();
     }
 
     private static OffsetDateTime utc(Instant instant) {
