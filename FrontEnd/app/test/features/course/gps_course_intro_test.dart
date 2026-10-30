@@ -8,11 +8,13 @@ import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/map/map_view.dart';
 import 'package:wadadak/features/course/course_format.dart';
 import 'package:wadadak/features/course/create/gps_course_intro.dart';
+import 'package:wadadak/features/course/create/record_select_screen.dart';
 import 'package:wadadak/features/course/create/route_draw_screen.dart';
 import 'package:wadadak/features/home/home_screen.dart';
 import 'package:wadadak/features/home/my_location.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
 import 'package:wadadak/features/run/application/free_run_controller.dart';
+import 'package:wadadak/features/run/application/run_controller.dart';
 import 'package:wadadak/features/run/domain/free_run_session.dart';
 import 'package:wadadak/features/run/domain/run_models.dart';
 import 'package:wadadak/features/run/presentation/free_run_screen.dart';
@@ -22,6 +24,7 @@ import 'package:wadadak/routes.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../../fakes.dart';
+import 'record_fakes.dart';
 
 /// 코스 상세에서 고른 코스를 비웠는지 센다. 측정은 기기 없이 도는 자유 러닝 세션이다.
 class _SpyFreeRun extends FreeRunController {
@@ -59,6 +62,9 @@ void main() {
       ..physicalSize = const Size(402, 874)
       ..devicePixelRatio = 1;
     addTearDown(tester.view.reset);
+    // B6(`내 기록에서 코스 올리기`)이 읽는 기록. 기록이 없는 계정이다
+    final runs = recordRuns(MemoryRunStore(), RecordHistoryApi());
+    addTearDown(runs.dispose);
     await tester.pumpWidget(ProviderScope(
       overrides: [
         memberApiClientProvider.overrideWithValue(FakeMemberApi()),
@@ -69,6 +75,7 @@ void main() {
         courseApiClientProvider.overrideWithValue(courses),
         myLocationProvider.overrideWithValue(FakeMyLocation()),
         freeRunControllerProvider.overrideWithValue(run),
+        runControllerProvider.overrideWithValue(runs),
       ],
       child: const WadadakApp(),
     ));
@@ -140,13 +147,26 @@ void main() {
     expect(button(tester, '달리기 시작하기'), isNull);
   });
 
-  testWidgets('tells picking from past records is not ready yet (B5-04)', (tester) async {
+  testWidgets('opens B6 to pick a past record and comes back (B5-04)', (tester) async {
     await openRunMethod(tester);
 
     await tap(tester, find.text('내 기록에서 코스 올리기'));
 
-    expect(find.text(RouteDrawScreen.recordsNotReadyMessage), findsOneWidget);
-    expect(find.byType(RouteDrawScreen), findsOneWidget);
+    expect(find.byType(RecordSelectScreen), findsOneWidget);
+    expect(find.text('내 기록에서 등록'), findsOneWidget);
+    expect(find.text('아직 달린 기록이 없어요.'), findsOneWidget);
+
+    // B6에 있는 사이 다른 기기에서 오늘 GPS 코스를 다 등록했다
+    courses.quota = const RegistrationQuota(
+      custom: TypeQuota(limit: 1, remaining: 1),
+      gps: TypeQuota(limit: 3, remaining: 0),
+    );
+    await tap(tester, find.bySemanticsLabel('뒤로 가기'));
+
+    expect(find.byType(RecordSelectScreen), findsNothing);
+    expect(find.text('내 기록에서 코스 올리기'), findsOneWidget, reason: 'B5 그대로');
+    expect(find.text(gpsQuotaUsedUpMessage), findsOneWidget, reason: '돌아오면 한도를 다시 받는다');
+    expect(button(tester, '내 기록에서 코스 올리기'), isNull);
   });
 
   testWidgets('goes home from the app bar without asking (B5-06)', (tester) async {

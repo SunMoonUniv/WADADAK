@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
@@ -96,26 +97,32 @@ class CourseRunnersTag extends StatelessWidget {
 
 /// 카드 썸네일의 코스 경로. 지도 없이 경로만 칸에 맞춰 그린다. 선은 지도 코스 선과 같은 라임 + 잉크 테두리다.
 class CourseRouteThumbnail extends StatelessWidget {
-  const CourseRouteThumbnail(this.route, {super.key});
+  CourseRouteThumbnail(List<GeoPoint> route, {super.key}) : segments = [route];
 
-  final List<GeoPoint> route;
+  /// 달린 기록 경로(B6). GPS가 끊긴 구간은 잇지 않고 따로 그리되, 모든 구간을 한 축척으로 칸에 맞춘다.
+  const CourseRouteThumbnail.segments(this.segments, {super.key});
+
+  final List<List<GeoPoint>> segments;
 
   @override
-  Widget build(BuildContext context) => CustomPaint(painter: _RoutePainter(route), size: Size.infinite);
+  Widget build(BuildContext context) => CustomPaint(painter: _RoutePainter(segments), size: Size.infinite);
 }
 
 class _RoutePainter extends CustomPainter {
-  _RoutePainter(this.route);
+  _RoutePainter(this.segments);
 
-  final List<GeoPoint> route;
+  final List<List<GeoPoint>> segments;
 
   static const _inset = 8.0;
 
   @override
   void paint(Canvas canvas, Size size) {
-    if (route.length < 2) return;
+    // 점 하나뿐인 구간은 선이 아니다
+    final lines = [for (final segment in segments) if (segment.length > 1) segment];
+    if (lines.isEmpty) return;
+    final route = lines.expand((line) => line);
     // 좁은 범위라 경도는 위도 cos만큼 줄여 평면으로 본다.
-    final shrink = math.cos(route.first.lat * math.pi / 180);
+    final shrink = math.cos(lines.first.first.lat * math.pi / 180);
     final xs = [for (final point in route) point.lng * shrink];
     final ys = [for (final point in route) -point.lat];
     final minX = xs.reduce(math.min), maxX = xs.reduce(math.max);
@@ -126,10 +133,11 @@ class _RoutePainter extends CustomPainter {
     if (!scale.isFinite) return;
     // 가운데에 둔다.
     final dx = _inset + (width - spanX * scale) / 2, dy = _inset + (height - spanY * scale) / 2;
-    final path = Path()
-      ..addPolygon([
-        for (var i = 0; i < route.length; i++) Offset(dx + (xs[i] - minX) * scale, dy + (ys[i] - minY) * scale),
-      ], false);
+    Offset at(GeoPoint point) => Offset(dx + (point.lng * shrink - minX) * scale, dy + (-point.lat - minY) * scale);
+    final path = Path();
+    for (final line in lines) {
+      path.addPolygon([for (final point in line) at(point)], false);
+    }
 
     Paint stroke(Color color, double width) => Paint()
       ..style = PaintingStyle.stroke
@@ -143,5 +151,5 @@ class _RoutePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_RoutePainter oldDelegate) => oldDelegate.route != route;
+  bool shouldRepaint(_RoutePainter oldDelegate) => !listEquals(oldDelegate.segments, segments);
 }

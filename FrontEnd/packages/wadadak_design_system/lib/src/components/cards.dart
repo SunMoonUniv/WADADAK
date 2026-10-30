@@ -323,7 +323,8 @@ class WdRunRecordCard extends StatelessWidget {
           titleStyle: WdText.cardTitle14,
           lines: [summary],
           trailing: _chevron(18),
-          footer: tags.isEmpty ? null : Row(spacing: WdSpace.s6, children: tags),
+          // 큰 글자 · 좁은 화면에서 태그가 한 줄에 다 들어가지 않으면 다음 줄로 내린다(Course card와 같다).
+          footer: tags.isEmpty ? null : Wrap(spacing: WdSpace.s6, runSpacing: WdSpace.s4, children: tags),
           onTap: onTap,
         )
       : _MediaCard(

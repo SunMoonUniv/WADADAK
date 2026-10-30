@@ -7,6 +7,7 @@ import 'core/auth/auth_controller.dart';
 import 'core/map/map_view.dart';
 import 'features/course/create/course_info_screen.dart';
 import 'features/course/create/gps_course_info_screen.dart';
+import 'features/course/create/record_select_screen.dart';
 import 'features/course/create/route_draw_screen.dart';
 import 'features/course/detail/course_detail_screen.dart';
 import 'features/course/detail/course_rankings_screen.dart';
@@ -65,6 +66,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: Routes.profile, builder: (_, _) => const ProfileSetupScreen()),
       GoRoute(path: Routes.courseCreate, builder: (_, state) => RouteDrawScreen(camera: state.extra as MapCamera?)),
       GoRoute(path: Routes.courseInfo, builder: (_, state) => CourseInfoScreen(route: state.extra! as GeneratedRoute)),
+      GoRoute(path: Routes.courseFromRecords, builder: (_, _) => const RecordSelectScreen()),
       GoRoute(
         path: '/course/new/gps/:recordId',
         builder: (_, state) => GpsCourseInfoScreen(recordId: state.pathParameters['recordId']!),
