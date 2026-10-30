@@ -208,6 +208,29 @@ class CourseRankingServiceTest {
                 .extracting(PublicGhostCandidate::nickname).containsOnlyNulls();
     }
 
+    @Test
+    void runnerRecordIsRankedRepresentativeWithMyBest() {
+        RunnerCourseRecord record = reader.runnerRecord(course, a, RankingPeriod.ALL, me);
+
+        assertThat(record.runRecordId()).isNotNull();
+        assertThat(record.rank()).isEqualTo(1);                      // b와 공동 1위
+        assertThat(record.courseElapsedSeconds()).isEqualTo(300);    // 320보다 빠른 300이 대표 기록
+        assertThat(record.paceSecondsPerKm()).isEqualTo(300);
+        assertThat(record.myCourseElapsedSeconds()).isEqualTo(340);
+        assertThat(reader.runnerRecord(course, a, RankingPeriod.ALL, UUID.randomUUID()).myCourseElapsedSeconds()).isNull();
+        // c는 이번 주 기록이 없다
+        assertThat(reader.runnerRecord(course, c, RankingPeriod.WEEK, me)).isNull();
+    }
+
+    @Test
+    void runnerRecordIsNullForPrivateRunnerOrHiddenCourse() {
+        jdbc.update("INSERT INTO ranking.member_visibility_copies VALUES (?, FALSE, 1, now(), now())", a);
+        assertThat(reader.runnerRecord(course, a, RankingPeriod.ALL, me)).isNull();
+
+        jdbc.update("INSERT INTO ranking.course_status_copies VALUES (?, 'HIDDEN', 1, now(), now())", course);
+        assertThat(reader.runnerRecord(course, b, RankingPeriod.ALL, me)).isNull();
+    }
+
     /** 기록 등록 1시간 전에 완주했다고 둔다. 코스 거리가 1000m라 페이스와 시간이 같다. */
     private UUID insert(UUID memberId, int elapsedSeconds, Instant registeredAt) {
         UUID runRecordId = UUID.randomUUID();

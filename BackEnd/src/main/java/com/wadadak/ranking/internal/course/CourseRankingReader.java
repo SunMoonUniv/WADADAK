@@ -20,4 +20,7 @@ interface CourseRankingReader {
 
     /** 순위순. 같은 순위끼리의 순서는 페이지를 넘겨도 바뀌지 않는다. */
     CursorSlice<CourseRankingEntry> entries(UUID courseId, RankingPeriod period, UUID requesterId, Cursorable page);
+
+    /** 다른 러너의 이 코스 기록(I3). 순위에 없으면 {@code null} */
+    RunnerCourseRecord runnerRecord(UUID courseId, UUID memberId, RankingPeriod period, UUID requesterId);
 }

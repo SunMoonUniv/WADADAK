@@ -12,6 +12,7 @@ import com.wadadak.ranking.RankingErrorCode;
 import com.wadadak.ranking.RankingPeriod;
 import com.wadadak.ranking.internal.MemberProfiles;
 import com.wadadak.ranking.internal.distance.DistanceRankingRepository.MemberDistance;
+import com.wadadak.ranking.internal.distance.DistanceRankingRepository.MemberTotal;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
@@ -121,6 +122,17 @@ class DistanceRankingService implements DistanceRankingReader {
             }
             return new MemberWeekDistance(id, (int) Math.round(meters.getOrDefault(id, 0.0)));
         }).toList();
+    }
+
+    /** 전체 랭킹 누적(ALL)과 같은 기준(오늘 00:00 전 등록)이다. 비공개 회원은 본인에게만 보인다 */
+    @Override
+    @Transactional(readOnly = true)
+    public MemberDistanceTotal memberTotal(UUID memberId, UUID requesterId) {
+        if (!memberId.equals(requesterId) && !repository.hiddenOf(Set.of(memberId)).isEmpty()) {
+            return new MemberDistanceTotal(memberId, null, null);
+        }
+        MemberTotal total = repository.totalOf(memberId, today().cutoff());
+        return new MemberDistanceTotal(memberId, (int) Math.round(total.meters()), total.runs());
     }
 
     /** 내 활동 지역 탭의 내 순위. 지난주 순위는 이번 주 순위가 있을 때만 센다 */

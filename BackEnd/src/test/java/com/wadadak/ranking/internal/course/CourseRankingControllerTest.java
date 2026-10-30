@@ -116,6 +116,20 @@ class CourseRankingControllerTest {
     }
 
     @Test
+    void runnerRecordForProfile() {
+        // 스텁의 1위 러너(러너1, 290초)
+        MvcTestResult result = get(COURSE + "/members/00000000-0000-0000-0002-000000000001");
+
+        assertThat(result).hasStatusOk();
+        assertThat(result).bodyJson().extractingPath("$.data.rank").isEqualTo(1);
+        assertThat(result).bodyJson().extractingPath("$.data.courseElapsedSeconds").isEqualTo(290);
+        assertThat(result).bodyJson().extractingPath("$.data.paceSecondsPerKm").isEqualTo(290);   // 1001m라 289.7 → 290
+        assertThat(result).bodyJson().extractingPath("$.data.myCourseElapsedSeconds").isEqualTo(318);
+        // 순위에 없는 러너는 data가 null이라 앱이 섹션을 숨긴다
+        assertThat(get(COURSE + "/members/" + UUID.randomUUID())).bodyJson().extractingPath("$.data").isNull();
+    }
+
+    @Test
     void rejectsInvalidParameters() {
         assertThat(get(COURSE, "period", "YEAR")).hasStatus(HttpStatus.BAD_REQUEST)
                 .bodyJson().extractingPath("$.code").isEqualTo("COMMON-001");

@@ -71,4 +71,19 @@ class CourseRankingController {
             @ParameterObject @Valid Cursorable page) {
         return ApiResult.success(reader.entries(courseId, period, UUID.fromString(jwt.getSubject()), page));
     }
+
+    @Operation(summary = "다른 러너의 이 코스 기록 (I3)",
+            description = "B9 · G3에서 들어온 다른 러너 프로필의 `이 코스에서의 기록`. 그 러너의 그 기간 대표 기록과 코스 랭킹 순위(B9 · G3와 같은 값)다. "
+                    + "myCourseElapsedSeconds는 요청자의 같은 기간 대표 기록 시간(`내 최고 기록은 n예요`, 차이 계산)이고 없으면 null. "
+                    + "runRecordId · courseId · period를 run 공개 고스트 재생(`이 기록과 대결하기`)에 넘긴다. "
+                    + "그 러너가 순위에 없으면(내 정보 비공개 · 그 기간 기록 없음 · 숨김 · 삭제된 코스) data가 null이고, 앱은 섹션을 통째로 숨긴다. "
+                    + "코스 이름은 앱이 들어온 화면(B9 · G3)의 값을 쓴다. 잘못된 ID · period는 COMMON-001.")
+    @GetMapping("/members/{memberId}")
+    ApiResult<RunnerCourseRecord> runnerRecord(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable UUID courseId,
+            @PathVariable UUID memberId,
+            @Parameter(description = PERIOD) @RequestParam(defaultValue = "ALL") RankingPeriod period) {
+        return ApiResult.success(reader.runnerRecord(courseId, memberId, period, UUID.fromString(jwt.getSubject())));
+    }
 }

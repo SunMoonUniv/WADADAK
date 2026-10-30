@@ -81,6 +81,15 @@ class CourseRankingService implements RankingApi, CourseRankingReader {
         return CourseRankingAssembler.publicGhostPage(ranked, requesterId, baseline, sort, page, this::profiles);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public RunnerCourseRecord runnerRecord(UUID courseId, UUID memberId, RankingPeriod period, UUID requesterId) {
+        Instant from = from(period);
+        // 내 최고 기록은 내 정보 공개와 관계없이 내 기록이다
+        Integer mine = repository.best(courseId, requesterId, from).map(RankedRecord::courseElapsedSeconds).orElse(null);
+        return CourseRankingAssembler.runnerRecord(ranking(courseId, from), memberId, mine);
+    }
+
     private List<RankedRecord> ranking(UUID courseId, Instant from) {
         return repository.isHidden(courseId) ? List.of() : repository.ranking(courseId, from);
     }

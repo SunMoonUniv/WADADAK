@@ -92,8 +92,8 @@ class MemberModuleTests {
         String accessToken = tokens.get("accessToken").asString();
         UUID memberId = UUID.fromString(SignedJWT.parse(accessToken).getJWTClaimsSet().getSubject());
 
-        // 인증을 통과하면 없는 경로라 404
-        assertThat(mvc.get().uri("/api/v1/members/unknown").header("Authorization", "Bearer " + accessToken))
+        // 인증을 통과하면 없는 경로라 404. /api/v1/members/{memberId}(I3)와 겹치지 않게 /me 아래로 묻는다
+        assertThat(mvc.get().uri("/api/v1/members/me/unknown").header("Authorization", "Bearer " + accessToken))
                 .hasStatus(HttpStatus.NOT_FOUND);
         assertThat(memberApi.getProfiles(Set.of(memberId)))
                 .containsExactly(new MemberProfile(memberId, "흐름러너", null, false));
