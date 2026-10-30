@@ -17,6 +17,8 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
@@ -124,6 +126,34 @@ class DistanceRankingControllerTest {
     void servesSwaggerGroup() {
         assertThat(mvc.get().uri("/v3/api-docs/ranking")).hasStatusOk()
                 .bodyText().contains("/api/v1/rankings/distance/regions/weekly");
+    }
+
+    @Test
+    void weekDistancesForSearchRows() {
+        UUID other = UUID.randomUUID();
+
+        MvcTestResult result = get("/api/v1/rankings/distance/members", "memberIds", ME + "," + other + "," + ME);
+
+        assertThat(result).hasStatusOk();
+        assertThat(result).bodyJson().extractingPath("$.data[*].memberId").asArray()
+                .containsExactly(ME.toString(), other.toString()); // 같은 ID는 한 번만
+        assertThat(result).bodyJson().extractingPath("$.data[0].thisWeekDistanceMeters").isEqualTo(48_200);
+    }
+
+    @Test
+    void rejectsMoreThanHundredMembers() {
+        String ids = Stream.generate(UUID::randomUUID).limit(DistanceRankingController.MAX_MEMBER_IDS + 1)
+                .map(UUID::toString).collect(Collectors.joining(","));
+
+        assertThat(get("/api/v1/rankings/distance/members", "memberIds", ids)).hasStatus(HttpStatus.BAD_REQUEST)
+                .bodyJson().extractingPath("$.code").isEqualTo("COMMON-001");
+    }
+
+    @Test
+    void rejectsEmptyMemberId() {
+        // 쉼표 사이가 비면 스프링이 null로 바꿔 넘긴다
+        assertThat(get("/api/v1/rankings/distance/members", "memberIds", ME + ",,")).hasStatus(HttpStatus.BAD_REQUEST)
+                .bodyJson().extractingPath("$.code").isEqualTo("COMMON-001");
     }
 
     private MvcTestResult get(String uri, String... params) {

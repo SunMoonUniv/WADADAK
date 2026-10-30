@@ -1,6 +1,7 @@
 package com.wadadak.ranking.internal.distance;
 
 import com.wadadak.common.exception.AppException;
+import com.wadadak.common.exception.CommonErrorCode;
 import com.wadadak.common.paging.CursorSlice;
 import com.wadadak.common.paging.Cursorable;
 import com.wadadak.common.region.Region;
@@ -20,6 +21,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @RestController
@@ -29,6 +33,7 @@ class DistanceRankingController {
 
     private static final String PERIOD = "ALL 누적, MONTH 이번 달(1일 00:00부터), WEEK 이번 주(월요일 00:00부터). 기록 등록 시각(Asia/Seoul) 기준";
     private static final String REGION = "시·군·구 법정동 코드. 비우면 요청자의 이번 주 활동 지역";
+    static final int MAX_MEMBER_IDS = 100;
 
     private final DistanceRankingReader reader;
     private final RegionDirectory regions;
@@ -80,6 +85,26 @@ class DistanceRankingController {
             @Parameter(description = REGION) @RequestParam(required = false) String regionCode,
             @ParameterObject @Valid Cursorable page) {
         return ApiResult.success(reader.regionWeeklyEntries(region(regionCode), memberId(jwt), page));
+    }
+
+    @Operation(summary = "회원별 이번 주 거리 (G7 러너 검색)",
+            description = "러너 검색 결과의 \"주 32 km\". memberIds(최대 100명)마다 이번 주 거리(m 정수)를 하나씩 준다. "
+                    + "전체 랭킹 me.thisWeekDistanceMeters와 같은 값으로, 이번 주 월요일 00:00부터 오늘 자정(Asia/Seoul) 전에 "
+                    + "등록된 기록이다. 자유 러닝 · 미완주 거리도 포함한다. 기록이 없으면 0, 내 정보 비공개 회원은 null"
+                    + "(요청자 본인은 비공개여도 준다). 같은 ID는 한 번만 준다. 100명을 넘거나 잘못된 ID는 COMMON-001.")
+    @GetMapping("/distance/members")
+    ApiResult<List<MemberWeekDistance>> weekDistances(
+            @AuthenticationPrincipal Jwt jwt,
+            @Parameter(description = "회원 ID. 쉼표로 잇거나 같은 이름으로 여러 번 보낸다") @RequestParam List<UUID> memberIds) {
+        // 쉼표 사이가 비어 있으면(`a,,b`) 스프링이 null로 바꿔 넘긴다
+        if (memberIds.contains(null)) {
+            throw new AppException(CommonErrorCode.INVALID_REQUEST, "memberIds: 빈 ID가 있습니다.");
+        }
+        Set<UUID> ids = new LinkedHashSet<>(memberIds);
+        if (ids.size() > MAX_MEMBER_IDS) {
+            throw new AppException(CommonErrorCode.INVALID_REQUEST, "memberIds: 최대 " + MAX_MEMBER_IDS + "명입니다.");
+        }
+        return ApiResult.success(reader.weekDistances(ids, memberId(jwt)));
     }
 
     private Region region(String regionCode) {

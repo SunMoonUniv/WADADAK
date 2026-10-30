@@ -105,6 +105,24 @@ class DistanceRankingService implements DistanceRankingReader {
         return page(rank(regionWeek(day, shown)), page, requesterId, day);
     }
 
+    /** 전체 랭킹의 이번 주 내 거리와 같은 기준(이번 주 월요일 00:00 ~ 오늘 00:00 등록)이다. 비공개 회원은 본인에게만 보인다 */
+    @Override
+    @Transactional(readOnly = true)
+    public List<MemberWeekDistance> weekDistances(Set<UUID> memberIds, UUID requesterId) {
+        if (memberIds.isEmpty()) {
+            return List.of();
+        }
+        Day day = today();
+        Map<UUID, Double> meters = repository.distancesOf(memberIds, day.weekStart(), day.cutoff());
+        Set<UUID> hidden = repository.hiddenOf(memberIds);
+        return memberIds.stream().map(id -> {
+            if (hidden.contains(id) && !id.equals(requesterId)) {
+                return new MemberWeekDistance(id, null);
+            }
+            return new MemberWeekDistance(id, (int) Math.round(meters.getOrDefault(id, 0.0)));
+        }).toList();
+    }
+
     /** 내 활동 지역 탭의 내 순위. 지난주 순위는 이번 주 순위가 있을 때만 센다 */
     private MyDistanceRanking regionMe(Day day, Region region, List<MemberDistance> rows, List<Ranked> ranking,
                                        UUID requesterId) {

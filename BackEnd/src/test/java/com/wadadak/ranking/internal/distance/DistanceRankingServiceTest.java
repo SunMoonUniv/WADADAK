@@ -25,6 +25,8 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -223,6 +225,17 @@ class DistanceRankingServiceTest {
         assertThatThrownBy(() -> reader.regionWeekly(null, UUID.randomUUID()))
                 .isInstanceOfSatisfying(AppException.class,
                         e -> assertThat(e.getErrorCode()).isEqualTo(RankingErrorCode.REGION_NOT_FOUND));
+    }
+
+    @Test
+    void weekDistancesCountThisWeekUntilMidnightAndHidePrivateRunners() {
+        // B는 지난주 기록만, id 11은 오늘 등록돼 내일 들어가고, id 12는 기록이 없다. H는 비공개
+        assertThat(reader.weekDistances(new LinkedHashSet<>(List.of(A, B, G, H, ME, id(11), id(12))), ME)).containsExactly(
+                new MemberWeekDistance(A, 10_000), new MemberWeekDistance(B, 0), new MemberWeekDistance(G, 3_000),
+                new MemberWeekDistance(H, null), new MemberWeekDistance(ME, 8_000), new MemberWeekDistance(id(11), 0),
+                new MemberWeekDistance(id(12), 0));
+        // 비공개여도 본인에게는 보인다
+        assertThat(reader.weekDistances(Set.of(H), H)).containsExactly(new MemberWeekDistance(H, 30_000));
     }
 
     private static MemberProfile profile(UUID id) {

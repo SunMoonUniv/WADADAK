@@ -22,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -52,6 +53,7 @@ class DistanceRankingStub implements DistanceRankingReader, StubImplementation {
             RankingPeriod.WEEK, WEEK_KM);
     private static final Map<RankingPeriod, Double> MINE_KM = Map.of(RankingPeriod.ALL, 128.0, RankingPeriod.MONTH, 96.4,
             RankingPeriod.WEEK, 48.2);
+    private static final double[] G7_WEEK_KM = {32, 24, 15};
 
     private final RegionDirectory regions;
     private final Clock clock;
@@ -96,6 +98,16 @@ class DistanceRankingStub implements DistanceRankingReader, StubImplementation {
         boolean myRegion = region == null || region.code().equals(MY_REGION_CODE);
         return CursorSlice.ofOffset(ranking(WEEK_KM, requesterId, myRegion ? MINE_KM.get(RankingPeriod.WEEK) : null), page)
                 .map(ranked -> ranked.toEntry(requesterId));
+    }
+
+    /** 요청자는 전체 랭킹의 이번 주 내 거리, 다른 회원은 피그마 G7의 32 · 24 · 15km 중 하나(ID로 고정) */
+    @Override
+    public List<MemberWeekDistance> weekDistances(Set<UUID> memberIds, UUID requesterId) {
+        return memberIds.stream().map(id -> {
+            double km = id.equals(requesterId) ? MINE_KM.get(RankingPeriod.WEEK)
+                    : G7_WEEK_KM[Math.floorMod(id.hashCode(), G7_WEEK_KM.length)];
+            return new MemberWeekDistance(id, meters(km));
+        }).toList();
     }
 
     /** 거리 순으로 공동순위를 매긴다(1·2·2·4). 같은 거리면 먼저 넣은 러너가 앞이다. */
