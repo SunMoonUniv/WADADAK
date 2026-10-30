@@ -21,6 +21,13 @@ public interface CourseRepository extends JpaRepository<Course, UUID> {
         return existsByNameKeyAndStatus(CourseName.key(name), CourseStatus.ACTIVE);
     }
 
+    boolean existsByNameKeyAndStatusAndIdNot(String nameKey, CourseStatus status, UUID id);
+
+    /** 코스 수정(B7)용. 그 코스의 지금 이름은 빼고 본다 */
+    default boolean existsActiveByNameExcept(String name, UUID courseId) {
+        return existsByNameKeyAndStatusAndIdNot(CourseName.key(name), CourseStatus.ACTIVE, courseId);
+    }
+
     /** 완주 연장과 만료 배치가 같은 코스를 함께 바꾸지 않게 행을 잠그고 읽는다. */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT c FROM Course c WHERE c.id = :id")

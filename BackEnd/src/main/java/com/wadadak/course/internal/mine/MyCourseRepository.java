@@ -32,20 +32,24 @@ class MyCourseRepository {
     /** 만료 임박 공개 코스. {@code :soonBefore}는 {@link Retention#expiringSoonBefore} */
     private static final String EXPIRING_SOON = "c.status = 'ACTIVE' AND c.expires_at < :soonBefore";
 
+    /** 카드 값({@link #item}). 뒤에 WHERE를 붙인다 */
+    private static final String CARDS = """
+            SELECT c.id, c.name, c.course_type, c.difficulty, c.tags, ST_AsBinary(c.route) AS route, c.status,
+                   c.status_reason, c.expires_at, c.hidden_at, coalesce(s.completion_count, 0) AS completion_count,
+                   k.last_completed_at
+            FROM course.courses c
+            LEFT JOIN course.course_stats s ON s.course_id = c.id
+            LEFT JOIN LATERAL (SELECT max(cc.completed_at) AS last_completed_at
+                               FROM course.course_completions cc
+                               WHERE cc.course_id = c.id AND cc.deleted_at IS NULL) k ON true
+            """;
+
     private final JdbcClient jdbc;
 
     /** 만료 임박 먼저(만료가 가까운 순), 나머지는 최근 등록순, 같으면 ID순. 한 회원의 코스라 오프셋 커서로 넘긴다 */
     CursorSlice<MyCourseItem> list(UUID memberId, Instant soonBefore, Cursorable page) {
         int offset = page.offset();
-        List<MyCourseItem> rows = jdbc.sql("""
-                        SELECT c.id, c.name, c.course_type, c.difficulty, c.tags, ST_AsBinary(c.route) AS route, c.status,
-                               c.status_reason, c.expires_at, c.hidden_at, coalesce(s.completion_count, 0) AS completion_count,
-                               k.last_completed_at
-                        FROM course.courses c
-                        LEFT JOIN course.course_stats s ON s.course_id = c.id
-                        LEFT JOIN LATERAL (SELECT max(cc.completed_at) AS last_completed_at
-                                           FROM course.course_completions cc
-                                           WHERE cc.course_id = c.id AND cc.deleted_at IS NULL) k ON true
+        List<MyCourseItem> rows = jdbc.sql(CARDS + """
                         WHERE c.creator_id = :memberId AND c.status IN ('ACTIVE', 'HIDDEN')
                         ORDER BY (%1$s) DESC, CASE WHEN %1$s THEN c.expires_at END, c.created_at DESC, c.id
                         LIMIT :limit OFFSET :offset""".formatted(EXPIRING_SOON))
@@ -59,6 +63,14 @@ class MyCourseRepository {
             return new CursorSlice<>(rows, null);
         }
         return new CursorSlice<>(rows.subList(0, page.size()), String.valueOf(offset + page.size()));
+    }
+
+    /** 코스 한 장(B7 수정 응답) */
+    MyCourseItem find(UUID courseId) {
+        return jdbc.sql(CARDS + "WHERE c.id = :courseId")
+                .param("courseId", courseId)
+                .query((rs, rowNum) -> item(rs))
+                .single();
     }
 
     /** 공개 중인 코스만 센다 */

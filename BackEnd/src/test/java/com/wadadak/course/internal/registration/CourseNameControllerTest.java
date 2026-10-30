@@ -75,6 +75,19 @@ class CourseNameControllerTest {
         assertThat(check("가".repeat(51))).hasStatus(HttpStatus.BAD_REQUEST).bodyJson().extractingPath("$.code").isEqualTo("COMMON-001");
     }
 
+    /** B7 수정: 그 코스의 지금 이름만 뺀다 */
+    @Test
+    void ignoresOnlyTheCourseBeingEdited() {
+        String name = "수정 중 코스 " + UUID.randomUUID().toString().substring(0, 8);
+        Course editing = courseRepository.saveAndFlush(Course.registerCustom(UUID.randomUUID(), name, Difficulty.EASY, Set.of(),
+                GEOMETRY.createLineString(new Coordinate[]{new Coordinate(127.0750, 36.7990), new Coordinate(127.0750, 36.8080)}),
+                1000, "4420033000", Instant.parse("2026-11-06T14:59:59Z")));
+
+        assertThat(check(name)).bodyJson().extractingPath("$.data.available").isEqualTo(false);
+        assertThat(check(name, editing.getId())).bodyJson().extractingPath("$.data.available").isEqualTo(true);
+        assertThat(check("이름확인 강변 코스", editing.getId())).bodyJson().extractingPath("$.data.available").isEqualTo(false);
+    }
+
     @Test
     void requiresLogin() {
         assertThat(mvc.get().uri("/api/v1/courses/name-availability").param("name", "새로운 코스"))
@@ -83,5 +96,10 @@ class CourseNameControllerTest {
 
     private MvcTestResult check(String name) {
         return mvc.get().uri("/api/v1/courses/name-availability").param("name", name).with(jwt()).exchange();
+    }
+
+    private MvcTestResult check(String name, UUID courseId) {
+        return mvc.get().uri("/api/v1/courses/name-availability").param("name", name).param("courseId", courseId.toString())
+                .with(jwt()).exchange();
     }
 }

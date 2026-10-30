@@ -124,6 +124,14 @@ public class Course extends BaseEntity<UUID> {
         return isActive() && !now.isBefore(Retention.end(expiresAt));
     }
 
+    /** 이름 · 난이도 · 특징을 바꾼다(B7). 경로 · 유형 · 만료일은 그대로다 */
+    public void edit(String name, Difficulty difficulty, Set<CourseTag> tags) {
+        this.name = CourseName.display(name);
+        this.nameKey = CourseName.key(name);
+        this.difficulty = difficulty;
+        this.tags = tags.isEmpty() ? EnumSet.noneOf(CourseTag.class) : EnumSet.copyOf(tags);
+    }
+
     /**
      * 서버가 확정한 완주로 유지 기간을 연장한다(정책 공통 4 · D-10). 고정 구간마다 한 번, 현재 만료일에서 30일이다.
      * 만료 시각이 늘 마지막 구간의 끝이고 앞 구간은 모두 이미 연장했으므로, 기록 등록 시각이 마지막 구간 안일 때만 연장한다.
