@@ -15,9 +15,10 @@ class GhostResultService {
     private final GhostResultRepository results;
     private final CourseAttemptRepository attempts;
     private final FreeGhostRepository freeGhosts;
+    private final GhostComparisonStore comparisons;
 
-    GhostResultService(GhostResultRepository results, CourseAttemptRepository attempts, FreeGhostRepository freeGhosts) {
-        this.results = results; this.attempts = attempts; this.freeGhosts=freeGhosts;
+    GhostResultService(GhostResultRepository results, CourseAttemptRepository attempts, FreeGhostRepository freeGhosts, GhostComparisonStore comparisons) {
+        this.results = results; this.attempts = attempts; this.freeGhosts=freeGhosts; this.comparisons=comparisons;
     }
 
     /** Called within RunService.process: summary, record, event publication and DONE commit together. */
@@ -44,7 +45,13 @@ class GhostResultService {
                 verdict.reason(), course.completed(), course.courseElapsedSeconds(), source.elapsedSeconds(),
                 verdict.courseEndElapsedMs(), source.durationMs(), verdict.courseEndReason(), finalizedAt);
         results.save(id, outcome);
+        comparisons.finish(outcome,inputs);
         return outcome;
+    }
+
+    @Transactional(readOnly = true)
+    public GhostComparison comparison(UUID owner,UUID id) {
+        return comparisons.get(owner,get(owner,id));
     }
 
     @Transactional(readOnly = true)

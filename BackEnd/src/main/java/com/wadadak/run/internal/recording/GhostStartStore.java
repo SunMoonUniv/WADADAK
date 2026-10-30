@@ -30,15 +30,16 @@ class GhostStartStore {
     private final JsonMapper json;
     private final Clock clock;
     private final PublicGhostAccess publicAccess;
+    private final GhostComparisonStore comparisons;
 
     GhostStartStore(GhostStartRepository approvals, CourseAttemptRepository attempts,
                     RunSessionRepository sessions, DeletedRunRecordRepository deletions,
                     WithdrawnRunMemberRepository withdrawals, RunLocks locks, GhostPlaybackService replays,
-                    CourseRunService courses, JsonMapper json, Clock clock, PublicGhostAccess publicAccess) {
+                    CourseRunService courses, JsonMapper json, Clock clock, PublicGhostAccess publicAccess, GhostComparisonStore comparisons) {
         this.approvals = approvals; this.attempts = attempts; this.sessions = sessions;
         this.deletions = deletions; this.withdrawals = withdrawals; this.locks = locks;
         this.replays = replays; this.courses = courses; this.json = json; this.clock = clock;
-        this.publicAccess=publicAccess;
+        this.publicAccess=publicAccess; this.comparisons=comparisons;
     }
 
     @Transactional(readOnly = true)
@@ -106,6 +107,7 @@ class GhostStartStore {
         GhostStartApproval approval = new GhostStartApproval(VERSION, id, request.sourceRecordId(),
                 request.startedAt(), clock.instant().truncatedTo(ChronoUnit.MICROS), validatedAt, course, replay,request.publicPeriod());
         approvals.save(approval,sourceCourseVersion);
+        comparisons.capture(owner,approval);
         // Existing F6 start: one attempt, one challenge event and one runner increment. Same transaction.
         courses.start(owner, id, request.startedAt());
         return approval;

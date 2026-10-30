@@ -35,14 +35,15 @@ class FreeGhostService {
     private final JsonMapper json;
     private final JdbcTemplate db;
     private final Clock clock;
+    private final GhostComparisonStore comparisons;
     private final GhostPlaybackBuilder builder=new GhostPlaybackBuilder();
     FreeGhostService(RunSessionRepository sessions, RunRecordRepository records, RunInputRepository inputs,
                      CourseAttemptRepository attempts, DeletedRunRecordRepository deletions,
                      WithdrawnRunMemberRepository withdrawals, RunLocks locks, FreeGhostRepository starts,
-                     JsonMapper json, JdbcTemplate db, Clock clock) {
+                     JsonMapper json, JdbcTemplate db, Clock clock, GhostComparisonStore comparisons) {
         this.sessions=sessions; this.records=records; this.inputs=inputs; this.attempts=attempts;
         this.deletions=deletions; this.withdrawals=withdrawals; this.locks=locks; this.starts=starts;
-        this.json=json; this.db=db; this.clock=clock;
+        this.json=json; this.db=db; this.clock=clock; this.comparisons=comparisons;
     }
     private void lock(UUID owner, UUID id) {
         locks.member(owner);
@@ -162,6 +163,7 @@ class FreeGhostService {
         var approval=new GhostStartApproval("GHOST_START_FREE_V1",id,request.sourceRecordId(),request.startedAt(),now,now,reference,prepared.playback());
         sessions.saveAndFlush(new RunSession(id,owner,request.startedAt()));
         starts.save(owner,prepared.referenceHash(),approval);
+        comparisons.capture(owner,approval);
         return approval;
     }
 
