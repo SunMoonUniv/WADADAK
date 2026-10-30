@@ -18,8 +18,12 @@ abstract final class Routes {
   /// B4 코스 정보 입력. B3 위에 쌓아 돌아오면 입력점이 그대로다. extra: `GeneratedRoute`.
   static const courseInfo = '/course/new/info';
 
+  /// B6 내 기록에서 코스 등록. B5 `내 기록에서 코스 올리기`가 B3 위에 쌓는다. 하단 탭을 덮는다.
+  static const courseFromRecords = '/course/new/records';
+
   /// D4 달린 경로를 코스로 등록. 달리기 결과 · B6이 러닝 기록 ID로 연다. 하단 탭을 덮는다.
-  /// 등록하면 홈 탭으로 가서 지도를 새 코스 출발점으로 옮긴다. 연 화면은 그 탭에 그대로 남는다.
+  /// 등록하면 홈 탭으로 가서 지도를 새 코스 출발점으로 옮긴다. 하단 탭을 덮은 화면(B3 · B6 · 기록 보기)은 닫히고,
+  /// 달리기 탭의 결과 화면은 그 탭에 남는다.
   static String gpsCourseInfo(String recordId) => '/course/new/gps/${Uri.encodeComponent(recordId)}';
 
   /// A3 코스 필터. 하단 탭 위에 쌓고, 확정하면 `CourseFilterChoice`를 돌려준다. extra: `CourseFilterRequest`.

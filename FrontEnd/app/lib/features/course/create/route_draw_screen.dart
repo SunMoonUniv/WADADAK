@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -23,9 +25,6 @@ class RouteDrawScreen extends ConsumerStatefulWidget {
 
   /// 홈에서 보던 지도 위치(A2-07). 없으면 기본 위치에서 시작한다.
   final MapCamera? camera;
-
-  /// B6(내 기록에서 코스 등록)를 만들기 전까지 B5 `내 기록에서 코스 올리기`가 보이는 안내(4.1 B5-04).
-  static const recordsNotReadyMessage = '내 기록에서 코스 올리기는 준비 중이에요.';
 
   @override
   ConsumerState<RouteDrawScreen> createState() => _RouteDrawScreenState();
@@ -61,7 +60,7 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
         _quotaUsedUp = quota.custom.remaining <= 0;
         _gpsQuotaUsedUp = quota.gps.remaining <= 0;
       });
-    } on ApiException {
+    } on Object {
       // 막지 않고 둔다.
     }
   }
@@ -106,7 +105,13 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
             secondary: WdButton(
               '내 기록에서 코스 올리기',
               variant: WdButtonVariant.secondary,
-              onPressed: _gpsQuotaUsedUp ? null : () => _notify(RouteDrawScreen.recordsNotReadyMessage),
+              onPressed: _gpsQuotaUsedUp
+                  ? null
+                  : () async {
+                      await context.push(Routes.courseFromRecords);
+                      // 그 사이 다른 기기에서 등록했을 수 있어 다시 받는다(B6에서 등록하면 홈으로 가서 여기 오지 않는다)
+                      if (mounted) unawaited(_loadQuota());
+                    },
             ),
             primary: WdButton('달리기 시작하기', onPressed: _gpsQuotaUsedUp ? null : _startRun),
           ),
