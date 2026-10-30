@@ -880,6 +880,26 @@ result_json은 `GHOST_RESULT_V1` 버전, 본인 세션/상대 ID, WIN/LOSE/DRAW/
 
 기존 회원→세션 잠금과 업로드 처리 트랜잭션에 참여한다. 중복/동시 처리로 판정·확정 시각을 갱신하지 않고 개인 기록 저장 실패는 대결 요약도 롤백한다. 본인 기록 삭제/탈퇴는 시도→승인→결과·상세를 연쇄 삭제한다. 요약·상세는 기존 보존 정책과 본인 기록 삭제/탈퇴 처리를 따르며 기간 경과만으로 자동 삭제하지 않는다. [서버 승패·결과 저장 계약](<run/고스트 서버 승패·결과 저장 계약 v1 - 2026-10-27.md>)
 
+#### `run.ghost_comparisons` — 고스트 결과 상세 비교 스냅샷 (2026-10-30)
+
+`V20261030_2000__run_ghost_comparisons.sql`로 추가한다. 서버 확정 승패는 기존 `ghost_results`·`free_ghost_results`에 유지하고, 대결 시작/종료 당시 고정한 상세 비교 자료만 별도로 보존한다.
+
+| 컬럼 | 타입·제약 | 용도 |
+| --- | --- | --- |
+| `session_id` | UUID PK | 본인 대결 세션 |
+| `registered_session_id` | UUID UNIQUE, FK → `run.ghost_starts(session_id)`, ON DELETE CASCADE | 등록 코스 대결 승인 |
+| `free_session_id` | UUID UNIQUE, FK → `run.free_ghost_starts(session_id)`, ON DELETE CASCADE | 자유 기록 대결 승인 |
+| `member_id` | UUID NOT NULL | 본인 전용 조회 소유자 |
+| `context_json` | TEXT NOT NULL | 시작 승인 때 고정한 상대 재생·원본 종류·공개 기간·본인 상대 센서·개인 최고 기록 비교 기준 |
+| `result_json` | TEXT, nullable | 서버 종료 처리에서 한 번 생성한 `GHOST_COMPARISON_V1` 상세 |
+| `created_at`·`updated_at` | TIMESTAMPTZ NOT NULL, 기본 now() | 공통 감사 시각 |
+
+- CHECK 제약으로 `registered_session_id`·`free_session_id` 중 정확히 하나만 존재하고 `session_id`와 같게 한다. 두 FK 모두 run 내부이며 상대 원본 기록에는 FK를 걸지 않는다.
+- 승인 저장과 `context_json` 생성, 결과 확정과 `result_json` 생성은 각각 기존 회원/세션 잠금 및 같은 트랜잭션에 참여한다. 결과는 null일 때만 채우며 재시도로 기존 판정·상세를 덮어쓰지 않는다.
+- 상세에는 양쪽 비교 시간·페이스, 같은 기준 경로의 1km/마지막 짧은 구간, 확인 가능한 ms/정수 초 차이·누적 격차, 개인 PB를 보존한다. 공개 상대의 정지 제외 시간·케이던스와 원본 GPS·프로필·소유자 ID는 API에 노출하지 않는다.
+- 상대 삭제·비공개·탈퇴 뒤에도 이미 시작한 대결의 고정 상세는 유지한다. 본인 대결 삭제·탈퇴는 승인 FK를 통해 상세를 연쇄 삭제한다. 별도 TTL은 없다. 기존 승인에 상세가 없으면 과거 자료를 추정하지 않고 `LEGACY_NO_DETAIL`로 기존 승패만 제공한다.
+- 계약: [고스트 결과 비교](<run/고스트 결과 비교 계약 - 2026-10-30.md>). GPS 등록 원본 자동 완주 연결은 별도 후속 정책이며 이 테이블이 그 기능을 구현하지는 않는다.
+
 #### `run.free_ghost_starts` · `run.free_ghost_results` — 코스 없는 내 자유 기록 대결 (2026-10-27)
 
 `V20261027_2100__run_free_ghosts.sql`로 추가한다. 등록 코스의 `course_attempts`·`ghost_starts`를 가짜 코스 ID로 채우지 않고 run 안의 세션과 연결한다. 두 테이블 모두 공통 `created_at`·`updated_at`을 갖는다.

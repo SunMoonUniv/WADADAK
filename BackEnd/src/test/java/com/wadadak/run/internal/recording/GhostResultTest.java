@@ -335,4 +335,67 @@ class GhostResultTest {
         assertThat(json.treeToValue(stored, Result.class).ghost()).isNull();
         assertThat(runs.result(owner, source).ghost()).isNull();
     }
+
+    @Test void comparisonUsesDuelBoundaryAndFreezesMetricsWithResult() throws Exception {
+        var outcome=process(completeAfterPause(0));
+        var detail=results.comparison(owner,id);
+        assertThat(detail.status()).isEqualTo("AVAILABLE");
+        assertThat(detail.result()).isEqualTo(outcome);
+        assertThat(detail.ours().elapsedSeconds()).isEqualTo(200);
+        assertThat(detail.ours().activeMs()).isEqualTo(200000);
+        assertThat(detail.ghost().activeMs()).isEqualTo(200000);
+        assertThat(detail.ours().paceSecondsPerKm()).isEqualTo(200);
+        assertThat(detail.personalBest()).isEqualTo("FIRST_COMPLETION");
+        assertThat(detail.segments()).hasSize(1);
+        assertThat(detail.segments().getFirst().deltaSeconds()).isEqualTo(30);
+        assertThat(detail.segments().getFirst().cumulativeDeltaSeconds()).isEqualTo(30);
+        String frozen=db.queryForObject("SELECT result_json FROM run.ghost_comparisons WHERE session_id=?",String.class,id);
+        runs.process(id);
+        assertThat(db.queryForObject("SELECT result_json FROM run.ghost_comparisons WHERE session_id=?",String.class,id)).isEqualTo(frozen);
+        mvc.perform(get(url()+"/comparison").with(jwt().jwt(j->j.subject(owner.toString()))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.version").value("GHOST_COMPARISON_V1"))
+            .andExpect(jsonPath("$.data.ours.elapsedSeconds").value(200))
+            .andExpect(jsonPath("$.data.segments[0].deltaSeconds").value(30))
+            .andExpect(jsonPath("$.data.playback").doesNotExist());
+        mvc.perform(get(url()+"/comparison").with(jwt().jwt(j->j.subject(UUID.randomUUID().toString()))))
+            .andExpect(status().isNotFound());
+    }
+    @Test void incompleteLossHasNoInventedFinishMetrics() {
+        var raw=prefix(false);append(raw,Kind.SEGMENT_END,230000,"COURSE_ONLY");append(raw,Kind.END,900000,"INTERRUPTED");
+        var outcome=process(raw);var detail=results.comparison(owner,id);
+        assertThat(outcome.outcome()).isEqualTo(GhostVerdict.LOSE);
+        assertThat(detail.ours().elapsedSeconds()).isNull();
+        assertThat(detail.ours().paceSecondsPerKm()).isNull();
+        assertThat(detail.ours().activeMs()).isEqualTo(230000);
+        assertThat(detail.segments().getFirst().deltaSeconds()).isNull();
+        assertThat(detail.segments().getFirst().unavailableReason()).isEqualTo("POSITION_UNCONFIRMED");
+    }
+    @Test void comparisonSurvivesSourceDeletionButOwnDeletionCascades() {
+        process(completeAfterPause(0));var detail=results.comparison(owner,id);
+        runs.delete(owner,source);
+        var after=results.comparison(owner,id);
+        assertThat(after.sourceState()).isEqualTo("DELETED");
+        assertThat(after.segments()).isEqualTo(detail.segments());
+        assertThat(after.ghost()).isEqualTo(detail.ghost());
+        runs.delete(owner,id);
+        assertThat(db.queryForObject("SELECT count(*) FROM run.ghost_comparisons WHERE session_id=?",Long.class,id)).isZero();
+    }
+    @Test void legacyAndHistoricalMismatchDoNotRecalculateVerdict() {
+        var outcome=process(completeAfterPause(0));
+        db.update("DELETE FROM run.ghost_comparisons WHERE session_id=?",id);
+        var detail=results.comparison(owner,id);
+        assertThat(detail.status()).isEqualTo("LEGACY_NO_DETAIL");
+        assertThat(detail.segments()).isEmpty();assertThat(detail.result()).isEqualTo(outcome);
+    }
+    @Test void personalBestUsesOwnPreStartCompletedSameRouteRecord() {
+        // This fixture's clock is deliberately historical: move only source registration before START.
+        db.update("UPDATE run.records SET registered_at=? WHERE id=?",java.sql.Timestamp.from(start.minusSeconds(1)),source);
+        UUID next=UUID.randomUUID();courses.prepare(owner,next,courseId);
+        starts.start(owner,next,new GhostStart(courseId,3L,source,start,"GHOST_PLAYBACK_V1"));
+        var raw=completeAfterPause(0);
+        runs.prepare(owner,next,new Prepare(start,"COURSE"));runs.upload(owner,next,new Upload(raw.size()-1,raw));runs.process(next);
+        var detail=results.comparison(owner,next);
+        assertThat(detail.personalBest()).isEqualTo("IMPROVED");
+        assertThat(detail.previousBestSeconds()).isEqualTo(230);
+    }
 }

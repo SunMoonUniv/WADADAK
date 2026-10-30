@@ -77,6 +77,17 @@ public final class GhostPlaybackBuilder {
 
     private GhostPlayback compose(Result source, CourseSnapshot snapshot, List<Input> inputs,
                                   CourseJudge.Analysis analysis, String version) {
+        return compose(source.id(),source.policyVersion(),source.calculationVersion(),snapshot,inputs,analysis,version);
+    }
+
+    /** Analytical trace including incomplete/gapped runs; eligibility never changes their saved verdict. */
+    public GhostPlayback comparison(java.util.UUID id,CourseSnapshot snapshot,List<Input> inputs,boolean freeV2) {
+        var analysis=(freeV2?CourseJudge.freeGhostV2():new CourseJudge()).analyze(snapshot.route(),snapshot.breaks(),inputs);
+        return compose(id,SOURCE_POLICY_VERSION,inputs.getFirst().reason(),snapshot,inputs,analysis,VERSION);
+    }
+
+    private GhostPlayback compose(java.util.UUID sourceId,String sourcePolicy,String sourceCalculation,
+            CourseSnapshot snapshot,List<Input> inputs,CourseJudge.Analysis analysis,String version) {
         long duration = analysis.courseElapsedMs();
         var points = playbackSamples(analysis.samples(), inputs, duration);
         List<Pause> pauses = pauses(inputs, points, duration);
@@ -110,7 +121,7 @@ public final class GhostPlaybackBuilder {
         if (pauses.stream().anyMatch(p -> p.position == null)) reasons.add("PAUSE_POSITION_UNAVAILABLE");
         if (samples.isEmpty() || samples.getLast().elapsedMs() != duration || samples.getLast().coursePositionM() == null)
             reasons.add("FINISH_POSITION_UNAVAILABLE");
-        return new GhostPlayback(source.id(), snapshot, version, source.policyVersion(), source.calculationVersion(),
+        return new GhostPlayback(sourceId, snapshot, version, sourcePolicy, sourceCalculation,
                 analysis.judgement().courseElapsedSeconds(), duration, reasons.isEmpty(), List.copyOf(reasons),
                 new GhostQuality(active, totalGap, longest), samples, spans);
     }
