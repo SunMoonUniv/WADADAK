@@ -5,6 +5,7 @@ import com.wadadak.common.entity.UuidV7;
 import com.wadadak.course.internal.course.Course;
 import com.wadadak.course.internal.course.CourseRepository;
 import com.wadadak.course.internal.course.ExpiringCourse;
+import com.wadadak.course.internal.course.Retention;
 import com.wadadak.course.internal.stats.CourseStatsService;
 import com.wadadak.event.course.CourseExpiringSoonEvent;
 import com.wadadak.event.course.CourseStatus;
@@ -17,7 +18,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
-import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
@@ -31,9 +31,6 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 class RetentionService {
-
-    /** 비공개에서 삭제까지 */
-    static final Duration DELETE_AFTER = Duration.ofHours(24);
 
     private final CourseRepository courseRepository;
     private final CourseStatsService courseStats;
@@ -70,7 +67,7 @@ class RetentionService {
         Instant now = clock.instant();
         Course course = courseRepository.findForUpdate(courseId).orElse(null);
         if (course == null || course.getStatus() != CourseStatus.HIDDEN
-                || now.isBefore(course.getHiddenAt().plus(DELETE_AFTER))) {
+                || now.isBefore(course.getHiddenAt().plus(Retention.DELETE_AFTER))) {
             return false;
         }
         course.delete();

@@ -2,6 +2,7 @@ package com.wadadak.course.internal.course;
 
 import com.wadadak.common.config.TimeConfig;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -14,6 +15,9 @@ public final class Retention {
 
     /** 등록일 포함 30일 */
     public static final int DAYS = 30;
+
+    /** 비공개에서 삭제까지. 만료 · 등록자 삭제 모두 같다 */
+    public static final Duration DELETE_AFTER = Duration.ofHours(24);
 
     private static final LocalTime LAST_SECOND = LocalTime.of(23, 59, 59);
 
