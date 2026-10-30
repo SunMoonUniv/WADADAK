@@ -5,7 +5,7 @@ import '../domain/course_run.dart';
 import '../domain/run_models.dart';
 import 'course_register_card.dart';
 import 'free_run_live_view.dart';
-import 'ghost_result_screen.dart';
+import 'ghost_result_entry_screen.dart';
 import 'run_pace_bars.dart';
 import 'run_segment_analysis_screen.dart';
 
@@ -284,18 +284,22 @@ class FreeRunResultView extends StatelessWidget {
               (result['courseElapsedSeconds'] as num).toInt();
     final label = switch (result?['outcome']) {
       'WIN' => '${delta.abs()}초 앞섬',
-      'LOSE' => '${delta.abs()}초 뒤처짐',
+      'LOSE' =>
+        result?['completed'] == true ? '${delta.abs()}초 뒤처짐' : '미완주 · 패배',
       'DRAW' => '동시에 도착',
       'INVALID' => '대결 무효',
       _ => run.ghostPending ? '서버 판정 대기' : '대결 없음',
     };
     return InkWell(
-      onTap: result == null
+      onTap: result == null && !run.ghostPending
           ? null
           : () => Navigator.push(
               context,
               MaterialPageRoute<void>(
-                builder: (_) => GhostResultScreen(run: run),
+                builder: (_) => GhostResultEntryScreen(
+                  run: run,
+                  onRetryPending: onRetryGhost,
+                ),
               ),
             ),
       child: Column(

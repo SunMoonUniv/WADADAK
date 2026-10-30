@@ -10,6 +10,7 @@ import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/map/map_view.dart';
 import 'package:wadadak/core/upload/photo_uploader.dart';
 import 'package:wadadak/features/home/home_screen.dart';
+import 'package:wadadak/features/my/settings_screen.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
 import 'package:wadadak/main.dart';
 
@@ -35,6 +36,7 @@ void main() {
         mapEngineProvider.overrideWithValue(MapEngine.dev),
         courseApiClientProvider.overrideWithValue(FakeCourseApi()),
         regionApiClientProvider.overrideWithValue(FakeRegionApi()),
+        devicePermissionsProvider.overrideWithValue(FakeDevicePermissions()),
         photoUploaderProvider.overrideWithValue(uploader),
       ],
       child: const WadadakApp(),
@@ -248,6 +250,9 @@ void main() {
     expect(find.byType(HomeScreen), findsOneWidget);
 
     await tap(tester, find.text('MY'));
+    await tap(tester, find.bySemanticsLabel('설정'));
+    // 로그아웃은 긴 F4 맨 아래에 있다
+    await tester.scrollUntilVisible(find.text('로그아웃'), 300);
     await tap(tester, find.text('로그아웃'));
 
     expect(find.text('카카오 로그인'), findsOneWidget);

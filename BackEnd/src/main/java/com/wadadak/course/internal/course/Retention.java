@@ -19,9 +19,17 @@ public final class Retention {
     /** 비공개에서 삭제까지. 만료 · 등록자 삭제 모두 같다 */
     public static final Duration DELETE_AFTER = Duration.ofHours(24);
 
+    /** 만료 임박: 만료일까지 7일 이내(D-7 ~ D-0, Asia/Seoul 날짜). G4 · G5 위 칸과 카드 강조가 같은 기준이다(정책 공통 4) */
+    public static final int EXPIRING_SOON_DAYS = 7;
+
     private static final LocalTime LAST_SECOND = LocalTime.of(23, 59, 59);
 
     private Retention() {
+    }
+
+    /** 만료 시각이 이보다 이르면 만료 임박이다. 오늘이 10/30이면 11/7 00:00(Asia/Seoul), 곧 만료일 11/6(D-7)까지 */
+    public static Instant expiringSoonBefore(LocalDate today) {
+        return today.plusDays(EXPIRING_SOON_DAYS + 1).atStartOfDay(TimeConfig.SEOUL).toInstant();
     }
 
     /** 등록일 포함 {@value #DAYS}일째 23:59:59(Asia/Seoul). 10/1 등록이면 10/30 23:59:59 */

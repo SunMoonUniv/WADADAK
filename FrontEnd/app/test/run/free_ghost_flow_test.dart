@@ -1,4 +1,10 @@
 import 'dart:async';
+
+import 'package:wadadak/core/api/api_client.dart';
+import 'package:wadadak/features/run/data/ghost_comparison_api.dart';
+import 'package:wadadak/features/run/domain/ghost_comparison.dart';
+import 'package:wadadak/features/run/presentation/ghost_result_entry_screen.dart';
+
 import 'dart:io';
 import 'dart:ui' as ui_image;
 
@@ -100,6 +106,12 @@ class Choices implements FreeGhostSource {
         ? response ?? preparation(eligible: eligible)
         : gate!.future;
   }
+}
+
+class NoComparison implements GhostComparisonSource {
+  @override
+  Future<GhostComparison> get(String owner, String id) async =>
+      throw const ApiException('RUN-002', '상세 비교 자료가 없어요.');
 }
 
 void main() {
@@ -484,9 +496,14 @@ void main() {
     addTearDown(tester.view.reset);
     var retries = 0;
     Future<void> show({Map<String, dynamic>? ghost}) async {
+      await tester.runAsync(() async => runs.bindOwner());
       await tester.pumpWidget(
         ProviderScope(
-          overrides: [mapEngineProvider.overrideWithValue(MapEngine.dev)],
+          overrides: [
+            mapEngineProvider.overrideWithValue(MapEngine.dev),
+            runControllerProvider.overrideWithValue(runs),
+            ghostComparisonSourceProvider.overrideWithValue(NoComparison()),
+          ],
           child: MaterialApp(
             theme: WdTheme.light(),
             home: FreeRunResultView(
@@ -518,6 +535,8 @@ void main() {
     await show(
       ghost: {
         'outcome': 'LOSE',
+        'completed': true,
+        'sourceRecordId': sourceId,
         'courseElapsedSeconds': 250,
         'sourceElapsedSeconds': 230,
       },

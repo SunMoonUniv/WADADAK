@@ -40,6 +40,7 @@ class PublicGhostTest {
     @Autowired PublicGhostAccess access;
     @Autowired GhostStartService starts;
     @Autowired GhostStartStore receipts;
+    @Autowired GhostResultService results;
     @Autowired JdbcTemplate db;
     @Autowired MockMvc mvc;
     @Autowired JsonMapper json;
@@ -93,6 +94,16 @@ class PublicGhostTest {
         var shifted=raw.stream().map(p->new Input(p.seq(),p.kind(),p.elapsedMs(),start.plusMillis(p.elapsedMs()),p.location(),p.accuracyM(),p.reason())).toList();
         runs.prepare(owner,id,new Prepare(start,"COURSE"));runs.upload(owner,id,new Upload(shifted.size()-1,shifted));runs.process(id);
         assertThat(runs.result(owner,id).ghost().outcome()).isEqualTo(GhostVerdict.DRAW);
+        var detail=results.comparison(owner,id);
+        assertThat(detail.publicPeriod()).isEqualTo("ALL");assertThat(detail.sourceKind()).isEqualTo("PUBLIC_COURSE");
+        assertThat(detail.sourceState()).isEqualTo("DELETED");
+        assertThat(detail.ghost().elapsedSeconds()).isEqualTo(230);
+        assertThat(detail.ghost().activeMs()).isNull();assertThat(detail.ghost().averageCadence()).isNull();
+        mvc.perform(get("/api/v1/runs/sessions/"+id+"/ghost/result/comparison").with(jwt().jwt(j->j.subject(owner.toString()))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.publicPeriod").value("ALL"))
+            .andExpect(jsonPath("$.data.ghost.averageCadence").isEmpty())
+            .andExpect(jsonPath("$.data.sourceOwner").doesNotExist());
+
     }
     @Test void privacyProjectionFailsClosedEvenWhenRankingIsStaleAndOldEventsCannotReopenIt(){
         visibility(false,3);visibility(true,2);

@@ -17,6 +17,7 @@ import 'package:wadadak/core/permissions/device_setup.dart';
 import 'package:wadadak/core/upload/photo_uploader.dart';
 import 'package:wadadak/features/course/create/run_course_source_api.dart';
 import 'package:wadadak/features/home/my_location.dart';
+import 'package:wadadak/features/my/settings_screen.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
 
 const testTokens = AuthTokens(accessToken: 'access', refreshToken: 'refresh');
@@ -122,6 +123,9 @@ class FakeMemberApi implements MemberApiClient {
     'affiliation': '선문대학교',
     'runningExperience': 'MONTHS_6',
     'profileImageUrl': null,
+    'socialProvider': 'KAKAO',
+    'infoPublic': true,
+    'profileSearchable': true,
   };
   ApiException? meError;
   int meCalls = 0;
@@ -159,6 +163,18 @@ class FakeMemberApi implements MemberApiClient {
     };
     if (editError != null) throw editError!;
     profile = {...profile, ...edited!};
+    return MyProfile.fromJson(profile);
+  }
+
+  /// F4 공개 여부 저장 때 보낸 값(보낸 순서대로). [settingsError]가 있으면 대신 실패한다.
+  final savedSettings = <Map<String, bool>>[];
+  ApiException? settingsError;
+
+  @override
+  Future<MyProfile> changeSettings({required bool infoPublic, required bool profileSearchable}) async {
+    savedSettings.add({'infoPublic': infoPublic, 'profileSearchable': profileSearchable});
+    if (settingsError != null) throw settingsError!;
+    profile = {...profile, ...savedSettings.last};
     return MyProfile.fromJson(profile);
   }
 
@@ -782,3 +798,15 @@ CourseRankingSummary courseRankingSummary({
           ? null
           : {'runRecordId': 'run-$ghost', 'memberId': 'member-$ghost', 'rank': ghost, 'courseElapsedSeconds': 1452},
     });
+
+/// 위치만 허용된 휴대폰.
+class FakeDevicePermissions extends DevicePermissions {
+  var allowed = {AppPermission.location};
+  int settingsOpened = 0;
+
+  @override
+  Future<bool> granted(AppPermission permission) async => allowed.contains(permission);
+
+  @override
+  Future<void> openSettings() async => settingsOpened++;
+}

@@ -14,6 +14,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Import;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -23,11 +24,13 @@ import java.sql.Timestamp;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.entry;
 import static org.awaitility.Awaitility.await;
 
 /**
@@ -78,6 +81,40 @@ class CourseStatsTest {
 
         assertThat(stats(course)).containsEntry("completion_count", 1).containsEntry("completion_seconds", 1_800L);
         assertThat(courseStats.averagePaceSecondsPerKm(course, 5_000)).isEqualTo(360);
+    }
+
+    /** 완주 한 건마다 한 줄(G4 최근 주행). 지운 기록은 지운 표시만 남고, 코스가 삭제되면 줄을 모두 지운다 */
+    @Test
+    void completionRowsFollowCompletionsAndRecordDeletion() {
+        UUID course = insert("ACTIVE", 5_000);
+        RunSessionEndedEvent kept = completedAt(course, seoul("2026-10-20T08:00:00"));
+        RunSessionEndedEvent removed = completedAt(course, seoul("2026-10-25T08:00:00"));
+
+        receive(kept);
+        receive(kept);
+        receive(removed);
+        receive(deleted(removed.runRecordId(), course, true, 1_800));
+        receive(ended(course, false, 3_000)); // 미완주는 줄이 없다
+
+        assertThat(completionRows(course)).containsOnly(entry(kept.runRecordId(), false), entry(removed.runRecordId(), true));
+        assertThat(lastCompletedAt(course)).isEqualTo(seoul("2026-10-20T08:00:00"));
+
+        courseStats.deleteFor(course);
+        assertThat(completionRows(course)).isEmpty();
+    }
+
+    /** 기록 삭제를 완주보다 먼저 받아도 그 완주는 최근 주행에 들어가지 않는다(개발 정책 5.4) */
+    @Test
+    void completionDeletedBeforeItArrivesStaysOut() {
+        UUID course = insert("ACTIVE", 5_000);
+        RunSessionEndedEvent late = completedAt(course, seoul("2026-10-20T08:00:00"));
+
+        receive(deleted(late.runRecordId(), course, true, 1_800));
+        receive(late);
+
+        assertThat(stats(course)).containsEntry("completion_count", 0);
+        assertThat(completionRows(course)).containsOnly(entry(late.runRecordId(), true));
+        assertThat(lastCompletedAt(course)).isNull();
     }
 
     @Test
@@ -181,6 +218,7 @@ class CourseStatsTest {
                 .isZero();
         assertThat(courseStats.averagePaceSecondsPerKm(hidden, 3_000)).isNull();
         assertThat(courseStats.activeRunners(hidden)).isZero();
+        assertThat(completionRows(hidden)).isEmpty();
     }
 
     private void receive(Object event) {
@@ -198,6 +236,13 @@ class CourseStatsTest {
         return new RunSessionEndedEvent(UUID.randomUUID(), registeredAt, recordId, UUID.randomUUID(), courseId, completed,
                 5_000, elapsedSeconds, 5_000, 5_000, 1, completed, completed ? registeredAt : null,
                 registeredAt.minusSeconds(elapsedSeconds), registeredAt, registeredAt, "2026-10-14");
+    }
+
+    /** [completedAt]에 30분 걸려 완주한 기록 */
+    private static RunSessionEndedEvent completedAt(UUID courseId, Instant completedAt) {
+        return new RunSessionEndedEvent(UUID.randomUUID(), completedAt, UUID.randomUUID(), UUID.randomUUID(), courseId, true,
+                5_000, 1_800, 5_000, 5_000, 1, true, completedAt, completedAt.minusSeconds(1_800), completedAt, completedAt,
+                "2026-10-14");
     }
 
     private static RunRecordDeletedEvent deleted(UUID recordId, UUID courseId, boolean completed, int elapsedSeconds) {
@@ -223,6 +268,21 @@ class CourseStatsTest {
 
     private Map<String, Object> stats(UUID course) {
         return jdbc.queryForMap("SELECT * FROM course.course_stats WHERE course_id = ?", course);
+    }
+
+    /** 완주 줄: 기록 ID → 지웠는지 */
+    private Map<UUID, Boolean> completionRows(UUID course) {
+        Map<UUID, Boolean> rows = new HashMap<>();
+        jdbc.query("SELECT run_record_id, deleted_at IS NOT NULL AS deleted FROM course.course_completions WHERE course_id = ?",
+                (RowCallbackHandler) rs -> rows.put(rs.getObject("run_record_id", UUID.class), rs.getBoolean("deleted")), course);
+        return rows;
+    }
+
+    /** 지우지 않은 완주 중 마지막 완주 시각 */
+    private Instant lastCompletedAt(UUID course) {
+        Timestamp at = jdbc.queryForObject(
+                "SELECT max(completed_at) FROM course.course_completions WHERE course_id = ? AND deleted_at IS NULL", Timestamp.class, course);
+        return at == null ? null : at.toInstant();
     }
 
     private Map<String, Object> daily(UUID course, LocalDate day) {

@@ -67,24 +67,29 @@ class CourseStatsEventHandler {
         }
     }
 
-    /** 서버가 확정한 코스 완주. 완주 수 +1, 코스 총 소요시간 합 + */
+    /** 서버가 확정한 코스 완주. 완주 수 +1, 코스 총 소요시간 합 +, 완주 한 줄(G4 최근 주행) */
     @ApplicationModuleListener
     public void on(RunSessionEndedEvent event) {
         if (event.courseId() == null || !event.completed()) {
             return;
         }
-        apply(event, COMPLETED, event.courseId(),
-                () -> stats.addCompletions(event.courseId(), 1, event.courseElapsedSeconds()));
+        Instant completedAt = event.completedAt() != null ? event.completedAt() : event.occurredAt();
+        apply(event, COMPLETED, event.courseId(), () -> {
+            stats.addCompletions(event.courseId(), 1, event.courseElapsedSeconds());
+            stats.addCompletion(event.runRecordId(), event.courseId(), completedAt);
+        });
     }
 
-    /** 완주 기록 삭제(회원 탈퇴 포함). 완주로 이미 연장한 유지 기간은 되돌리지 않는다(정책 공통 4) */
+    /** 완주 기록 삭제(회원 탈퇴 포함). 완주 수와 최근 주행에서 뺀다. 완주로 이미 연장한 유지 기간은 되돌리지 않는다(정책 공통 4) */
     @ApplicationModuleListener
     public void on(RunRecordDeletedEvent event) {
         if (event.courseId() == null || !event.completed()) {
             return;
         }
-        apply(event, COMPLETION_DELETED, event.courseId(),
-                () -> stats.addCompletions(event.courseId(), -1, -event.courseElapsedSeconds()));
+        apply(event, COMPLETION_DELETED, event.courseId(), () -> {
+            stats.addCompletions(event.courseId(), -1, -event.courseElapsedSeconds());
+            stats.removeCompletion(event.runRecordId(), event.courseId());
+        });
     }
 
     @ApplicationModuleListener

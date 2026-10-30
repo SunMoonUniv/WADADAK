@@ -39,7 +39,7 @@ import java.util.UUID;
 @Component
 @ConditionalOnProperty(name = "app.stub.course-mine", havingValue = "true")
 @RequiredArgsConstructor
-class MyCoursesStub implements MyCourses, StubImplementation {
+class MyCoursesStub implements MyCourses, MyCourseEditor, StubImplementation {
 
     static final UUID SEONGBUK_ID = UUID.fromString("00000000-0000-0000-0000-000000000101");
     static final UUID HANGANG_ID = UUID.fromString("00000000-0000-0000-0000-000000000102");
@@ -49,7 +49,6 @@ class MyCoursesStub implements MyCourses, StubImplementation {
     static final UUID ANAM_ID = UUID.fromString("00000000-0000-0000-0000-000000000106");
     static final UUID OTHERS_COURSE_ID = UUID.fromString("00000000-0000-0000-0000-000000000003");
 
-    private static final int EXPIRING_SOON_DAYS = 7;
     private static final LocalTime LAST_SECOND = LocalTime.of(23, 59, 59);
 
     private static final List<GeoPoint> SEONGBUK = List.of(new GeoPoint(37.5925, 126.9990), new GeoPoint(37.5893, 127.0068),
@@ -73,10 +72,10 @@ class MyCoursesStub implements MyCourses, StubImplementation {
 
     @Override
     public MyCourseSummary summary(UUID memberId) {
-        LocalDate soon = today().plusDays(EXPIRING_SOON_DAYS);
+        Instant soonBefore = Retention.expiringSoonBefore(today());
         List<MyCourseItem> active = courses().stream().filter(course -> course.status() == CourseStatus.ACTIVE).toList();
         return new MyCourseSummary(active.size(), active.stream().mapToInt(MyCourseItem::completionCount).sum(),
-                (int) active.stream().filter(course -> !LocalDate.ofInstant(course.expiresAt(), TimeConfig.SEOUL).isAfter(soon)).count());
+                (int) active.stream().filter(course -> course.expiresAt().isBefore(soonBefore)).count());
     }
 
     @Override

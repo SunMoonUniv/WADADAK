@@ -6,7 +6,19 @@ import 'api_client.dart';
 import 'region_api_client.dart';
 import 'upload_form.dart';
 
-enum SocialProvider { kakao, google, apple }
+enum SocialProvider {
+  kakao('카카오'),
+  google('Google'),
+  apple('Apple');
+
+  const SocialProvider(this.label);
+
+  /// F4 `연결된 소셜 계정`에 보이는 이름.
+  final String label;
+
+  /// 서버 값(`KAKAO`)으로 찾는다. 모르는 값이면 없다.
+  static SocialProvider? fromApi(String? name) => values.where((e) => e.name.toUpperCase() == name).firstOrNull;
+}
 
 /// 로그인 결과: 가입된 회원이면 토큰, 처음이면 가입 토큰(1시간 유효).
 sealed class LoginResult {
@@ -128,7 +140,10 @@ class MyProfile {
         runningExperience = RunningExperience.fromApi(json['runningExperience'] as String?),
         profileImageKey = json['profileImageKey'] as String?,
         profileImageUrl = json['profileImageUrl'] as String?,
-        bodyInfo = json['bodyInfo'] == null ? null : BodyInfo.fromJson(json['bodyInfo'] as Map);
+        bodyInfo = json['bodyInfo'] == null ? null : BodyInfo.fromJson(json['bodyInfo'] as Map),
+        socialProvider = SocialProvider.fromApi(json['socialProvider'] as String?),
+        infoPublic = json['infoPublic'] as bool? ?? true,
+        profileSearchable = json['profileSearchable'] as bool? ?? true;
 
   final String nickname;
 
@@ -151,6 +166,13 @@ class MyProfile {
 
   /// 신체 정보. 동의하지 않았으면 없다.
   final BodyInfo? bodyInfo;
+
+  /// 가입한 소셜 계정(F4 `연결된 소셜 계정`).
+  final SocialProvider? socialProvider;
+
+  /// F4 공개 여부 두 스위치. 끄면 랭킹 · 고스트에 내 기록이 안 보이고, 러너 검색에 안 나온다.
+  final bool infoPublic;
+  final bool profileSearchable;
 }
 
 /// 회원 API(`/api/v1/members`). 서버 모듈 prefix 하나에 클라이언트 하나(개발 정책 9장).
@@ -185,6 +207,13 @@ class MemberApiClient {
             'runningExperience': runningExperience.apiName,
             'profileImageKey': profileImageKey,
             'bodyInfo': bodyInfo?.toJson(),
+          })) as Map);
+
+  /// F4 공개 여부. 화면의 두 스위치 값을 둘 다 보낸다.
+  Future<MyProfile> changeSettings({required bool infoPublic, required bool profileSearchable}) async =>
+      MyProfile.fromJson(await callApi(() => _authDio().put('$_me/settings', data: {
+            'infoPublic': infoPublic,
+            'profileSearchable': profileSearchable,
           })) as Map);
 
   /// F6 새 프로필 사진 업로드 폼. 올린 키를 [editProfile]에 담는다.

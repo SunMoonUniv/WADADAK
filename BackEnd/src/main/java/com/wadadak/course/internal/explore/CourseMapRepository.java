@@ -10,9 +10,6 @@ import com.wadadak.course.internal.course.CourseTag;
 import com.wadadak.course.internal.course.CourseType;
 import com.wadadak.course.internal.course.Difficulty;
 import lombok.RequiredArgsConstructor;
-import org.locationtech.jts.geom.LineString;
-import org.locationtech.jts.io.ParseException;
-import org.locationtech.jts.io.WKBReader;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
@@ -367,7 +364,7 @@ class CourseMapRepository {
         return new CourseListItem(rs.getObject("id", UUID.class), rs.getString("name"), rs.getInt("distance_meters"),
                 Difficulty.valueOf(rs.getString("difficulty")), tags, CourseType.valueOf(rs.getString("course_type")),
                 rs.getObject("expires_at", OffsetDateTime.class).toInstant(), rating == null ? null : rating.doubleValue(),
-                rs.getInt("review_count"), rs.getInt("active_runners"), points(rs.getBytes("route")));
+                rs.getInt("review_count"), rs.getInt("active_runners"), CourseGeometry.points(rs.getBytes("route")));
     }
 
     private static ListRow listRow(ResultSet rs, CourseListSort sort) throws SQLException {
@@ -459,14 +456,6 @@ class CourseMapRepository {
         return new RegionBounds(rs.getString("code"), rs.getInt("n"),
                 new GeoPoint(rs.getDouble("sw_lat"), rs.getDouble("sw_lng")),
                 new GeoPoint(rs.getDouble("ne_lat"), rs.getDouble("ne_lng")));
-    }
-
-    private static List<GeoPoint> points(byte[] wkb) {
-        try {
-            return CourseGeometry.points((LineString) new WKBReader().read(wkb));
-        } catch (ParseException e) {
-            throw new IllegalStateException("코스 경로를 읽지 못했습니다.", e);
-        }
     }
 
     /** 코스를 고르는 조건. 지도 범위와 필터(FIL-02~05, 값이 없는 필터는 걸지 않는다)나 검색어로 만든다. */
