@@ -49,6 +49,8 @@ app:
   stub:
     member: false
     course: false
+    # 내 코스 관리(G4 · B7). true면 스텁으로 답한다. 수정 · 삭제(B7)는 실제 구현 전이라 켠 로컬 서버에만 뜬다(공용 서버는 prod라 켤 수 없다)
+    course-mine: false
     ranking: false
   course:
     # 만료 배치(F11): 1분마다 만료 코스 비공개 · 숨긴 지 24시간 지난 코스 삭제, 매일 09:00 만료 임박(D-7 · D-1) 알림.

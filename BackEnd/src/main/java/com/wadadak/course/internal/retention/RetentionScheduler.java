@@ -2,6 +2,7 @@ package com.wadadak.course.internal.retention;
 
 import com.wadadak.common.config.TimeConfig;
 import com.wadadak.course.internal.course.CourseRepository;
+import com.wadadak.course.internal.course.Retention;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import net.javacrumbs.shedlock.spring.annotation.SchedulerLock;
@@ -47,7 +48,7 @@ class RetentionScheduler {
         int hidden = forEachPage(before -> courseRepository.findExpiredIds(before, Limit.of(PAGE_SIZE)),
                 clock.instant().minusSeconds(1), retention::hideIfExpired);
         int deleted = forEachPage(before -> courseRepository.findHiddenIds(before, Limit.of(PAGE_SIZE)),
-                clock.instant().minus(RetentionService.DELETE_AFTER), retention::deleteIfDue);
+                clock.instant().minus(Retention.DELETE_AFTER), retention::deleteIfDue);
         if (hidden + deleted > 0) {
             log.info("만료 배치 비공개 {}개 · 삭제 {}개", hidden, deleted);
         }

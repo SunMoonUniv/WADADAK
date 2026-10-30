@@ -5,7 +5,10 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -55,6 +58,29 @@ class CourseStatsRepository {
                 .param("courseId", courseId)
                 .param("count", count)
                 .param("seconds", seconds)
+                .update();
+    }
+
+    /** 완주 한 건(G4 최근 주행). 같은 기록은 한 번만 넣고, 삭제를 먼저 받은 기록이면 지운 채로 둔다 */
+    void addCompletion(UUID runRecordId, UUID courseId, Instant completedAt) {
+        jdbc.sql("""
+                        INSERT INTO course.course_completions (run_record_id, course_id, completed_at, created_at, updated_at)
+                        VALUES (:runRecordId, :courseId, :completedAt, now(), now())
+                        ON CONFLICT (run_record_id) DO NOTHING""")
+                .param("runRecordId", runRecordId)
+                .param("courseId", courseId)
+                .param("completedAt", OffsetDateTime.ofInstant(completedAt, ZoneOffset.UTC))
+                .update();
+    }
+
+    /** 완주 기록을 지웠다고 남긴다. 완주보다 먼저 받아도 줄을 만들어 둬, 늦게 온 완주가 다시 살리지 않는다(개발 정책 5.4) */
+    void removeCompletion(UUID runRecordId, UUID courseId) {
+        jdbc.sql("""
+                        INSERT INTO course.course_completions (run_record_id, course_id, deleted_at, created_at, updated_at)
+                        VALUES (:runRecordId, :courseId, now(), now(), now())
+                        ON CONFLICT (run_record_id) DO UPDATE SET deleted_at = now(), updated_at = now()""")
+                .param("runRecordId", runRecordId)
+                .param("courseId", courseId)
                 .update();
     }
 
@@ -160,8 +186,9 @@ class CourseStatsRepository {
                 .optional();
     }
 
-    /** 누적 · 일별 통계와 현재 러너 수 행을 지운다 */
+    /** 누적 · 일별 통계, 완주 줄, 현재 러너 수 행을 지운다 */
     void delete(UUID courseId) {
+        jdbc.sql("DELETE FROM course.course_completions WHERE course_id = :courseId").param("courseId", courseId).update();
         jdbc.sql("DELETE FROM course.course_active_runners WHERE course_id = :courseId").param("courseId", courseId).update();
         jdbc.sql("DELETE FROM course.course_daily_stats WHERE course_id = :courseId").param("courseId", courseId).update();
         jdbc.sql("DELETE FROM course.course_stats WHERE course_id = :courseId").param("courseId", courseId).update();

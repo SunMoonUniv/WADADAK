@@ -15,7 +15,7 @@
 | 스키마 | 모듈 | 테이블 |
 | --- | --- | --- |
 | `member` | member | `members`, `agreements`, `refresh_tokens`, `region_event_backfill` |
-| `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `gps_course_sources`, `course_stats`, `course_daily_stats`, `course_active_runners`, `processed_events` |
+| `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `gps_course_sources`, `course_stats`, `course_daily_stats`, `course_completions`, `course_active_runners`, `processed_events` |
 | `ranking` | ranking | `course_ranking_entries`, `distance_run_records`, `course_status_copies`, `member_visibility_copies`, `member_region_history`, `withdrawn_members` |
 | `review` | review | `reviews`, `review_photos`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
 | `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members`, `course_attempts`, `course_runner_counts`, `ghost_starts`, `ghost_start_playbacks`, `ghost_results`, `free_ghost_starts`, `free_ghost_results` |
@@ -38,7 +38,7 @@ notification 스키마는 아직 없다. 해당 모듈을 구현할 때 이 문�
 - 실선: 같은 스키마 안의 FK
 - 점선: 다른 모듈(스키마)의 ID를 값으로만 저장한 참조. FK 없음
 - 모든 엔티티 테이블에 있는 `created_at`·`updated_at`은 생략했다. `common`의 인프라 테이블(`event_publication`, `shedlock`, `photo_uploads`, `flyway_schema_history`)은 다른 테이블과 관계가 없어 3.5에서만 설명한다.
-- `course_ranking_entries.run_record_id`, `course_run_records.run_record_id`, `reviews.source_run_record_id`, `gps_course_sources.run_record_id`는 run 모듈의 러닝 기록 ID다. 아래 `run_records`에 점선으로 연결했다. 다른 스키마이므로 FK는 없다.
+- `course_ranking_entries.run_record_id`, `course_run_records.run_record_id`, `reviews.source_run_record_id`, `gps_course_sources.run_record_id`, `course_completions.run_record_id`는 run 모듈의 러닝 기록 ID다. 아래 `run_records`에 점선으로 연결했다. 다른 스키마이므로 FK는 없다.
 - `course_status_copies`·`withdrawn_members`는 ranking과 review에 같은 이름으로 있다. ERD에서는 review 쪽을 `review_` 접두사로 구분했다.
 
 ```mermaid
@@ -50,6 +50,7 @@ erDiagram
     courses ||--o| gps_course_sources : "course_id"
     courses ||--o| course_stats : "course_id"
     courses ||--o{ course_daily_stats : "course_id"
+    courses ||--o{ course_completions : "course_id"
     courses ||--o| course_active_runners : "course_id"
     members ||..o{ courses : "creator_id"
     members ||..o{ daily_registration_counts : "member_id"
@@ -166,6 +167,12 @@ erDiagram
         integer rating_sum "리뷰 작성일"
         integer review_count "리뷰 작성일"
     }
+    course_completions {
+        uuid run_record_id PK "run 기록 ID"
+        uuid course_id FK
+        timestamptz completed_at "완주 시각"
+        timestamptz deleted_at "기록 삭제"
+    }
     course_active_runners {
         uuid course_id PK "FK"
         integer active_count
@@ -261,6 +268,7 @@ erDiagram
     run_records ||..o| course_run_records : "run_record_id"
     run_records ||..o| distance_run_records : "run_record_id"
     run_records ||..o| gps_course_sources : "run_record_id"
+    run_records ||..o| course_completions : "run_record_id"
     members ||..o{ distance_run_records : "member_id"
     run_sessions {
         UUID id PK
@@ -515,6 +523,21 @@ erDiagram
 - 기간 인기순(FIL-09)이 고른 기간(두 날짜 포함)의 `challenge_count` · `view_count` · `review_count` 합으로 정렬한다. 코스마다 `course_daily_stats_uk`로 그 기간 행만 더한다. 기간에 행이 없는 코스도 0으로 뒤에 온다. 리뷰 수정 · 삭제도 작성일(`createdAt`) 행을 바꾼다(개발 정책 5.6).
 - 평점순에는 기간을 쓰지 않아(정책 문서 4.1) `rating_sum`은 지금 읽는 곳이 없지만 계속 쌓는다.
 - 증감 · 삭제 규칙은 `course_stats`와 같다.
+
+#### `course.course_completions` — 코스 완주
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `run_record_id` | `UUID` | | PK. run 모듈의 러닝 기록 ID(FK 없음) |
+| `course_id` | `UUID` | | FK → `courses.id` |
+| `completed_at` | `TIMESTAMPTZ` | ✓ | 서버가 확정한 완주 시각. 기록 삭제를 먼저 받은 줄은 비어 있다 |
+| `deleted_at` | `TIMESTAMPTZ` | ✓ | 기록을 지운 시각. 지운 줄은 남긴다 |
+
+- 완주 한 건마다 한 줄. G4 카드의 `최근 주행`(지운 표시가 없는 줄의 가장 늦은 완주 날, Asia/Seoul)에 쓴다(정책 문서 4.1 `G4 · B7 누적 주행 · 최근 주행`).
+- `course_stats.completion_count`와 같은 리스너 · 같은 처리 기록으로 넣고 지운다. 공개 중(`ACTIVE`)인 코스만 바뀌고, 코스가 `DELETED`가 되면 같은 트랜잭션에서 그 코스의 줄을 지운다.
+- 기록 삭제(`RunRecordDeletedEvent`)는 줄을 지우지 않고 `deleted_at`을 남긴다. 삭제가 완주보다 먼저 와도 줄을 만들어 둬, 늦게 온 완주(`ON CONFLICT DO NOTHING`)가 다시 살리지 않는다(개발 정책 5.4).
+- `course_completions_course_id_idx`: `(course_id, completed_at DESC) WHERE deleted_at IS NULL`.
+- 이 테이블을 만든 때(2026-10-30) 전 완주는 줄이 없다. 다른 스키마(run)를 읽어 채우지 않는다.
 
 #### `course.course_active_runners` — 현재 러너 수 복사본
 
