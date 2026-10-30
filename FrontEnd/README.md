@@ -123,6 +123,7 @@ flutter test
 - 지도는 네이버 지도 SDK다. Client ID는 `core/config.dart`의 공개 값이다(NCP 콘솔 Application에 앱 ID `com.wadadak.app`으로 등록, Client Secret은 쓰지 않는다).
   - 화면은 `core/map`의 `MapView`만 쓴다. 선 · 표지는 값으로 넘기고, 카메라는 `onCreated`로 받은 `MapController`로 움직인다. `moveTo(animate: false)`는 미끄러지지 않고 바로 옮긴다(홈을 열 때 첫 자리 맞추기).
   - 현재 위치: 홈은 지도 SDK가 기기 위치를 받는다(`MyLocationSource.map`, 기본). 러닝은 측정한 좌표를 넘긴다(`MyLocationSource.app` + `myLocation`). 둘 다 `showMyLocation()`으로 따라가고, 지도를 움직이면 따라가기가 꺼진다(`onFollowingChanged`). `showMyLocation(follow: false)`는 현재 위치 점만 보이고 카메라는 그대로 둔다(홈 현재 위치 버튼). `hideMyLocation()`으로 끝낸다.
+  - 현재 위치 점 값은 덜 보낸다. flutter_naver_map 1.4.4 안드로이드는 지도 표지 값 바꾸기에 답하지 않아 보낼 때마다 끝나지 않는 작업이 남고, 1초에 수십 번 오는 나침반 값을 다 보내면 앱을 1시간쯤 켜 두었을 때 메모리가 모자라 ANR이 났다. 홈 점의 방향은 5° 이상 돌고 0.2초가 지났을 때만 보내고(`MapLocationTracker`), 홈 지도가 다른 하단 탭이나 위에 덮인 화면에 가려지면 위치 추적을 끈다. 달리기 화면 점은 위치가 바뀔 때 위치만 보낸다(정책 문서 4.1 `A4-05 · A5-05 현재 위치 점 보내기`).
   - 선 모양은 쓰는 곳마다 나눈다: 홈 · 코스 만들기 코스선 `course`(라임), 러닝 화면 코스선 `runCourse`(흰색), 러닝 주행선 `track`(라임, 코스선 위).
   - 러닝 화면은 `MapView(dark: true)` — 네이버 지도 야간 모드(내비 지도 유형).
   - 지도 위에 버튼 · 범례를 올리면 그 높이만큼 `padding`을 준다. 네이버 로고 · 축척이 그 위로 올라가 가리지 않는다(네이버 지도는 로고를 가리면 안 된다).

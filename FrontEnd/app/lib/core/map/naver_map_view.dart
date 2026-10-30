@@ -32,14 +32,30 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
 
   bool _following = false;
 
-  // MyLocationSource.app일 때 현재 위치 점을 보이는 중인지. map이면 SDK가 위치 추적 모드로 관리한다.
-  bool _showingAppLocation = false;
+  // showMyLocation으로 현재 위치 점을 켜 두었는지.
+  bool _showingMyLocation = false;
+
+  // 다른 하단 탭이나 위에 덮인 화면에 가려져 있는지([TickerMode]). 가려진 동안 MyLocationSource.map 위치 추적을 끈다.
+  bool _hidden = false;
+
+  // MyLocationSource.app 점을 보이게 보냈는지. 점 값 바꾸기는 보낼 때마다 메모리에 남아([MapLocationTracker])
+  // 보이기 · 방향 표시는 바뀔 때만 보낸다.
+  bool _appLocationVisible = false;
 
   // 지도에 올라가 있는 선·표지. 다시 그릴 때 이것과 비교해 바뀐 것만 반영한다.
   final _shownLines = <String, MapLine>{};
   final _shownMarkers = <String, MapMarker>{};
   final _images = <String, Future<NOverlayImage>>{};
   Future<void> _syncing = Future.value();
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final hidden = !TickerMode.valuesOf(context).enabled;
+    if (hidden == _hidden) return;
+    _hidden = hidden;
+    _trackMapLocation();
+  }
 
   @override
   void didUpdateWidget(NaverMapView oldWidget) {
@@ -207,6 +223,10 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
         ),
         onMapReady: (controller) {
           _controller = controller;
+          // 현재 위치를 켜기(onCreated) 전에 바꿔 끼워야 SDK 위치 추적이 이것을 쓴다.
+          controller.setMyLocationTracker(
+            MapLocationTracker(isOff: () => controller.locationTrackingMode == NLocationTrackingMode.none),
+          );
           widget.map.onCreated?.call(this);
           _sync();
           // 처음 카메라는 준비 전에 멈춰 onCameraIdle이 오지 않는다.
@@ -226,22 +246,32 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
     widget.map.onFollowingChanged?.call(following);
   }
 
+  /// [MyLocationSource.map]의 SDK 위치 추적을 켜 두었는지 · 가려졌는지 · 따라가는지에 맞춘다.
+  void _trackMapLocation() {
+    final controller = _controller;
+    if (controller == null || widget.map.myLocationSource != MyLocationSource.map) return;
+    controller.setLocationTrackingMode(!_showingMyLocation || _hidden
+        ? NLocationTrackingMode.none
+        : _following
+            ? NLocationTrackingMode.follow
+            : NLocationTrackingMode.noFollow);
+  }
+
   /// [MyLocationSource.app]의 현재 위치 점을 [MapView.myLocation]에 놓고, 따라가는 중이면 카메라도 옮긴다.
   void _placeAppLocation() {
     final controller = _controller;
     if (controller == null || widget.map.myLocationSource != MyLocationSource.app) return;
-    final location = widget.map.myLocation;
+    final location = _showingMyLocation ? widget.map.myLocation : null;
     final overlay = controller.getLocationOverlay();
-    if (!_showingAppLocation || location == null) {
-      overlay.setIsVisible(false);
-      return;
-    }
-    overlay
-      ..setPosition(_latLng(location))
+    if (location != null) overlay.setPosition(_latLng(location));
+    final visible = location != null;
+    if (visible != _appLocationVisible) {
+      _appLocationVisible = visible;
       // 방향을 모르므로 방향 표시는 뺀다.
-      ..setSubIcon(null)
-      ..setIsVisible(true);
-    if (_following) {
+      if (visible) overlay.setSubIcon(null);
+      overlay.setIsVisible(visible);
+    }
+    if (location != null && _following) {
       controller.updateCamera(NCameraUpdate.withParams(target: _latLng(location))..setReason(NCameraUpdateReason.location));
     }
   }
@@ -264,31 +294,77 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
   }
 
   @override
-  void showMyLocation({bool follow = true}) {
-    final controller = _controller;
-    if (controller == null) return;
+  void showMyLocation({bool follow = true}) => _setMyLocation(show: true, follow: follow);
+
+  @override
+  void hideMyLocation() => _setMyLocation(show: false, follow: false);
+
+  void _setMyLocation({required bool show, required bool follow}) {
+    if (_controller == null) return;
     _setFollowing(follow);
+    _showingMyLocation = show;
     switch (widget.map.myLocationSource) {
       case MyLocationSource.map:
-        controller.setLocationTrackingMode(follow ? NLocationTrackingMode.follow : NLocationTrackingMode.noFollow);
+        _trackMapLocation();
       case MyLocationSource.app:
-        _showingAppLocation = true;
         _placeAppLocation();
     }
   }
+}
+
+/// [MyLocationSource.map] 현재 위치 점의 SDK 위치 추적기(4.1 `A4-05 · A5-05 현재 위치 점 보내기`). flutter_naver_map 1.4.4의
+/// 두 문제를 피한다.
+///
+/// - 안드로이드는 지도 표지 값 바꾸기에 답하지 않아, 보낼 때마다 끝나지 않는 작업이 하나씩 남는다. SDK 기본 추적기는 나침반 값이
+///   올 때마다(1초에 수십 번) 방향을 보내, 앱을 1시간 넘게 켜 두면 메모리가 모자라 응답 없음(ANR)이 났다. 그래서 방향이
+///   [minTurn]° 이상 바뀌고 [minGap]이 지났을 때만 보낸다.
+/// - 켜는 중(현재 위치를 받는 동안)에 끄면 SDK가 위치를 다 받은 뒤 다시 켜 버린다. 다 받았을 때 꺼져 있으면 켜지 않는다.
+class MapLocationTracker extends NDefaultMyLocationTracker {
+  MapLocationTracker({required this.isOff, this.nowMs});
+
+  static const minTurn = 5.0;
+  static const minGap = Duration(milliseconds: 200);
+
+  /// 지도의 위치 추적이 지금 꺼져 있는지.
+  final bool Function() isOff;
+
+  /// 거꾸로 가지 않는 시각(ms). 테스트에서 바꾼다.
+  final int Function()? nowMs;
+
+  // 기기 시계를 되돌려도 거꾸로 가지 않는다.
+  final _clock = Stopwatch()..start();
+  double? _sentHeading;
+  int? _sentMs;
+
+  /// [heading]을 보낼지. 보내기로 하면 보낸 것으로 친다.
+  bool shouldSend(double heading) {
+    final now = nowMs?.call() ?? _clock.elapsedMilliseconds;
+    final sentHeading = _sentHeading, sentMs = _sentMs;
+    if (sentHeading != null && sentMs != null) {
+      // 359°와 1°는 2° 차이다.
+      final turn = ((heading - sentHeading + 540) % 360 - 180).abs();
+      if (turn < minTurn || now - sentMs < minGap.inMilliseconds) return false;
+    }
+    _sentHeading = heading;
+    _sentMs = now;
+    return true;
+  }
 
   @override
-  void hideMyLocation() {
-    final controller = _controller;
-    if (controller == null) return;
-    _setFollowing(false);
-    switch (widget.map.myLocationSource) {
-      case MyLocationSource.map:
-        controller.setLocationTrackingMode(NLocationTrackingMode.none);
-      case MyLocationSource.app:
-        _showingAppLocation = false;
-        _placeAppLocation();
-    }
+  void onHeadingChanged(
+    double heading,
+    NLocationOverlay locationOverlay,
+    NaverMapController controller,
+    NLocationTrackingMode mode,
+  ) {
+    if (shouldSend(heading)) super.onHeadingChanged(heading, locationOverlay, controller, mode);
+  }
+
+  @override
+  Future<NLatLng?> startLocationService() async {
+    final location = await super.startLocationService();
+    // null이면 SDK가 켜기를 그만둔다.
+    return isOff() ? null : location;
   }
 }
 
