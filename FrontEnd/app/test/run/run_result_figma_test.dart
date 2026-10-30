@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wadadak/core/map/map_view.dart';
+import 'package:wadadak/features/run/data/run_splits_api.dart';
 import 'package:wadadak/features/run/domain/course_run.dart';
 import 'package:wadadak/features/run/domain/run_lap.dart';
 import 'package:wadadak/features/run/domain/run_models.dart';
@@ -102,7 +103,11 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
       ProviderScope(
-        overrides: [mapEngineProvider.overrideWithValue(MapEngine.dev)],
+        overrides: [
+          mapEngineProvider.overrideWithValue(MapEngine.dev),
+          // 서버 구간 값(케이던스·고도)이 비어 있는 기록
+          runSplitsProvider.overrideWith((ref, id) async => const <RunSplit>[]),
+        ],
         child: RepaintBoundary(
           key: capture,
           child: MaterialApp(
