@@ -5,6 +5,8 @@ import org.locationtech.jts.geom.Coordinate;
 import org.locationtech.jts.geom.GeometryFactory;
 import org.locationtech.jts.geom.LineString;
 import org.locationtech.jts.geom.PrecisionModel;
+import org.locationtech.jts.io.ParseException;
+import org.locationtech.jts.io.WKBReader;
 
 import java.util.Arrays;
 import java.util.List;
@@ -24,5 +26,14 @@ public final class CourseGeometry {
     /** 좌표 순서를 그대로 둔다(첫 점 출발, 개발 정책 6.4). */
     public static List<GeoPoint> points(LineString line) {
         return Arrays.stream(line.getCoordinates()).map(c -> new GeoPoint(c.getY(), c.getX())).toList();
+    }
+
+    /** SQL로 읽은 {@code ST_AsBinary(route)} 값 */
+    public static List<GeoPoint> points(byte[] wkb) {
+        try {
+            return points((LineString) new WKBReader().read(wkb));
+        } catch (ParseException e) {
+            throw new IllegalStateException("코스 경로를 읽지 못했습니다.", e);
+        }
     }
 }
