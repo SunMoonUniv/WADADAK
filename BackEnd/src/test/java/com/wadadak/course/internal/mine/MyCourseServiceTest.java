@@ -3,6 +3,9 @@ package com.wadadak.course.internal.mine;
 import com.wadadak.TestcontainersConfiguration;
 import com.wadadak.common.config.TimeConfig;
 import com.wadadak.course.internal.course.CourseName;
+import com.wadadak.event.course.CourseStatus;
+import com.wadadak.event.course.CourseStatusChangedEvent;
+import com.wadadak.event.course.CourseStatusReason;
 import com.wadadak.member.MemberApi;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -12,6 +15,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
+import org.springframework.modulith.test.AssertablePublishedEvents;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.convention.TestBean;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -21,13 +25,14 @@ import org.springframework.test.web.servlet.assertj.MvcTestResult;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 
 /**
- * 실제 구현({@code app.stub.course-mine: false})의 G4 목록 · 합계와 B7 수정. 지금은 2026-10-30(금) 12:00 Asia/Seoul로 고정한다.
+ * 실제 구현({@code app.stub.course-mine: false})의 G4 목록 · 합계와 B7 수정 · 삭제. 지금은 2026-10-30(금) 12:00 Asia/Seoul로 고정한다.
  * 스텁 응답은 {@link MyCourseControllerTest}.
  */
 @ApplicationModuleTest
@@ -188,6 +193,64 @@ class MyCourseServiceTest {
         assertThat(edit(me, UUID.randomUUID(), name)).hasStatus(HttpStatus.NOT_FOUND)
                 .bodyJson().extractingPath("$.code").isEqualTo("COURSE-001");
         assertThat(edit(me, expired, " 한 ")).hasStatus(HttpStatus.BAD_REQUEST).bodyJson().extractingPath("$.code").isEqualTo("COMMON-001");
+    }
+
+    @Test
+    void deleteHidesMyPublicCourseForADay(AssertablePublishedEvents events) {
+        UUID me = UUID.randomUUID();
+        UUID id = course(me, "ACTIVE", "2026-11-20T23:59:59", "2026-10-29T09:00:00");
+        completions(id, 7);
+        // 어제 만료돼 배치를 기다리는 코스는 아직 공개 중이라 등록자 삭제로 숨긴다
+        UUID expired = course(me, "ACTIVE", "2026-10-29T23:59:59", "2026-09-29T09:00:00");
+
+        MvcTestResult result = delete(me, id);
+
+        assertThat(result).hasStatusOk();
+        assertThat(result).bodyJson().extractingPath("$.data.status").isEqualTo("HIDDEN");
+        assertThat(result).bodyJson().extractingPath("$.data.statusReason").isEqualTo("USER_DELETED");
+        assertThat(result).bodyJson().extractingPath("$.data.deleteAt").isEqualTo("2026-10-31T03:00:00Z");
+        assertThat(result).bodyJson().extractingPath("$.data.completionCount").isEqualTo(7);
+        assertThat(row(id)).containsEntry("status", "HIDDEN").containsEntry("status_reason", "USER_DELETED")
+                .containsEntry("version", 1L);
+        assertThat(events).contains(CourseStatusChangedEvent.class)
+                .matching(e -> e.courseId().equals(id) && e.status() == CourseStatus.HIDDEN
+                        && e.reason() == CourseStatusReason.USER_DELETED && e.version() == 1);
+        assertThat(delete(me, expired)).bodyJson().extractingPath("$.data.statusReason").isEqualTo("USER_DELETED");
+    }
+
+    @Test
+    void deleteKeepsCourseAlreadyDeleting(AssertablePublishedEvents events) {
+        UUID me = UUID.randomUUID();
+        UUID deleting = course(me, "HIDDEN", "2026-11-20T23:59:59", "2026-10-28T09:00:00");
+
+        MvcTestResult result = delete(me, deleting);
+
+        // 오늘 10:00에 지운 그대로 내일 10:00에 삭제된다
+        assertThat(result).hasStatusOk();
+        assertThat(result).bodyJson().extractingPath("$.data.deleteAt").isEqualTo("2026-10-31T01:00:00Z");
+        assertThat(row(deleting)).containsEntry("version", 0L);
+        assertThat(events.ofType(CourseStatusChangedEvent.class)).isEmpty();
+    }
+
+    @Test
+    void rejectsCoursesICannotDelete() {
+        UUID me = UUID.randomUUID();
+        UUID others = course(UUID.randomUUID(), "ACTIVE", "2026-11-20T23:59:59", "2026-10-29T09:00:00");
+        UUID deleted = course(me, "DELETED", "2026-11-20T23:59:59", "2026-10-28T09:00:00");
+
+        assertThat(delete(me, others)).hasStatus(HttpStatus.FORBIDDEN).bodyJson().extractingPath("$.code").isEqualTo("COMMON-003");
+        assertThat(row(others)).containsEntry("status", "ACTIVE");
+        assertThat(delete(me, deleted)).hasStatus(HttpStatus.CONFLICT).bodyJson().extractingPath("$.code").isEqualTo("COURSE-002");
+        assertThat(delete(me, UUID.randomUUID())).hasStatus(HttpStatus.NOT_FOUND)
+                .bodyJson().extractingPath("$.code").isEqualTo("COURSE-001");
+    }
+
+    private MvcTestResult delete(UUID memberId, UUID courseId) {
+        return mvc.delete().uri("/api/v1/courses/{courseId}", courseId).with(jwt().jwt(j -> j.subject(memberId.toString()))).exchange();
+    }
+
+    private Map<String, Object> row(UUID courseId) {
+        return jdbc.queryForMap("SELECT status, status_reason, version FROM course.courses WHERE id = ?", courseId);
     }
 
     private MvcTestResult edit(UUID memberId, UUID courseId, String name) {

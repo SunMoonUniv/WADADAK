@@ -39,7 +39,7 @@ import java.util.UUID;
 @Component
 @ConditionalOnProperty(name = "app.stub.course-mine", havingValue = "true")
 @RequiredArgsConstructor
-class MyCoursesStub implements MyCourses, MyCourseEditor, StubImplementation {
+class MyCoursesStub implements MyCourses, StubImplementation {
 
     static final UUID SEONGBUK_ID = UUID.fromString("00000000-0000-0000-0000-000000000101");
     static final UUID HANGANG_ID = UUID.fromString("00000000-0000-0000-0000-000000000102");
