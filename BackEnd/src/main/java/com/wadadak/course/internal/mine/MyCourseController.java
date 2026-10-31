@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springdoc.core.annotations.ParameterObject;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -56,7 +57,18 @@ class MyCourseController {
         return ApiResult.success(myCourses.edit(memberId(jwt), courseId, request));
     }
 
-    static UUID memberId(Jwt jwt) {
+    @Operation(summary = "코스 삭제 (B7)",
+            description = "공개 중인 코스를 바로 비공개로 바꾸고 24시간 뒤 지운다(만료와 같다, 정책 공통 4). "
+                    + "지도 · 목록 · 검색 · 상세와 새 러닝 시작은 바로 막히고, 이미 시작한 러닝과 개인 기록은 남는다. "
+                    + "삭제되면 코스 통계 · 리뷰 · 랭킹도 지워진다. 응답은 삭제 예정으로 바뀐 G4 카드 값(status HIDDEN, "
+                    + "statusReason USER_DELETED, deleteAt)이다. 이미 삭제 예정이면 바꾸지 않고 그 값을 돌려준다. "
+                    + "내 코스가 아님 COMMON-003, 없는 코스 COURSE-001, 삭제가 끝난 코스 COURSE-002.")
+    @DeleteMapping("/{courseId}")
+    ApiResult<MyCourseItem> delete(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID courseId) {
+        return ApiResult.success(myCourses.delete(memberId(jwt), courseId));
+    }
+
+    private static UUID memberId(Jwt jwt) {
         return UUID.fromString(jwt.getSubject());
     }
 }

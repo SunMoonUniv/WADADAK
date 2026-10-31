@@ -444,7 +444,7 @@ erDiagram
 | `courses_expires_at_idx` | `expires_at` | `ACTIVE` | 만료 배치 |
 | `courses_hidden_at_idx` | `hidden_at` | `HIDDEN` | 숨긴 지 24시간 지난 코스 삭제 배치 |
 
-- 사용자 지정(`CUSTOM`)과 GPS 주행 등록(`GPS`)이 행을 만든다. GPS 코스의 `route`는 러닝 기록 경로 조각을 잇고 점을 줄인 경로이고, 원본은 `gps_course_sources`에 있다. 만료 배치(1분마다 만료된 코스를 `HIDDEN`, 숨긴 지 24시간 지나면 `DELETED`)는 있고, 등록자 삭제는 아직 없다.
+- 사용자 지정(`CUSTOM`)과 GPS 주행 등록(`GPS`)이 행을 만든다. GPS 코스의 `route`는 러닝 기록 경로 조각을 잇고 점을 줄인 경로이고, 원본은 `gps_course_sources`에 있다. 만료 배치는 1분마다 만료된 코스를 `HIDDEN`(`EXPIRED`)으로, 숨긴 지 24시간 지난 코스를 `DELETED`로 바꾼다. 등록자 삭제(B7)는 바로 `HIDDEN`(`USER_DELETED`)으로 바꾸고, `DELETED`는 같은 배치가 바꾼다.
 
 #### `course.daily_registration_counts` — 일일 등록 수
 

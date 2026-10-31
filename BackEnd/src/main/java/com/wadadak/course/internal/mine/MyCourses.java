@@ -6,7 +6,7 @@ import com.wadadak.common.paging.Cursorable;
 import java.util.UUID;
 
 /**
- * 내가 등록한 코스(G4) 목록 · 합계와 코스 수정(B7). 실제 구현은 {@link MyCourseService},
+ * 내가 등록한 코스(G4) 목록 · 합계와 코스 수정 · 삭제(B7). 실제 구현은 {@link MyCourseService},
  * {@code app.stub.course-mine: true}면 {@link MyCoursesStub}이 대신한다.
  */
 interface MyCourses {
@@ -19,4 +19,7 @@ interface MyCourses {
 
     /** 이름 · 난이도 · 특징만 바꾼다. 응답은 바뀐 카드 */
     MyCourseItem edit(UUID memberId, UUID courseId, EditCourseRequest request);
+
+    /** 공개 중이면 비공개로 바꾸고 24시간 뒤 지운다. 이미 삭제 예정이면 그대로 돌려준다 */
+    MyCourseItem delete(UUID memberId, UUID courseId);
 }

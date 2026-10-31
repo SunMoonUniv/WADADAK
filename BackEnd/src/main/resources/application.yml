@@ -49,7 +49,7 @@ app:
   stub:
     member: false
     course: false
-    # 내 코스 관리(G4 · B7). true면 스텁으로 답한다. 삭제(B7)는 실제 구현 전이라 켠 로컬 서버에만 뜬다(공용 서버는 prod라 켤 수 없다)
+    # 내 코스 관리(G4 · B7). true면 스텁으로 답한다(공용 서버는 prod라 켤 수 없다)
     course-mine: false
     ranking: false
   course:
