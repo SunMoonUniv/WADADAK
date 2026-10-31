@@ -77,8 +77,8 @@ class CourseMapRepository {
                                FROM course.course_daily_stats d
                                WHERE d.course_id = c.id%s) p ON true""";
 
-    /** 전체 기간 평점. 리뷰 API처럼 소수 첫째 자리로 반올림한다. 리뷰가 없으면 NULL */
-    private static final String RATING = "CASE WHEN s.review_count > 0 THEN round(s.rating_sum::numeric / s.review_count, 1) END";
+    /** 전체 기간 평점. 리뷰 API처럼 소수 첫째 자리로 반올림한다. 리뷰가 없으면 NULL. I3 카드({@link RunnerCourseRepository})도 쓴다 */
+    static final String RATING = "CASE WHEN s.review_count > 0 THEN round(s.rating_sum::numeric / s.review_count, 1) END";
 
     /** 목록 카드(지도 범위 안 코스도 같다)에 쓰는 열과 커서용 등록 시각. */
     private static final String LIST_COLUMNS = """
