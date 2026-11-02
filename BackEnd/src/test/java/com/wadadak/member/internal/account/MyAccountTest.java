@@ -7,6 +7,7 @@ import com.wadadak.common.storage.PhotoUploads;
 import com.wadadak.common.storage.UploadForm;
 import com.wadadak.event.member.MemberRegionChangedEvent;
 import com.wadadak.event.member.MemberVisibilityChangedEvent;
+import com.wadadak.event.member.MemberWithdrawnEvent;
 import com.wadadak.member.internal.social.SocialAccount;
 import com.wadadak.member.internal.social.SocialProvider;
 import org.junit.jupiter.api.BeforeEach;
@@ -70,6 +71,9 @@ class MyAccountTest {
 
     @Autowired
     JdbcTemplate jdbc;
+
+    @Autowired
+    AgreementRepository agreementRepository;
 
     @Autowired
     Clock clock;
@@ -321,6 +325,55 @@ class MyAccountTest {
         JsonNode data = data(mvc.post().uri("/api/v1/members/me/photo-uploads").with(as(member)).exchange());
 
         assertThat(data.get("key").asString()).isEqualTo("member/new.jpg");
+    }
+
+    @Test
+    void withdrawalClearsPersonalInfoConsentsTokensAndPhotoThenTellsOtherModules(AssertablePublishedEvents events) {
+        Member member = join("떠날러너", "member/bye.jpg", new BodyInfo(1998, 175, 68, Gender.MALE));
+        agreementRepository.saveAll(Agreement.signup(member.getId(), true));
+        // 두 기기에서 로그인해 둔 리프레시 토큰
+        for (int i = 0; i < 2; i++) {
+            jdbc.update("INSERT INTO member.refresh_tokens (id, token_hash, member_id, expires_at, created_at, updated_at) "
+                    + "VALUES (gen_random_uuid(), ?, ?, now() + interval '1 day', now(), now())",
+                    UUID.randomUUID().toString(), member.getId());
+        }
+
+        assertThat(mvc.delete().uri("/api/v1/members/me").with(as(member)).exchange()).hasStatusOk();
+
+        Map<String, Object> row = jdbc.queryForMap("SELECT * FROM member.members WHERE id = ?", member.getId());
+        assertThat(row.get("status")).isEqualTo("WITHDRAWN");
+        assertThat(row.get("withdrawn_at")).isNotNull();
+        // 행은 남기고 사람을 알아볼 수 있는 값은 비운다(개발 정책 6.2)
+        for (String column : List.of("social_id", "nickname", "bio", "affiliation", "profile_image_key", "birth_year",
+                "height_cm", "weight_kg", "gender")) {
+            assertThat(row.get(column)).as(column).isNull();
+        }
+        assertThat(row.get("info_public")).isEqualTo(false);
+        assertThat(row.get("profile_searchable")).isEqualTo(false);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM member.agreements WHERE member_id = ?", Integer.class,
+                member.getId())).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM member.refresh_tokens WHERE member_id = ?", Integer.class,
+                member.getId())).isZero();
+        verify(storage).deleteAfterCommit(List.of("member/bye.jpg"));
+        assertThat(events.ofType(MemberWithdrawnEvent.class).matching(e -> e.memberId().equals(member.getId())))
+                .singleElement();
+    }
+
+    @Test
+    void withdrawnMemberCannotWithdrawOrReadAgainButTheSocialAccountAndNicknameAreFree() {
+        Member member = join("다시올러너", null, null);
+        String socialId = member.getSocialId();
+
+        assertThat(mvc.delete().uri("/api/v1/members/me").with(as(member)).exchange()).hasStatusOk();
+
+        assertThat(mvc.delete().uri("/api/v1/members/me").with(as(member)).exchange())
+                .hasStatus(HttpStatus.UNAUTHORIZED)
+                .bodyJson().extractingPath("$.code").isEqualTo("COMMON-002");
+        assertThat(mvc.get().uri("/api/v1/members/me").with(as(member)).exchange())
+                .hasStatus(HttpStatus.UNAUTHORIZED);
+        // 같은 소셜 계정으로 로그인하면 회원을 찾지 못해 가입 화면으로 간다. 닉네임도 다른 사람이 쓸 수 있다
+        assertThat(memberRepository.findBySocialProviderAndSocialId(SocialProvider.KAKAO, socialId)).isEmpty();
+        assertThat(memberRepository.existsByNicknameIgnoreCase("다시올러너")).isFalse();
     }
 
     @Test

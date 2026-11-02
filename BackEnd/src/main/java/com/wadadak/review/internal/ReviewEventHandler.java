@@ -1,16 +1,21 @@
 package com.wadadak.review.internal;
 
+import com.wadadak.common.entity.UuidV7;
 import com.wadadak.event.course.CourseStatus;
 import com.wadadak.event.course.CourseStatusChangedEvent;
+import com.wadadak.event.member.MemberWithdrawnEvent;
+import com.wadadak.event.review.ReviewDeletedEvent;
 import com.wadadak.event.run.RunRecordDeletedEvent;
 import com.wadadak.event.run.RunSessionEndedEvent;
 import com.wadadak.event.run.GpsSourceLinkedEvent;
 import com.wadadak.event.run.GpsSourceUnlinkedEvent;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.modulith.events.ApplicationModuleListener;
 import org.springframework.stereotype.Component;
 
+import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
@@ -31,6 +36,9 @@ class ReviewEventHandler {
     private final JdbcClient jdbc;
     private final ReviewPhotos photos;
     private final CourseRunRecords runRecords;
+    private final ReviewRepository reviews;
+    private final ApplicationEventPublisher events; // 탈퇴로 지운 리뷰마다 ReviewDeletedEvent를 낸다
+    private final Clock clock;
 
     /** Reuse only this module's copy logic; no synthetic run event is published. */
     @ApplicationModuleListener
@@ -136,6 +144,34 @@ class ReviewEventHandler {
                     .param("courseId", event.courseId())
                     .update();
         }
+    }
+
+    /**
+     * 회원 탈퇴. 그 회원의 리뷰를 사진과 함께 지우고, 리뷰마다 {@code ReviewDeletedEvent}를 낸다(course가 평점 합계 · 리뷰 수에서 뺀다,
+     * 개발 정책 5.6). 주행 기록 복사본도 지운다(정책 공통 4 · 5).
+     *
+     * <p>탈퇴 표시를 먼저 남겨, 이 처리 뒤에 늦게 온 주행 기록 이벤트를 받지 않는다({@link #isWithdrawn}).
+     * 같은 이벤트가 다시 와도 지울 리뷰가 없어 삭제 이벤트가 두 번 나가지 않는다.
+     */
+    @ApplicationModuleListener
+    public void on(MemberWithdrawnEvent event) {
+        jdbc.sql("""
+                        INSERT INTO review.withdrawn_members (member_id, withdrawn_at, created_at, updated_at)
+                        VALUES (:memberId, :withdrawnAt, now(), now())
+                        ON CONFLICT (member_id) DO NOTHING""")
+                .param("memberId", event.memberId())
+                .param("withdrawnAt", OffsetDateTime.ofInstant(event.withdrawnAt(), ZoneOffset.UTC))
+                .update();
+        for (Review review : reviews.findByMemberId(event.memberId())) {
+            // 내가 지울 때(ReviewService.delete)와 같다. 사진 행은 ON DELETE CASCADE, 파일은 커밋한 뒤 지운다
+            photos.deleteFiles(review.getId());
+            reviews.delete(review);
+            events.publishEvent(new ReviewDeletedEvent(UuidV7.create(), clock.instant(), review.getId(),
+                    review.getCourseId(), review.getRating(), review.getCreatedAt()));
+        }
+        jdbc.sql("DELETE FROM review.course_run_records WHERE member_id = :memberId")
+                .param("memberId", event.memberId())
+                .update();
     }
 
     /** 탈퇴한 회원. 탈퇴 처리가 리뷰·기록을 지운 뒤에 늦게 온 기록을 받지 않는다. */

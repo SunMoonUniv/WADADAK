@@ -102,6 +102,14 @@ class AuthController extends AsyncNotifier<AuthState> {
     }
   }
 
+  /// F4 회원 탈퇴. 서버가 탈퇴를 마쳐야 기기의 토큰을 지우고 로그인 화면으로 간다.
+  /// 실패하면 [ApiException]을 던지고 로그인 상태는 그대로다. 서버가 리프레시 토큰을 모두 지워 따로 로그아웃하지 않는다.
+  Future<void> withdraw() async {
+    await ref.read(memberApiClientProvider).withdraw();
+    await ref.read(tokenStorageProvider).clear();
+    state = const AsyncData(SignedOut());
+  }
+
   /// 가입을 그만두고 로그인 화면으로 돌아간다.
   void cancelSignup() => state = const AsyncData(SignedOut());
 

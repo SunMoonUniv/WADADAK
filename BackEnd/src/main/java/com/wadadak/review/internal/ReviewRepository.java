@@ -2,6 +2,7 @@ package com.wadadak.review.internal;
 
 import org.springframework.data.jpa.repository.JpaRepository;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -14,4 +15,7 @@ interface ReviewRepository extends JpaRepository<Review, UUID> {
 
     /** "member_id = ? AND course_id = ?인 행이 있는가" 쿼리가 자동으로 만들어진다. 코스당 1개 확인에 쓴다. */
     boolean existsByMemberIdAndCourseId(UUID memberId, UUID courseId);
+
+    /** 그 회원이 쓴 리뷰 전부. 회원 탈퇴 때 하나씩 지우며 리뷰마다 삭제 이벤트를 낸다. */
+    List<Review> findByMemberId(UUID memberId);
 }

@@ -255,6 +255,10 @@ class MemberApiClient {
             'profileSearchable': profileSearchable,
           })) as Map);
 
+  /// F4 회원 탈퇴. 러닝 기록 · 랭킹 · 리뷰 · 저장한 코스가 지워지고 모든 기기의 리프레시 토큰이 폐기된다.
+  /// 이미 탈퇴했으면 COMMON-002(401)이라 AuthInterceptor가 로그아웃시킨다.
+  Future<void> withdraw() => callApi(() => _authDio().delete(_me));
+
   /// 닉네임에 [query]가 들어간 러너 한 쪽(G7, SEA-05). 공백 · 대소문자는 보지 않고, 인기순 하나다.
   /// 프로필 검색 허용을 끈 회원 · 탈퇴 회원은 빠지고 나도 나온다. 공백을 빼고 2글자 미만이면 COMMON-001.
   Future<RunnerSearchPage> searchRunners(String query, {String? cursor}) async {

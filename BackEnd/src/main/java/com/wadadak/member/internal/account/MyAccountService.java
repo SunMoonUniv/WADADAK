@@ -9,6 +9,7 @@ import com.wadadak.common.storage.PhotoUploads;
 import com.wadadak.common.storage.UploadForm;
 import com.wadadak.event.member.MemberRegionChangedEvent;
 import com.wadadak.event.member.MemberVisibilityChangedEvent;
+import com.wadadak.event.member.MemberWithdrawnEvent;
 import com.wadadak.member.MemberErrorCode;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -128,6 +129,27 @@ class MyAccountService {
                     member.getRegionCode(), oldRegion, member.getVersion()));
         }
         return view(member);
+    }
+
+    /**
+     * 회원 탈퇴(F4 회원 탈퇴, 개발 정책 6.2).
+     *
+     * <p>순서: 회원 행을 잠그고 → 개인정보를 비우고 {@code WITHDRAWN}으로 → 동의 이력 삭제 → 사진 파일 삭제(커밋 뒤) →
+     * {@link MemberWithdrawnEvent} 발행. 이벤트를 받으면 리프레시 토큰(같은 트랜잭션), 러닝 기록 · 랭킹 · 리뷰 · 저장한 코스(커밋 뒤
+     * 각 모듈)가 지워진다. 등록한 코스는 남는다(정책 공통 4).
+     *
+     * <p>이미 탈퇴했으면 COMMON-002다. 액세스 토큰은 만료(1시간)까지 남지만 내 정보 API는 탈퇴 회원을 받지 않는다.
+     */
+    @Transactional
+    void withdraw(UUID memberId) {
+        Member member = active(memberRepository.findLockedById(memberId));
+        Instant now = clock.instant();
+        String photo = member.withdraw(now);
+        agreementRepository.deleteByMemberId(memberId);
+        if (photo != null) {
+            storage.deleteAfterCommit(List.of(photo));
+        }
+        events.publishEvent(new MemberWithdrawnEvent(UuidV7.create(), now, memberId, now));
     }
 
     /** 토큰은 아직 살아 있지만 탈퇴했거나 없는 회원이면 다시 로그인하게 한다(COMMON-002). */
