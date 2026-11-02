@@ -576,6 +576,14 @@ class FakeRunCourseSource implements RunCourseSourceApi {
   Map<String, List<List<GpsSourcePoint>>> records = {};
   ApiException? error;
   final requests = <String>[];
+  final completionRequests = <String>[];
+  String completion = '원본 기록을 이 코스의 완주 기록으로 연결하고 있어요.';
+
+  @override
+  Future<String> completionMessage(String recordId) async {
+    completionRequests.add(recordId);
+    return completion;
+  }
 
   @override
   Future<List<List<GpsSourcePoint>>> segments(String recordId) async {

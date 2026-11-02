@@ -90,6 +90,16 @@ class OwnGhostCandidatesTest {
         return candidates.list(owner,courseId,3,sort,period,new Cursorable(cursor,size));
     }
 
+    @Test void pagePastTheLastCandidateStillReturnsTheWholeListSummary() {
+        var first = page(OwnGhostSort.BEST, OwnGhostPeriod.ALL, null, 1);
+        String[] cursor = first.nextCursor().split("\\|", -1);
+        cursor[5] = Long.toString(Long.MAX_VALUE);
+        var empty = page(OwnGhostSort.BEST, OwnGhostPeriod.ALL, String.join("|", cursor), 1);
+        assertThat(empty.content()).isEmpty();
+        assertThat(empty.nextCursor()).isNull();
+        assertThat(empty.summary()).isEqualTo(first.summary());
+    }
+
     @Test void recentUsesActualStartAndBestUsesStoredCourseSecondsWithStableTies() {
         assertThat(page(OwnGhostSort.RECENT,OwnGhostPeriod.ALL,null,20).content()).extracting(OwnGhostCandidate::id)
             .containsExactlyElementsOf(ids("recentIds"));

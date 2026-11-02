@@ -15,10 +15,10 @@
 | 스키마 | 모듈 | 테이블 |
 | --- | --- | --- |
 | `member` | member | `members`, `agreements`, `refresh_tokens`, `region_event_backfill` |
-| `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `gps_course_sources`, `course_stats`, `course_daily_stats`, `course_completions`, `course_active_runners`, `processed_events` |
+| `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `gps_course_sources`, `gps_source_completion_receipts`, `course_stats`, `course_daily_stats`, `course_completions`, `course_active_runners`, `processed_events` |
 | `ranking` | ranking | `course_ranking_entries`, `distance_run_records`, `course_status_copies`, `member_visibility_copies`, `member_region_history`, `withdrawn_members` |
 | `review` | review | `reviews`, `review_photos`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
-| `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members`, `course_attempts`, `course_runner_counts`, `ghost_starts`, `ghost_start_playbacks`, `ghost_results`, `free_ghost_starts`, `free_ghost_results` |
+| `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members`, `course_attempts`, `course_runner_counts`, `ghost_starts`, `ghost_start_playbacks`, `ghost_results`, `free_ghost_starts`, `free_ghost_results`, `ghost_comparisons`, `gps_source_links`, `gps_course_status_copies` |
 | `common` | common | `region`, `event_publication`, `shedlock`, `photo_uploads`, `flyway_schema_history` |
 
 notification 스키마는 아직 없다. 해당 모듈을 구현할 때 이 문서에 추가한다.
@@ -912,6 +912,35 @@ result_json은 `GHOST_RESULT_V1` 버전, 본인 세션/상대 ID, WIN/LOSE/DRAW/
 #### 코스 판정 결과 `course` (2026-10-20)
 
 `run.records.result_json`의 Result에 선택 객체 `course`를 추가한다. 코스 러닝 기록에만 있고 자유 러닝은 없다(null). 필드: `courseId`, `courseName`(준비 때 저장한 달릴 때의 이름), `courseVersion`, `courseDistanceMeters`, `completed`, `reason`(`COMPLETED`·`START_NOT_CONFIRMED`·`FINISH_NOT_REACHED`·`DISTANCE_SHORT`), `recognizedDistanceMeters`, `progressPercent`(0~100), `completedAt`, `courseElapsedSeconds`, `courseMovingSeconds`, `reviewEligible`. 처리(`process`) 때 `course_attempts`의 경로 스냅샷으로 판정해 저장하고, `RunSessionEndedEvent`의 코스 필드는 이 값에서 채운다. 테이블 컬럼은 바뀌지 않는다. `summary_json`(목록 RecordSummary)에는 MY I1 카드용 요약 `course` = `courseId`·`courseName`·`completed`·`progressPercent`·`reviewEligible`만 넣는다(자유 러닝은 null). 이 요약·`courseName` 전에 저장된 코스 기록은 `V20261021_2000__run_record_summary_course.sql`이 `course_attempts.course_name`으로 채운다.
+
+#### GPS 등록 원본 자동 완주 연결 (2026-11-02)
+
+실제 구현 마이그레이션은 `V20261102_1000__run_gps_source_links.sql`·`V20261102_1001__course_gps_source_completions.sql`이다. 다른 모듈의 테이블을 읽거나 FK로 묶지 않고 등록/연결/해제 이벤트로 맞춘다.
+
+```mermaid
+erDiagram
+    course_courses ||--o| course_gps_course_sources : course_id
+    course_gps_course_sources ||..o| run_gps_source_links : registration_event
+    run_records ||..o| run_gps_source_links : source_record_id_logical
+    run_gps_source_links ||..o| course_gps_source_completion_receipts : linked_unlinked_events
+    run_gps_source_links ||..o| ranking_course_ranking_entries : linked_unlinked_events
+    run_gps_source_links ||..o| review_course_run_records : linked_unlinked_events
+```
+
+실선은 같은 스키마의 기존 FK, 점선은 이벤트 또는 ID의 논리 관계다. 원본 삭제 표시를 남겨야 하므로 `run.gps_source_links`에는 원본 세션/기록 FK도 없다.
+
+| 저장 위치 | 실제 컬럼과 의미 |
+| --- | --- |
+| `run.gps_source_links` | `source_record_id UUID PK`, `course_id UUID UNIQUE`, `member_id`, `registration_event_id`, `snapshot_json TEXT`, `status VARCHAR(16)`(PENDING/LINKED/REJECTED/REMOVED), `failure VARCHAR(64)`, `performance_json TEXT`, `registered_at`, `completed_at`, `course_elapsed_seconds BIGINT`, `elapsed_ms BIGINT`, `linked_at`, `created_at`, `updated_at`. 대기 상태와 연결된 회원/코스에 부분 인덱스. |
+| `run.gps_course_status_copies` | `course_id UUID PK`, `status VARCHAR(16)`, `source_version BIGINT`. 단조 버전 상태 복사본으로 늦은 비공개/삭제 이전 상태가 덮어쓰지 않는다. |
+| `course.gps_course_sources` 추가 | `completion_snapshot_json TEXT NULL`. 최초 등록 또는 명시적 보완 시 발행한 불변 `GpsCourseRegisteredEvent` 자료. 스냅샷 저장과 아웃박스 발행은 같은 트랜잭션이며 기존 source_segments_json을 바꾸지 않는다. |
+| `course.gps_source_completion_receipts` | `run_record_id UUID PK`, `course_id`, `member_id`, `course_elapsed_seconds BIGINT`, `applied BOOLEAN`, `removed BOOLEAN`, `created_at`, `updated_at`. 성과가 실제 더해졌는지와 삭제 선도착을 보존한다. 다른 스키마 FK 없음. 이벤트 ID 중복은 기존 course.processed_events에도 기록한다. |
+
+- 원본 `run.records.result_json`·summary·GPS·등록 시각을 덮어쓰거나 개인 기록/코스 시도를 복제하지 않는다. 연결 원본의 시간은 전체 세션 총 소요 ms, 코스 성과의 완료 시각은 원본 종료 시각, 기간은 원본 최초 등록 시각이다.
+- 연결 성과는 기존 course.course_completions·완주 통계, ranking.course_ranking_entries, review.course_run_records에 이벤트로 반영한다. 누적 거리 표·도전 수·현재 러너 수·유지 기간을 추가 집계하지 않는다.
+- 원본 삭제/탈퇴 시 연결 상태는 REMOVED이며 원본 경로가 포함된 snapshot_json·performance_json을 비운다. 거절 시에도 snapshot_json을 비우고 사유만 남긴다. 이미 시작한 타인 대결의 고정 재생 자료는 기존 별도 승인에 남는다.
+- 기존 자료 발행은 `app.course.gps-source-backfill.enabled`를 명시적으로 켜야 하며 기본 false다. 운영 자료는 이번 검증에서 변경하지 않았다.
+- [이벤트·상태 API·고스트 시간축·검증](<run/GPS 등록 원본 자동 완주 연결 - 2026-11-02.md>)을 따른다.
 
 #### 기기 SQLite와 서버 DB의 구분
 

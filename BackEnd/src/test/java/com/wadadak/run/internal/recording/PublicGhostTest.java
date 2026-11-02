@@ -112,6 +112,26 @@ class PublicGhostTest {
         assertThat(db.queryForObject("SELECT count(*) FROM run.ghost_starts",Long.class)).isZero();
         visibility(true,4);assertThat(publicGhosts.prepare(owner,course,RankingPeriod.ALL,source).playback().eligible()).isTrue();
     }
+    @Test void resultSourceStateKeepsWithdrawalDeletionPrivacyPrecedence() {
+        starts.start(owner, id, request());
+        var shifted = raw.stream().map(p -> new Input(p.seq(), p.kind(), p.elapsedMs(),
+                start.plusMillis(p.elapsedMs()), p.location(), p.accuracyM(), p.reason())).toList();
+        runs.prepare(owner, id, new Prepare(start, "COURSE"));
+        runs.upload(owner, id, new Upload(shifted.size() - 1, shifted));
+        runs.process(id);
+        var frozen = results.comparison(owner, id);
+        visibility(false, 2);
+        var hidden = results.comparison(owner, id);
+        assertThat(hidden.sourceState()).isEqualTo("PRIVATE");
+        assertThat(hidden.segments()).isEqualTo(frozen.segments());
+        runs.delete(donor, source);
+        assertThat(results.comparison(owner, id).sourceState()).isEqualTo("DELETED");
+        runs.withdraw(donor, start);
+        var withdrawn = results.comparison(owner, id);
+        assertThat(withdrawn.sourceState()).isEqualTo("WITHDRAWN");
+        assertThat(withdrawn.result()).isEqualTo(frozen.result());
+        assertThat(withdrawn.ghost()).isEqualTo(frozen.ghost());
+    }
     @Test void missingCandidateWrongPeriodDeletionAndSelfSourceCannotBeApproved(){
         unavailable(()->publicGhosts.prepare(owner,course,RankingPeriod.WEEK,source));
         when(ranking.findPublicGhostCandidate(course,RankingPeriod.ALL,owner,source)).thenReturn(Optional.empty());

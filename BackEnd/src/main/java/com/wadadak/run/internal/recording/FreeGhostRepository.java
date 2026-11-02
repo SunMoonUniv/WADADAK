@@ -13,6 +13,11 @@ class FreeGhostRepository {
     private final JdbcTemplate db;
     private final JsonMapper json;
     FreeGhostRepository(JdbcTemplate db, JsonMapper json) { this.db=db; this.json=json; }
+    boolean belongsTo(UUID id, UUID owner) {
+        return Boolean.TRUE.equals(db.queryForObject(
+                "SELECT EXISTS(SELECT 1 FROM run.free_ghost_starts WHERE session_id=? AND member_id=?)",
+                Boolean.class, id, owner));
+    }
     Optional<Saved> find(UUID id) {
         return db.query("SELECT member_id,reference_hash,approval_json FROM run.free_ghost_starts WHERE session_id=?",
             (r,n)->new Saved(r.getObject(1,UUID.class),r.getString(2),json.readValue(r.getString(3),GhostStartApproval.class)),id)

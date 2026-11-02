@@ -50,6 +50,7 @@ class RegistrationService {
     private final ApplicationEventPublisher events;
     private final JsonMapper jsonMapper;
     private final Clock clock;
+    private final GpsSourcePublicationService sourcePublications;
 
     @Transactional
     RegisteredCourse registerCustom(UUID memberId, UUID idempotencyKey, RegisterCourseRequest request) {
@@ -104,6 +105,9 @@ class RegistrationService {
         requestRepository.save(new RegistrationRequest(memberId, idempotencyKey, course.getId()));
         events.publishEvent(new CourseCreatedEvent(UuidV7.create(), clock.instant(), course.getId(), memberId,
                 request.sourceRunRecordId()));
+        courseRepository.flush();
+        gpsSourceRepository.flush();
+        sourcePublications.publish(course.getId());
         return RegisteredCourse.from(course);
     }
 

@@ -121,15 +121,26 @@ const coursePublicPeriodNotice =
     '등록한 날부터 30일 동안 공개돼요. 그 안에 누군가 완주하면 30일 연장되고, 기간이 끝나면 비공개로 바뀐 뒤 24시간 후 삭제돼요.';
 
 /// 등록 성공 팝업(B4-07 · D4). `확인`을 누르면 닫힌다.
-Future<void> showCourseRegistered(BuildContext context) => showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('코스를 등록했어요'),
-        content: const Text('바로 공개돼서 다른 러너도 달릴 수 있어요.'),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('확인'))],
+Future<void> showCourseRegistered(
+  BuildContext context, {
+  String? sourceCompletionMessage,
+}) => showDialog<void>(
+  context: context,
+  barrierDismissible: false,
+  builder: (context) => AlertDialog(
+    title: const Text('코스를 등록했어요'),
+    content: Text(
+      '바로 공개돼서 다른 러너도 달릴 수 있어요.'
+      '${sourceCompletionMessage == null ? '' : '\n\n$sourceCompletionMessage'}',
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('확인'),
       ),
-    );
+    ],
+  ),
+);
 
 /// 서버가 만든 최종 경로와 1km 거리 표지만 보이는 지도(B4-01 · D4). 크기는 감싸는 쪽이 정한다.
 class CourseRouteMap extends StatelessWidget {

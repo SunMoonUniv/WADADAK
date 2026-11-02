@@ -22,13 +22,16 @@ class GhostPlaybackService {
     private final RunLocks locks;
     private final JsonMapper json;
     private final PublicGhostAccess publicAccess;
+    private final GpsSourceLinkService sourceLinks;
     private final GhostPlaybackBuilder builder = new GhostPlaybackBuilder();
 
     GhostPlaybackService(RunSessionRepository sessions, RunRecordRepository records, CourseAttemptRepository attempts,
                          RunInputRepository inputs, DeletedRunRecordRepository deletions,
-                         WithdrawnRunMemberRepository withdrawals, RunLocks locks, JsonMapper json, PublicGhostAccess publicAccess) {
+                         WithdrawnRunMemberRepository withdrawals, RunLocks locks, JsonMapper json, PublicGhostAccess publicAccess,
+                         GpsSourceLinkService sourceLinks) {
         this.sessions = sessions; this.records = records; this.attempts = attempts; this.inputs = inputs;
         this.deletions = deletions; this.withdrawals = withdrawals; this.locks = locks; this.json = json; this.publicAccess=publicAccess;
+        this.sourceLinks=sourceLinks;
     }
 
     @Transactional(readOnly = true)
@@ -59,6 +62,12 @@ class GhostPlaybackService {
     private GhostPlayback build(UUID owner, UUID id) {
         RunRecord record = records.findById(id).orElseThrow(() -> new AppException(RunErrorCode.NOT_FOUND));
         Result source = json.readValue(record.getResultJson(), Result.class);
+        var linked=sourceLinks.linked(owner,id);
+        if(linked.isPresent()) {
+            var e=linked.get().registration();
+            var snapshot=new CourseSnapshot(id,e.courseId(),e.courseName(),e.route(),e.distanceMeters(),e.courseVersion());
+            return builder.buildRegisteredSource(source,snapshot,inputs.findAll(id));
+        }
         if (source.course() == null || !source.course().completed())
             return builder.unavailable(source, null, "NOT_COMPLETED");
         CourseAttempt attempt = attempts.findByIdAndMemberId(id, owner).orElse(null);

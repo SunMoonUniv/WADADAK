@@ -91,6 +91,7 @@ class GhostPlayback {
   final String? version;
   bool get supported =>
       version == 'GHOST_PLAYBACK_V1' ||
+      version == 'GHOST_PLAYBACK_GPS_SOURCE_V1' ||
       version == 'GHOST_PLAYBACK_FREE_V1' ||
       version == 'GHOST_PLAYBACK_FREE_V2';
   final bool eligible;

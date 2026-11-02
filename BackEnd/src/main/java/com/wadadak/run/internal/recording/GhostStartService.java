@@ -29,7 +29,8 @@ class GhostStartService {
         if(request.courseId()==null) return freeGhosts.start(owner,id,request);
         var saved = store.existing(owner, id, request);
         if (saved.isPresent()) return saved.get(); // No dependency on the original record/current course on retry.
-        if(request.courseVersion()==null || !"GHOST_PLAYBACK_V1".equals(request.playbackVersion()))
+        if(request.courseVersion()==null || !("GHOST_PLAYBACK_V1".equals(request.playbackVersion())
+                || com.wadadak.run.internal.ghost.GhostPlaybackBuilder.GPS_SOURCE_VERSION.equals(request.playbackVersion())))
             throw new com.wadadak.common.exception.AppException(com.wadadak.run.RunErrorCode.INVALID);
         CourseRouteSnapshot current;
         com.wadadak.ranking.GhostCandidate candidate;

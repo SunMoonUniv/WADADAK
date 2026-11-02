@@ -27,7 +27,10 @@ class GhostStartIntent {
                 'GHOST_PLAYBACK_FREE_V1',
                 'GHOST_PLAYBACK_FREE_V2',
               ].contains(this.playbackVersion)
-            : this.playbackVersion != 'GHOST_PLAYBACK_V1') ||
+            : ![
+                'GHOST_PLAYBACK_V1',
+                'GHOST_PLAYBACK_GPS_SOURCE_V1',
+              ].contains(this.playbackVersion)) ||
         owner.isEmpty ||
         id.isEmpty ||
         id == sourceId ||
@@ -133,14 +136,14 @@ class GhostRunContext {
     }
     DateTime.parse(approval['approvedAt'] as String);
     DateTime.parse(approval['courseValidatedAt'] as String);
+    _replay = replay;
   }
   final GhostStartIntent intent;
   final String approvalJson;
+  late final OwnGhostReplay _replay;
   Map<String, dynamic> get approval =>
       (jsonDecode(approvalJson) as Map).cast<String, dynamic>();
-  OwnGhostReplay get replay => OwnGhostReplay.fromJson(
-    (approval['playback'] as Map).cast<String, dynamic>(),
-  );
+  OwnGhostReplay get replay => _replay;
   Map<String, dynamic> toJson() => {
     'intent': intent.toJson(),
     'approval': approval,

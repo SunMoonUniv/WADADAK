@@ -387,6 +387,24 @@ class GhostResultTest {
         assertThat(detail.status()).isEqualTo("LEGACY_NO_DETAIL");
         assertThat(detail.segments()).isEmpty();assertThat(detail.result()).isEqualTo(outcome);
     }
+    @Test void resultReadNeedsOnlySourceMetadataAndPreservesLegacyState() {
+        var outcome = process(completeAfterPause(0));
+        var detail = results.comparison(owner, id);
+        // A large replay is not needed by the result read path, even if its schema is unknown.
+        db.update("""
+                UPDATE run.ghost_comparisons
+                SET context_json=jsonb_set(context_json::jsonb, '{playback}', '"not-a-replay"'::jsonb)::text
+                WHERE session_id=?
+                """, id);
+        assertThat(results.comparison(owner, id)).isEqualTo(detail);
+        runs.delete(owner, source);
+        assertThat(results.comparison(owner, id).sourceState()).isEqualTo("DELETED");
+        db.update("UPDATE run.ghost_comparisons SET result_json=NULL WHERE session_id=?", id);
+        var legacy = results.comparison(owner, id);
+        assertThat(legacy.status()).isEqualTo("LEGACY_NO_DETAIL");
+        assertThat(legacy.sourceState()).isEqualTo("DELETED");
+        assertThat(legacy.result()).isEqualTo(outcome);
+    }
     @Test void personalBestUsesOwnPreStartCompletedSameRouteRecord() {
         // This fixture's clock is deliberately historical: move only source registration before START.
         db.update("UPDATE run.records SET registered_at=? WHERE id=?",java.sql.Timestamp.from(start.minusSeconds(1)),source);

@@ -148,6 +148,7 @@ void main() {
     expect(courses.registrations, isEmpty, reason: '사용자 지정 코스 등록은 부르지 않는다');
 
     expect(find.text('코스를 등록했어요'), findsOneWidget);
+    expect(find.textContaining('완주 기록으로 연결하고 있어요'), findsOneWidget);
     // 서버에 새 코스가 생겼다. 홈 지도는 출발점으로 옮긴 범위에서 다시 받는다.
     courses.onMap = [testCourse(name, courseId: 'gps-course-1', route: [start, GeoPoint(37.5200, 127.0100)])];
     await tap(tester, find.text('확인'));

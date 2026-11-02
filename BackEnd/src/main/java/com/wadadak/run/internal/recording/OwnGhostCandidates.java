@@ -31,6 +31,8 @@ class OwnGhostCandidates {
         this.courses=courses; this.json=json;
     }
 
+    private record SelectionRows(List<OwnGhostCandidate> rows, OwnGhostSummary summary) {}
+
     private record Position(long seconds, Instant startedAt, UUID id) {}
     private static Position position(String cursor, String scope) {
         if (cursor == null) return null;
@@ -45,12 +47,12 @@ class OwnGhostCandidates {
             return new Position(seconds, startedAt, UUID.fromString(p[7]));
         } catch (RuntimeException e) { throw new AppException(RunErrorCode.INVALID); }
     }
-    private static OwnGhostCandidate candidate(ResultSet rs, UUID courseId, long version) throws SQLException {
-        Timestamp completed = rs.getTimestamp("completed_at");
-        return new OwnGhostCandidate(rs.getObject("id", UUID.class), courseId, version,
-            rs.getTimestamp("started_at").toInstant(), completed == null ? null : completed.toInstant(),
-            rs.getTimestamp("registered_at").toInstant(), rs.getLong("seconds"), rs.getInt("distance"),
-            rs.getObject("cadence", Double.class));
+    private static OwnGhostCandidate candidate(ResultSet rs, UUID courseId, long version, String prefix) throws SQLException {
+        Timestamp completed = rs.getTimestamp(prefix + "completed_at");
+        return new OwnGhostCandidate(rs.getObject(prefix + "id", UUID.class), courseId, version,
+            rs.getTimestamp(prefix + "started_at").toInstant(), completed == null ? null : completed.toInstant(),
+            rs.getTimestamp(prefix + "registered_at").toInstant(), rs.getLong(prefix + "seconds"), rs.getInt(prefix + "distance"),
+            rs.getObject(prefix + "cadence", Double.class));
     }
 
     @Transactional(readOnly = true)
@@ -86,7 +88,7 @@ class OwnGhostCandidates {
             periodWhere = " AND s.started_at >= :from AND s.started_at < :until";
         }
         String base = """
-            WITH candidates AS (
+            WITH candidates AS MATERIALIZED (
                 SELECT r.id, s.started_at, r.registered_at,
                        (r.result_json::jsonb #>> '{course,completedAt}')::timestamptz completed_at,
                        (r.result_json::jsonb #>> '{course,courseElapsedSeconds}')::bigint seconds,
@@ -105,14 +107,21 @@ class OwnGhostCandidates {
                       AND (r.result_json::jsonb #>> '{course,courseDistanceMeters}')::integer=:distance
                       AND c.route_json::jsonb=CAST(:route AS jsonb)))
                   AND NOT EXISTS (SELECT 1 FROM run.deleted_records d WHERE d.id = r.id)
+            """ + periodWhere + """
+                UNION ALL
+                SELECT l.source_record_id id,s.started_at,r.registered_at,l.completed_at,
+                       l.course_elapsed_seconds seconds,
+                       (l.performance_json::jsonb ->> 'courseDistanceMeters')::integer distance,
+                       (r.result_json::jsonb #>> '{metrics,averageCadence}')::double precision cadence
+                FROM run.gps_source_links l JOIN run.sessions s ON s.id=l.source_record_id
+                JOIN run.records r ON r.id=l.source_record_id
+                WHERE l.member_id=:owner AND s.processing='DONE' AND l.status='LINKED'
+                  AND l.course_id=:courseUuid
+                  AND (l.snapshot_json::jsonb ->> 'courseVersion')::bigint<=:numericVersion
+                  AND (l.snapshot_json::jsonb ->> 'distanceMeters')::integer=:distance
+                  AND l.snapshot_json::jsonb -> 'route'=CAST(:route AS jsonb)
+                  AND NOT EXISTS(SELECT 1 FROM run.deleted_records d WHERE d.id=l.source_record_id)
             """ + periodWhere + ") ";
-        // Summary includes every matching completion, not only the currently loaded page.
-        var summaries = db.query(base + """
-            SELECT *, count(*) OVER() total_count, avg(seconds) OVER() average_seconds
-            FROM candidates ORDER BY seconds ASC, started_at DESC, id DESC LIMIT 1
-            """, args, (rs, n) -> new OwnGhostSummary(rs.getLong("total_count"),
-                rs.getDouble("average_seconds"), candidate(rs, courseId, version)));
-        OwnGhostSummary summary = summaries.isEmpty() ? new OwnGhostSummary(0, null, null) : summaries.getFirst();
         String boundary = "";
         if (after != null) {
             args.put("afterSeconds", after.seconds());
@@ -123,12 +132,46 @@ class OwnGhostCandidates {
                 : "WHERE seconds > :afterSeconds OR (seconds = :afterSeconds AND (started_at, id) < (:afterStart, :afterId))";
         }
         String order = sort == OwnGhostSort.BEST ? "seconds ASC, started_at DESC, id DESC" : "started_at DESC, id DESC";
-        var rows = db.query(base + "SELECT * FROM candidates " + boundary + " ORDER BY " + order + " LIMIT :limit", args,
-            (rs, n) -> candidate(rs, courseId, version));
+        // One materialized candidate set supplies both the whole-list summary and this page.
+        String query = base + """
+                , summary AS (SELECT count(*) total_count, avg(seconds) average_seconds FROM candidates),
+                best AS (SELECT * FROM candidates ORDER BY seconds ASC, started_at DESC, id DESC LIMIT 1),
+                page AS (SELECT * FROM candidates
+                """ + boundary + " ORDER BY " + order + " LIMIT :limit) " + """
+                SELECT summary.total_count, summary.average_seconds,
+                    best.id best_id, best.started_at best_started_at, best.registered_at best_registered_at,
+                    best.completed_at best_completed_at, best.seconds best_seconds,
+                    best.distance best_distance, best.cadence best_cadence,
+                    page.id page_id, page.started_at page_started_at, page.registered_at page_registered_at,
+                    page.completed_at page_completed_at, page.seconds page_seconds,
+                    page.distance page_distance, page.cadence page_cadence
+                FROM summary LEFT JOIN best ON true LEFT JOIN page ON true
+                ORDER BY
+                """ + (sort == OwnGhostSort.BEST
+                        ? "page.seconds ASC, page.started_at DESC, page.id DESC"
+                        : "page.started_at DESC, page.id DESC");
+        var selection = db.query(query, args, rs -> {
+            OwnGhostSummary summary = new OwnGhostSummary(0, null, null);
+            List<OwnGhostCandidate> rows = new ArrayList<>();
+            boolean summaryRead = false;
+            while (rs.next()) {
+                if (!summaryRead) {
+                    double average = rs.getDouble("average_seconds");
+                    Double averageSeconds = rs.wasNull() ? null : average;
+                    summary = new OwnGhostSummary(rs.getLong("total_count"),
+                            averageSeconds,
+                            rs.getObject("best_id") == null ? null : candidate(rs, courseId, version, "best_"));
+                    summaryRead = true;
+                }
+                if (rs.getObject("page_id") != null) rows.add(candidate(rs, courseId, version, "page_"));
+            }
+            return new SelectionRows(rows, summary);
+        });
+        var rows = selection.rows();
         boolean more = rows.size() > page.size();
         var content = List.copyOf(rows.subList(0, Math.min(page.size(), rows.size())));
         OwnGhostCandidate last = content.isEmpty() ? null : content.getLast();
         String next = more ? scope + "|" + last.courseElapsedSeconds() + "|" + last.startedAt() + "|" + last.id() : null;
-        return new OwnGhostCandidatePage(content, next, summary);
+        return new OwnGhostCandidatePage(content, next, selection.summary());
     }
 }

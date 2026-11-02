@@ -14,7 +14,10 @@ class PreparedPublicGhost implements PreparedCourseGhost {
     if (!['ALL', 'MONTH', 'WEEK'].contains(publicPeriod) ||
         rank < 1 ||
         sourceId != replay.sourceId ||
-        replay.playback.version != 'GHOST_PLAYBACK_V1' ||
+        ![
+          'GHOST_PLAYBACK_V1',
+          'GHOST_PLAYBACK_GPS_SOURCE_V1',
+        ].contains(replay.playback.version) ||
         !replay.playback.eligible ||
         replay.courseId == null ||
         replay.courseVersion == null ||

@@ -78,7 +78,8 @@ class GhostStartStore {
         if (id.equals(request.sourceRecordId()) || request.startedAt() == null
                 || request.startedAt().getNano() % 1000 != 0
                 || request.startedAt().isAfter(clock.instant().plusSeconds(300))
-                || !"GHOST_PLAYBACK_V1".equals(request.playbackVersion()))
+                || !("GHOST_PLAYBACK_V1".equals(request.playbackVersion())
+                    || com.wadadak.run.internal.ghost.GhostPlaybackBuilder.GPS_SOURCE_VERSION.equals(request.playbackVersion())))
             throw new AppException(RunErrorCode.INVALID);
 
         CourseSnapshot course = new CourseSnapshot(id, attempt.getCourseId(), attempt.getCourseName(),

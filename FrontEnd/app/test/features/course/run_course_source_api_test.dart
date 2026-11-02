@@ -16,11 +16,19 @@ class _FakeServer implements HttpClientAdapter {
   late RequestOptions request;
 
   @override
-  Future<ResponseBody> fetch(RequestOptions options, Stream<Uint8List>? requestStream, Future<void>? cancelFuture) async {
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
     request = options;
-    return ResponseBody.fromString(jsonEncode(body), status, headers: {
-      Headers.contentTypeHeader: [Headers.jsonContentType],
-    });
+    return ResponseBody.fromString(
+      jsonEncode(body),
+      status,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
   }
 
   @override
@@ -28,8 +36,55 @@ class _FakeServer implements HttpClientAdapter {
 }
 
 void main() {
-  RunCourseSourceApi api(_FakeServer server) =>
-      RunCourseSourceApi(RunApiClient(Dio(BaseOptions(baseUrl: 'http://test'))..httpClientAdapter = server));
+  RunCourseSourceApi api(_FakeServer server) => RunCourseSourceApi(
+    RunApiClient(
+      Dio(BaseOptions(baseUrl: 'http://test'))..httpClientAdapter = server,
+    ),
+  );
+
+  test(
+    'GPS registration and source completion have independent states',
+    () async {
+      for (final status in [
+        'NOT_RECEIVED',
+        'PENDING',
+        'LINKED',
+        'REJECTED',
+        'REMOVED',
+      ]) {
+        final server = _FakeServer({
+          'result': 'SUCCESS',
+          'data': {'status': status},
+        });
+        final message = await api(server).completionMessage('record/1');
+        expect(
+          server.request.path,
+          '/api/v1/runs/records/record%2F1/gps-course-link',
+        );
+        expect(
+          message,
+          status == 'LINKED'
+              ? contains('연결됐어요')
+              : status == 'REJECTED'
+              ? contains('연결하지 못했어요')
+              : status == 'REMOVED'
+              ? contains('해제됐어요')
+              : contains('연결하고 있어요'),
+        );
+      }
+    },
+  );
+
+  test('source status failure does not turn a successful registration into an error', () async {
+    final server = _FakeServer({
+      'code': 'RUN-002',
+      'message': 'not ready',
+    }, status: 404);
+    expect(
+      await api(server).completionMessage('record-1'),
+      contains('잠시 후 코스 기록'),
+    );
+  });
 
   test('reads the segments of a run record in the order run', () async {
     final server = _FakeServer({
@@ -39,11 +94,29 @@ void main() {
         'distanceMeters': 1520.4,
         'segments': [
           [
-            {'lat': 37.51, 'lng': 126.995, 'accuracyM': 5.0, 'altitudeM': 12.5, 'altitudeAccuracyM': 3.0},
-            {'lat': 37.515, 'lng': 126.999, 'accuracyM': 6.0, 'altitudeM': null, 'altitudeAccuracyM': null},
+            {
+              'lat': 37.51,
+              'lng': 126.995,
+              'accuracyM': 5.0,
+              'altitudeM': 12.5,
+              'altitudeAccuracyM': 3.0,
+            },
+            {
+              'lat': 37.515,
+              'lng': 126.999,
+              'accuracyM': 6.0,
+              'altitudeM': null,
+              'altitudeAccuracyM': null,
+            },
           ],
           [
-            {'lat': 37.516, 'lng': 127, 'accuracyM': null, 'altitudeM': null, 'altitudeAccuracyM': null},
+            {
+              'lat': 37.516,
+              'lng': 127,
+              'accuracyM': null,
+              'altitudeM': null,
+              'altitudeAccuracyM': null,
+            },
           ],
         ],
       },
@@ -52,17 +125,38 @@ void main() {
     final segments = await api(server).segments('record/1');
 
     expect(server.request.method, 'GET');
-    expect(server.request.path, '/api/v1/runs/records/record%2F1/course-source');
-    expect(server.request.extra['runOwner'], isNull, reason: '로그인한 회원의 기록이면 된다');
-    expect(segments.map((segment) => segment.length), [2, 1], reason: '조각 사이는 잇지 않는다');
+    expect(
+      server.request.path,
+      '/api/v1/runs/records/record%2F1/course-source',
+    );
+    expect(
+      server.request.extra['runOwner'],
+      isNull,
+      reason: '로그인한 회원의 기록이면 된다',
+    );
+    expect(segments.map((segment) => segment.length), [
+      2,
+      1,
+    ], reason: '조각 사이는 잇지 않는다');
     final first = segments.first.first;
-    expect((first.lat, first.lng, first.accuracyM, first.altitudeM, first.altitudeAccuracyM),
-        (37.51, 126.995, 5.0, 12.5, 3.0));
+    expect(
+      (
+        first.lat,
+        first.lng,
+        first.accuracyM,
+        first.altitudeM,
+        first.altitudeAccuracyM,
+      ),
+      (37.51, 126.995, 5.0, 12.5, 3.0),
+    );
     expect(segments.last.single.lng, 127.0);
   });
 
   test('passes on the run server error of a missing record', () async {
-    final server = _FakeServer({'code': 'RUN-002', 'message': '러닝 기록을 찾을 수 없어요.'}, status: 404);
+    final server = _FakeServer({
+      'code': 'RUN-002',
+      'message': '러닝 기록을 찾을 수 없어요.',
+    }, status: 404);
 
     await expectLater(
       api(server).segments('record-9'),
