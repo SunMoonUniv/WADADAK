@@ -317,6 +317,51 @@ class FakeCourseApi implements CourseApiClient {
   @override
   Future<int> runnerCourseCount(String memberId) async => runnerCourseRows[memberId]?.length ?? 0;
 
+  /// 저장한 코스(G5). 서버가 정렬해 준 순서라고 보고 [bookmarkPageSize]개씩 준다. [savedIds]는 저장 여부(B1)다.
+  List<BookmarkCourse> bookmarkRows = [];
+  Set<String> savedIds = {};
+  int bookmarkPageSize = 20;
+  int expiringSoonBookmarks = 0;
+  ApiException? bookmarksError;
+  ApiException? saveBookmarkError;
+  final bookmarkRequests = <(BookmarkSort, GeoPoint?, String?)>[];
+  final savedBookmarks = <String>[];
+  final removedBookmarks = <List<String>>[];
+
+  @override
+  Future<void> saveBookmark(String courseId) async {
+    savedBookmarks.add(courseId);
+    if (saveBookmarkError != null) throw saveBookmarkError!;
+    savedIds.add(courseId);
+  }
+
+  @override
+  Future<void> removeBookmarks(Iterable<String> courseIds) async {
+    final ids = courseIds.toList();
+    removedBookmarks.add(ids);
+    if (saveBookmarkError != null) throw saveBookmarkError!;
+    savedIds.removeAll(ids);
+    bookmarkRows = [for (final row in bookmarkRows) if (!ids.contains(row.courseId)) row];
+  }
+
+  @override
+  Future<Set<String>> bookmarkedIds(Iterable<String> courseIds) async => courseIds.toSet().intersection(savedIds);
+
+  @override
+  Future<BookmarkPage> bookmarks({BookmarkSort sort = BookmarkSort.recent, GeoPoint? origin, String? cursor}) async {
+    bookmarkRequests.add((sort, origin, cursor));
+    if (bookmarksError != null) throw bookmarksError!;
+    final from = int.parse(cursor ?? '0');
+    final to = from + bookmarkPageSize < bookmarkRows.length ? from + bookmarkPageSize : bookmarkRows.length;
+    return BookmarkPage(courses: bookmarkRows.sublist(from, to), nextCursor: to < bookmarkRows.length ? '$to' : null);
+  }
+
+  @override
+  Future<BookmarkSummary> bookmarkSummary() async => BookmarkSummary(
+        courseCount: bookmarkRows.where((row) => !row.pendingDelete).length,
+        expiringSoonCount: expiringSoonBookmarks,
+      );
+
   /// 코스 상세(B1). 없는 ID는 서버처럼 COURSE-001이다. [detailError]가 있으면 그 오류다.
   Map<String, CourseDetail> details = {};
   ApiException? detailError;
@@ -650,6 +695,31 @@ class FakeCourseApi implements CourseApiClient {
 
   static String _nameKey(String name) => name.replaceAll(RegExp(r'\s+'), '').toLowerCase();
 }
+
+/// 저장한 코스 카드(G5) 값. ID는 [name] 그대로다. [pendingDelete]면 삭제 예정 코스다.
+BookmarkCourse testBookmark(
+  String name, {
+  int distanceMeters = 5200,
+  String difficulty = 'MEDIUM',
+  double? rating,
+  String? creator = '러너_하늘',
+  String expiresAt = '2026-11-20T14:59:59Z',
+  bool pendingDelete = false,
+}) =>
+    BookmarkCourse.fromJson({
+      'courseId': name,
+      'name': name,
+      'distanceMeters': distanceMeters,
+      'difficulty': difficulty,
+      'averageRating': rating,
+      'creatorNickname': creator,
+      'route': [
+        {'lat': 37.52, 'lng': 126.93},
+        {'lat': 37.53, 'lng': 126.95},
+      ],
+      'status': pendingDelete ? 'HIDDEN' : 'ACTIVE',
+      'expiresAt': expiresAt,
+    });
 
 /// 내 코스 카드(G4) 값. 이름 말고는 정해 둔 값이다. [hiddenReason]이 있으면 삭제 예정 코스다.
 MyCourseItem testMyCourse(

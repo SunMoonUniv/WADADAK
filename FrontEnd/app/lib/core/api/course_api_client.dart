@@ -951,6 +951,124 @@ class CourseApiClient {
     final data = await callApi(() => _dio.delete('$_courses/${Uri.encodeComponent(courseId)}'));
     return MyCourseItem.fromJson(data! as Map);
   }
+
+  static const _bookmarks = '$_courses/bookmarks';
+
+  /// 저장 해제 · 저장 여부에 한 번에 보낼 수 있는 코스 수. 서버도 같은 기준으로 거른다.
+  static const maxBookmarkIds = 100;
+
+  /// 코스 저장(B1-09). 공개 중인 코스만 새로 저장하고, 이미 저장했으면 그대로다.
+  /// 없는 코스 [courseNotFoundCode], 삭제 예정 · 삭제 · 만료된 코스 [courseNotAvailableCode].
+  Future<void> saveBookmark(String courseId) =>
+      callApi(() => _dio.put('$_bookmarks/${Uri.encodeComponent(courseId)}'));
+
+  /// 저장 해제(B1-09 · G5 편집). 1 ~ [maxBookmarkIds]개. 저장하지 않은 코스는 그냥 넘어간다.
+  Future<void> removeBookmarks(Iterable<String> courseIds) =>
+      callApi(() => _dio.delete(_bookmarks, queryParameters: {'courseIds': courseIds.toList()}));
+
+  /// [courseIds](1 ~ [maxBookmarkIds]개) 중 내가 저장한 코스.
+  Future<Set<String>> bookmarkedIds(Iterable<String> courseIds) async {
+    final data = await callApi(() => _dio.get('$_bookmarks/status', queryParameters: {'courseIds': courseIds.toList()}));
+    return {for (final id in data! as List) id as String};
+  }
+
+  /// 저장한 코스 한 쪽(G5). 공개 중인 코스를 [sort]로, 그 뒤에 삭제 예정 코스를 최근 저장순으로 준다.
+  /// 가까운순은 현재 위치 [origin]이 필요하다. 다음 쪽은 앞 쪽의 nextCursor를 [cursor]로 보내고 정렬 · 위치는 첫 쪽과 같게 보낸다.
+  Future<BookmarkPage> bookmarks({BookmarkSort sort = BookmarkSort.recent, GeoPoint? origin, String? cursor}) async {
+    final data = await callApi(() => _dio.get(_bookmarks, queryParameters: {
+          'sort': sort.apiName,
+          'lat': ?origin?.lat,
+          'lng': ?origin?.lng,
+          'cursor': ?cursor,
+        }));
+    return BookmarkPage.fromJson(data! as Map);
+  }
+
+  /// G5 위 칸과 탭의 `저장한 코스 N`, E3 메뉴. 공개 중인 코스만 센다.
+  Future<BookmarkSummary> bookmarkSummary() async {
+    final data = await callApi(() => _dio.get('$_bookmarks/summary'));
+    return BookmarkSummary.fromJson(data! as Map);
+  }
+}
+
+/// 저장한 코스 정렬(Figma G5). 같으면 최근 저장순이고, 삭제 예정 코스는 늘 공개 중인 코스 뒤에 온다.
+enum BookmarkSort {
+  recent('RECENT', '최근 저장순'),
+  nearest('NEAREST', '가까운순'),
+  rating('RATING', '평점순'),
+  expiring('EXPIRING', '만료 임박');
+
+  const BookmarkSort(this.apiName, this.label);
+  final String apiName;
+  final String label;
+}
+
+/// 저장한 코스 한 쪽(G5).
+@immutable
+class BookmarkPage {
+  const BookmarkPage({required this.courses, required this.nextCursor});
+
+  factory BookmarkPage.fromJson(Map<Object?, Object?> json) => BookmarkPage(
+        courses: [for (final course in json['content']! as List) BookmarkCourse.fromJson(course as Map)],
+        nextCursor: json['nextCursor'] as String?,
+      );
+
+  final List<BookmarkCourse> courses;
+
+  /// 마지막 쪽이면 null.
+  final String? nextCursor;
+}
+
+/// G5 위 칸. 공개 중인 코스만 센다(삭제 예정 코스는 목록에만 보인다).
+@immutable
+class BookmarkSummary {
+  const BookmarkSummary({required this.courseCount, required this.expiringSoonCount});
+
+  factory BookmarkSummary.fromJson(Map<Object?, Object?> json) => BookmarkSummary(
+        courseCount: json['courseCount']! as int,
+        expiringSoonCount: json['expiringSoonCount']! as int,
+      );
+
+  /// `저장한 코스`. 탭 · E3 메뉴에도 보인다.
+  final int courseCount;
+
+  /// `만료 임박`. 만료일까지 7일 이내(D-7 ~ D-0).
+  final int expiringSoonCount;
+}
+
+/// 저장한 코스 카드(G5). `8.1km · 난이도 상 · ★ 4.4`, `만든 사람 러너_하늘`, `만료 D-18`과 썸네일이다.
+@immutable
+class BookmarkCourse {
+  BookmarkCourse.fromJson(Map<Object?, Object?> json)
+      : courseId = json['courseId']! as String,
+        name = json['name']! as String,
+        distanceMeters = json['distanceMeters']! as int,
+        difficulty = Difficulty.fromApi(json['difficulty']! as String),
+        averageRating = (json['averageRating'] as num?)?.toDouble(),
+        creatorNickname = json['creatorNickname'] as String?,
+        route = _routeFromJson(json),
+        pendingDelete = json['status'] != 'ACTIVE',
+        expiresAt = DateTime.parse(json['expiresAt']! as String);
+
+  final String courseId;
+  final String name;
+  final int distanceMeters;
+  final Difficulty difficulty;
+
+  /// 전체 기간 평점. 리뷰가 없으면 null.
+  final double? averageRating;
+
+  /// 등록자 닉네임. 탈퇴했으면 `탈퇴한 사용자`, 서버가 받지 못하면 null.
+  final String? creatorNickname;
+
+  /// 썸네일. 첫 점이 출발점.
+  final List<GeoPoint> route;
+
+  /// 삭제 예정(만료됐거나 등록자가 삭제해 비공개). 24시간 안에 목록에서 사라지고 다시 저장할 수 없다.
+  final bool pendingDelete;
+
+  /// 공개 만료 시각(만료일 23:59:59 Asia/Seoul).
+  final DateTime expiresAt;
 }
 
 /// 내가 등록한 코스 한 쪽(G4).

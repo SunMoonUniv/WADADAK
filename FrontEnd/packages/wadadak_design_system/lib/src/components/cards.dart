@@ -159,12 +159,15 @@ class _MediaCard extends StatelessWidget {
     required this.title,
     required this.titleStyle,
     required this.lines,
+    this.leading,
     this.trailing,
     this.footer,
     this.footerGap = WdSpace.s8,
     this.onTap,
   });
 
+  /// 썸네일 왼쪽 (예: 편집 모드의 선택 체크).
+  final Widget? leading;
   final Widget thumbnail;
   final String title;
   final TextStyle titleStyle;
@@ -186,6 +189,7 @@ class _MediaCard extends StatelessWidget {
             Row(
               spacing: WdSpace.s12,
               children: [
+                if (leading != null) leading!,
                 thumbnail,
                 Expanded(
                   child: Column(
@@ -224,11 +228,13 @@ Widget _link(String label, VoidCallback? onTap) => GestureDetector(
 /// - Saved: `lines: [메타, '만든 사람 ..']`, `actionLabel: '이 코스로 달리기 ›'`, 썸네일 54.
 /// - Search: `showChevron: true`, 썸네일 58.
 /// - List: `lines: [메타, '★ 4.6 (128)']`, `showChevron: true`, 썸네일 64×58.
+/// - Saved 편집(G5-1): [leading]에 선택 체크, [actionLabel] 없이.
 class WdCourseCard extends StatelessWidget {
   const WdCourseCard({
     super.key,
     required this.title,
     required this.lines,
+    this.leading,
     this.thumbnail,
     this.thumbnailSize = const Size(58, 58),
     this.tags = const [],
@@ -240,6 +246,9 @@ class WdCourseCard extends StatelessWidget {
 
   final String title;
   final List<String> lines;
+
+  /// 썸네일 왼쪽 (예: 편집 모드의 선택 체크).
+  final Widget? leading;
 
   /// 경로 이미지. [WdRouteThumbnail.child]로 들어간다.
   final Widget? thumbnail;
@@ -254,6 +263,7 @@ class WdCourseCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => _MediaCard(
+        leading: leading,
         thumbnail: WdRouteThumbnail(width: thumbnailSize.width, height: thumbnailSize.height, child: thumbnail),
         title: title,
         titleStyle: WdText.cardTitle14,

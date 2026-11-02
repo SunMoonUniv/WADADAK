@@ -6,6 +6,7 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 import '../../core/api/member_api_client.dart';
 import '../../core/auth/auth_controller.dart';
 import '../../routes.dart';
+import 'bookmark_state.dart';
 import 'my_courses_screen.dart';
 import 'run_history_loader.dart';
 
@@ -23,7 +24,7 @@ final myProfileProvider = FutureProvider<MyProfile>((ref) async {
 /// - 프로필 아래 줄의 러닝 경력은 가입 때 고른 값이다(`러닝 6개월+`).
 /// - 총 거리 · 러닝 횟수는 I1처럼 내 기록을 끝까지 받아 앱이 더한다([AllRunHistory]). 다 받기 전에는 `—`다.
 /// - 등록 코스 · 내가 등록한 코스는 공개 중인 내 코스 수([myCourseSummaryProvider])다. 받기 전이나 실패하면 `—`다.
-/// - 저장한 코스는 저장 기능이 아직 없어 `—`로 자리만 두고, 누르면 준비 중 안내다.
+/// - 저장한 코스는 공개 중인 저장 코스 수([bookmarkSummaryProvider])이고, 누르면 G4 화면을 저장한 코스 탭(G5)으로 연다.
 /// - 오른쪽 위 설정 아이콘은 F4, [편집]은 F6을 연다. 로그아웃은 F4에 있다.
 /// (2026-10-29 · 2026-11-02 사용자 결정)
 class MyScreen extends ConsumerStatefulWidget {
@@ -34,10 +35,6 @@ class MyScreen extends ConsumerStatefulWidget {
 }
 
 class _MyScreenState extends ConsumerState<MyScreen> with AllRunHistory {
-  void _soon(String name) => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(SnackBar(content: Text('$name 화면은 준비 중이에요.')));
-
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: WdColors.paper,
@@ -60,6 +57,8 @@ class _MyScreenState extends ConsumerState<MyScreen> with AllRunHistory {
             final count = rows == null ? '—' : '${rows.length}회';
             final courses = ref.watch(myCourseSummaryProvider).value;
             final courseCount = courses == null ? '—' : '${courses.courseCount}개';
+            final saved = ref.watch(bookmarkSummaryProvider).value;
+            final savedCount = saved == null ? '—' : '${saved.courseCount}개';
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -78,7 +77,7 @@ class _MyScreenState extends ConsumerState<MyScreen> with AllRunHistory {
                   items: [
                     WdMenuItem(label: '내 러닝 기록', value: count, onTap: () => context.push(Routes.myRecords)),
                     WdMenuItem(label: '내가 등록한 코스', value: courseCount, onTap: () => context.push(Routes.myCourses)),
-                    WdMenuItem(label: '저장한 코스', value: '—', onTap: () => _soon('저장한 코스')),
+                    WdMenuItem(label: '저장한 코스', value: savedCount, onTap: () => context.push(Routes.mySavedCourses)),
                   ],
                 ),
               ],

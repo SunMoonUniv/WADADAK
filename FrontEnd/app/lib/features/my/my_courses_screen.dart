@@ -9,6 +9,8 @@ import '../../core/error_message.dart';
 import '../../routes.dart';
 import '../course/course_format.dart';
 import '../course/course_list_card.dart';
+import 'bookmark_state.dart';
+import 'saved_courses_tab.dart';
 
 /// 내가 등록한 코스 합계(`GET /courses/mine/summary`). G4 위 칸 · 탭과 E3 `등록 코스`가 같이 쓴다.
 /// B7에서 수정 · 삭제하면 `ref.invalidate`로 다시 받는다.
@@ -18,18 +20,21 @@ final myCourseSummaryProvider = FutureProvider<MyCourseSummary>((ref) async {
   return ref.read(courseApiClientProvider).myCourseSummary();
 }, retry: (_, _) => null);
 
-/// G4 · 내 코스(Figma `G4 · 내 코스 관리`). E3 `내가 등록한 코스`에서 연다.
+/// G4 · 내 코스(Figma `G4 · 내 코스 관리`). E3 `내가 등록한 코스` · `저장한 코스`에서 연다.
 ///
-/// - 탭은 `등록한 코스 N` · `저장한 코스`다. 코스 저장 기능이 아직 없어 저장한 코스 탭은 준비 중 안내만 보인다.
+/// - 탭은 `등록한 코스 N` · `저장한 코스 N`이다. E3 `저장한 코스`에서 열면 저장한 코스 탭([SavedCoursesTab], G5)으로 연다.
 /// - 등록한 코스: 위 칸(등록 코스 · 누적 주행 · 만료 임박) · 공개 기간 안내 · 카드 목록(아래로 내리면 다음 쪽).
 /// - 카드의 [수정]은 B7을 열고, [삭제]는 한 번 물은 뒤 지운다. 지운 코스는 24시간 동안 흐리게 `삭제 예정`으로 남는다.
 /// - 오른쪽 위 [+ 만들기]는 B3 코스 만들기다.
 /// (2026-11-02 사용자 결정)
 class MyCoursesScreen extends ConsumerStatefulWidget {
-  const MyCoursesScreen({super.key, this.now});
+  const MyCoursesScreen({super.key, this.now, this.saved = false});
 
   /// 만료 · 최근 주행 · 삭제까지 남은 시간을 세는 기준 시각. 테스트만 넣는다.
   final DateTime Function()? now;
+
+  /// 저장한 코스 탭으로 연다(E3 `저장한 코스`).
+  final bool saved;
 
   @override
   ConsumerState<MyCoursesScreen> createState() => _MyCoursesScreenState();
@@ -102,8 +107,10 @@ class _MyCoursesScreenState extends ConsumerState<MyCoursesScreen> {
   @override
   Widget build(BuildContext context) {
     final summary = ref.watch(myCourseSummaryProvider).value;
+    final saved = ref.watch(bookmarkSummaryProvider).value;
     return DefaultTabController(
       length: 2,
+      initialIndex: widget.saved ? 1 : 0,
       child: Scaffold(
         backgroundColor: WdColors.paper,
         appBar: WdAppBar(
@@ -113,17 +120,16 @@ class _MyCoursesScreenState extends ConsumerState<MyCoursesScreen> {
         ),
         body: Column(
           children: [
-            WdTabBar(tabs: [summary == null ? '등록한 코스' : '등록한 코스 ${summary.courseCount}', '저장한 코스']),
+            WdTabBar(tabs: [
+              summary == null ? '등록한 코스' : '등록한 코스 ${summary.courseCount}',
+              saved == null ? '저장한 코스' : '저장한 코스 ${saved.courseCount}',
+            ]),
             const Divider(height: 1, thickness: 1, color: WdColors.map),
             Expanded(
               child: TabBarView(
                 children: [
                   _registered(summary),
-                  const Center(
-                    child: SingleChildScrollView(
-                      child: WdStateMessage(title: '준비 중이에요', message: '마음에 드는 코스를 저장하는 기능을\n곧 만나볼 수 있어요.'),
-                    ),
-                  ),
+                  SavedCoursesTab(now: () => _now),
                 ],
               ),
             ),
