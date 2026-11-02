@@ -12,6 +12,7 @@ import 'package:wadadak/features/run/application/run_sensor_session.dart';
 import 'package:wadadak/features/run/data/run_device.dart';
 import 'package:wadadak/features/run/domain/free_run_session.dart';
 import 'package:wadadak/features/run/domain/ghost_run.dart';
+import 'package:wadadak/features/run/domain/ghost_live_comparison.dart';
 import 'package:wadadak/features/run/domain/recording_models.dart' as recording;
 import 'package:wadadak/features/run/presentation/free_run_screen.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
@@ -24,9 +25,9 @@ class CountingController extends FreeRunController {
     : super(createSession: () => session, createId: () => 'synthetic-run');
   int comparisons = 0;
   @override
-  ({GeoPoint? position, String distance, String time}) get ghostComparison {
+  GhostLiveComparison get ghostComparison {
     comparisons++;
-    return (position: null, distance: '10m 앞서요', time: '2초 앞서요');
+    return const GhostLiveComparison(distanceM: 10, timeDeltaMs: -2000);
   }
 }
 

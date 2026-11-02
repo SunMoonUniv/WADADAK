@@ -172,18 +172,45 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
   Future<NOverlayImage> _iconImage(WdIcons icon) async {
     final ratio = View.of(context).devicePixelRatio;
     // WdIcon과 같은 에셋.
-    final svg = await vg.loadPicture(SvgAssetLoader('assets/icons/${icon.file}.svg', packageName: wdPackage), null);
+    final pin = icon == WdIcons.ghostMapPin;
+    final svg = await vg.loadPicture(
+      SvgAssetLoader(
+        'assets/icons/${pin ? 'ghost_pin_background' : icon.file}.svg',
+        packageName: wdPackage,
+      ),
+      null,
+    );
     final recorder = ui.PictureRecorder();
-    ui.Canvas(recorder)
+    final canvas = ui.Canvas(recorder);
+    canvas
       ..scale(ratio)
       ..drawPicture(svg.picture);
+    if (pin) {
+      final ghost = await vg.loadPicture(
+        const SvgAssetLoader(
+          'assets/icons/chasing_ghost_24.svg',
+          packageName: wdPackage,
+        ),
+        null,
+      );
+      canvas
+        ..translate(4, 4)
+        ..drawPicture(ghost.picture);
+      ghost.picture.dispose();
+    }
     final picture = recorder.endRecording();
-    final image = await picture.toImage((svg.size.width * ratio).ceil(), (svg.size.height * ratio).ceil());
+    final image = await picture.toImage(
+      (svg.size.width * ratio).ceil(),
+      (svg.size.height * ratio).ceil(),
+    );
     picture.dispose();
     svg.picture.dispose();
     final png = await image.toByteData(format: ui.ImageByteFormat.png);
     image.dispose();
-    return NOverlayImage.fromByteArray(png!.buffer.asUint8List(), cacheKey: 'wd-icon-${icon.file}-$ratio');
+    return NOverlayImage.fromByteArray(
+      png!.buffer.asUint8List(),
+      cacheKey: 'wd-icon-${icon.file}-$ratio',
+    );
   }
 
   Future<void> _cameraIdle() async {

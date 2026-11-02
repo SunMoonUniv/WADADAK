@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../domain/course_run.dart';
+import '../domain/ghost_live_comparison.dart';
+import 'ghost_run_live_view.dart';
 import '../domain/run_models.dart';
 import '../domain/run_distance_marker.dart';
 import 'run_lap_list.dart';
@@ -26,6 +28,7 @@ class FreeRunLiveView extends StatefulWidget {
     this.ghostOpponent,
     this.ghostPosition,
     this.ghostGap,
+    this.ghostComparison,
   });
   final RunSnapshot run;
   final VoidCallback? onPause, onResume, onStop;
@@ -36,6 +39,7 @@ class FreeRunLiveView extends StatefulWidget {
   final String? ghostOpponent;
   final GeoPoint? ghostPosition;
   final String? ghostGap;
+  final GhostLiveComparison? ghostComparison;
 
   @override
   State<FreeRunLiveView> createState() => _FreeRunLiveViewState();
@@ -106,6 +110,20 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
 
   @override
   Widget build(BuildContext context) {
+    if (widget.ghostOpponent != null) {
+      return GhostRunLiveView(
+        run: widget.run,
+        course: widget.course,
+        opponent: widget.ghostOpponent!,
+        comparison:
+            widget.ghostComparison ??
+            GhostLiveComparison(position: widget.ghostPosition),
+        courseNotice: widget.courseNotice,
+        onPause: widget.onPause,
+        onResume: widget.onResume,
+        onStop: widget.onStop,
+      );
+    }
     final run = widget.run;
     final course = widget.course;
     final paused = run.state == RunState.paused;
@@ -395,6 +413,7 @@ class RunRouteView extends StatefulWidget {
     required this.run,
     this.dark = false,
     this.showDistanceMarkers = false,
+    this.square = false,
     this.course,
     this.ghostPosition,
   });
@@ -403,6 +422,7 @@ class RunRouteView extends StatefulWidget {
   /// 달리는 중 지도. 내 위치를 따라간다(결과 화면 지도는 경로 전체를 맞춰 보인다)
   final bool dark;
   final bool showDistanceMarkers;
+  final bool square;
   final GeoPoint? ghostPosition;
 
   /// 코스 러닝이면 코스 경로(주행선 아래)·코스 출발점·코스 km 표지를 그린다. km 표지는 주행 거리 대신 코스 기준이다
@@ -430,7 +450,13 @@ class _RunRouteViewState extends State<RunRouteView> {
 
   @override
   Widget build(BuildContext context) {
-    final RunRouteView(:run, :dark, :showDistanceMarkers, :ghostPosition, :course) = widget;
+    final RunRouteView(
+      :run,
+      :dark,
+      :showDistanceMarkers,
+      :ghostPosition,
+      :course,
+    ) = widget;
     if (!run.hasLocation) return RunRouteEmpty(dark: dark);
     final location =
         run.inputs.reversed
@@ -449,7 +475,7 @@ class _RunRouteViewState extends State<RunRouteView> {
         .map((p) => GeoPoint(p.latitude, p.longitude))
         .toList();
     return ClipRRect(
-      borderRadius: BorderRadius.circular(WdRadius.r12),
+      borderRadius: BorderRadius.circular(widget.square ? 0 : WdRadius.r12),
       child: MapView(
         initialCenter: GeoPoint(location.latitude, location.longitude),
         initialZoom: 16,
@@ -487,11 +513,11 @@ class _RunRouteViewState extends State<RunRouteView> {
         // No markers or lines are interpolated across GPS/pause gaps.
         markers: [
           if (ghostPosition != null)
-            MapMarker(
+            MapMarker.icon(
               id: 'ghost-opponent',
               position: ghostPosition,
-              imageKey: 'ghost-opponent',
-              child: const WdIcon(WdIcons.brandGhost, size: 24),
+              anchor: const Offset(0.5, 1),
+              icon: WdIcons.ghostMapPin,
             ),
           if (course != null) ...[
             for (final (km, point) in course.tracker.route.kilometres())

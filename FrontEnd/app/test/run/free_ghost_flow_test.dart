@@ -299,7 +299,9 @@ void main() {
       final restored = GhostRunContext.fromJson(saved.ghost!.toJson());
       expect(restored.intent.referenceHash, 'a' * 64);
       expect(restored.replay.playback.at(100000).coursePositionM, isNotNull);
-      expect(find.textContaining('거리 '), findsOneWidget);
+      expect(find.byType(WdGhostLeadCard), findsOneWidget);
+      expect(tester.widget<WdGhostLeadCard>(find.byType(WdGhostLeadCard)).value, '0 m');
+      expect(find.text('고스트와 나란히 달리고 있어요'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
