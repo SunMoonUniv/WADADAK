@@ -175,6 +175,29 @@ class MyProfile {
   final bool profileSearchable;
 }
 
+/// 러너 검색 결과 한 줄(G7). 내 줄([mine])은 누르면 I3 대신 MY로 간다.
+class SearchedRunner {
+  SearchedRunner.fromJson(Map json)
+      : memberId = json['memberId'] as String,
+        nickname = json['nickname'] as String,
+        profileImageUrl = json['profileImageUrl'] as String?,
+        region = json['region'] == null ? null : Region.fromJson(json['region'] as Map),
+        runningExperience = RunningExperience.fromApi(json['runningExperience'] as String?),
+        mine = json['mine'] as bool;
+
+  final String memberId;
+  final String nickname;
+  final String? profileImageUrl;
+
+  /// 활동 지역(시·군·구). 지역 목록에서 코드가 사라졌으면 없다.
+  final Region? region;
+  final RunningExperience? runningExperience;
+  final bool mine;
+}
+
+/// 러너 검색 결과 한 쪽(G7). [totalCount]는 검색어에 걸린 러너 수(`검색 결과 · N명`)이고, 마지막 쪽이면 [nextCursor]가 null이다.
+typedef RunnerSearchPage = ({int totalCount, List<SearchedRunner> runners, String? nextCursor});
+
 /// 회원 API(`/api/v1/members`). 서버 모듈 prefix 하나에 클라이언트 하나(개발 정책 9장).
 class MemberApiClient {
   MemberApiClient(this._publicDio, this._authDio);
@@ -215,6 +238,18 @@ class MemberApiClient {
             'infoPublic': infoPublic,
             'profileSearchable': profileSearchable,
           })) as Map);
+
+  /// 닉네임에 [query]가 들어간 러너 한 쪽(G7, SEA-05). 공백 · 대소문자는 보지 않고, 인기순 하나다.
+  /// 프로필 검색 허용을 끈 회원 · 탈퇴 회원은 빠지고 나도 나온다. 공백을 빼고 2글자 미만이면 COMMON-001.
+  Future<RunnerSearchPage> searchRunners(String query, {String? cursor}) async {
+    final data = await callApi(
+        () => _authDio().get('/api/v1/members/search', queryParameters: {'query': query, 'cursor': ?cursor})) as Map;
+    return (
+      totalCount: data['totalCount'] as int,
+      runners: [for (final runner in data['content'] as List) SearchedRunner.fromJson(runner as Map)],
+      nextCursor: data['nextCursor'] as String?,
+    );
+  }
 
   /// F6 새 프로필 사진 업로드 폼. 올린 키를 [editProfile]에 담는다.
   Future<UploadForm> photoUploadForm() async =>

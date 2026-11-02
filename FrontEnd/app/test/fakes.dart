@@ -185,6 +185,29 @@ class FakeMemberApi implements MemberApiClient {
     myPhotoForms++;
     return UploadForm.fromJson({'url': 'https://files.test/wadadak', 'key': 'member/new.jpg', 'fields': <String, String>{}});
   }
+
+  /// G7 러너 검색이 찾는 러너. 서버처럼 닉네임에 검색어(공백 · 대소문자 무시)가 들어간 러너를 [runnerPageSize]명씩 준다.
+  List<SearchedRunner> runners = [];
+  int runnerPageSize = 20;
+  ApiException? searchRunnersError;
+
+  /// 받은 검색어와 커서(보낸 순서대로).
+  final runnerSearches = <(String, String?)>[];
+
+  /// 있으면 러너 검색 응답이 이것이 끝날 때까지 늦는다.
+  Completer<void>? runnersGate;
+
+  @override
+  Future<RunnerSearchPage> searchRunners(String query, {String? cursor}) async {
+    runnerSearches.add((query, cursor));
+    await runnersGate?.future;
+    if (searchRunnersError != null) throw searchRunnersError!;
+    final key = query.replaceAll(RegExp(r'\s'), '').toLowerCase();
+    final found = [for (final runner in runners) if (runner.nickname.toLowerCase().contains(key)) runner];
+    final from = int.parse(cursor ?? '0');
+    final to = from + runnerPageSize < found.length ? from + runnerPageSize : found.length;
+    return (totalCount: found.length, runners: found.sublist(from, to), nextCursor: to < found.length ? '$to' : null);
+  }
 }
 
 /// 1×1 PNG. 미리보기가 그림으로 읽을 수 있는 사진이다.
@@ -760,6 +783,18 @@ class FakeCourseRankingApi extends Fake implements RankingApiClient {
     final from = int.parse(cursor ?? '0');
     final to = from + pageSize < all.length ? from + pageSize : all.length;
     return (entries: all.sublist(from, to), nextCursor: to < all.length ? '$to' : null);
+  }
+
+  /// G7 `주 n km`(m). 여기 없는 회원은 기록이 없어 0이고, null이면 내 정보 비공개다.
+  Map<String, int?> weekMeters = {};
+  ApiException? weekDistancesError;
+  final weekDistanceRequests = <List<String>>[];
+
+  @override
+  Future<Map<String, int?>> weekDistances(List<String> memberIds) async {
+    weekDistanceRequests.add(memberIds);
+    if (weekDistancesError != null) throw weekDistancesError!;
+    return {for (final id in memberIds) id: weekMeters.containsKey(id) ? weekMeters[id] : 0};
   }
 }
 
