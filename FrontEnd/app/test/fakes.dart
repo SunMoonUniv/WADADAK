@@ -208,6 +208,17 @@ class FakeMemberApi implements MemberApiClient {
     final to = from + runnerPageSize < found.length ? from + runnerPageSize : found.length;
     return (totalCount: found.length, runners: found.sublist(from, to), nextCursor: to < found.length ? '$to' : null);
   }
+
+  /// I3 다른 러너 프로필(회원 ID → 응답). 없는 ID는 서버처럼 MEMBER-011이다. [runnerProfileError]가 있으면 그 오류다.
+  Map<String, Map<String, Object?>> runnerProfiles = {};
+  ApiException? runnerProfileError;
+
+  @override
+  Future<RunnerProfile> runnerProfile(String memberId) async {
+    if (runnerProfileError != null) throw runnerProfileError!;
+    return RunnerProfile.fromJson(runnerProfiles[memberId] ??
+        (throw const ApiException(MemberApiClient.runnerNotFoundCode, '회원을 찾을 수 없습니다.', status: 404)));
+  }
 }
 
 /// 1×1 PNG. 미리보기가 그림으로 읽을 수 있는 사진이다.
@@ -288,6 +299,23 @@ class FakeCourseApi implements CourseApiClient {
 
   @override
   Future<RegistrationQuota> registrationQuota() async => quota;
+
+  /// I3 러너가 등록한 코스(회원 ID → 최근 등록순). 서버처럼 [runnerCoursePageSize]개씩 오프셋 커서로 준다.
+  Map<String, List<RunnerCourse>> runnerCourseRows = {};
+  int runnerCoursePageSize = 20;
+  final runnerCourseRequests = <String?>[];
+
+  @override
+  Future<RunnerCoursePage> runnerCourses(String memberId, {String? cursor}) async {
+    runnerCourseRequests.add(cursor);
+    final all = runnerCourseRows[memberId] ?? const <RunnerCourse>[];
+    final from = int.parse(cursor ?? '0');
+    final to = from + runnerCoursePageSize < all.length ? from + runnerCoursePageSize : all.length;
+    return (courses: all.sublist(from, to), nextCursor: to < all.length ? '$to' : null);
+  }
+
+  @override
+  Future<int> runnerCourseCount(String memberId) async => runnerCourseRows[memberId]?.length ?? 0;
 
   /// 코스 상세(B1). 없는 ID는 서버처럼 COURSE-001이다. [detailError]가 있으면 그 오류다.
   Map<String, CourseDetail> details = {};
@@ -889,6 +917,24 @@ class FakeCourseRankingApi extends Fake implements RankingApiClient {
   }
 
   final entryRequests = <(RankingPeriod, String?)>[];
+
+  /// I3 총 거리 · 러닝(회원 ID → 응답). 없는 회원은 서버처럼 기록 0이다.
+  Map<String, Map<String, Object?>> distanceTotals = {};
+
+  @override
+  Future<MemberDistanceTotal> memberDistanceTotal(String memberId) async =>
+      MemberDistanceTotal.fromJson(distanceTotals[memberId] ?? {'totalDistanceMeters': 0, 'runCount': 0});
+
+  /// I3 이 코스 기록(회원 ID → 응답). 없으면 순위에 없는 러너(null)다. 받은 요청을 [recordRequests]에 남긴다.
+  Map<String, Map<String, Object?>> runnerRecords = {};
+  final recordRequests = <(String, String, RankingPeriod)>[];
+
+  @override
+  Future<RunnerCourseRecord?> runnerCourseRecord(String courseId, String memberId, RankingPeriod period) async {
+    recordRequests.add((courseId, memberId, period));
+    final record = runnerRecords[memberId];
+    return record == null ? null : RunnerCourseRecord.fromJson(record);
+  }
 
   @override
   Future<CourseRankingSummary> courseSummary(String courseId, RankingPeriod period) async {

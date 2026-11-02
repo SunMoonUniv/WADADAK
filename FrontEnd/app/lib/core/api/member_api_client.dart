@@ -198,6 +198,22 @@ class SearchedRunner {
 /// 러너 검색 결과 한 쪽(G7). [totalCount]는 검색어에 걸린 러너 수(`검색 결과 · N명`)이고, 마지막 쪽이면 [nextCursor]가 null이다.
 typedef RunnerSearchPage = ({int totalCount, List<SearchedRunner> runners, String? nextCursor});
 
+/// 다른 러너 프로필(I3) 머리 부분. 내 정보 공개 · 프로필 검색 허용과 관계없이 보인다(정책 공통 6).
+class RunnerProfile {
+  RunnerProfile.fromJson(Map json)
+      : nickname = json['nickname'] as String,
+        profileImageUrl = json['profileImageUrl'] as String?,
+        region = json['region'] == null ? null : Region.fromJson(json['region'] as Map),
+        runningExperience = RunningExperience.fromApi(json['runningExperience'] as String?);
+
+  final String nickname;
+  final String? profileImageUrl;
+
+  /// 활동 지역(시·군·구). 지역 목록에서 코드가 사라졌으면 없다.
+  final Region? region;
+  final RunningExperience? runningExperience;
+}
+
 /// 회원 API(`/api/v1/members`). 서버 모듈 prefix 하나에 클라이언트 하나(개발 정책 9장).
 class MemberApiClient {
   MemberApiClient(this._publicDio, this._authDio);
@@ -250,6 +266,13 @@ class MemberApiClient {
       nextCursor: data['nextCursor'] as String?,
     );
   }
+
+  /// 다른 러너 프로필(I3). 탈퇴했거나 없는 회원은 [runnerNotFoundCode].
+  Future<RunnerProfile> runnerProfile(String memberId) async => RunnerProfile.fromJson(
+      await callApi(() => _authDio().get('/api/v1/members/${Uri.encodeComponent(memberId)}')) as Map);
+
+  /// 탈퇴했거나 없는 회원(I3를 열지 않는다).
+  static const runnerNotFoundCode = 'MEMBER-011';
 
   /// F6 새 프로필 사진 업로드 폼. 올린 키를 [editProfile]에 담는다.
   Future<UploadForm> photoUploadForm() async =>

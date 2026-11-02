@@ -42,7 +42,7 @@ void main() {
       overrides: [rankingApiClientProvider.overrideWithValue(rankings)],
       child: MaterialApp(
         theme: WdTheme.light(),
-        home: CourseRankingsScreen(courseId: 'c1', courseName: '한강 야경 5K', period: period),
+        home: CourseRankingsScreen(courseId: 'c1', courseName: '한강 야경 5K', route: const [], period: period),
       ),
     ));
     await tester.pumpAndSettle();
@@ -80,8 +80,7 @@ void main() {
         ['24', '나 (러닝왕김)', '5′04″/km · 09.08 · 상위 96%', '28:10']);
     expect(me.onTap, isNull, reason: '내 순위는 누를 수 없다');
     expect(find.text('전체 순위 25명'), findsOneWidget);
-    expect(find.textContaining('프로필'), findsNothing, reason: 'I3가 생길 때까지 러너를 누를 수 없다');
-    expect(tester.widget<WdRankList>(find.byType(WdRankList)).onTap, isNull);
+    expect(find.text('러너를 탭하면 프로필 ›'), findsOneWidget, reason: '러너를 누르면 I3로 간다');
     expect(ranks(tester), hasLength(20), reason: '처음에는 한 페이지만');
     final first = ranks(tester).first;
     expect('${first.rank} ${first.name} ${first.meta} ${first.value}', '1 러너1 4′41″/km · 09.07 24:20');

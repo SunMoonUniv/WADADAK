@@ -658,6 +658,34 @@ class TypeQuota {
   final int remaining;
 }
 
+/// 다른 러너가 등록한 코스 카드(I3 `등록한 코스`). 공개 중인 코스만 온다.
+@immutable
+class RunnerCourse {
+  RunnerCourse.fromJson(Map<Object?, Object?> json)
+      : courseId = json['courseId']! as String,
+        name = json['name']! as String,
+        distanceMeters = json['distanceMeters']! as int,
+        averageRating = (json['averageRating'] as num?)?.toDouble(),
+        completionCount = json['completionCount']! as int,
+        route = _routeFromJson(json);
+
+  final String courseId;
+  final String name;
+  final int distanceMeters;
+
+  /// 전체 기간 평점(소수 첫째 자리 반올림). 리뷰가 없으면 null.
+  final double? averageRating;
+
+  /// 완주 수(`주행 N회`, G4 `누적 주행`과 같다).
+  final int completionCount;
+
+  /// 썸네일.
+  final List<GeoPoint> route;
+}
+
+/// 다른 러너가 등록한 코스 한 쪽. 마지막 쪽이면 [nextCursor]가 null.
+typedef RunnerCoursePage = ({List<RunnerCourse> courses, String? nextCursor});
+
 /// 코스 API(`/api/v1/courses`). 서버 모듈 prefix 하나에 클라이언트 하나(개발 정책 9장).
 class CourseApiClient {
   CourseApiClient(this._dio);
@@ -865,6 +893,22 @@ class CourseApiClient {
 
   /// 비공개 · 삭제된 코스(B1-04 신규 상세 진입 차단).
   static const courseNotAvailableCode = 'COURSE-002';
+
+  /// 다른 러너가 등록한 공개 중인 코스(I3). 최근 등록순이고 다음 쪽은 [RunnerCoursePage]의 nextCursor를 [cursor]로 보낸다.
+  Future<RunnerCoursePage> runnerCourses(String memberId, {String? cursor}) async {
+    final data = await callApi(() => _dio
+        .get('$_courses/members/${Uri.encodeComponent(memberId)}', queryParameters: {'cursor': ?cursor})) as Map;
+    return (
+      courses: [for (final course in data['content']! as List) RunnerCourse.fromJson(course as Map)],
+      nextCursor: data['nextCursor'] as String?,
+    );
+  }
+
+  /// 다른 러너가 등록한 공개 중인 코스 수(I3 `등록 코스`, MY와 같은 기준).
+  Future<int> runnerCourseCount(String memberId) async {
+    final data = await callApi(() => _dio.get('$_courses/members/${Uri.encodeComponent(memberId)}/summary')) as Map;
+    return data['courseCount']! as int;
+  }
 
   /// 오늘 남은 등록 수. 0이면 그 방식의 코스 만들기를 미리 막는다(개발 정책 10.2 course).
   Future<RegistrationQuota> registrationQuota() async {

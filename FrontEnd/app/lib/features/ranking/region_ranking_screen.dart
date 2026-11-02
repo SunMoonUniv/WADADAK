@@ -37,7 +37,7 @@ class RegionRankingScreen extends ConsumerWidget {
         children: [
           const RegionChips(),
           ...switch (feed) {
-            AsyncValue(:final value?) => _content(value),
+            AsyncValue(:final value?) => _content(context, value),
             AsyncValue(:final error?) => [RankingError(error, onRetry: reload)],
             _ => const [RankingLoading()],
           },
@@ -46,7 +46,7 @@ class RegionRankingScreen extends ConsumerWidget {
     );
   }
 
-  List<Widget> _content(RankingFeed<RegionWeeklyRanking> feed) {
+  List<Widget> _content(BuildContext context, RankingFeed<RegionWeeklyRanking> feed) {
     final ranking = feed.summary;
     final entries = [...ranking.top, ...feed.rest];
     final runners = '${grouped(ranking.participantCount)}명';
@@ -68,7 +68,10 @@ class RegionRankingScreen extends ConsumerWidget {
       if (entries.isEmpty)
         const RankingEmpty()
       else
-        WdRankList(ranks: [for (final entry in entries) regionRank(entry, ranking.region.name)]),
+        WdRankList(
+          ranks: [for (final entry in entries) regionRank(entry, ranking.region.name)],
+          onTap: openRunnerAt(context, entries),
+        ),
       const WdInfoBanner('매일 자정에 갱신되고, 매주 월요일 00:00에 초기화돼요.', plain: true),
     ];
   }
