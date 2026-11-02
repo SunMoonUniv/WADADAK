@@ -1048,7 +1048,8 @@ class BookmarkCourse {
         creatorNickname = json['creatorNickname'] as String?,
         route = _routeFromJson(json),
         pendingDelete = json['status'] != 'ACTIVE',
-        expiresAt = DateTime.parse(json['expiresAt']! as String);
+        expiresAt = DateTime.parse(json['expiresAt']! as String),
+        card = CourseListItem.fromJson(json);
 
   final String courseId;
   final String name;
@@ -1069,6 +1070,9 @@ class BookmarkCourse {
 
   /// 공개 만료 시각(만료일 23:59:59 Asia/Seoul).
   final DateTime expiresAt;
+
+  /// 코스 목록 카드와 같은 값(특징 · 유형 · 리뷰 수 · 현재 러너 수 포함). C8이 다른 탭과 같은 카드로 보인다.
+  final CourseListItem card;
 }
 
 /// 내가 등록한 코스 한 쪽(G4).

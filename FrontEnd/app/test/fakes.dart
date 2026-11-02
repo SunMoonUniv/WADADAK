@@ -717,13 +717,18 @@ BookmarkCourse testBookmark(
   String? creator = '러너_하늘',
   String expiresAt = '2026-11-20T14:59:59Z',
   bool pendingDelete = false,
+  int activeRunners = 0,
 }) =>
     BookmarkCourse.fromJson({
       'courseId': name,
       'name': name,
       'distanceMeters': distanceMeters,
       'difficulty': difficulty,
+      'tags': const ['FLAT'],
+      'courseType': 'CUSTOM',
       'averageRating': rating,
+      'reviewCount': rating == null ? 0 : 3,
+      'activeRunners': activeRunners,
       'creatorNickname': creator,
       'route': [
         {'lat': 37.52, 'lng': 126.93},

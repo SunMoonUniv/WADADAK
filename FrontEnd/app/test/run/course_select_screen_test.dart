@@ -268,6 +268,83 @@ void main() {
     },
   );
 
+  testWidgets(
+    'saved courses show only public saved courses and can be picked',
+    (tester) async {
+      final api = FakeCourseApi()
+        ..bookmarkRows = [
+          testBookmark(
+            '한강 다리 왕복 8K',
+            rating: 4.4,
+            activeRunners: 2,
+            expiresAt: '2030-01-01T14:59:59Z',
+          ),
+          testBookmark('정릉 오르막 4K', expiresAt: '2030-01-01T14:59:59Z'),
+          testBookmark('안암 골목길 2K', pendingDelete: true),
+        ];
+      await open(tester, courses: api);
+
+      await tester.tap(find.widgetWithText(WdFilterChip, '저장한 코스'));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester
+            .widget<WdFilterChip>(find.widgetWithText(WdFilterChip, '저장한 코스'))
+            .selected,
+        isTrue,
+      );
+      expect(find.text('한강 다리 왕복 8K'), findsOneWidget);
+      expect(find.text('5.2km · 난이도 중 · ★ 4.4'), findsOneWidget);
+      expect(find.text('지금 2명 달리는 중'), findsOneWidget);
+      expect(find.text('정릉 오르막 4K'), findsOneWidget);
+      // 칩 · 머리글 · 러너가 없는 정릉 카드 아래 줄
+      expect(find.text('저장한 코스'), findsNWidgets(3));
+      expect(find.text('안암 골목길 2K'), findsNothing, reason: '삭제 예정 코스는 달릴 수 없다');
+      expect(api.detailRequests, isEmpty, reason: '저장 목록의 카드 값을 그대로 쓴다');
+
+      await tester.tap(find.text('한강 다리 왕복 8K'));
+      await tester.pump();
+      await tester.tap(find.text('이 코스로 설정'));
+      await tester.pumpAndSettle();
+      expect(container.read(selectedCourseProvider)?.courseId, '한강 다리 왕복 8K');
+    },
+  );
+
+  testWidgets('my courses show only my public courses', (tester) async {
+    final api = FakeCourseApi()
+      ..mine = [
+        testMyCourse('성북천 벚꽃길 3K', courseId: 'c1'),
+        testMyCourse(
+          '개운산 숲길 4K',
+          courseId: 'c3',
+          hiddenReason: CourseHiddenReason.userDeleted,
+        ),
+      ];
+    await open(tester, courses: api);
+
+    await tester.tap(find.text('내가 만든'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('내가 만든 코스'), findsOneWidget);
+    expect(find.text('성북천 벚꽃길 3K'), findsOneWidget);
+    expect(find.text('개운산 숲길 4K'), findsNothing);
+  });
+
+  testWidgets('cards of other tabs tell which course is saved', (tester) async {
+    final api = FakeCourseApi()..savedIds = {'c2'};
+    await open(tester, courses: api);
+    runs.remoteRecords = [
+      record('r1', courseId: 'c1', courseName: '한강 야경 5K'),
+      record('r2', courseId: 'c2', courseName: '성북천 벚꽃길 3K'),
+    ];
+    runs.notifyListeners();
+    await tester.pumpAndSettle();
+
+    // 러너가 없으면 저장한 코스는 `저장한 코스`, 아니면 `달리는 러너 없음`
+    expect(find.text('저장한 코스'), findsNWidgets(2));
+    expect(find.text('달리는 러너 없음'), findsOneWidget);
+  });
+
   testWidgets('running without a course clears the chosen course', (
     tester,
   ) async {
