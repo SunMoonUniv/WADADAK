@@ -1,12 +1,13 @@
 import 'dart:math' as math;
 
 import 'recording_models.dart';
+import 'gps_path_filter.dart';
 import 'run_lap.dart';
 
-/// PACE_V3 rejects isolated speed-inconsistent fixes; PACE_V2 stays replayable.
+/// PACE_V4 also normalizes small GPS jitter; older versions retain their replay.
 class MotionPace {
   static bool usesMotion(String? version) =>
-      version == 'PACE_V2' || version == 'PACE_V3';
+      version == 'PACE_V2' || version == 'PACE_V3' || version == 'PACE_V4';
   bool _balanced = false;
   RunInput? _suspect;
   RunInput? _rawPrevious;
@@ -23,9 +24,18 @@ class MotionPace {
   bool paused = false, ended = false;
   bool get stationary => _stationarySince != null;
 
-  void add(RunInput p) {
+  final GpsPathFilter _pathFilter = GpsPathFilter();
+  void add(RunInput raw) {
+    for (final p in _pathFilter.add(raw)) {
+      _addNormalized(p);
+    }
+  }
+
+  void _addNormalized(RunInput p) {
     if (ended) return;
-    if (p.kind == RunKind.start) _balanced = p.reason == 'PACE_V3';
+    if (p.kind == RunKind.start) {
+      _balanced = p.reason == 'PACE_V3' || p.reason == 'PACE_V4';
+    }
     if (!_balanced ||
         p.kind == RunKind.start ||
         p.kind == RunKind.cadence ||

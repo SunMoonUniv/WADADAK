@@ -23,12 +23,13 @@ class RunAudioOutput(private val context: Context, messenger: BinaryMessenger) {
     private val voiceWaiters = mutableListOf<MethodChannel.Result>()
     private var focus: AudioFocusRequest? = null
     private var utterance = 0L
+    private var voiceRequestId = 0L
     init {
         channel.setMethodCallHandler { call, result ->
             try {
                 when (call.method) {
                     "initializeVoice" -> initializeVoice(result)
-                    "speak" -> result.success(speak(call.argument<String>("text") ?: ""))
+                    "speak" -> result.success(speak(call.argument<String>("text") ?: "", call.argument<Number>("requestId")?.toLong() ?: 0L))
                     "stopVoice" -> { stopVoice(); result.success(null) }
                     "close" -> { closeResources(); result.success(null) }
                     else -> result.notImplemented()
@@ -49,11 +50,16 @@ class RunAudioOutput(private val context: Context, messenger: BinaryMessenger) {
                 .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
             tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(id: String?) {}
-                override fun onDone(id: String?) { releaseFocus(id) }
+                override fun onDone(id: String?) {
+                    releaseFocus(id)
+                    Handler(Looper.getMainLooper()).post {
+                        if (id == utterance.toString()) channel.invokeMethod("voiceDone", mapOf("requestId" to voiceRequestId))
+                    }
+                }
                 @Deprecated("Deprecated in Java") override fun onError(id: String?) {
                     releaseFocus(id)
                     Handler(Looper.getMainLooper()).post {
-                        if (id == utterance.toString()) channel.invokeMethod("voiceError", null)
+                        if (id == utterance.toString()) channel.invokeMethod("voiceError", mapOf("requestId" to voiceRequestId))
                     }
                 }
             })
@@ -62,15 +68,21 @@ class RunAudioOutput(private val context: Context, messenger: BinaryMessenger) {
             waiters.forEach { it.success(voiceReady) }
         }
     }
-    private fun speak(text: String): Boolean {
+    private fun speak(text: String, requestId: Long): Boolean {
         if (!voiceReady || text.isBlank()) return false
         stopVoice()
         val id = (++utterance).toString()
+        voiceRequestId = requestId
         val granted = if (Build.VERSION.SDK_INT >= 26) {
             focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
                 .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
                     .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
-                .setOnAudioFocusChangeListener { change -> if (change < 0) stopVoice() }.build()
+                .setOnAudioFocusChangeListener { change ->
+                    if (change < 0 && id == utterance.toString()) {
+                        stopVoice()
+                        channel.invokeMethod("voiceDone", mapOf("requestId" to requestId))
+                    }
+                }.build()
             audio.requestAudioFocus(focus!!)
         } else {
             @Suppress("DEPRECATION") audio.requestAudioFocus(null, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)

@@ -7,6 +7,7 @@ import 'dart:math' as math;
 
 import '../../../core/map/geo_point.dart';
 import 'recording_models.dart';
+import 'gps_path_filter.dart';
 
 part 'free_ghost_tracker.dart';
 
@@ -185,7 +186,22 @@ class CourseTracker {
   var _hypotheses = <_Hypothesis>[];
 
   /// 같은 기록의 입력 목록을 계속 넘긴다. 앞서 본 입력은 건너뛴다. `SEGMENT_END`·`END` 뒤는 버린다.
+  final GpsPathFilter _pathFilter = GpsPathFilter();
+  final List<RunInput> _filteredInputs = [];
+  int _rawFed = 0;
+
   void feed(List<RunInput> inputs) {
+    if (inputs.isEmpty || inputs.first.reason != 'PACE_V4') {
+      _feedFiltered(inputs);
+      return;
+    }
+    for (; _rawFed < inputs.length; _rawFed++) {
+      _filteredInputs.addAll(_pathFilter.add(inputs[_rawFed]));
+    }
+    _feedFiltered(_filteredInputs);
+  }
+
+  void _feedFiltered(List<RunInput> inputs) {
     if (_freeV2 != null) {
       _freeV2!.feed(inputs);
       return;

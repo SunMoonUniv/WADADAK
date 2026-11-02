@@ -73,6 +73,7 @@ public final class CourseJudge {
     }
     /** Run-owned reference geometry. Breaks have no inferred connecting segment or distance. */
     public Analysis analyze(List<com.wadadak.common.geo.GeoPoint> reference, List<Integer> breaks, List<Input> inputs) {
+        inputs = com.wadadak.run.internal.GpsPathFilter.normalize(inputs);
         RouteGeometry route = new RouteGeometry(reference,breaks);
         List<Point> points = freeGhostV2?new FreeGhostTracker(route,config).track(inputs):new CourseTracker(route, config).track(inputs);
         RecognizedDistance recognized = RecognizedDistance.of(points);

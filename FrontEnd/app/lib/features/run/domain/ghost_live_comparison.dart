@@ -1,4 +1,6 @@
 import '../../../core/map/geo_point.dart';
+import 'course_tracker.dart';
+import 'recording_models.dart' as recording;
 
 /// Signed values from the existing live replay comparison, never from UI text.
 class GhostLiveComparison {
@@ -45,4 +47,66 @@ class GhostLiveComparison {
       : distanceM! >= 0
       ? '지금 페이스를 이어가세요.'
       : '나만의 페이스로 차근차근 따라가세요.';
+}
+
+/// Shared live comparison for screen and audio; never derives time from pace.
+GhostLiveComparison compareGhostLive({
+  required recording.LocalRun current,
+  required CourseTracker tracker,
+  required int elapsedMs,
+}) {
+  tracker.feed(current.inputs);
+  final replay = current.ghost!.replay.playback;
+  final moment = replay.at(elapsedMs);
+  final ghostS = moment.coursePositionM;
+  final position = ghostS == null ? null : tracker.route.pointAt(ghostS);
+  final last = tracker.points.lastOrNull;
+  final boundary = current.inputs
+      .where(
+        (i) =>
+            i.kind == recording.RunKind.gap ||
+            i.kind == recording.RunKind.resume,
+      )
+      .lastOrNull;
+  final s = last?.s;
+  final fresh =
+      last != null &&
+      (boundary == null || boundary.seq < last.input.seq) &&
+      (current.phase == recording.RunPhase.paused ||
+          elapsedMs - last.input.elapsedMs <= 10000);
+  if (!fresh || s == null) {
+    return GhostLiveComparison(
+      position: position,
+      ghostProgress: ghostS == null ? null : ghostS / tracker.route.length,
+    );
+  }
+  double? first;
+  for (var i = 1; i < tracker.points.length; i++) {
+    final a = tracker.points[i - 1], b = tracker.points[i];
+    if (b.connected &&
+        a.s != null &&
+        b.s != null &&
+        b.s! > a.s! &&
+        s >= a.s! &&
+        s <= b.s!) {
+      first =
+          a.input.elapsedMs +
+          (b.input.elapsedMs - a.input.elapsedMs) * (s - a.s!) / (b.s! - a.s!);
+      break;
+    }
+  }
+  final opponent = replay.firstArrivalMs(s);
+  final reversing =
+      tracker.points.length > 1 &&
+      tracker.points[tracker.points.length - 2].s != null &&
+      s < tracker.points[tracker.points.length - 2].s!;
+  final delta = first == null || opponent == null || reversing
+      ? null
+      : first - opponent;
+  return GhostLiveComparison(
+    position: position,
+    distanceM: ghostS == null ? null : s - ghostS,
+    timeDeltaMs: delta,
+    ghostProgress: ghostS == null ? null : ghostS / tracker.route.length,
+  );
 }

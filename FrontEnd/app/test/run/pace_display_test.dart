@@ -30,7 +30,9 @@ void main() {
       try {
         await driver.bindOwner();
         await driver.recorder.start('pace', 'alice', location.utc);
-        for (var i = 0; i <= 10; i++) {
+        // PACE_V4 retains one fix for turn-preserving smoothing. Supply enough
+        // confirmed movement to cross the unchanged 25m average-pace threshold.
+        for (var i = 0; i <= 12; i++) {
           location.clock = i * 1000;
           final p = motion.fix(location.clock, i * 3);
           await driver.recorder.gps(
@@ -42,19 +44,19 @@ void main() {
           );
           ui.snapshot;
         }
-        location.clock = 12000;
+        location.clock = 15000;
         await driver.recorder.tick();
         final at12 = ui.snapshot;
         expect(at12.paceSecondsPerKm, isNotNull);
         expect(at12.currentPaceDisplay, 335);
-        location.clock = 13000;
+        location.clock = 16000;
         await driver.recorder.tick();
-        expect(ui.snapshot.elapsed.inMilliseconds, 13000);
+        expect(ui.snapshot.elapsed.inMilliseconds, 16000);
         expect(ui.snapshot.paceSecondsPerKm, at12.paceSecondsPerKm);
-        location.clock = 14999;
+        location.clock = 17999;
         await driver.recorder.tick();
         expect(ui.snapshot.paceSecondsPerKm, at12.paceSecondsPerKm);
-        location.clock = 15000;
+        location.clock = 18000;
         await driver.recorder.tick();
         expect(
           ui.snapshot.paceSecondsPerKm,

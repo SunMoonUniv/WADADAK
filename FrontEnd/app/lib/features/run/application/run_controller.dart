@@ -20,7 +20,6 @@ import '../data/run_audio_output.dart';
 import 'audio_guide.dart';
 import 'course_run_entry.dart';
 import '../data/run_device.dart';
-import '../domain/run_voice.dart';
 import '../domain/course_run.dart';
 import '../domain/course_tracker.dart';
 import '../domain/route_guidance.dart';
@@ -33,6 +32,9 @@ import '../data/ghost_start_api.dart';
 import '../domain/ghost_run.dart';
 import '../domain/own_ghost.dart';
 import '../domain/free_ghost.dart';
+import '../domain/ghost_live_comparison.dart';
+import '../domain/ghost_playback.dart';
+import '../run_voice_settings_events.dart';
 
 final runControllerProvider = Provider<RunController>((ref) {
   final controller = RunController(
@@ -41,6 +43,7 @@ final runControllerProvider = Provider<RunController>((ref) {
     RunApiClient(ref.read(dioProvider)),
     () async => (await ref.read(tokenStorageProvider).read())?.memberId,
     device: RunDevice(),
+    voiceSettingsEvents: ref.read(runVoiceSettingsEventsProvider).changes,
   );
   ref.listen(authControllerProvider, (_, next) {
     if (next.value is SignedIn) {
@@ -78,6 +81,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     Future<int> Function()? nowMs,
     Future<RunClockSample> Function()? recoveryClock,
     GhostStartSource? ghostApi,
+    Stream<RunVoiceSettingsChanged>? voiceSettingsEvents,
   }) : audioGuide = audio ?? AudioGuide(RunAudioOutput()),
        _wait = wait ?? Future<void>.delayed,
        _utcNow = utcNow ?? (() => DateTime.now().toUtc()),
@@ -123,6 +127,17 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       _notify();
       unawaited(_refreshExtras());
     });
+    _voiceSettingsSubscription = voiceSettingsEvents?.listen((event) {
+      unawaited(
+        receiveVoiceSettings(event).catchError((Object _) {
+          if (!_disposed && currentOwner == event.owner) {
+            error = '음성 안내 설정을 저장하지 못했어요. 다시 시도해 주세요.';
+            _notify();
+          }
+          return false;
+        }),
+      );
+    });
     if (automaticTicks) {
       _timer = Timer.periodic(
         const Duration(seconds: 1),
@@ -167,6 +182,8 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   final DateTime Function() _utcNow;
   final AppLifecycleState? Function() _lifecycleState;
   late final StreamSubscription<void> _changes;
+  StreamSubscription<RunVoiceSettingsChanged>? _voiceSettingsSubscription;
+  Future<void> _voiceSettingsUpdates = Future.value();
   StreamSubscription<Position>? _gps;
 
   /// 코스 상세에서 고른 코스. 다음 시작을 코스 러닝으로 한다(F6)
@@ -199,6 +216,36 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       run?.id == courseRunId &&
       recorder.active &&
       courseEndReason == null;
+
+  GhostLiveComparison? get ghostComparison {
+    final current = run, tracker = courseTracker;
+    if (!onCourse || current?.ghost == null || tracker == null) return null;
+    return compareGhostLive(
+      current: current!,
+      tracker: tracker,
+      elapsedMs: recorder.elapsedMs,
+    );
+  }
+
+  double? _ghostTimeDeltaForVoice() {
+    final current = run;
+    if (!onCourse ||
+        current?.ghost == null ||
+        current?.phase != RunPhase.running ||
+        _gapOpen ||
+        routeGuidance?.state != GuidanceState.onRoute) {
+      return null;
+    }
+    final moment = current!.ghost!.replay.playback.at(recorder.elapsedMs);
+    if (moment.state == GhostPlaybackState.unknown ||
+        moment.state == GhostPlaybackState.unavailable ||
+        moment.state == GhostPlaybackState.beforeStart) {
+      return null;
+    }
+    final comparison = ghostComparison;
+    return comparison?.distanceM == null ? null : comparison?.timeDeltaMs;
+  }
+
   List<LocalRun> records = [];
   List<Map<String, dynamic>> remoteRecords = [];
   String? currentOwner, error, gpsNotice, nextCursor, historyNotice;
@@ -292,6 +339,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         pendingDeleteCount = 0;
         pendingGhostClosureCount = 0;
         voiceSettings = const RunVoiceSettings();
+        audioGuide.restoreSettings(voiceSettings);
         if (member == null) return;
         voiceSettings = await store.voiceSettings(member);
         audioGuide.restoreSettings(voiceSettings);
@@ -838,12 +886,26 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       guidance.alertOpen = false;
       return;
     }
-    for (final cue in guidance.feed(current.inputs)) {
+    final cues = guidance.feed(current.inputs);
+    if (current.phase != RunPhase.running) return;
+    for (final cue in cues) {
       switch (cue) {
         case GuidanceCue.candidate:
-          unawaited(audioGuide.announce('코스에서 벗어나고 있어요'));
+          if (!cues.contains(GuidanceCue.alert)) {
+            unawaited(
+              audioGuide.announce(
+                '코스에서 벗어나고 있어요',
+                priority: RunVoicePriority.deviationCandidate,
+              ),
+            );
+          }
         case GuidanceCue.alert:
-          unawaited(audioGuide.announce('코스를 벗어났어요'));
+          unawaited(
+            audioGuide.announce(
+              '코스를 벗어났어요',
+              priority: RunVoicePriority.deviationConfirmed,
+            ),
+          );
         case GuidanceCue.dismiss:
           break;
       }
@@ -871,10 +933,13 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     final id = courseRunId, member = currentOwner, tracker = courseTracker;
     if (!onCourse || id == null || member == null) return;
     courseEndReason = reason;
+    final transition = audioGuide.beginCourseTransition();
     _notify();
     try {
       await recorder.segmentEnd(reason);
     } on Object catch (e) {
+      await transition;
+      audioGuide.endCourseTransition();
       await _operationError(e);
       return;
     }
@@ -887,7 +952,13 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         }
       }());
     }
-    if (reason == 'ROUTE_END' && tracker != null) {
+    await transition;
+    if (reason == 'ROUTE_END' &&
+        tracker != null &&
+        run?.id == id &&
+        currentOwner == member &&
+        run?.phase == RunPhase.running &&
+        !_disposed) {
       // 측정 시작(START)이 0ms라 구간 종료 시각이 곧 코스 총 소요시간
       final ms =
           run?.inputs
@@ -895,10 +966,12 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
               .lastOrNull
               ?.elapsedMs ??
           0;
-      unawaited(
-        audioGuide.announce(courseArrivalVoice(ms, tracker.route.length)),
+      await audioGuide.announce(
+        courseArrivalVoice(ms, tracker.route.length),
+        priority: RunVoicePriority.arrival,
       );
     }
+    audioGuide.endCourseTransition();
   }
 
   /// AUD-06: 기기에서 잰 코스 총 소요시간(정지 포함)과 그 시간 ÷ 코스 거리 페이스. 결과 화면은 서버 판정 값을 쓴다
@@ -1436,11 +1509,32 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     unawaited(sync(manual: true));
   }
 
+  /// Public receiver for a future MY/F4 publisher; owner-scoped partial updates.
+  Future<bool> receiveVoiceSettings(RunVoiceSettingsChanged event) {
+    final next = _voiceSettingsUpdates.then((_) async {
+      final authenticatedOwner = await owner();
+      if (_disposed ||
+          currentOwner != event.owner ||
+          authenticatedOwner != event.owner) {
+        return false;
+      }
+      await saveVoiceSettings(event.applyTo(voiceSettings));
+      return !_disposed && currentOwner == event.owner;
+    });
+    _voiceSettingsUpdates = next.then<void>((_) {}, onError: (Object _) {});
+    return next;
+  }
+
   Future<void> saveVoiceSettings(RunVoiceSettings settings) async {
     final member = currentOwner;
-    if (member == null) throw StateError('로그인 후 설정해 주세요.');
+    if (member == null ||
+        await owner() != member ||
+        currentOwner != member ||
+        _disposed) {
+      throw StateError('로그인 후 설정해 주세요.');
+    }
     await store.saveVoiceSettings(member, settings);
-    if (currentOwner != member || _disposed) return;
+    if (await owner() != member || currentOwner != member || _disposed) return;
     voiceSettings = settings;
     await audioGuide.configure(
       settings,
@@ -1515,7 +1609,12 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
           _disposed) {
         return;
       }
-      await audioGuide.update(current.id, current.phase, metrics);
+      await audioGuide.update(
+        current.id,
+        current.phase,
+        metrics,
+        ghostTimeDeltaMs: _ghostTimeDeltaForVoice,
+      );
     } on Object catch (e) {
       if (e is RunStorageFailure) {
         await _operationError(e);
@@ -1579,6 +1678,8 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     ++_generation;
     _timer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
+    await _voiceSettingsSubscription?.cancel();
+    await _voiceSettingsUpdates;
     await _stopWatchingStart();
     await _stopLocation();
     await _extrasJob;
