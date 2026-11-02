@@ -15,7 +15,7 @@
 | 스키마 | 모듈 | 테이블 |
 | --- | --- | --- |
 | `member` | member | `members`, `agreements`, `refresh_tokens`, `region_event_backfill` |
-| `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `gps_course_sources`, `gps_source_completion_receipts`, `course_stats`, `course_daily_stats`, `course_completions`, `course_active_runners`, `processed_events` |
+| `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `gps_course_sources`, `gps_source_completion_receipts`, `course_stats`, `course_daily_stats`, `course_completions`, `course_active_runners`, `course_bookmarks`, `processed_events` |
 | `ranking` | ranking | `course_ranking_entries`, `distance_run_records`, `course_status_copies`, `member_visibility_copies`, `member_region_history`, `withdrawn_members` |
 | `review` | review | `reviews`, `review_photos`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
 | `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members`, `course_attempts`, `course_runner_counts`, `ghost_starts`, `ghost_start_playbacks`, `ghost_results`, `free_ghost_starts`, `free_ghost_results`, `ghost_comparisons`, `gps_source_links`, `gps_course_status_copies` |
@@ -52,6 +52,8 @@ erDiagram
     courses ||--o{ course_daily_stats : "course_id"
     courses ||--o{ course_completions : "course_id"
     courses ||--o| course_active_runners : "course_id"
+    courses ||--o{ course_bookmarks : "course_id"
+    members ||..o{ course_bookmarks : "member_id"
     members ||..o{ courses : "creator_id"
     members ||..o{ daily_registration_counts : "member_id"
     members ||..o{ registration_requests : "member_id"
@@ -177,6 +179,11 @@ erDiagram
         uuid course_id PK "FK"
         integer active_count
         bigint source_version "run version"
+    }
+    course_bookmarks {
+        uuid member_id PK "member ID"
+        uuid course_id PK "FK"
+        timestamptz created_at "저장 시각"
     }
     course_ranking_entries {
         uuid run_record_id PK "run 기록 ID"
@@ -550,6 +557,19 @@ erDiagram
 - 상태 복사형(개발 정책 5.4)이라 `processed_events`에 적지 않는다. `INSERT … ON CONFLICT DO UPDATE … WHERE source_version < EXCLUDED.source_version`으로 더 큰 version만 반영해, 늦게 온 예전 값은 버린다.
 - 행이 없는 코스는 0명이다. 실시간순(현재 러너 수 내림차순, 같으면 인기순)과 카드 · B1의 `지금 N명 달리는 중`, 홈 카드의 1분 갱신(`GET /api/v1/courses/active-runners`, 공통 7 · HCR-05)에 쓴다.
 - 공개 중(`ACTIVE`)인 코스만 바뀐다(`course_stats`처럼 코스 행을 잠가 본다). 코스가 `DELETED`가 되면 같은 트랜잭션에서 행을 지운다.
+
+#### `course.course_bookmarks` — 저장한 코스
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `member_id` | `UUID` | | PK. member 모듈의 회원 ID(FK 없음) |
+| `course_id` | `UUID` | | PK, FK → `courses.id` |
+| `created_at` | `TIMESTAMPTZ` | | 저장한 시각(최근 저장순). 이미 저장한 코스를 다시 저장해도 바꾸지 않는다 |
+
+- 회원이 코스를 저장하면 한 줄이다(B1-09 · G5 · C8, 정책 문서 4.1 `저장한 코스 API`). PK `(member_id, course_id)`라 같은 코스를 두 번 저장해도 한 줄이다(`ON CONFLICT DO NOTHING`). 저장 수 제한은 없다.
+- 새로 저장할 때만 코스가 공개 중(`ACTIVE`)이고 만료 시각 전인지 본다. 코스 행을 공유 잠금(`FOR SHARE`)해 확인과 저장 사이에 삭제로 바뀌지 않는다. 이미 저장한 코스는 비공개(삭제 예정)가 돼도 남는다.
+- 코스가 `DELETED`가 되면(`CourseStatusChangedEvent`) 그 코스의 줄을, 회원이 탈퇴하면(`MemberWithdrawnEvent`) 그 회원의 줄을 지운다. 지우기만 해서 다시 받아도 결과가 같아 `processed_events`에 적지 않는다.
+- `course_bookmarks_course_id_idx`: `(course_id)`. 코스 삭제 때 그 코스의 줄을 찾는다. 내 목록 · 합계는 PK 앞쪽(`member_id`)으로 찾는다.
 
 #### `course.processed_events` — 이벤트 처리 기록
 
