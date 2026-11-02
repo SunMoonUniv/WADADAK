@@ -280,6 +280,14 @@ class RankingApiClient {
   Future<RankingPage> regionWeeklyEntries(String? regionCode, String cursor) async => _page(await callApi(() => _dio
       .get('$_base/distance/regions/weekly/entries', queryParameters: {'regionCode': ?regionCode, 'cursor': cursor})));
 
+  /// 회원별 이번 주 거리(m, G7 `주 32 km`). 전체 랭킹 `이번 주`와 같은 값이고 기록이 없으면 0이다.
+  /// 내 정보 비공개 회원은 null(나는 비공개여도 받는다). 한 번에 100명까지.
+  Future<Map<String, int?>> weekDistances(List<String> memberIds) async {
+    final data = await callApi(
+        () => _dio.get('$_base/distance/members', queryParameters: {'memberIds': memberIds.join(',')})) as List;
+    return {for (final row in data.cast<Map>()) row['memberId'] as String: row['thisWeekDistanceMeters'] as int?};
+  }
+
   /// 코스 랭킹 요약(B9 · G3 상단, 고스트 대결 버튼).
   Future<CourseRankingSummary> courseSummary(String courseId, RankingPeriod period) async =>
       CourseRankingSummary.fromJson(await callApi(() =>

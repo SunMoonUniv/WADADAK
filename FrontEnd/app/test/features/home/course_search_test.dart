@@ -18,16 +18,20 @@ import 'package:wadadak/features/home/course_filter_screen.dart';
 import 'package:wadadak/features/home/course_list_sheet.dart';
 import 'package:wadadak/features/home/course_search_screen.dart';
 import 'package:wadadak/features/home/my_location.dart';
+import 'package:wadadak/features/my/my_screen.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
 import 'package:wadadak/main.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../../fakes.dart';
 
-/// G1 코스 검색(SEA-01~03 · SEA-06 · G1-01~05)과 G6 지역 검색(SEA-04 · SEA-07 · G6-01~02), 정책 문서 제4부 4.1 G1 · G6.
+/// G1 코스 검색(SEA-01~03 · SEA-06 · G1-01~05), G6 지역 검색(SEA-04 · SEA-07 · G6-01~02)과
+/// G7 러너 검색(SEA-05 · G7-01~04), 정책 문서 제4부 4.1 G1 · G6 · G7.
 void main() {
   late FakeCourseApi courses;
   late FakeMyLocation location;
+  late FakeMemberApi members;
+  late FakeCourseRankingApi rankings;
 
   const route = [GeoPoint(37.5666, 126.9784), GeoPoint(37.5700, 126.9800)];
   final night = testCourse(
@@ -77,14 +81,14 @@ void main() {
     addTearDown(tester.view.reset);
     await tester.pumpWidget(ProviderScope(
       overrides: [
-        memberApiClientProvider.overrideWithValue(FakeMemberApi()),
+        memberApiClientProvider.overrideWithValue(members),
         tokenStorageProvider.overrideWithValue(MemoryTokenStorage(testTokens)),
         socialLoginProvider.overrideWithValue(FakeSocialLogin()),
         runPermissionsProvider.overrideWithValue(FakeRunPermissions()),
         mapEngineProvider.overrideWithValue(MapEngine.dev),
         courseApiClientProvider.overrideWithValue(courses),
         reviewApiClientProvider.overrideWithValue(FakeCourseReviewApi()),
-        rankingApiClientProvider.overrideWithValue(FakeCourseRankingApi()),
+        rankingApiClientProvider.overrideWithValue(rankings),
         myLocationProvider.overrideWithValue(location),
       ],
       child: const WadadakApp(),
@@ -117,6 +121,22 @@ void main() {
   Finder bottomTab(String label) => find.descendant(of: find.byType(WdBottomNav), matching: find.text(label));
   Finder searchTab(String label) => find.descendant(of: find.byType(WdTabBar), matching: find.text(label));
 
+  /// G7 러너. memberId는 `member-닉네임`이다.
+  SearchedRunner runner(String nickname, {String region = '영등포구', String experience = 'YEAR_1', bool mine = false}) =>
+      SearchedRunner.fromJson({
+        'memberId': 'member-$nickname',
+        'nickname': nickname,
+        'profileImageUrl': null,
+        'region': {'code': '1156000000', 'name': region, 'fullName': '서울특별시 $region'},
+        'runningExperience': experience,
+        'mine': mine,
+      });
+
+  /// 보이는 러너 줄의 (닉네임, `지역 · 러닝 경력`, `주 n km`).
+  List<(String, String, String)> runnerRows(WidgetTester tester) => [
+        for (final row in tester.widgetList<WdRankRow>(find.byType(WdRankRow))) (row.data.name, row.data.meta, row.data.value),
+      ];
+
   setUp(() {
     courses = FakeCourseApi()
       ..searchable = [night, bridge, hill]
@@ -134,6 +154,8 @@ void main() {
         ),
       };
     location = FakeMyLocation(location: here);
+    members = FakeMemberApi()..runners = [runner('한강러버')];
+    rankings = FakeCourseRankingApi();
   });
 
   testWidgets('the home search bar opens G1 with an empty input, the tabs and the bottom tabs', (tester) async {
@@ -203,8 +225,8 @@ void main() {
     expect(find.textContaining('코스 검색 결과'), findsNothing);
   });
 
-  testWidgets('the region tab lists where the query has courses, and the runner tab is not ready yet (G1-02 · SEA-04)',
-      (tester) async {
+  testWidgets('the region tab lists where the query has courses, and the runner tab finds runners with the same query '
+      '(G1-02 · SEA-04 · G7-01)', (tester) async {
     courses.searchedRegions = regions;
     await openSearch(tester);
     await search(tester, '한강');
@@ -225,15 +247,19 @@ void main() {
     expect(find.text('›'), findsNWidgets(3));
 
     await tap(tester, searchTab('러너'));
-    expect(find.text('러너 검색은 준비 중이에요'), findsOneWidget);
+    expect(members.runnerSearches, [('한강', null)]);
+    expect(runnerRows(tester).single.$1, '한강러버');
     expect(tester.widget<TextField>(input()).controller!.text, '한강');
 
     await tap(tester, searchTab('코스'));
     expect(cards(tester), ['한강 야경 5K', '한강 다리 왕복 8K']);
     await tap(tester, searchTab('지역'));
     expect(find.text('영등포구'), findsOneWidget);
+    await tap(tester, searchTab('러너'));
+    expect(runnerRows(tester).single.$1, '한강러버');
     expect(courses.searchRequests, hasLength(1), reason: '탭을 바꿔도 같은 검색어는 다시 받지 않는다');
     expect(courses.searchRegionRequests, hasLength(1));
+    expect(members.runnerSearches, hasLength(1));
   });
 
   testWidgets('each tab loads the last searched query when it shows up (G6-01)', (tester) async {
@@ -746,5 +772,162 @@ void main() {
     await tap(tester, bottomTab('홈'));
     expect(find.byType(CourseSearchScreen), findsNothing);
     expect(find.byType(CourseListSheet), findsOneWidget);
+  });
+
+  group('runner tab (G7)', () {
+    /// 러너 탭에서 [query]를 검색한다.
+    Future<void> searchRunners(WidgetTester tester, String query) async {
+      await openSearch(tester);
+      await tap(tester, searchTab('러너'));
+      await search(tester, query);
+    }
+
+    testWidgets('finds runners by nickname with the Figma G7 rows (SEA-05 · G7-03 · G7-04)', (tester) async {
+      members.runners = [
+        runner('한강러버'),
+        runner('정릉러너', region: '성북구'),
+        runner('한강새벽', region: '광진구', experience: 'MONTHS_6'),
+        runner('한강러닝맨', region: '마포구', experience: 'BEGINNER'),
+      ];
+      rankings.weekMeters = {'member-한강러버': 32400, 'member-한강새벽': 24000, 'member-한강러닝맨': null};
+      await openSearch(tester);
+      await tap(tester, searchTab('러너'));
+      expect(members.runnerSearches, isEmpty, reason: '검색 전에는 받지 않는다');
+
+      await search(tester, ' 한 ');
+      expect(members.runnerSearches, isEmpty, reason: '공백을 빼고 2글자 미만');
+      expect(find.text(CourseSearchScreen.tooShortMessage), findsOneWidget);
+
+      await search(tester, ' 한강 ');
+      expect(members.runnerSearches, [('한강', null)]);
+      expect(courses.searchRequests, isEmpty, reason: '보이는 탭만 받는다');
+      expect(find.text('‘한강’ 러너 검색 결과 · 3명'), findsOneWidget);
+      expect(find.text('인기순'), findsOneWidget);
+      expect(find.text('인기순 ▾'), findsNothing, reason: '인기순 하나라 고르는 메뉴가 없다');
+      // 서버가 준 인기순 그대로, 줄마다 `지역 · 러닝 경력`과 이번 주 거리. 내 정보 비공개 러너는 거리를 비운다.
+      expect(runnerRows(tester), [
+        ('한강러버', '영등포구 · 러닝 1년+', '주 32.4 km'),
+        ('한강새벽', '광진구 · 러닝 6개월+', '주 24.0 km'),
+        ('한강러닝맨', '마포구 · 러닝 입문', ''),
+      ]);
+      expect(find.text('주 32.4 km'), findsOneWidget);
+      expect(rankings.weekDistanceRequests.single, ['member-한강러버', 'member-한강새벽', 'member-한강러닝맨']);
+
+      await tap(tester, find.bySemanticsLabel('검색어 지우기'));
+      expect(find.byType(WdRankRow), findsNothing);
+      expect(find.textContaining('러너 검색 결과'), findsNothing);
+    });
+
+    testWidgets('my row goes to MY, and other runners cannot be pressed until I3 (G7-02)', (tester) async {
+      final semantics = tester.ensureSemantics();
+      members.runners = [runner('한강러버'), runner('한강새벽', mine: true)];
+      rankings.weekMeters = {'member-한강러버': 32400, 'member-한강새벽': 5000};
+      await searchRunners(tester, '한강');
+
+      // 화면 낭독기는 한 줄을 한 번에 읽고, 내 줄만 누를 수 있다.
+      expect(tester.getSemantics(find.bySemanticsLabel('한강새벽 영등포구 · 러닝 1년+ 주 5.0 km')),
+          isSemantics(isButton: true, hasTapAction: true));
+      expect(tester.getSemantics(find.bySemanticsLabel('한강러버 영등포구 · 러닝 1년+ 주 32.4 km')),
+          isSemantics(isButton: false, hasTapAction: false));
+
+      await tap(tester, find.text('한강러버'));
+      expect(find.byType(CourseSearchScreen), findsOneWidget);
+
+      await tap(tester, find.text('한강새벽'));
+      expect(find.byType(MyScreen), findsOneWidget);
+      expect(find.byType(CourseSearchScreen), findsNothing);
+      semantics.dispose();
+    });
+
+    testWidgets('loads the next page of runners with their week distances while scrolling (QST-01)', (tester) async {
+      members
+        ..runners = [for (var i = 1; i <= 13; i++) runner('한강러너$i')]
+        ..runnerPageSize = 10;
+      await searchRunners(tester, '한강');
+      expect(find.text('‘한강’ 러너 검색 결과 · 13명'), findsOneWidget);
+      expect(rankings.weekDistanceRequests.single, hasLength(10));
+
+      await tester.drag(find.byType(ListView), const Offset(0, -600));
+      await tester.pumpAndSettle();
+      expect(members.runnerSearches.last, ('한강', '10'));
+      expect(rankings.weekDistanceRequests.last, ['member-한강러너11', 'member-한강러너12', 'member-한강러너13']);
+      await tester.drag(find.byType(ListView), const Offset(0, -600));
+      await tester.pumpAndSettle();
+      expect(find.text('한강러너13'), findsOneWidget);
+      expect(members.runnerSearches, hasLength(2), reason: '마지막 쪽 뒤로는 받지 않는다');
+    });
+
+    testWidgets('does not load the next page while the same query loads again, so no runner is skipped',
+        (tester) async {
+      members
+        ..runners = [for (var i = 1; i <= 45; i++) runner('한강러너$i')]
+        ..runnerPageSize = 10;
+      await searchRunners(tester, '한강');
+
+      /// 응답을 잡아 둔 채 아래로 내린다. 받는 동안에는 다음 쪽을 더 받지 않아 한 쪽씩 받는다.
+      /// 끝까지 내리면 목록 길이가 처음 어림보다 짧게 잡혀 위치를 되돌리는 스크롤이 생기니, 잡아 둔 동안 그것까지 끝낸다.
+      /// 로딩 표시가 돌아 화면이 멈추지 않으니 [WidgetTester.pumpAndSettle]은 쓰지 않는다.
+      Future<void> dragHolding(double dy) async {
+        members.runnersGate ??= Completer();
+        await tester.drag(find.byType(ListView), Offset(0, dy));
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+      }
+
+      Future<void> release() async {
+        members.runnersGate!.complete();
+        members.runnersGate = null;
+        await tester.pumpAndSettle();
+      }
+
+      await dragHolding(-600);
+      await release();
+      expect(members.runnerSearches, [('한강', null), ('한강', '10')], reason: '20명까지 받았고 아직 더 있다');
+
+      // 같은 검색어로 다시 검색하고, 응답이 오기 전에 끝까지 내린다.
+      members.runnersGate = Completer();
+      await search(tester, '한강');
+      await dragHolding(-2000);
+      expect(members.runnerSearches, hasLength(3), reason: '다시 받는 동안 21번째부터는 받지 않는다');
+
+      // 새 첫 쪽이 오면 목록이 줄어 위치가 되돌아가며 다음 쪽을 받을 수 있다. 한 번 더 내려 꼭 받게 한다.
+      await release();
+      await tester.drag(find.byType(ListView), const Offset(0, -600));
+      await tester.pumpAndSettle();
+      expect(members.runnerSearches[3], ('한강', '10'), reason: '새 첫 쪽 뒤로는 11번째부터 이어 받는다');
+    });
+
+    testWidgets('a failed runner search can be retried, a failed refresh keeps the runners, '
+        'and no runners shows its own message (QST-02 · QST-03)', (tester) async {
+      members.searchRunnersError = const ApiException('COMMON-500', '서버 오류', status: 500);
+      await searchRunners(tester, '한강');
+      expect(find.text(CourseSearchScreen.loadFailedMessage), findsOneWidget);
+
+      members.searchRunnersError = null;
+      await tap(tester, find.widgetWithText(WdButton, '다시 시도'));
+      expect(members.runnerSearches, [('한강', null), ('한강', null)]);
+      expect(runnerRows(tester).single.$1, '한강러버');
+
+      // 같은 검색어를 다시 검색하다 실패하면 전 결과를 두고 알린다.
+      members.searchRunnersError = const ApiException('COMMON-500', '서버 오류', status: 500);
+      await search(tester, '한강');
+      expect(runnerRows(tester).single.$1, '한강러버');
+      expect(find.text('서버 오류'), findsOneWidget);
+
+      members.searchRunnersError = null;
+      await search(tester, '없는러너');
+      expect(find.text('‘없는러너’ 검색 결과가 없어요'), findsOneWidget);
+      expect(find.text(CourseSearchScreen.noRunnersMessage), findsOneWidget);
+      expect(find.byType(WdButton), findsNothing);
+      expect(rankings.weekDistanceRequests, hasLength(1), reason: '러너가 없으면 거리를 받지 않는다');
+    });
+
+    testWidgets('shows the runners without distances when the week distances fail', (tester) async {
+      rankings.weekDistancesError = const ApiException('COMMON-500', '서버 오류', status: 500);
+      await searchRunners(tester, '한강');
+
+      expect(runnerRows(tester), [('한강러버', '영등포구 · 러닝 1년+', '')]);
+      expect(find.text('서버 오류'), findsNothing);
+    });
   });
 }
