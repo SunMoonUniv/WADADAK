@@ -21,6 +21,7 @@ import 'features/my/profile_edit_screen.dart';
 import 'features/my/run_history_screen.dart';
 import 'features/my/run_record_screen.dart';
 import 'features/my/settings_screen.dart';
+import 'features/my/terms_screen.dart';
 import 'features/onboarding/consent_screen.dart';
 import 'features/onboarding/login_screen.dart';
 import 'features/onboarding/permission_screen.dart';
@@ -37,6 +38,8 @@ import 'features/run/presentation/own_ghost_selection_screen.dart';
 import 'features/run/presentation/free_ghost_selection_screen.dart';
 import 'features/run/presentation/public_ghost_entry_screen.dart';
 import 'features/run/presentation/run_settings_screen.dart';
+import 'features/terms/terms_doc_screen.dart';
+import 'features/terms/terms_docs.dart';
 import 'main_shell.dart';
 import 'routes.dart';
 
@@ -57,9 +60,11 @@ final routerProvider = Provider<GoRouter>((ref) {
     redirect: (context, state) {
       final at = state.matchedLocation;
       final onboarding = at.startsWith('/onboarding/');
+      // 가입 동의 화면에서 약관 본문을 연다
+      final terms = at.startsWith('/terms/');
       return switch (auth.value.value) {
         null || SignedOut() => at == Routes.login ? null : Routes.login,
-        SignupRequired() => onboarding ? null : Routes.consent,
+        SignupRequired() => onboarding || terms ? null : Routes.consent,
         SignedIn() => at == Routes.login || onboarding ? Routes.home : null,
       };
     },
@@ -128,6 +133,11 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: Routes.myCourseEdit, builder: (_, state) => CourseEditScreen(course: state.extra! as MyCourseItem)),
       GoRoute(path: Routes.myProfileEdit, builder: (_, _) => const ProfileEditScreen()),
       GoRoute(path: Routes.mySettings, builder: (_, _) => const SettingsScreen()),
+      GoRoute(path: Routes.myTerms, builder: (_, _) => const TermsScreen()),
+      GoRoute(
+        path: '/terms/:doc',
+        builder: (_, state) => TermsDocScreen(doc: TermsDoc.values.byName(state.pathParameters['doc']!)),
+      ),
       // 하단 탭을 덮는 화면
       GoRoute(path: Routes.rankingRegion, builder: (_, _) => const RegionRankingScreen()),
       GoRoute(path: Routes.rankingRegionSelect, builder: (_, _) => const RegionSelectScreen()),

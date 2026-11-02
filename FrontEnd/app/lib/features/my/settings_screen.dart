@@ -44,6 +44,12 @@ class DevicePermissions {
 
 final devicePermissionsProvider = Provider<DevicePermissions>((_) => const DevicePermissions());
 
+/// 앱 버전(F4 · F7). 못 읽으면 화면에 `—`로 둔다.
+final appVersionProvider = FutureProvider<String>(
+  (_) async => (await PackageInfo.fromPlatform()).version,
+  retry: (_, _) => null,
+);
+
 /// F4 · 설정(Figma `F4 · 설정`). E3 오른쪽 위 설정 아이콘에서 연다.
 ///
 /// - 계정: 닉네임(누르면 F6) · 연결된 소셜 계정. 이메일 줄은 두지 않는다(2026-10-20 결정).
@@ -51,7 +57,8 @@ final devicePermissionsProvider = Provider<DevicePermissions>((_) => const Devic
 /// - 오디오 안내는 달리기의 음성 안내 설정이다(기기에 저장). 누르면 F5 시트.
 /// - 공개 여부 두 스위치는 바꾸는 즉시 서버에 저장한다(`PUT /members/me/settings`). 실패하면 되돌린다.
 /// - 정책이 없는 자동 일시정지 · 화면 항상 켜기 · 기본 고스트 · 구간 격차 음성 안내와
-///   약관(F7) · 회원 탈퇴는 보이기만 하고 누르면 준비 중 안내. 거리 단위는 km 고정이라 뺐다.
+///   회원 탈퇴는 보이기만 하고 누르면 준비 중 안내. 거리 단위는 km 고정이라 뺐다.
+/// - 약관 및 개인정보 처리방침은 F7 약관 및 정책을 연다.
 /// - 내 코스 만료 임박은 알림 기능(F14)이 없어 꺼진 채 잠근다.
 /// (2026-10-30 사용자 결정)
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -64,7 +71,6 @@ class SettingsScreen extends ConsumerStatefulWidget {
 class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   late final AppLifecycleListener _lifecycle;
   Map<AppPermission, bool>? _permissions;
-  String? _version;
 
   /// 서버에 저장한(또는 저장 중인) 공개 여부. 없으면 내 정보 값을 쓴다.
   bool? _infoPublic, _searchable;
@@ -76,16 +82,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     // 휴대폰 설정에서 권한을 바꾸고 돌아오면 다시 읽는다
     _lifecycle = AppLifecycleListener(onResume: _loadPermissions);
     _loadPermissions();
-    _loadVersion();
-  }
-
-  Future<void> _loadVersion() async {
-    try {
-      final info = await PackageInfo.fromPlatform();
-      if (mounted) setState(() => _version = info.version);
-    } catch (_) {
-      // 못 읽으면 `—`로 둔다
-    }
   }
 
   @override
@@ -158,53 +154,53 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         // 칸 제목마다 위로 16 띄우므로 맨 위는 Figma 20에서 그만큼 뺀다
         padding: const EdgeInsets.fromLTRB(WdSpace.s24, WdSpace.s4, WdSpace.s24, WdSpace.s24),
         children: [
-          const _Heading('계정'),
-          _Card([
-            _Row('닉네임', value: me?.nickname ?? '—', onTap: () => context.push(Routes.myProfileEdit)),
-            _Row('연결된 소셜 계정', value: me?.socialProvider?.label ?? '—'),
+          const SettingsHeading('계정'),
+          SettingsCard([
+            SettingsRow('닉네임', value: me?.nickname ?? '—', onTap: () => context.push(Routes.myProfileEdit)),
+            SettingsRow('연결된 소셜 계정', value: me?.socialProvider?.label ?? '—'),
           ]),
-          const _Heading('권한'),
-          _Card([
+          const SettingsHeading('권한'),
+          SettingsCard([
             for (final p in AppPermission.values)
-              _Row(p.label, value: granted(p), onTap: () => ref.read(devicePermissionsProvider).openSettings()),
+              SettingsRow(p.label, value: granted(p), onTap: () => ref.read(devicePermissionsProvider).openSettings()),
           ]),
-          const _Heading('러닝'),
-          _Card([
+          const SettingsHeading('러닝'),
+          SettingsCard([
             ListenableBuilder(
               listenable: runs,
               builder: (context, _) =>
-                  _Row('오디오 안내', value: _voiceLabel(runs.voiceSettings), onTap: () => _editVoice(runs)),
+                  SettingsRow('오디오 안내', value: _voiceLabel(runs.voiceSettings), onTap: () => _editVoice(runs)),
             ),
-            _Row('자동 일시정지', toggle: false, onToggle: (_) => _soon()),
-            _Row('화면 항상 켜기', toggle: false, onToggle: (_) => _soon()),
+            SettingsRow('자동 일시정지', toggle: false, onToggle: (_) => _soon()),
+            SettingsRow('화면 항상 켜기', toggle: false, onToggle: (_) => _soon()),
           ]),
-          const _Heading('고스트 · 대결'),
-          _Card([
-            _Row('기본 고스트', onTap: _soon),
-            _Row('구간 격차 음성 안내', toggle: false, onToggle: (_) => _soon()),
+          const SettingsHeading('고스트 · 대결'),
+          SettingsCard([
+            SettingsRow('기본 고스트', onTap: _soon),
+            SettingsRow('구간 격차 음성 안내', toggle: false, onToggle: (_) => _soon()),
           ]),
-          const _Heading('알림'),
-          const _Card([_Row('내 코스 만료 임박', toggle: false, help: '알림 기능이 준비되면 켤 수 있어요.')]),
-          const _Heading('공개 여부'),
-          _Card([
-            _Row(
+          const SettingsHeading('알림'),
+          const SettingsCard([SettingsRow('내 코스 만료 임박', toggle: false, help: '알림 기능이 준비되면 켤 수 있어요.')]),
+          const SettingsHeading('공개 여부'),
+          SettingsCard([
+            SettingsRow(
               '내 정보 공개',
               toggle: infoPublic ?? false,
               onToggle: canSave ? (on) => _saveSettings(me, infoPublic: on) : null,
               help: '켜면 랭킹에 내 기록이 보이고, 고스트로도 쓰일 수 있어요.\n실시간 위치는 공개되지 않아요.',
             ),
-            _Row(
+            SettingsRow(
               '프로필 검색 허용',
               toggle: searchable ?? false,
               onToggle: canSave ? (on) => _saveSettings(me, searchable: on) : null,
               help: '끄면 러너 검색 결과에 내 프로필이 나오지 않아요.',
             ),
           ]),
-          const _Heading('정보'),
-          _Card([
-            _Row('버전', value: _version ?? '—'),
-            _Row('약관 및 개인정보 처리방침', onTap: _soon),
-            _Row('회원 탈퇴', onTap: _soon),
+          const SettingsHeading('정보'),
+          SettingsCard([
+            SettingsRow('버전', value: ref.watch(appVersionProvider).value ?? '—'),
+            SettingsRow('약관 및 개인정보 처리방침', onTap: () => context.push(Routes.myTerms)),
+            SettingsRow('회원 탈퇴', onTap: _soon),
           ]),
           const SizedBox(height: WdSpace.s16),
           Text(
@@ -226,8 +222,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 }
 
 /// 칸 제목(16 Bold · muted). 위 칸과 16 띄운다.
-class _Heading extends StatelessWidget {
-  const _Heading(this.title);
+class SettingsHeading extends StatelessWidget {
+  const SettingsHeading(this.title, {super.key});
 
   final String title;
 
@@ -239,8 +235,8 @@ class _Heading extends StatelessWidget {
 }
 
 /// soft 카드 안의 줄들. 줄 사이에 구분선.
-class _Card extends StatelessWidget {
-  const _Card(this.rows);
+class SettingsCard extends StatelessWidget {
+  const SettingsCard(this.rows, {super.key});
 
   final List<Widget> rows;
 
@@ -261,8 +257,8 @@ class _Card extends StatelessWidget {
 
 /// 설정 한 줄(Figma List row, 높이 58): 이름 + 값 + `›`, 또는 이름 + 스위치.
 /// [toggle]이 있는데 [onToggle]이 없으면 흐린 스위치로 잠근다. [help]는 줄 아래 작은 안내.
-class _Row extends StatelessWidget {
-  const _Row(this.label, {this.value, this.onTap, this.toggle, this.onToggle, this.help});
+class SettingsRow extends StatelessWidget {
+  const SettingsRow(this.label, {super.key, this.value, this.onTap, this.toggle, this.onToggle, this.help});
 
   final String label;
   final String? value;

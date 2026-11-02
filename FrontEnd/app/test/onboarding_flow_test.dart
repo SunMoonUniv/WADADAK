@@ -13,6 +13,7 @@ import 'package:wadadak/features/home/home_screen.dart';
 import 'package:wadadak/features/my/settings_screen.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
 import 'package:wadadak/main.dart';
+import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import 'fakes.dart';
 
@@ -240,6 +241,25 @@ void main() {
     await tap(tester, find.bySemanticsLabel('뒤로 가기'));
 
     expect(find.text('카카오 로그인'), findsOneWidget);
+  });
+
+  testWidgets('보기 on the consent screen opens the terms and comes back with the checks kept', (tester) async {
+    await startApp(tester);
+    await tap(tester, find.text('카카오 로그인'));
+    await tap(tester, find.text('[필수] 서비스 이용약관'));
+
+    Finder rowOf(String label) => find.ancestor(of: find.text(label), matching: find.byType(WdConsentRow));
+    // 만 14세 줄에는 본문이 없다
+    expect(find.descendant(of: rowOf('[필수] 만 14세 이상입니다'), matching: find.text('보기 ›')), findsNothing);
+    expect(find.text('보기 ›'), findsNWidgets(4));
+
+    await tap(tester, find.descendant(of: rowOf('[필수] 위치기반서비스 이용약관'), matching: find.text('보기 ›')));
+    expect(find.text('위치기반서비스 이용약관'), findsOneWidget);
+    expect(find.text('제3조 위치정보 수집'), findsOneWidget);
+
+    await tap(tester, find.bySemanticsLabel('뒤로 가기'));
+    expect(find.text('서비스 이용 동의'), findsOneWidget);
+    expect(tester.widget<WdConsentRow>(rowOf('[필수] 서비스 이용약관')).checked, isTrue);
   });
 
   testWidgets('a member logs in straight to home and can log out', (tester) async {

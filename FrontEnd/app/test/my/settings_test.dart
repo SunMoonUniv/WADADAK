@@ -101,6 +101,7 @@ void main() {
         GoRoute(path: Routes.my, builder: (_, _) => const Scaffold(body: Text('E3'))),
         GoRoute(path: Routes.mySettings, builder: (_, _) => const SettingsScreen()),
         GoRoute(path: Routes.myProfileEdit, builder: (_, _) => const Text('F6')),
+        GoRoute(path: Routes.myTerms, builder: (_, _) => const Text('F7')),
       ],
     );
     addTearDown(router.dispose);
@@ -253,7 +254,7 @@ void main() {
   testWidgets('features without a policy or server say they are coming', (tester) async {
     await openSettings(tester);
 
-    for (final label in ['기본 고스트', '약관 및 개인정보 처리방침', '회원 탈퇴']) {
+    for (final label in ['기본 고스트', '회원 탈퇴']) {
       await tap(tester, find.text(label));
       expect(find.text('준비 중인 기능이에요.'), findsOneWidget, reason: label);
       ScaffoldMessenger.of(tester.element(find.text(label))).removeCurrentSnackBar();
@@ -266,6 +267,14 @@ void main() {
 
     // 알림 기능이 없어 만료 임박 스위치는 잠겨 있다
     expect(toggle(tester, '내 코스 만료 임박').onChanged, isNull);
+  });
+
+  testWidgets('the terms row opens F7', (tester) async {
+    await openSettings(tester);
+
+    await tap(tester, find.text('약관 및 개인정보 처리방침'));
+
+    expect(find.text('F7'), findsOneWidget);
   });
 
   testWidgets('logout is at the bottom of F4', (tester) async {
