@@ -29,7 +29,7 @@ import 'registered_course_focus.dart';
 /// ✕는 다른 하단 탭에 갔다 온 것처럼 홈을 처음 연 모습으로 되돌린다.
 /// 구 단위 배지를 누르면 그 구의 필터에 맞는 코스가 모두 보이게 지도를 맞추고, 그 자리에서는 축척과 상관없이 코스 이름표로 보인다(A4-06).
 /// 확대·축소 버튼은 두지 않는다(정책 MAP-02, 제스처로 한다).
-/// 다른 하단 탭으로 떠나면 탐색 상태를 처음으로 되돌려 둔다(FIL-08, [HomeTabExits]).
+/// 다른 하단 탭으로 떠나면 탐색 상태를 처음으로 되돌려 두고, 돌아오면 지도를 지금 위치로 다시 맞춘다(FIL-08, [HomeTabExits]).
 /// 지도 카메라 자리(중심 · 줌).
 typedef _Spot = ({GeoPoint center, double zoom});
 
@@ -96,6 +96,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   GeoPoint? _pendingMine;
 
   /// 홈을 열 때 · 다른 하단 탭에서 돌아올 때 카메라 중심을 둔 자리. 카메라가 여기 그대로면 그 사이 지도를 움직이지 않았다.
+  /// D4에서 등록한 새 코스 출발점으로 옮기면 null이다.
   GeoPoint? _placedCenter = _startCenter;
 
   /// 가장 최근 조회 번호. 늦게 도착한 예전 응답은 버린다.
@@ -103,6 +104,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 
   /// 다른 하단 탭으로 떠난 횟수([HomeTabExits]). 바뀌면 탐색 상태를 처음으로 되돌린다.
   int? _exits;
+
+  /// 다른 하단 탭에서 돌아온 횟수([HomeTabExits]). 바뀌면 지도를 지금 위치로 다시 맞춘다.
+  int? _returns;
 
   /// 목록 시트를 새로 만든 횟수. 바꾸면 목록이 맨 위 첫 쪽부터 다시 시작한다.
   var _listGeneration = 0;
@@ -157,10 +161,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   void initState() {
     super.initState();
     // 홈 밖(달리기 결과의 D4)에서 코스를 등록하면 지도를 새 코스 출발점으로 옮긴다(B4-07과 같다). 줌은 그대로 둔다.
-    // 그때 홈은 D4에 가려져 있어 바로 옮긴다. 다른 하단 탭에서 왔으면 홈은 이미 처음 모습이다(FIL-08).
+    // 그때 홈은 D4에 가려져 있어 바로 옮긴다. 다른 하단 탭에서 왔으면 홈은 이미 처음 모습이고, 돌아와 지금 위치로 다시 맞출 때(FIL-08)
+    // 이 자리를 덮지 않게 옮긴 것으로 둔다. 가려진 지도는 옮긴 카메라를 늦게 알리거나 알리지 않을 수 있어 카메라로는 알 수 없다.
     ref.listenManual(registeredCourseFocusProvider, (_, startPoint) {
       if (startPoint == null) return;
       ref.read(registeredCourseFocusProvider.notifier).done();
+      _placedCenter = null;
       _map?.moveTo(startPoint, animate: false);
     });
     _open();
@@ -169,13 +175,20 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final exits = HomeTabExits.of(context);
+    final (:exits, :returns) = HomeTabExits.of(context);
     if (_exits != null && exits != _exits) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _startOver();
       });
     }
+    // 떠날 때 둔 지도 자리는 그때 위치라, 그 사이 달려서 다른 곳에 왔을 수 있어 돌아오면 지금 위치로 다시 맞춘다.
+    if (_returns != null && returns != _returns) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _open();
+      });
+    }
     _exits = exits;
+    _returns = returns;
   }
 
   @override
@@ -221,15 +234,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _goToStart(animate: animate);
   }
 
-  /// 홈을 연다. 지도는 서울시청에서 열고, 위치 권한이 있으면 기기에 남은 마지막 위치로 바로 맞춘다(보통 지도가 준비되기 전에 와서
-  /// 서울시청은 보이지 않는다). 이어서 지금 위치를 받는다([_refineStart]). 권한은 묻지 않는다.
+  /// 홈을 연다(앱을 열 때 · 다른 하단 탭에서 돌아올 때). 위치 권한이 있으면 지도를 기기에 남은 마지막 위치로 바로 맞추고, 이어서 지금 위치를
+  /// 받는다([_refineStart]). 권한은 묻지 않는다. 앱을 열 때 지도는 서울시청에서 열지만 보통 지도가 준비되기 전에 위치가 와서 보이지 않는다.
+  /// 그 사이 지도를 움직였거나 코스를 골랐으면 옮기지 않는다([_moveToMine]).
   Future<void> _open() async {
     final last = await ref.read(myLocationProvider).lastIfAllowed();
     if (last != null && mounted) _moveToMine(last, animate: false);
     await _refineStart();
   }
 
-  /// 홈을 여는 자리로 지도를 옮긴다(다른 하단 탭에서 돌아올 때 · 홈 검색창의 ✕). 홈을 열 때와 같다.
+  /// 홈을 여는 자리로 지도를 옮긴다(다른 하단 탭으로 떠날 때 · 홈 검색창의 ✕). 홈을 열 때와 같다.
   Future<void> _goToStart({bool animate = false}) async {
     final last = await ref.read(myLocationProvider).lastIfAllowed();
     if (!mounted) return;
