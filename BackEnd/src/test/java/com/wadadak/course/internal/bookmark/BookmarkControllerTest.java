@@ -146,6 +146,8 @@ class BookmarkControllerTest {
         bookmark(me, deleted, "2026-11-01T09:00:00Z");
         bookmark(UUID.randomUUID(), older, "2026-11-01T09:00:00Z");
         stats(newer, 13, 3);
+        runners(newer, 4);
+        runners(hidden, 2); // 비공개 전에 받은 값이 남아 있다
         given(memberApi.getProfiles(any())).willReturn(List.of(new MemberProfile(creator, "러너_하늘", null, false)));
 
         MvcTestResult result = get(me, BASE);
@@ -160,9 +162,18 @@ class BookmarkControllerTest {
         assertThat(result).bodyJson().extractingPath("$.data.content[0].distanceMeters").isEqualTo(1112);
         assertThat(result).bodyJson().extractingPath("$.data.content[0].route").asArray().hasSize(2);
         assertThat(result).bodyJson().extractingPath("$.data.content[0].deleteAt").isNull();
+        // C8이 코스 목록 카드로 읽는 값
+        assertThat(result).bodyJson().extractingPath("$.data.content[0].tags").asArray().containsExactly("FLAT");
+        assertThat(result).bodyJson().extractingPath("$.data.content[0].courseType").isEqualTo("CUSTOM");
+        assertThat(result).bodyJson().extractingPath("$.data.content[0].reviewCount").isEqualTo(3);
+        assertThat(result).bodyJson().extractingPath("$.data.content[0].activeRunners").isEqualTo(4);
         assertThat(result).bodyJson().extractingPath("$.data.content[1].averageRating").isNull();
+        assertThat(result).bodyJson().extractingPath("$.data.content[1].reviewCount").isEqualTo(0);
+        assertThat(result).bodyJson().extractingPath("$.data.content[1].activeRunners").isEqualTo(0);
         assertThat(result).bodyJson().extractingPath("$.data.content[2].status").isEqualTo("HIDDEN");
         assertThat(result).bodyJson().extractingPath("$.data.content[2].deleteAt").isNotNull();
+        assertThat(result).bodyJson().extractingPath("$.data.content[2].activeRunners").as("삭제 예정 코스는 러너 수 0")
+                .isEqualTo(0);
         assertThat(result).bodyJson().extractingPath("$.data.nextCursor").isNull();
     }
 
@@ -327,6 +338,12 @@ class BookmarkControllerTest {
         Timestamp at = Timestamp.from(Instant.parse(savedAt));
         jdbc.update("INSERT INTO course.course_bookmarks (member_id, course_id, created_at, updated_at) VALUES (?, ?, ?, ?)",
                 memberId, courseId, at, at);
+    }
+
+    private void runners(UUID courseId, int count) {
+        jdbc.update("""
+                        INSERT INTO course.course_active_runners (course_id, active_count, source_version, created_at, updated_at)
+                        VALUES (?, ?, 1, now(), now())""", courseId, count);
     }
 
     private void stats(UUID courseId, int ratingSum, int reviews) {

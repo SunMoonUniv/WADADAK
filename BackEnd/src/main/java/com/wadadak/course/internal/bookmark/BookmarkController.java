@@ -58,6 +58,8 @@ class BookmarkController {
             description = "공개 중인 코스와 삭제 예정 코스(만료됐거나 등록자가 삭제해 비공개, 24시간 뒤 삭제)를 준다. 삭제가 끝난 코스는 빠진다. "
                     + "sort: RECENT 최근 저장순(처음) · NEAREST 가까운순(lat · lng 필요) · RATING 평점순(평점 → 리뷰 수, 리뷰 없으면 맨 뒤) · "
                     + "EXPIRING 만료 임박(만료가 가까운 순). 같으면 최근 저장순이고, 어느 정렬이든 삭제 예정 코스는 공개 중인 코스 뒤에 최근 저장순으로 온다. "
+                    + "카드는 코스 목록 카드의 값(tags · courseType · reviewCount · activeRunners까지)을 모두 갖고 등록자 · 상태 · 삭제 예정 시각을 더한다. "
+                    + "삭제 예정 코스의 activeRunners는 0이다. "
                     + "creatorNickname은 등록자 닉네임(탈퇴했으면 `탈퇴한 사용자`, 받지 못하면 null)이다. 다음 쪽은 nextCursor를 cursor로 보낸다. "
                     + "잘못된 커서 · 정렬, 가까운순인데 위치가 없음, 위도 · 경도 중 하나만 보냄 COMMON-001.")
     @GetMapping
