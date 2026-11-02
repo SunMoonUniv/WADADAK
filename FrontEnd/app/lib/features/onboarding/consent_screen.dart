@@ -6,6 +6,7 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 import '../../core/api/member_api_client.dart';
 import '../../core/auth/auth_controller.dart';
 import '../../routes.dart';
+import '../terms/terms_docs.dart';
 
 /// 동의 화면에서 고른 값. 가입을 마치거나 그만두면 버린다.
 final agreementsProvider = NotifierProvider.autoDispose<AgreementsNotifier, Agreements>(AgreementsNotifier.new);
@@ -27,13 +28,28 @@ class ConsentScreen extends ConsumerWidget {
     void set(Agreements value) => ref.read(agreementsProvider.notifier).set(value);
     void cancel() => ref.read(authControllerProvider.notifier).cancelSignup();
 
-    // 약관 본문(F7)이 준비되면 각 줄의 onView로 "보기 ›"를 연결한다.
-    final rows = <(String, bool, Agreements Function(bool))>[
-      ('[필수] 만 14세 이상입니다', agreements.over14, (v) => agreements.copyWith(over14: v)),
-      ('[필수] 서비스 이용약관', agreements.serviceTerms, (v) => agreements.copyWith(serviceTerms: v)),
-      ('[필수] 개인정보 수집 및 이용', agreements.privacyPolicy, (v) => agreements.copyWith(privacyPolicy: v)),
-      ('[필수] 위치기반서비스 이용약관', agreements.locationTerms, (v) => agreements.copyWith(locationTerms: v)),
-      ('[필수] 프로필 정보 (닉네임 · 프로필 사진)', agreements.profileInfo, (v) => agreements.copyWith(profileInfo: v)),
+    // 약관 줄의 `보기 ›`는 F7과 같은 본문을 연다. 프로필 정보는 개인정보 처리방침에 들어 있다
+    final rows = <(String, bool, Agreements Function(bool), TermsDoc?)>[
+      ('[필수] 만 14세 이상입니다', agreements.over14, (v) => agreements.copyWith(over14: v), null),
+      ('[필수] 서비스 이용약관', agreements.serviceTerms, (v) => agreements.copyWith(serviceTerms: v), TermsDoc.service),
+      (
+        '[필수] 개인정보 수집 및 이용',
+        agreements.privacyPolicy,
+        (v) => agreements.copyWith(privacyPolicy: v),
+        TermsDoc.privacy,
+      ),
+      (
+        '[필수] 위치기반서비스 이용약관',
+        agreements.locationTerms,
+        (v) => agreements.copyWith(locationTerms: v),
+        TermsDoc.location,
+      ),
+      (
+        '[필수] 프로필 정보 (닉네임 · 프로필 사진)',
+        agreements.profileInfo,
+        (v) => agreements.copyWith(profileInfo: v),
+        TermsDoc.privacy,
+      ),
     ];
 
     return PopScope(
@@ -57,8 +73,13 @@ class ConsentScreen extends ConsumerWidget {
               spacing: WdSpace.s8,
               children: [
                 WdConsentRow(label: '전체 동의하기', checked: agreements.all, onChanged: (v) => set(Agreements.all(v))),
-                for (final (label, checked, toggle) in rows)
-                  WdConsentRow(label: label, checked: checked, onChanged: (v) => set(toggle(v))),
+                for (final (label, checked, toggle, doc) in rows)
+                  WdConsentRow(
+                    label: label,
+                    checked: checked,
+                    onChanged: (v) => set(toggle(v)),
+                    onView: doc == null ? null : () => context.push(Routes.terms(doc.name)),
+                  ),
               ],
             ),
             if (!agreements.all) ...[

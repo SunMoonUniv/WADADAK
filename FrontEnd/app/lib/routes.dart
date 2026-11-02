@@ -75,6 +75,12 @@ abstract final class Routes {
   static const mySettings = '/my/settings';
   static const runSettings = '/my/run-settings';
 
+  /// F7 약관 및 정책. F4 `약관 및 개인정보 처리방침`에서 연다. 하단 탭을 덮는다.
+  static const myTerms = '/my/terms';
+
+  /// 약관 본문 하나(`TermsDoc.name`). F7과 가입 동의 화면의 `보기 ›`가 연다. 로그인 전에도 열린다.
+  static String terms(String doc) => '/terms/$doc';
+
   /// I5 · 지역 주간 전체 순위
   static const rankingRegion = '/ranking/region';
 
