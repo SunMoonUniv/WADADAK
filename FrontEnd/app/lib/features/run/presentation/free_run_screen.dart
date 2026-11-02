@@ -133,6 +133,7 @@ class FreeRunScreen extends ConsumerWidget {
                         courseNotice: controller.courseNotice,
                         ghostOpponent: controller.ghostOpponent,
                         ghostPosition: comparison?.position,
+                        ghostComparison: comparison,
                         ghostGap: comparison == null
                             ? null
                             : '거리 ${comparison.distance} · 시간 ${comparison.time}',

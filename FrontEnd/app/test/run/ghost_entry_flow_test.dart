@@ -341,7 +341,7 @@ void main() {
         runs.run!.inputs.where((p) => p.kind == RunKind.start),
         hasLength(1),
       );
-      expect(find.text('내 기록 03:50'), findsOneWidget);
+      expect(find.text('고스트 대결 · 내 기록 03:50'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );

@@ -15,6 +15,7 @@ enum WdIcons {
   arrowRight('arrow_right'), // A DS / Icon / arrow · 20
   check('check'), // Icon / check · 20 (green)
   chevronRight('chevron_right'), // Icon / chevron · 18 (grayLight)
+  ghostMapPin('ghost_map_pin'), // Figma 2405:1147 · 32 × 40
   ghost('ghost'), // Icon / ghost · 18
   user('user'), // Icon / user · 20 (muted)
   home('home'), // Icon / home · 21
@@ -48,15 +49,40 @@ class WdIcon extends StatelessWidget {
   final String? semanticLabel;
 
   @override
-  Widget build(BuildContext context) => SvgPicture.asset(
-        'assets/icons/${icon.file}.svg',
-        package: wdPackage,
-        width: size,
-        height: size,
-        semanticsLabel: semanticLabel,
-        excludeFromSemantics: semanticLabel == null,
-        colorFilter: color == null ? null : ColorFilter.mode(color!, BlendMode.srcIn),
+  Widget build(BuildContext context) {
+    if (icon == WdIcons.ghostMapPin) {
+      return SizedBox(
+        width: 32,
+        height: 40,
+        child: Stack(
+          children: [
+            SvgPicture.asset(
+              'assets/icons/ghost_pin_background.svg',
+              package: wdPackage,
+            ),
+            Positioned(
+              left: 4,
+              top: 4,
+              child: SvgPicture.asset(
+                'assets/icons/chasing_ghost_24.svg',
+                package: wdPackage,
+              ),
+            ),
+          ],
+        ),
       );
+    }
+    return SvgPicture.asset(
+      'assets/icons/${icon.file}.svg',
+      package: wdPackage,
+      width: size,
+      height: size,
+      semanticsLabel: semanticLabel,
+      excludeFromSemantics: semanticLabel == null,
+      colorFilter:
+          color == null ? null : ColorFilter.mode(color!, BlendMode.srcIn),
+    );
+  }
 }
 
 /// 와다닥 로고 (Logo / Primary): 스피드 고스트 심볼 + 워드마크.

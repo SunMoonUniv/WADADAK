@@ -4,11 +4,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../domain/course_run.dart';
+import '../domain/ghost_live_comparison.dart';
 import '../domain/own_ghost.dart';
 import '../domain/free_run_session.dart';
 import '../domain/run_models.dart';
 import '../domain/free_ghost.dart';
-import '../../../core/map/geo_point.dart';
 import '../domain/run_result_stats.dart';
 import '../domain/recording_models.dart' as recording;
 import 'run_controller.dart';
@@ -69,7 +69,7 @@ class FreeRunController extends ChangeNotifier {
   String? get ghostOpponent => onGhost
       ? '${_recording!.run!.ghost!.intent.publicPeriod == null ? '내 기록' : '공개 기록'} ${formatRunTime(Duration(seconds: _recording!.run!.ghost!.intent.sourceSeconds))}'
       : null;
-  ({GeoPoint? position, String distance, String time})? get ghostComparison {
+  GhostLiveComparison? get ghostComparison {
     final engine = _recording,
         current = _recording?.run,
         tracker = _recording?.courseTracker;
@@ -96,11 +96,11 @@ class FreeRunController extends ChangeNotifier {
         (current.phase == recording.RunPhase.paused ||
             engine.recorder.elapsedMs - last.input.elapsedMs <= 10000);
     if (!fresh || s == null) {
-      return (position: position, distance: '—', time: '—');
+      return GhostLiveComparison(
+        position: position,
+        ghostProgress: ghostS == null ? null : ghostS / tracker.route.length,
+      );
     }
-    final distance = ghostS == null
-        ? '—'
-        : '${(s - ghostS).abs().round()}m ${s >= ghostS ? '앞서요' : '뒤에 있어요'}';
     double? first;
     for (var i = 1; i < tracker.points.length; i++) {
       final a = tracker.points[i - 1], b = tracker.points[i];
@@ -126,12 +126,11 @@ class FreeRunController extends ChangeNotifier {
     final delta = first == null || opponent == null || reversing
         ? null
         : first - opponent;
-    return (
+    return GhostLiveComparison(
       position: position,
-      distance: distance,
-      time: delta == null
-          ? '—'
-          : '${(delta.abs() / 1000).round()}초 ${delta <= 0 ? '앞서요' : '뒤에 있어요'}',
+      distanceM: ghostS == null ? null : s - ghostS,
+      timeDeltaMs: delta,
+      ghostProgress: ghostS == null ? null : ghostS / tracker.route.length,
     );
   }
 
