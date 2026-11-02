@@ -107,7 +107,10 @@ final routerProvider = Provider<GoRouter>((ref) {
               builder: (_, _) => const MyScreen(),
               routes: [
                 GoRoute(path: 'records', builder: (_, _) => const MyRunHistoryScreen()),
-                GoRoute(path: 'courses', builder: (_, _) => const MyCoursesScreen()),
+                GoRoute(
+                  path: 'courses',
+                  builder: (_, state) => MyCoursesScreen(saved: state.uri.queryParameters['tab'] == 'saved'),
+                ),
               ],
             ),
           ]),

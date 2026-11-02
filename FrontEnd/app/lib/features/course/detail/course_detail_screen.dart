@@ -7,7 +7,9 @@ import '../../../core/api/api_client.dart';
 import '../../../core/api/course_api_client.dart';
 import '../../../core/api/ranking_api_client.dart';
 import '../../../core/api/review_api_client.dart';
+import '../../../core/error_message.dart';
 import '../../../core/map/map_view.dart';
+import '../../my/bookmark_state.dart';
 import '../../../routes.dart';
 import '../../ranking/runner_profile_screen.dart';
 import '../../review/review_state.dart';
@@ -26,7 +28,7 @@ import 'course_run_bar.dart';
 ///
 /// - 이 코스로 달리기는 코스 러닝(C6)으로, 고스트 대결은 선택 기간의 공개 상대 검증 후 기존 대결 준비로 간다.
 /// - 평균 페이스 · 현재 러너는 코스 API(코스 통계 F11)에서 받는다. 고도 프로필은 보류해서 GPS 코스에도 아직 없다(정책 문서 4.1 B1 범위).
-/// - 공유(B1-08)는 공유 링크를 정할 때까지 두지 않는다.
+/// - 공유(B1-08)는 공유 링크를 정할 때까지 두지 않는다. 앱 바 오른쪽은 저장 북마크(B1-09)다.
 /// - 비공개 · 삭제된 코스는 열지 않는다(B1-04).
 class CourseDetailScreen extends ConsumerStatefulWidget {
   const CourseDetailScreen({super.key, required this.courseId, this.now = DateTime.now});
@@ -141,6 +143,19 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
   Future<void> _refreshRanking() =>
       ref.refresh(courseRankingProvider(_rankingKey).future).then((_) {}, onError: (_) {});
 
+  /// B1-09 북마크. 누르면 바로 바꿔 보이고, 저장 · 해제에 실패하면 되돌린 뒤 알린다.
+  /// 저장 여부를 받기 전이나 받지 못하면 저장 안 함으로 보이고, 누르면 저장한다.
+  WdAppBarAction _bookmarkAction() {
+    final saved = ref.watch(courseBookmarkProvider(widget.courseId)).value ?? false;
+    return WdAppBarAction.icon(
+      saved ? WdIcons.bookmarkFilled : WdIcons.bookmark,
+      semanticLabel: saved ? '저장 해제' : '코스 저장',
+      onTap: () => ref.read(courseBookmarkProvider(widget.courseId).notifier).toggle().catchError((Object e) {
+        if (mounted) showError(context, e);
+      }),
+    );
+  }
+
   /// B9-05 전체 순위 보기 → G3. 지금 고른 기간으로 연다.
   void _seeAllRankings(CourseDetail course) {
     context.push(Routes.courseRankings(course.courseId),
@@ -207,6 +222,7 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
           null => null,
         },
         onBack: () => context.pop(),
+        action: _bookmarkAction(),
       ),
       body: RefreshIndicator(
         color: WdColors.ink,

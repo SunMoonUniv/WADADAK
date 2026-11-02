@@ -237,6 +237,30 @@ void main() {
     expect(text('한강 야경 5K'), findsOneWidget);
   });
 
+  testWidgets('saves and unsaves the course with the bookmark, and turns back when saving fails (B1-09)', (tester) async {
+    await openDetail(tester);
+    WdAppBarAction bookmark() => tester.widget<WdAppBar>(find.byType(WdAppBar)).action!;
+
+    expect((bookmark().icon, bookmark().semanticLabel), (WdIcons.bookmark, '코스 저장'));
+    bookmark().onTap!();
+    await tester.pumpAndSettle();
+    expect(courses.savedBookmarks, ['c1']);
+    expect((bookmark().icon, bookmark().semanticLabel), (WdIcons.bookmarkFilled, '저장 해제'));
+
+    bookmark().onTap!();
+    await tester.pumpAndSettle();
+    expect(courses.removedBookmarks, [
+      ['c1'],
+    ]);
+    expect(bookmark().icon, WdIcons.bookmark);
+
+    courses.saveBookmarkError = const ApiException(CourseApiClient.courseNotAvailableCode, '비공개되었거나 삭제된 코스입니다.');
+    bookmark().onTap!();
+    await tester.pumpAndSettle();
+    expect(bookmark().icon, WdIcons.bookmark, reason: '실패하면 되돌린다');
+    expect(find.byType(SnackBar), findsOneWidget);
+  });
+
   testWidgets('picks this course and no longer shows the obsolete ghost placeholder', (tester) async {
     await openDetail(tester);
 

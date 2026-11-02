@@ -64,6 +64,9 @@ abstract final class Routes {
   /// G4 내 코스(등록한 코스 · 저장한 코스). E3 `내가 등록한 코스`에서 연다. MY 탭 안에 쌓아 하단 탭이 보인다(Figma G4).
   static const myCourses = '/my/courses';
 
+  /// G4 화면을 저장한 코스 탭(G5)으로 연다. E3 `저장한 코스`에서 연다.
+  static const mySavedCourses = '/my/courses?tab=saved';
+
   /// B7 코스 수정. G4 카드 [수정]에서 연다. 하단 탭을 덮는다. extra: `MyCourseItem`.
   /// 저장하거나 지우면 바뀐 `MyCourseItem`을 돌려주며 닫힌다.
   static const myCourseEdit = '/my/course-edit';

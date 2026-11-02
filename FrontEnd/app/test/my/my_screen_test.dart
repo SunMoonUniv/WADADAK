@@ -99,7 +99,10 @@ void main() {
       routes: [
         GoRoute(path: Routes.my, builder: (_, _) => const MyScreen()),
         GoRoute(path: Routes.myRecords, builder: (_, _) => const Text('I1')),
-        GoRoute(path: Routes.myCourses, builder: (_, _) => const Text('G4')),
+        GoRoute(
+          path: Routes.myCourses,
+          builder: (_, state) => Text(state.uri.queryParameters['tab'] == 'saved' ? 'G5' : 'G4'),
+        ),
         GoRoute(path: Routes.myProfileEdit, builder: (_, _) => const Text('F6')),
         GoRoute(path: Routes.mySettings, builder: (_, _) => const Text('F4')),
       ],
@@ -183,12 +186,18 @@ void main() {
     expect(stat('러닝', '—'), findsOneWidget);
   });
 
-  testWidgets('my run records opens I1, unbuilt screens say they are coming', (tester) async {
+  testWidgets('saved courses show the public saved count and open the saved tab (G5)', (tester) async {
+    courses.bookmarkRows = [testBookmark('a'), testBookmark('b'), testBookmark('c', pendingDelete: true)];
     await openMy(tester);
 
+    expect(find.text('2개'), findsOneWidget, reason: '삭제 예정 코스는 세지 않는다');
     await tester.tap(find.text('저장한 코스'));
-    await tester.pump();
-    expect(find.text('저장한 코스 화면은 준비 중이에요.'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(find.text('G5'), findsOneWidget);
+  });
+
+  testWidgets('my run records opens I1', (tester) async {
+    await openMy(tester);
 
     await tester.tap(find.text('내 러닝 기록'));
     await tester.pumpAndSettle();

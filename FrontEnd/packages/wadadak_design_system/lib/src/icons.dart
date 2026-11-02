@@ -8,6 +8,8 @@ import 'tokens.dart';
 enum WdIcons {
   back('back'), // Icon / back · 22
   share('share'), // Icon / share · 22
+  bookmark('bookmark'), // Icon / bookmark · 22 (저장 전)
+  bookmarkFilled('bookmark_filled'), // Icon / bookmark · filled · 22 (저장됨)
   sliders('sliders'), // Icon / settings(슬라이더) · 20
   settings('settings'), // Icon / settings(톱니) · 20
   pause('pause'), // Icon / pause · 23

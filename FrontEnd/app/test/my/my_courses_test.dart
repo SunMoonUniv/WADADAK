@@ -187,13 +187,6 @@ void main() {
       expect(find.text('성북천 벚꽃길 3K'), findsOneWidget);
     });
 
-    testWidgets('saved courses tab is coming soon', (tester) async {
-      await openG4(tester);
-
-      await tester.tap(find.text('저장한 코스'));
-      await tester.pumpAndSettle();
-      expect(find.text('준비 중이에요'), findsOneWidget);
-    });
 
     testWidgets('make opens B3 and a card opens its detail', (tester) async {
       await openG4(tester);
