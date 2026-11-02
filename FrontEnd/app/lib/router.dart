@@ -26,6 +26,7 @@ import 'features/onboarding/profile_setup_screen.dart';
 import 'features/ranking/ranking_screen.dart';
 import 'features/ranking/region_ranking_screen.dart';
 import 'features/ranking/region_select_screen.dart';
+import 'features/ranking/runner_profile_screen.dart';
 import 'features/review/review_form_screen.dart';
 import 'features/review/review_list_screen.dart';
 import 'features/run/presentation/course_select_screen.dart';
@@ -125,6 +126,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: Routes.rankingRegion, builder: (_, _) => const RegionRankingScreen()),
       GoRoute(path: Routes.rankingRegionSelect, builder: (_, _) => const RegionSelectScreen()),
       GoRoute(
+        path: '/runner/:memberId',
+        builder: (_, state) => RunnerProfileScreen(
+          memberId: state.pathParameters['memberId']!,
+          course: state.extra as RunnerProfileCourse?,
+        ),
+      ),
+      GoRoute(
         path: '/course/:courseId/reviews',
         builder: (_, state) =>
             ReviewListScreen(courseId: state.pathParameters['courseId']!, courseName: state.extra as String? ?? ''),
@@ -136,6 +144,7 @@ final routerProvider = Provider<GoRouter>((ref) {
           return CourseRankingsScreen(
             courseId: state.pathParameters['courseId']!,
             courseName: args.courseName,
+            route: args.route,
             period: args.period,
           );
         },

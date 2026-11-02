@@ -7,6 +7,7 @@ import '../../core/api/ranking_api_client.dart';
 import '../../core/error_message.dart';
 import '../../routes.dart';
 import 'ranking_state.dart';
+import 'runner_profile_screen.dart';
 
 /// 천 단위 쉼표. 예: 12,480 · 1,284.0
 String grouped(num value, [int fractionDigits = 0]) =>
@@ -32,6 +33,11 @@ String myRankLabel(MyDistanceRanking me) => switch (me.status) {
       MyRankStatus.ranked => '${me.rank}',
       MyRankStatus.private => '비공개 중',
       _ => '-',
+    };
+
+/// 순위 줄을 누르면 그 러너의 I3을 연다(E1 · I2 · I5). 내 줄은 누를 수 없다.
+ValueChanged<int> openRunnerAt(BuildContext context, List<DistanceRankingEntry> entries) => (index) {
+      if (!entries[index].mine) openRunnerProfile(context, entries[index].memberId);
     };
 
 /// 지역 주간 순위 한 줄. [region]을 주면 메타에 지역 이름을 붙인다(I5).

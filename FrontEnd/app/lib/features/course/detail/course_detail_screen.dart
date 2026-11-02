@@ -9,6 +9,7 @@ import '../../../core/api/ranking_api_client.dart';
 import '../../../core/api/review_api_client.dart';
 import '../../../core/map/map_view.dart';
 import '../../../routes.dart';
+import '../../ranking/runner_profile_screen.dart';
 import '../../review/review_state.dart';
 import '../../run/application/course_run_entry.dart';
 import '../../run/domain/course_run.dart';
@@ -142,7 +143,8 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
 
   /// B9-05 전체 순위 보기 → G3. 지금 고른 기간으로 연다.
   void _seeAllRankings(CourseDetail course) {
-    context.push(Routes.courseRankings(course.courseId), extra: (courseName: course.name, period: _rankingPeriod));
+    context.push(Routes.courseRankings(course.courseId),
+        extra: (courseName: course.name, route: course.route, period: _rankingPeriod));
   }
 
   @override
@@ -262,6 +264,8 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
                       onPeriod: _selectRankingPeriod,
                       onRetry: () => ref.invalidate(courseRankingProvider(_rankingKey)),
                       onSeeAll: () => _seeAllRankings(course),
+                      onRunner: (entry, period) => openRunnerProfile(context, entry.memberId,
+                          course: (courseId: course.courseId, courseName: course.name, route: course.route, period: period)),
                     ),
                   // 공개 기간은 어느 탭에서나 맨 아래에 보인다(4.1 B8).
                   WdInfoBanner(publicPeriodText(course.expiresAt, widget.now()), plain: true),

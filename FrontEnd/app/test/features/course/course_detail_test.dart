@@ -536,7 +536,7 @@ void main() {
         '4 달리는곰 4′52″/km 25:20',
         '5 한강러너 4′57″/km 25:44',
       ]);
-      expect(tester.widget<WdRankList>(find.byType(WdRankList)).onTap, isNull, reason: 'I3가 생길 때까지');
+      expect(tester.widget<WdRankList>(find.byType(WdRankList)).onTap, isNotNull, reason: '다른 러너를 누르면 I3(B9-04)');
       expect(text('전체 순위 312명 보기'), findsOneWidget);
       expect(find.textContaining('공개 기간이'), findsOneWidget, reason: '어느 탭에서나 보인다');
       expect(bottomButtons(tester), [('이 코스로 달리기', true), ('고스트 대결 ▶', true)]);

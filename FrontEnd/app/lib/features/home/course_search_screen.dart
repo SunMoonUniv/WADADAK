@@ -15,6 +15,7 @@ import '../../routes.dart';
 import '../course/course_format.dart';
 import '../course/course_list_card.dart';
 import '../ranking/ranking_widgets.dart';
+import '../ranking/runner_profile_screen.dart';
 import 'my_location.dart';
 
 /// G1 · G6 · G7 검색 결과(코스 · 지역 · 러너). 홈 검색창에서 빈 입력으로 연다(SEA-01, G6 조건이 걸려 있으면 아래처럼 그 검색어로 연다). 홈 탭 안에 쌓아 하단 탭이 보인다(Figma G1 · G6 · G7).
@@ -30,7 +31,7 @@ import 'my_location.dart';
 /// - 홈 검색창의 G6 조건(`← 한강 · 영등포구 ✕`)에서 열면 [initialQuery]를 넣은 채 지역 탭으로 열고 그 결과를 받는다.
 /// - 러너 탭은 닉네임에 검색어가 들어간 러너다(SEA-05). 인기순 하나라 정렬 메뉴가 없다(G7-04). 줄마다 `지역 · 러닝 경력`과
 ///   이번 주 거리(`주 32.4 km`)이고, 내 정보 비공개 러너는 거리를 비운다(G7-03). 내 줄을 누르면 MY로 간다.
-///   다른 러너 줄은 I3(다른 러너 프로필)가 생길 때까지 누를 수 없다(G7-02).
+///   다른 러너 줄을 누르면 I3(다른 러너 프로필)를 연다(G7-02). 돌아오면 검색어 · 결과 · 스크롤이 그대로다.
 class CourseSearchScreen extends ConsumerStatefulWidget {
   const CourseSearchScreen({super.key, this.initialQuery});
 
@@ -599,11 +600,12 @@ class _CourseSearchScreenState extends ConsumerState<CourseSearchScreen> with Si
       final meters? => '주 ${km(meters)}',
       null => '',
     };
-    // 다른 러너 줄은 I3(다른 러너 프로필)가 생기면 그리로 보낸다(G7-02).
-    final VoidCallback? onTap = runner.mine ? () => context.go(Routes.my) : null;
+    // 다른 러너는 러너 ID로 I3를 연다(G7-02). 내 줄은 I3 대신 MY로 간다.
+    final VoidCallback onTap =
+        runner.mine ? () => context.go(Routes.my) : () => openRunnerProfile(context, runner.memberId);
     return Semantics(
       container: true,
-      button: onTap != null,
+      button: true,
       label: [runner.nickname, meta, distance].where((part) => part.isNotEmpty).join(' '),
       excludeSemantics: true,
       onTap: onTap,

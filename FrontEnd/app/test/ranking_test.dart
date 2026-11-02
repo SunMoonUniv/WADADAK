@@ -8,7 +8,9 @@ import 'package:wadadak/core/api/ranking_api_client.dart';
 import 'package:wadadak/core/api/region_api_client.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/map/map_view.dart';
+import 'package:wadadak/features/ranking/runner_profile_screen.dart';
 import 'package:wadadak/main.dart';
+import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import 'fakes.dart';
 
@@ -17,6 +19,8 @@ const _asan = {'code': '4420000000', 'name': '아산시', 'fullName': '충청남
 
 Map<String, Object?> _entry(int rank, String nickname, int meters) => {
       'rank': rank,
+      'memberId': 'member-$nickname',
+      'mine': false,
       'nickname': nickname,
       'profileImageUrl': null,
       'distanceMeters': meters,
@@ -103,6 +107,7 @@ class FakeRankingApi extends Fake implements RankingApiClient {
 
 void main() {
   late FakeRankingApi api;
+  late FakeMemberApi members;
 
   Future<void> tap(WidgetTester tester, Finder finder) async {
     await tester.ensureVisible(finder);
@@ -118,7 +123,7 @@ void main() {
     await tester.pumpWidget(ProviderScope(
       overrides: [
         tokenStorageProvider.overrideWithValue(MemoryTokenStorage(testTokens)),
-        memberApiClientProvider.overrideWithValue(FakeMemberApi()),
+        memberApiClientProvider.overrideWithValue(members),
         rankingApiClientProvider.overrideWithValue(api),
         regionApiClientProvider.overrideWithValue(FakeRegionApi()),
         mapEngineProvider.overrideWithValue(MapEngine.dev),
@@ -130,7 +135,24 @@ void main() {
     await tap(tester, find.text('랭킹'));
   }
 
-  setUp(() => api = FakeRankingApi());
+  setUp(() {
+    api = FakeRankingApi();
+    members = FakeMemberApi()
+      ..runnerProfiles['member-러너_하늘'] = {'nickname': '러너_하늘', 'region': _seongbuk, 'runningExperience': 'YEAR_3'};
+  });
+
+  testWidgets('a runner on the podium or in the list opens I3 without a course record', (tester) async {
+    await openRanking(tester);
+
+    await tap(tester, find.text('러너_하늘'));
+    expect(tester.widget<WdAppBar>(find.byType(WdAppBar)).title, '러너_하늘');
+    expect(find.text('성북구 · 러닝 3년+'), findsOneWidget);
+    expect(find.text('이 코스에서의 기록'), findsNothing, reason: '코스 밖에서 열면 코스 기록이 없다');
+
+    await tap(tester, find.bySemanticsLabel('뒤로 가기'));
+    await tap(tester, find.text('러너4'));
+    expect(find.text(RunnerProfileScreen.unavailableTitle), findsOneWidget, reason: '그 러너 ID로 연다(없는 회원)');
+  });
 
   testWidgets('whole ranking shows the podium and my rank, and loads more runners at the end', (tester) async {
     await openRanking(tester);
