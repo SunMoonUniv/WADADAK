@@ -18,6 +18,8 @@ enum RankingPeriod {
 class DistanceRankingEntry {
   DistanceRankingEntry.fromJson(Map json)
       : rank = json['rank'] as int,
+        memberId = json['memberId'] as String,
+        mine = json['mine'] as bool,
         nickname = json['nickname'] as String,
         profileImageUrl = json['profileImageUrl'] as String?,
         distanceMeters = json['distanceMeters'] as int,
@@ -25,6 +27,10 @@ class DistanceRankingEntry {
         weeklyAverageMeters = json['weeklyAverageMeters'] as int;
 
   final int rank;
+  final String memberId;
+
+  /// 내 기록. 눌러도 프로필(I3)로 가지 않는다.
+  final bool mine;
   final String nickname;
   final String? profileImageUrl;
   final int distanceMeters;
@@ -196,6 +202,14 @@ class MyCourseRanking {
 
 /// 고스트 대결 준비(C1)에 넘길 공개 고스트. 요청자 본인 기록은 빠진다.
 class GhostCandidate {
+  /// I3 `이 기록과 대결하기`처럼 다른 응답의 기록으로 만든다.
+  const GhostCandidate({
+    required this.runRecordId,
+    required this.memberId,
+    required this.rank,
+    required this.courseElapsedSeconds,
+  });
+
   GhostCandidate.fromJson(Map json)
       : runRecordId = json['runRecordId'] as String,
         memberId = json['memberId'] as String,
@@ -260,6 +274,36 @@ class CourseRankingSummary {
 /// 커서로 받은 코스 순위 한 묶음(G3).
 typedef CourseRankingPage = ({List<CourseRankingEntry> entries, String? nextCursor});
 
+/// 다른 러너의 `총 거리` · `러닝`(I3). E1 누적과 같은 기준(오늘 자정 전에 등록된 기록, 자유 러닝 · 미완주 포함)이다.
+/// 내 정보 비공개 러너는 둘 다 null이다.
+class MemberDistanceTotal {
+  MemberDistanceTotal.fromJson(Map json)
+      : totalDistanceMeters = json['totalDistanceMeters'] as int?,
+        runCount = json['runCount'] as int?;
+
+  final int? totalDistanceMeters;
+  final int? runCount;
+}
+
+/// 다른 러너의 이 코스 기록(I3 `이 코스에서의 기록`). 그 기간 코스 랭킹에 보이는 대표 기록 1건이다.
+class RunnerCourseRecord {
+  RunnerCourseRecord.fromJson(Map json)
+      : runRecordId = json['runRecordId'] as String,
+        rank = json['rank'] as int,
+        courseElapsedSeconds = json['courseElapsedSeconds'] as int,
+        paceSecondsPerKm = json['paceSecondsPerKm'] as int,
+        myCourseElapsedSeconds = json['myCourseElapsedSeconds'] as int?;
+
+  /// `이 기록과 대결하기`에서 공개 고스트 재생에 넘긴다.
+  final String runRecordId;
+  final int rank;
+  final int courseElapsedSeconds;
+  final int paceSecondsPerKm;
+
+  /// 내 같은 기간 대표 기록 시간(`내 최고 기록은 27:14예요`). 없으면 null.
+  final int? myCourseElapsedSeconds;
+}
+
 /// 랭킹 API(`/api/v1/rankings`). 모두 로그인이 필요하다.
 class RankingApiClient {
   RankingApiClient(this._dio);
@@ -301,6 +345,18 @@ class RankingApiClient {
       entries: [for (final entry in data['content'] as List) CourseRankingEntry.fromJson(entry as Map)],
       nextCursor: data['nextCursor'] as String?,
     );
+  }
+
+  /// 다른 러너의 총 거리 · 러닝 수(I3).
+  Future<MemberDistanceTotal> memberDistanceTotal(String memberId) async => MemberDistanceTotal.fromJson(
+      await callApi(() => _dio.get('$_base/distance/members/${Uri.encodeComponent(memberId)}')) as Map);
+
+  /// 다른 러너의 이 코스 기록(I3). 그 러너가 그 기간 순위에 없으면(내 정보 비공개 · 기록 없음 · 숨김 · 삭제된 코스) null.
+  Future<RunnerCourseRecord?> runnerCourseRecord(String courseId, String memberId, RankingPeriod period) async {
+    final data = await callApi(() => _dio.get(
+        '$_base/courses/${Uri.encodeComponent(courseId)}/members/${Uri.encodeComponent(memberId)}',
+        queryParameters: {'period': period.apiName}));
+    return data == null ? null : RunnerCourseRecord.fromJson(data as Map);
   }
 
   Future<PublicGhostPage> publicGhostCandidates(

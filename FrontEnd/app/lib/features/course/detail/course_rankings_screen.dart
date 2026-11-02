@@ -4,7 +4,9 @@ import 'package:go_router/go_router.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../../../core/api/ranking_api_client.dart';
+import '../../../core/map/geo_point.dart';
 import '../../ranking/ranking_widgets.dart';
+import '../../ranking/runner_profile_screen.dart';
 import '../../run/application/course_run_entry.dart';
 import '../../run/domain/course_run.dart';
 import '../course_format.dart';
@@ -13,22 +15,28 @@ import 'course_ranking_tab.dart';
 import 'course_reviews_tab.dart';
 import 'course_run_bar.dart';
 
-/// G3을 여는 값. B9 `전체 순위 N명 보기`가 넘긴다.
-typedef CourseRankingsArgs = ({String courseName, RankingPeriod period});
+/// G3을 여는 값. B9 `전체 순위 N명 보기`가 넘긴다. [route]는 I3 `이 코스에서의 기록` 썸네일에 넘긴다.
+typedef CourseRankingsArgs = ({String courseName, List<GeoPoint> route, RankingPeriod period});
 
 /// G3 코스 전체 순위. 기간 칩, 코스 통계, 내 순위, 전체 순위 순서다(Figma G3).
 ///
 /// - B9에서 고른 기간으로 연다. 여기서 바꾼 기간은 B9에 넘기지 않는다.
 /// - 들어올 때 · 기간을 바꿀 때 · 당겨서 새로고침할 때 1위부터 다시 받고, 끝 가까이에서 다음 순위를 받는다(G3-04).
 ///   기간을 바꿔 받는 동안에는 보이던 순위를 그대로 둔다(B9와 같다).
-/// - 러너 줄은 I3(다른 러너 프로필)가 생길 때까지 누를 수 없어 Figma의 `러너를 탭하면 프로필 ›`도 두지 않는다.
-///   내 줄은 늘 누를 수 없다(G3-03).
+/// - 다른 러너 줄을 누르면 러너 ID · 코스 · 보이는 순위의 기간으로 I3을 연다. 내 줄은 누를 수 없다(G3-03).
 /// - 이 코스로 달리기는 그 코스를 골라 달리기 탭의 코스 러닝(C6)으로 간다. 고스트 대결(C1)은 그 화면이 생길 때까지 누르면 준비 중이라고 알린다.
 class CourseRankingsScreen extends ConsumerStatefulWidget {
-  const CourseRankingsScreen({super.key, required this.courseId, required this.courseName, required this.period});
+  const CourseRankingsScreen({
+    super.key,
+    required this.courseId,
+    required this.courseName,
+    required this.route,
+    required this.period,
+  });
 
   final String courseId;
   final String courseName;
+  final List<GeoPoint> route;
   final RankingPeriod period;
 
   @override
@@ -40,6 +48,12 @@ class _CourseRankingsScreenState extends ConsumerState<CourseRankingsScreen> {
 
   /// 마지막으로 보인 순위와 그 기간.
   (RankingPeriod, CourseRankingFeed)? _shown;
+
+  void _openRunner(CourseRankingEntry entry, RankingPeriod period) {
+    if (entry.mine) return;
+    openRunnerProfile(context, entry.memberId,
+        course: (courseId: widget.courseId, courseName: widget.courseName, route: widget.route, period: period));
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -76,11 +90,17 @@ class _CourseRankingsScreenState extends ConsumerState<CourseRankingsScreen> {
                 CourseRankingStats(value.summary),
                 CourseMyRankCard(value.summary.me, period: shownPeriod),
                 if (feed.hasError) CourseRefreshFailed(CourseRankingTab.staleMessage, onRetry: retry),
-                WdSectionHeading('전체 순위 ${formatCount(value.summary.participantCount)}명'),
+                WdSectionHeading(
+                  '전체 순위 ${formatCount(value.summary.participantCount)}명',
+                  actionLabel: value.entries.isEmpty ? null : '러너를 탭하면 프로필 ›',
+                ),
                 if (value.entries.isEmpty)
                   CourseRankingNoRunner(shownPeriod)
                 else
-                  WdRankList(ranks: [for (final entry in value.entries) courseRank(entry, withDate: true)]),
+                  WdRankList(
+                    ranks: [for (final entry in value.entries) courseRank(entry, withDate: true)],
+                    onTap: (index) => _openRunner(value.entries[index], shownPeriod),
+                  ),
               ],
           },
         ],

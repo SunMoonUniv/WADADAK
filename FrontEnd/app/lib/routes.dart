@@ -80,4 +80,7 @@ abstract final class Routes {
 
   /// I6 · 지역 선택
   static const rankingRegionSelect = '/ranking/region/select';
+
+  /// I3 다른 러너 프로필. 하단 탭을 덮는다. extra: 코스 화면(B9 · G3)에서 열면 `RunnerProfileCourse`, 아니면 없다(E1 · I2 · I5).
+  static String runnerProfile(String memberId) => '/runner/${Uri.encodeComponent(memberId)}';
 }

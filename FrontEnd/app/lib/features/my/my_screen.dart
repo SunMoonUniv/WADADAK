@@ -66,7 +66,7 @@ class _MyScreenState extends ConsumerState<MyScreen> with AllRunHistory {
                 Row(
                   spacing: WdSpace.s8,
                   children: [
-                    _StatTile('총 거리', distance == null ? '—' : _km(distance)),
+                    _StatTile('총 거리', distance == null ? '—' : statKm(distance)),
                     _StatTile('러닝', count),
                     _StatTile('등록 코스', courseCount),
                   ],
@@ -88,12 +88,12 @@ class _MyScreenState extends ConsumerState<MyScreen> with AllRunHistory {
       ],
     ),
   );
+}
 
-  /// 100km부터는 정수(Figma `128 km`), 그 아래는 I1처럼 소수 둘째 자리까지.
-  static String _km(double meters) {
-    final km = meters / 1000;
-    return '${km >= 100 ? km.floor() : km.toStringAsFixed(2)} km';
-  }
+/// 통계 칸의 총 거리(E3 · I3). 100km부터는 정수(Figma `128 km`), 그 아래는 I1처럼 소수 둘째 자리까지.
+String statKm(num meters) {
+  final km = meters / 1000;
+  return '${km >= 100 ? km.floor() : km.toStringAsFixed(2)} km';
 }
 
 /// 사진 · 닉네임 · `지역 · 소속 · 러닝 경력` · [편집].

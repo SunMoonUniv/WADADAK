@@ -27,7 +27,7 @@ String formatCoursePace(int secondsPerKm) => '${formatRunPace(secondsPerKm.toDou
 ///
 /// - 전체 기간에 완주 기록이 없으면 Figma B9-1 안내만 보인다. 이번 달 · 이번 주만 없으면 `참여 0명 · —`다(B9-03).
 /// - 받아 둔 랭킹이 있으면 다시 받다 실패해도 그대로 보이고 그 아래에 다시 시도를 준다.
-/// - 상위 5명은 I3(다른 러너 프로필)가 생길 때까지 누를 수 없다. 내 순위는 늘 누를 수 없다(B9-02).
+/// - 상위 5명 중 다른 러너를 누르면 [onRunner]로 I3을 연다(B9-04). 내 순위와 내 줄은 누를 수 없다(B9-02).
 class CourseRankingTab extends StatelessWidget {
   const CourseRankingTab({
     super.key,
@@ -37,6 +37,7 @@ class CourseRankingTab extends StatelessWidget {
     required this.onPeriod,
     required this.onRetry,
     required this.onSeeAll,
+    required this.onRunner,
   });
 
   static const emptyTitle = '아직 완주 기록이 없어요';
@@ -53,6 +54,9 @@ class CourseRankingTab extends StatelessWidget {
   final ValueChanged<RankingPeriod> onPeriod;
   final VoidCallback onRetry;
   final VoidCallback onSeeAll;
+
+  /// 다른 러너 줄과 그 줄이 속한(보이는) 순위의 기간.
+  final void Function(CourseRankingEntry entry, RankingPeriod period) onRunner;
 
   @override
   Widget build(BuildContext context) {
@@ -90,7 +94,12 @@ class CourseRankingTab extends StatelessWidget {
         if (value.top.isEmpty)
           CourseRankingNoRunner(shownPeriod)
         else
-          WdRankList(ranks: [for (final entry in value.top) courseRank(entry)]),
+          WdRankList(
+            ranks: [for (final entry in value.top) courseRank(entry)],
+            onTap: (index) {
+              if (!value.top[index].mine) onRunner(value.top[index], shownPeriod);
+            },
+          ),
         if (ranking.hasError) CourseRefreshFailed(staleMessage, onRetry: onRetry),
         if (value.participantCount > 0)
           WdButton(

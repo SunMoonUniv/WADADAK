@@ -20,6 +20,7 @@ import 'package:wadadak/features/home/course_search_screen.dart';
 import 'package:wadadak/features/home/my_location.dart';
 import 'package:wadadak/features/my/my_screen.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
+import 'package:wadadak/features/ranking/runner_profile_screen.dart';
 import 'package:wadadak/main.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
@@ -818,20 +819,34 @@ void main() {
       expect(find.textContaining('러너 검색 결과'), findsNothing);
     });
 
-    testWidgets('my row goes to MY, and other runners cannot be pressed until I3 (G7-02)', (tester) async {
+    testWidgets('another runner opens I3 and back keeps the results, my row goes to MY (G7-02)', (tester) async {
       final semantics = tester.ensureSemantics();
-      members.runners = [runner('한강러버'), runner('한강새벽', mine: true)];
+      members
+        ..runners = [runner('한강러버'), runner('한강새벽', mine: true)]
+        ..runnerProfiles['member-한강러버'] = {
+          'nickname': '한강러버',
+          'region': {'code': '1156000000', 'name': '영등포구', 'fullName': '서울특별시 영등포구'},
+          'runningExperience': 'YEAR_1',
+        };
       rankings.weekMeters = {'member-한강러버': 32400, 'member-한강새벽': 5000};
       await searchRunners(tester, '한강');
 
-      // 화면 낭독기는 한 줄을 한 번에 읽고, 내 줄만 누를 수 있다.
+      // 화면 낭독기는 한 줄을 한 번에 읽고, 모든 줄을 누를 수 있다.
       expect(tester.getSemantics(find.bySemanticsLabel('한강새벽 영등포구 · 러닝 1년+ 주 5.0 km')),
           isSemantics(isButton: true, hasTapAction: true));
       expect(tester.getSemantics(find.bySemanticsLabel('한강러버 영등포구 · 러닝 1년+ 주 32.4 km')),
-          isSemantics(isButton: false, hasTapAction: false));
+          isSemantics(isButton: true, hasTapAction: true));
 
       await tap(tester, find.text('한강러버'));
-      expect(find.byType(CourseSearchScreen), findsOneWidget);
+      expect(find.byType(RunnerProfileScreen), findsOneWidget);
+      expect(tester.widget<RunnerProfileScreen>(find.byType(RunnerProfileScreen)).course, isNull,
+          reason: '러너 검색은 러너 ID만 넘긴다');
+      expect(rankings.recordRequests, isEmpty);
+
+      await tap(tester, find.bySemanticsLabel('뒤로 가기'));
+      expect(find.byType(RunnerProfileScreen), findsNothing);
+      expect(find.text('‘한강’ 러너 검색 결과 · 2명'), findsOneWidget, reason: '돌아오면 결과가 그대로다');
+      expect(members.runnerSearches, [('한강', null)], reason: '다시 받지 않는다');
 
       await tap(tester, find.text('한강새벽'));
       expect(find.byType(MyScreen), findsOneWidget);
