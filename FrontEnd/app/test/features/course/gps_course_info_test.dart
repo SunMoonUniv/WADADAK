@@ -62,8 +62,8 @@ void main() {
   GoRouter router(WidgetTester tester) =>
       ProviderScope.containerOf(tester.element(find.byType(WadadakApp))).read(routerProvider);
 
-  /// 홈 → 달리기 탭 → D4.
-  Future<void> openFromRunTab(WidgetTester tester) async {
+  /// 홈 → 달리기 탭 → D4. [location]이 없으면 위치 권한이 없다.
+  Future<void> openFromRunTab(WidgetTester tester, {MyLocation? location}) async {
     tester.view
       ..physicalSize = const Size(402, 874)
       ..devicePixelRatio = 1;
@@ -76,7 +76,7 @@ void main() {
         runPermissionsProvider.overrideWithValue(FakeRunPermissions()),
         mapEngineProvider.overrideWithValue(MapEngine.dev),
         courseApiClientProvider.overrideWithValue(courses),
-        myLocationProvider.overrideWithValue(FakeMyLocation()),
+        myLocationProvider.overrideWithValue(location ?? FakeMyLocation()),
         freeRunControllerProvider.overrideWithValue(run),
         runCourseSourceApiProvider.overrideWithValue(records),
       ],
@@ -157,6 +157,19 @@ void main() {
     expect(find.widgetWithText(WdMapCourseLabel, name), findsOneWidget);
 
     // 홈 지도가 새 코스 출발점으로 옮겨져, 다음 코스 만들기도 그곳에서 열린다.
+    await tap(tester, find.text('＋ 코스 만들기'));
+    expect(tester.widget<MapView>(find.byType(MapView)).initialCenter, start);
+  });
+
+  testWidgets('keeps the home map at the new course, not at where I am now', (tester) async {
+    // 위치 권한이 있으면 다른 하단 탭에서 돌아온 홈은 지도를 지금 위치로 다시 맞추지만(FIL-08) 새 코스 출발점이 먼저다.
+    const here = GeoPoint(37.5300, 127.0400);
+    await openFromRunTab(tester, location: FakeMyLocation(location: here, allowed: true)..last = here);
+    await fillIn(tester);
+    await tap(tester, find.text('코스 등록하기'));
+    await tap(tester, find.text('확인'));
+    expect(find.byType(HomeScreen), findsOneWidget);
+
     await tap(tester, find.text('＋ 코스 만들기'));
     expect(tester.widget<MapView>(find.byType(MapView)).initialCenter, start);
   });

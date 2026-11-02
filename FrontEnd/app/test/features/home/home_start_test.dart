@@ -201,6 +201,22 @@ void main() {
     expectOpenAt(here);
   });
 
+  testWidgets('goes to where I am now when I come back from another bottom tab, as after a run', (tester) async {
+    location.allowed = true;
+    await openHome(tester);
+    await tap(tester, tab('MY'));
+
+    // 다른 탭에 있는 동안(달리기 등) 시청 남쪽 약 2.5km로 왔다.
+    const away = GeoPoint(37.5436, 126.9784);
+    location
+      ..last = away
+      ..location = away;
+    await tap(tester, tab('홈'));
+
+    expectOpenAt(away);
+    expect(find.text('2.5km 거리'), findsWidgets, reason: '카드 거리도 지금 위치로');
+  });
+
   testWidgets('keeps the home as it is when the home tab is tapped again', (tester) async {
     await openHome(tester);
     await filterDrawnCourses(tester);
