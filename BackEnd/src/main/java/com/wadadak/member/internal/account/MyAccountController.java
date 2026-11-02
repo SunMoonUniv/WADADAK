@@ -7,6 +7,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -69,6 +70,17 @@ class MyAccountController {
     @PostMapping("/photo-uploads")
     ApiResult<UploadForm> photoUpload(@AuthenticationPrincipal Jwt jwt) {
         return ApiResult.success(service.photoUploadForm(memberId(jwt)));
+    }
+
+    @Operation(summary = "회원 탈퇴 (F4 회원 탈퇴)",
+            description = "바로 탈퇴한다. 러닝 기록 · 랭킹 · 리뷰(사진 포함) · 저장한 코스 · 약관 동의 이력 · 프로필 사진이 지워지고, "
+                    + "닉네임 등 개인정보를 비운다. 등록한 코스는 남고 등록자는 `탈퇴한 사용자`로 보인다(정책 공통 4). "
+                    + "모든 기기의 리프레시 토큰이 지워진다. 앱은 기기의 토큰도 지우고 로그인 화면으로 간다. "
+                    + "같은 소셜 계정으로 다시 로그인하면 새 회원으로 가입한다. 이미 탈퇴했으면 COMMON-002.")
+    @DeleteMapping
+    ApiResult<Void> withdraw(@AuthenticationPrincipal Jwt jwt) {
+        service.withdraw(memberId(jwt));
+        return ApiResult.success();
     }
 
     private static UUID memberId(Jwt jwt) {

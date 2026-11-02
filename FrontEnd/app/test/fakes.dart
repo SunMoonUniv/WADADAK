@@ -116,6 +116,18 @@ class FakeMemberApi implements MemberApiClient {
   @override
   Future<void> logout(String refreshToken) async => logouts++;
 
+  /// [withdrawError]가 있으면 탈퇴가 실패한다. [withdrawGate]가 있으면 끝날 때까지 기다린다.
+  int withdrawals = 0;
+  ApiException? withdrawError;
+  Completer<void>? withdrawGate;
+
+  @override
+  Future<void> withdraw() async {
+    await withdrawGate?.future;
+    if (withdrawError != null) throw withdrawError!;
+    withdrawals++;
+  }
+
   /// `GET /members/me`가 돌려줄 내 정보. [meError]가 있으면 대신 실패한다.
   Map<String, Object?> profile = {
     'nickname': 'wonehgus',

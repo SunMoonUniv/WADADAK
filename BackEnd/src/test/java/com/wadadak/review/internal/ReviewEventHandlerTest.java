@@ -5,14 +5,18 @@ import com.wadadak.common.storage.ObjectStorage;
 import com.wadadak.event.course.CourseStatus;
 import com.wadadak.event.course.CourseStatusChangedEvent;
 import com.wadadak.event.course.CourseStatusReason;
+import com.wadadak.event.member.MemberWithdrawnEvent;
+import com.wadadak.event.review.ReviewDeletedEvent;
 import com.wadadak.event.run.RunRecordDeletedEvent;
 import com.wadadak.event.run.RunSessionEndedEvent;
 import com.wadadak.member.MemberApi;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Import;
+import org.springframework.context.event.EventListener;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.modulith.test.ApplicationModuleTest;
 import org.springframework.test.context.ActiveProfiles;
@@ -22,8 +26,10 @@ import org.springframework.transaction.support.TransactionTemplate;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
@@ -35,7 +41,7 @@ import static org.mockito.Mockito.verify;
  */
 @ApplicationModuleTest
 @ActiveProfiles("test")
-@Import(TestcontainersConfiguration.class)
+@Import({TestcontainersConfiguration.class, ReviewEventHandlerTest.DeletedReviews.class})
 class ReviewEventHandlerTest {
 
     @Autowired
@@ -54,6 +60,9 @@ class ReviewEventHandlerTest {
     // review만 띄워서 member 모듈이 없다. 리뷰 조회 서비스가 MemberApi를 쓰므로 가짜로 채운다
     @MockitoBean
     MemberApi memberApi;
+
+    @Autowired
+    DeletedReviews deletedReviews;
 
     @Test
     void hiddenCourseKeepsReviewsAndDeletedCourseDropsThem() {
@@ -163,6 +172,43 @@ class ReviewEventHandlerTest {
     }
 
     /** 5.2km 코스를 27분 14초에 달린 기록. 진행도 100이면 완주다. 자유 러닝은 courseId가 null이다. */
+    @Test
+    void withdrawalDeletesTheMembersReviewsWithPhotosAndRunCopiesOnce() {
+        UUID member = UUID.randomUUID();
+        UUID course = UUID.randomUUID();
+        UUID mine = review(course, member);
+        String myPhoto = photo(mine);
+        review(UUID.randomUUID(), member);
+        runRecord(course, member);
+        UUID othersReview = review(course);
+        runRecord(course);
+        MemberWithdrawnEvent withdrawn = new MemberWithdrawnEvent(UUID.randomUUID(), Instant.now(), member, Instant.now());
+
+        publish(withdrawn);
+        publish(withdrawn); // 중복이어도 삭제 이벤트는 다시 나가지 않는다
+
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM review.reviews WHERE member_id = ?", Long.class, member)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM review.review_photos WHERE review_id = ?", Long.class, mine))
+                .isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM review.course_run_records WHERE member_id = ?", Long.class,
+                member)).isZero();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM review.withdrawn_members WHERE member_id = ?", Long.class,
+                member)).isOne();
+        verify(storage, atLeastOnce()).deleteAfterCommit(List.of(myPhoto));
+        // 리뷰 두 개마다 한 번씩 course에 알린다(평점 합계 · 리뷰 수에서 뺀다)
+        assertThat(deletedReviews.received).filteredOn(e -> e.courseId().equals(course)).singleElement()
+                .satisfies(e -> assertThat(e.reviewId()).isEqualTo(mine));
+        assertThat(deletedReviews.received.stream().filter(e -> e.reviewId().equals(mine))).hasSize(1);
+        // 다른 회원의 리뷰 · 기록은 그대로
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM review.reviews WHERE id = ?", Long.class, othersReview)).isOne();
+        assertThat(count("review.course_run_records", course)).isOne();
+
+        // 탈퇴 뒤에 늦게 온 주행 기록은 받지 않는다
+        RunSessionEndedEvent late = ended(UUID.randomUUID(), member, course, 100, true);
+        publish(late);
+        assertThat(recordCount(late.runRecordId())).isZero();
+    }
+
     private static RunSessionEndedEvent ended(UUID runRecordId, UUID memberId, UUID courseId, double progress, boolean eligible) {
         Instant endedAt = Instant.parse("2026-10-15T01:00:00Z");
         boolean completed = progress >= 100;
@@ -201,11 +247,15 @@ class ReviewEventHandlerTest {
     }
 
     private UUID review(UUID courseId) {
+        return review(courseId, UUID.randomUUID());
+    }
+
+    private UUID review(UUID courseId, UUID memberId) {
         UUID id = UUID.randomUUID();
         jdbc.update("""
                 INSERT INTO review.reviews (id, course_id, member_id, source_run_record_id, rating, safety_rating,
                     road_rating, lighting_rating, amenity_rating, best_progress_percent, created_at, updated_at)
-                VALUES (?, ?, ?, ?, 5, 5, 5, 5, 5, 100, now(), now())""", id, courseId, UUID.randomUUID(), UUID.randomUUID());
+                VALUES (?, ?, ?, ?, 5, 5, 5, 5, 5, 100, now(), now())""", id, courseId, memberId, UUID.randomUUID());
         return id;
     }
 
@@ -218,10 +268,25 @@ class ReviewEventHandlerTest {
     }
 
     private void runRecord(UUID courseId) {
+        runRecord(courseId, UUID.randomUUID());
+    }
+
+    private void runRecord(UUID courseId, UUID memberId) {
         jdbc.update("""
                 INSERT INTO review.course_run_records (run_record_id, course_id, member_id, review_eligible, completed,
                     progress_percent, course_distance_meters, course_elapsed_seconds, ended_at, created_at, updated_at)
                 VALUES (?, ?, ?, TRUE, TRUE, 100, 5200, 1634, now(), now(), now())""",
-                UUID.randomUUID(), courseId, UUID.randomUUID());
+                UUID.randomUUID(), courseId, memberId);
+    }
+
+    /** 탈퇴 처리가 낸 리뷰 삭제 이벤트를 모은다. review만 띄워 course가 없으니 대신 받는다(발행한 그 자리에서 바로 실행). */
+    @TestConfiguration
+    static class DeletedReviews {
+        final List<ReviewDeletedEvent> received = new CopyOnWriteArrayList<>();
+
+        @EventListener
+        void on(ReviewDeletedEvent event) {
+            received.add(event);
+        }
     }
 }

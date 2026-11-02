@@ -254,7 +254,7 @@ void main() {
   testWidgets('features without a policy or server say they are coming', (tester) async {
     await openSettings(tester);
 
-    for (final label in ['기본 고스트', '회원 탈퇴']) {
+    for (final label in ['기본 고스트']) {
       await tap(tester, find.text(label));
       expect(find.text('준비 중인 기능이에요.'), findsOneWidget, reason: label);
       ScaffoldMessenger.of(tester.element(find.text(label))).removeCurrentSnackBar();
@@ -275,6 +275,36 @@ void main() {
     await tap(tester, find.text('약관 및 개인정보 처리방침'));
 
     expect(find.text('F7'), findsOneWidget);
+  });
+
+  testWidgets('withdrawal asks once, then clears the tokens', (tester) async {
+    await openSettings(tester);
+
+    await tap(tester, find.text('회원 탈퇴'));
+    expect(find.text('회원 탈퇴할까요?'), findsOneWidget);
+    await tap(tester, find.text('취소'));
+    expect(members.withdrawals, 0);
+    expect(tokens.tokens, isNotNull);
+
+    await tap(tester, find.text('회원 탈퇴'));
+    await tap(tester, find.text('탈퇴'));
+
+    expect(members.withdrawals, 1);
+    expect(tokens.tokens, isNull);
+    expect(find.text('탈퇴했어요. 그동안 함께 달려 주셔서 고마워요.'), findsOneWidget);
+  });
+
+  testWidgets('a failed withdrawal keeps me signed in on F4', (tester) async {
+    members.withdrawError = const ApiException(ApiException.network, '오프라인');
+    await openSettings(tester);
+
+    await tap(tester, find.text('회원 탈퇴'));
+    await tap(tester, find.text('탈퇴'));
+
+    expect(members.withdrawals, 0);
+    expect(tokens.tokens, isNotNull);
+    expect(find.text('설정'), findsOneWidget);
+    expect(find.text('오프라인'), findsOneWidget);
   });
 
   testWidgets('logout is at the bottom of F4', (tester) async {

@@ -15,4 +15,9 @@ interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID> {
     @Modifying
     @Query("delete from RefreshToken t where t.tokenHash = :tokenHash")
     int deleteByTokenHash(String tokenHash);
+
+    /** 탈퇴하면 모든 기기의 리프레시 토큰을 지운다(모든 기기 로그아웃). */
+    @Modifying
+    @Query("delete from RefreshToken t where t.memberId = :memberId")
+    void deleteByMemberId(UUID memberId);
 }

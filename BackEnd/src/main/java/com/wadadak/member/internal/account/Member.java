@@ -132,6 +132,35 @@ public class Member extends BaseEntity<UUID> {
         this.bodyInfo = bodyInfo;
     }
 
+    /**
+     * 회원 탈퇴(개발 정책 6.2). 행은 남기고 상태를 {@code WITHDRAWN}으로 바꾼 뒤 개인정보를 비운다.
+     *
+     * <ul>
+     *   <li>소셜 계정 번호를 비워 같은 소셜 계정으로 바로 새로 가입할 수 있다(2026-11-02 사용자 결정).
+     *       유니크 제약 (social_provider, social_id)는 NULL끼리 겹쳐도 된다.</li>
+     *   <li>닉네임 · 소개 · 소속 · 사진 · 신체 정보를 지운다. 다른 회원에게는 {@code 탈퇴한 사용자}로 보인다(MemberApi).</li>
+     *   <li>공개 · 검색 허용을 꺼 둔다. 상태로 이미 빠지지만, 상태를 안 보는 쿼리가 생겨도 새지 않게 한 번 더 막는다.</li>
+     *   <li>활동 지역 · 러닝 경력은 NOT NULL 컬럼이고 혼자서는 사람을 알아볼 수 없어 둔다.</li>
+     * </ul>
+     *
+     * @return 지워야 할 사진 파일 키. 사진이 없었으면 {@code null}
+     */
+    public String withdraw(Instant now) {
+        String photo = profileImageKey;
+        this.status = Status.WITHDRAWN;
+        this.withdrawnAt = now;
+        this.socialId = null;
+        this.nickname = null;
+        this.nicknameChangedAt = null;
+        this.bio = null;
+        this.affiliation = null;
+        this.profileImageKey = null;
+        this.bodyInfo = null;
+        this.infoPublic = false;
+        this.profileSearchable = false;
+        return photo;
+    }
+
     public boolean isWithdrawn() {
         return status == Status.WITHDRAWN;
     }

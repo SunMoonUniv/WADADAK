@@ -56,9 +56,10 @@ final appVersionProvider = FutureProvider<String>(
 /// - 권한: 휴대폰 권한 상태. 누르면 휴대폰 설정을 열고, 돌아오면 다시 읽는다.
 /// - 오디오 안내는 달리기의 음성 안내 설정이다(기기에 저장). 누르면 F5 시트.
 /// - 공개 여부 두 스위치는 바꾸는 즉시 서버에 저장한다(`PUT /members/me/settings`). 실패하면 되돌린다.
-/// - 정책이 없는 자동 일시정지 · 화면 항상 켜기 · 기본 고스트 · 구간 격차 음성 안내와
-///   회원 탈퇴는 보이기만 하고 누르면 준비 중 안내. 거리 단위는 km 고정이라 뺐다.
+/// - 정책이 없는 자동 일시정지 · 화면 항상 켜기 · 기본 고스트 · 구간 격차 음성 안내는
+///   보이기만 하고 누르면 준비 중 안내. 거리 단위는 km 고정이라 뺐다.
 /// - 약관 및 개인정보 처리방침은 F7 약관 및 정책을 연다.
+/// - 회원 탈퇴는 확인 창 하나로 묻고 바로 탈퇴한다(`DELETE /members/me`). 끝나면 로그인 화면으로 간다(2026-11-02 사용자 결정).
 /// - 내 코스 만료 임박은 알림 기능(F14)이 없어 꺼진 채 잠근다.
 /// (2026-10-30 사용자 결정)
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -75,6 +76,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   /// 서버에 저장한(또는 저장 중인) 공개 여부. 없으면 내 정보 값을 쓴다.
   bool? _infoPublic, _searchable;
   bool _savingSettings = false;
+
+  /// 탈퇴 요청 중. 두 번 누르지 못하게 줄을 잠근다.
+  bool _withdrawing = false;
 
   @override
   void initState() {
@@ -99,6 +103,40 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   void _soon() => ScaffoldMessenger.of(context)
     ..hideCurrentSnackBar()
     ..showSnackBar(const SnackBar(content: Text('준비 중인 기능이에요.')));
+
+  /// 한 번 묻고 탈퇴한다. 탈퇴하면 라우터가 로그인 화면으로 보낸다. 실패하면 F4에 남아 오류를 보인다.
+  Future<void> _withdraw() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('회원 탈퇴할까요?'),
+        content: const Text(
+          '러닝 기록 · 랭킹 · 리뷰(사진 포함) · 저장한 코스가 바로 지워지고 되돌릴 수 없어요. '
+          '등록한 코스는 남고 등록자는 "탈퇴한 사용자"로 보여요.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('취소')),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('탈퇴', style: TextStyle(color: WdColors.negative)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    // 탈퇴하면 이 화면이 닫히므로 안내는 앱 전체의 메신저로 띄운다
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _withdrawing = true);
+    try {
+      await ref.read(authControllerProvider.notifier).withdraw();
+      messenger.showSnackBar(const SnackBar(content: Text('탈퇴했어요. 그동안 함께 달려 주셔서 고마워요.')));
+    } catch (e) {
+      if (mounted) {
+        setState(() => _withdrawing = false);
+        showError(context, e);
+      }
+    }
+  }
 
   /// 두 스위치 값을 함께 보낸다. 실패하면 화면 값을 되돌린다.
   Future<void> _saveSettings(MyProfile me, {bool? infoPublic, bool? searchable}) async {
@@ -200,7 +238,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           SettingsCard([
             SettingsRow('버전', value: ref.watch(appVersionProvider).value ?? '—'),
             SettingsRow('약관 및 개인정보 처리방침', onTap: () => context.push(Routes.myTerms)),
-            SettingsRow('회원 탈퇴', onTap: _soon),
+            SettingsRow('회원 탈퇴', onTap: _withdrawing ? null : _withdraw),
           ]),
           const SizedBox(height: WdSpace.s16),
           Text(
