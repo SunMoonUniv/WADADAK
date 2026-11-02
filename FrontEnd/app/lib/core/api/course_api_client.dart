@@ -674,8 +674,10 @@ class CourseApiClient {
   }
 
   /// 활성 코스 중 같은 이름이 없으면 true(B4-02). 공백·대소문자만 다른 이름도 같은 이름이다. 2~50자 밖이면 COMMON-001.
-  Future<bool> isNameAvailable(String name) async {
-    final data = await callApi(() => _dio.get('$_courses/name-availability', queryParameters: {'name': name}));
+  /// B7 코스 수정은 [courseId]를 보내 그 코스의 지금 이름은 빼고 본다.
+  Future<bool> isNameAvailable(String name, {String? courseId}) async {
+    final data = await callApi(() =>
+        _dio.get('$_courses/name-availability', queryParameters: {'name': name, 'courseId': ?courseId}));
     return (data! as Map)['available']! as bool;
   }
 
@@ -869,6 +871,161 @@ class CourseApiClient {
     final data = await callApi(() => _dio.get('$_courses/registration-quota'));
     return RegistrationQuota.fromJson(data! as Map);
   }
+
+  /// 내가 등록한 코스 한 쪽(G4). 만료 임박 공개 코스가 먼저(만료가 가까운 순), 나머지는 최근 등록순이다.
+  /// 삭제 예정 코스(만료 · 내가 삭제)도 들어 있고 삭제가 끝난 코스는 없다. 다음 쪽은 앞 쪽의 nextCursor를 [cursor]로 보낸다.
+  Future<MyCoursePage> myCourses({String? cursor, int? size}) async {
+    final data = await callApi(() => _dio.get('$_courses/mine', queryParameters: {'cursor': ?cursor, 'size': ?size}));
+    return MyCoursePage.fromJson(data! as Map);
+  }
+
+  /// G4 위 칸과 탭의 `등록한 코스 N`. 공개 중인 코스만 센다.
+  Future<MyCourseSummary> myCourseSummary() async {
+    final data = await callApi(() => _dio.get('$_courses/mine/summary'));
+    return MyCourseSummary.fromJson(data! as Map);
+  }
+
+  /// 코스 수정(B7). 이름 · 난이도 · 특징을 통째로 바꾼다. 경로 · 유형 · 만료일은 그대로다. 응답은 바뀐 G4 카드 값이다.
+  /// 다른 공개 코스와 같은 이름 COURSE-006, 삭제 예정 · 만료된 코스 COURSE-002.
+  Future<MyCourseItem> editCourse(
+    String courseId, {
+    required String name,
+    required Difficulty difficulty,
+    required Set<CourseTag> tags,
+  }) async {
+    final data = await callApi(() => _dio.put('$_courses/${Uri.encodeComponent(courseId)}', data: {
+          'name': name,
+          'difficulty': difficulty.apiName,
+          'tags': [for (final tag in tags) tag.apiName],
+        }));
+    return MyCourseItem.fromJson(data! as Map);
+  }
+
+  /// 코스 삭제(B7). 바로 비공개가 되고 24시간 뒤 지워진다. 응답은 삭제 예정으로 바뀐 G4 카드 값이다.
+  /// 이미 삭제 예정이면 그 값을 그대로 준다.
+  Future<MyCourseItem> deleteCourse(String courseId) async {
+    final data = await callApi(() => _dio.delete('$_courses/${Uri.encodeComponent(courseId)}'));
+    return MyCourseItem.fromJson(data! as Map);
+  }
+}
+
+/// 내가 등록한 코스 한 쪽(G4).
+@immutable
+class MyCoursePage {
+  const MyCoursePage({required this.courses, required this.nextCursor});
+
+  factory MyCoursePage.fromJson(Map<Object?, Object?> json) => MyCoursePage(
+        courses: [for (final course in json['content']! as List) MyCourseItem.fromJson(course as Map)],
+        nextCursor: json['nextCursor'] as String?,
+      );
+
+  final List<MyCourseItem> courses;
+
+  /// 마지막 쪽이면 null.
+  final String? nextCursor;
+}
+
+/// G4 위 칸. 공개 중인 코스만 센다(삭제 예정 코스는 목록에만 보인다).
+@immutable
+class MyCourseSummary {
+  const MyCourseSummary({required this.courseCount, required this.completionCount, required this.expiringSoonCount});
+
+  factory MyCourseSummary.fromJson(Map<Object?, Object?> json) => MyCourseSummary(
+        courseCount: json['courseCount']! as int,
+        completionCount: json['completionCount']! as int,
+        expiringSoonCount: json['expiringSoonCount']! as int,
+      );
+
+  /// `등록 코스`. E3 통계 · 메뉴에도 보인다.
+  final int courseCount;
+
+  /// `누적 주행`. 그 코스들의 완주 수 합.
+  final int completionCount;
+
+  /// `만료 임박`. 만료일까지 7일 이내(D-7 ~ D-0).
+  final int expiringSoonCount;
+}
+
+/// 삭제 예정이 된 이유.
+enum CourseHiddenReason {
+  /// 공개 기간이 끝났다.
+  expired('EXPIRED'),
+
+  /// 내가 삭제했다(B7).
+  userDeleted('USER_DELETED');
+
+  const CourseHiddenReason(this.apiName);
+  final String apiName;
+
+  static CourseHiddenReason? fromApi(String? name) => values.where((value) => value.apiName == name).firstOrNull;
+}
+
+/// 내가 등록한 코스 카드(G4). B7 코스 수정 화면도 이 값으로 채운다. 평점 · 리뷰 수는 리뷰 API가 준다.
+@immutable
+class MyCourseItem {
+  const MyCourseItem({
+    required this.courseId,
+    required this.name,
+    required this.courseType,
+    required this.difficulty,
+    required this.tags,
+    required this.route,
+    required this.expiresAt,
+    this.hiddenReason,
+    this.deleteAt,
+    this.completionCount = 0,
+    this.lastCompletedOn,
+  });
+
+  factory MyCourseItem.fromJson(Map<Object?, Object?> json) {
+    final lastCompletedOn = json['lastCompletedOn'] as String?;
+    final deleteAt = json['deleteAt'] as String?;
+    final active = json['status'] == 'ACTIVE';
+    return MyCourseItem(
+      courseId: json['courseId']! as String,
+      name: json['name']! as String,
+      courseType: CourseType.fromApi(json['courseType']! as String),
+      difficulty: Difficulty.fromApi(json['difficulty']! as String),
+      tags: [for (final tag in json['tags']! as List) ?CourseTag.fromApi(tag as String)],
+      route: [for (final point in json['route']! as List) GeoPoint.fromJson(point as Map)],
+      expiresAt: DateTime.parse(json['expiresAt']! as String),
+      // 공개 중이 아니면 사유를 모르더라도 삭제 예정으로 본다(만료로 둔다)
+      hiddenReason: active ? null : CourseHiddenReason.fromApi(json['statusReason'] as String?) ?? CourseHiddenReason.expired,
+      deleteAt: deleteAt == null ? null : DateTime.parse(deleteAt),
+      completionCount: json['completionCount'] as int? ?? 0,
+      // `2026-10-30` 같은 날짜(Asia/Seoul)라 시각 없이 날짜로만 둔다
+      lastCompletedOn: lastCompletedOn == null ? null : DateTime.parse(lastCompletedOn),
+    );
+  }
+
+  final String courseId;
+  final String name;
+  final CourseType courseType;
+  final Difficulty difficulty;
+
+  /// FIL-04 순서.
+  final List<CourseTag> tags;
+
+  /// 카드 · B7 지도 그림. 첫 점이 출발점.
+  final List<GeoPoint> route;
+
+  /// 공개 만료 시각(만료일 23:59:59 Asia/Seoul).
+  final DateTime expiresAt;
+
+  /// 삭제 예정이면 그 이유. 공개 중이면 null.
+  final CourseHiddenReason? hiddenReason;
+
+  /// 삭제 예정 시각(비공개가 된 때 + 24시간). 공개 중이면 null.
+  final DateTime? deleteAt;
+
+  /// `누적 주행 N회`. 서버가 확정한 완주 수.
+  final int completionCount;
+
+  /// `최근 주행`. 마지막으로 완주한 날(Asia/Seoul 날짜). 완주가 없으면 null.
+  final DateTime? lastCompletedOn;
+
+  /// 공개 중이 아니라 24시간 안에 지워진다. 수정 · 삭제할 수 없다.
+  bool get pendingDelete => hiddenReason != null;
 }
 
 final courseApiClientProvider = Provider<CourseApiClient>((ref) => CourseApiClient(ref.watch(dioProvider)));

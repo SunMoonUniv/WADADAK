@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:wadadak/core/api/api_client.dart';
+import 'package:wadadak/core/api/course_api_client.dart';
 import 'package:wadadak/core/api/member_api_client.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/features/my/my_screen.dart';
@@ -82,8 +83,9 @@ void main() {
   late FakeMemberApi members;
   late _HistoryApi history;
   late MemoryTokenStorage tokens;
+  late FakeCourseApi courses;
 
-  /// E3을 띄운다. I1 · F6 · F4는 이름만 보이는 화면으로 바꿔 어디로 갔는지만 본다.
+  /// E3을 띄운다. I1 · G4 · F6 · F4는 이름만 보이는 화면으로 바꿔 어디로 갔는지만 본다.
   Future<void> openMy(WidgetTester tester) async {
     tester.view
       ..physicalSize = const Size(402, 874)
@@ -97,6 +99,7 @@ void main() {
       routes: [
         GoRoute(path: Routes.my, builder: (_, _) => const MyScreen()),
         GoRoute(path: Routes.myRecords, builder: (_, _) => const Text('I1')),
+        GoRoute(path: Routes.myCourses, builder: (_, _) => const Text('G4')),
         GoRoute(path: Routes.myProfileEdit, builder: (_, _) => const Text('F6')),
         GoRoute(path: Routes.mySettings, builder: (_, _) => const Text('F4')),
       ],
@@ -108,6 +111,7 @@ void main() {
           runControllerProvider.overrideWithValue(c),
           memberApiClientProvider.overrideWithValue(members),
           tokenStorageProvider.overrideWithValue(tokens),
+          courseApiClientProvider.overrideWithValue(courses),
         ],
         child: MaterialApp.router(theme: WdTheme.light(), routerConfig: router),
       ),
@@ -119,6 +123,8 @@ void main() {
     members = FakeMemberApi();
     history = _HistoryApi();
     tokens = MemoryTokenStorage(testTokens);
+    courses = FakeCourseApi()
+      ..mySummary = const MyCourseSummary(courseCount: 5, completionCount: 1480, expiringSoonCount: 1);
   });
 
   /// [label] 통계 칸 안의 [value].
@@ -145,11 +151,28 @@ void main() {
   testWidgets('total distance and run count add up every record', (tester) async {
     await openMy(tester);
 
-    // 5.21 + 3.4 + 1.0 = 9.61km, 3회. 등록 코스는 API가 없어 자리만 둔다
+    // 5.21 + 3.4 + 1.0 = 9.61km, 3회
     expect(stat('총 거리', '9.61 km'), findsOneWidget);
     expect(stat('러닝', '3회'), findsOneWidget);
-    expect(stat('등록 코스', '—'), findsOneWidget);
     expect(find.text('3회'), findsNWidgets(2)); // 통계 + 내 러닝 기록 줄
+  });
+
+  testWidgets('registered courses come from my course summary', (tester) async {
+    await openMy(tester);
+
+    expect(stat('등록 코스', '5개'), findsOneWidget);
+    expect(find.text('5개'), findsNWidgets(2)); // 통계 + 내가 등록한 코스 줄
+
+    await tester.tap(find.text('내가 등록한 코스'));
+    await tester.pumpAndSettle();
+    expect(find.text('G4'), findsOneWidget);
+  });
+
+  testWidgets('registered courses stay blank when the summary fails', (tester) async {
+    courses.summaryError = const ApiException(ApiException.network, '오프라인');
+    await openMy(tester);
+
+    expect(stat('등록 코스', '—'), findsOneWidget);
   });
 
   testWidgets('totals stay blank when records stop loading halfway', (tester) async {

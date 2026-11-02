@@ -292,8 +292,16 @@ class FakeCourseApi implements CourseApiClient {
     );
   }
 
+  /// 이름 확인에 함께 보낸 코스 ID(B7). 요청마다 하나다.
+  final nameCheckCourseIds = <String?>[];
+
+  /// [courseId]를 보내면 서버처럼 그 코스의 지금 이름([mine])은 빼고 본다.
   @override
-  Future<bool> isNameAvailable(String name) async => !takenNames.map(_nameKey).contains(_nameKey(name));
+  Future<bool> isNameAvailable(String name, {String? courseId}) async {
+    nameCheckCourseIds.add(courseId);
+    final own = [for (final course in mine) if (course.courseId == courseId) _nameKey(course.name)];
+    return !takenNames.map(_nameKey).where((taken) => !own.contains(taken)).contains(_nameKey(name));
+  }
 
   @override
   Future<RegisteredCourse> registerCustom({
@@ -501,8 +509,124 @@ class FakeCourseApi implements CourseApiClient {
     return {for (final id in courseIds) id: ?runners[id]};
   }
 
+  /// 내가 등록한 코스(G4). [myPageSize]개씩 쪽을 나누고, 커서는 다음 쪽 첫 위치다.
+  /// 수정 · 삭제하면 서버처럼 이 목록의 카드가 바뀐다.
+  List<MyCourseItem> mine = [];
+  int myPageSize = 20;
+  ApiException? mineError;
+  final mineCursors = <String?>[];
+
+  MyCourseSummary mySummary = const MyCourseSummary(courseCount: 0, completionCount: 0, expiringSoonCount: 0);
+  ApiException? summaryError;
+  int summaryRequests = 0;
+
+  ApiException? editError;
+  final edits = <({String courseId, String name, Difficulty difficulty, Set<CourseTag> tags})>[];
+  ApiException? deleteError;
+  final deletes = <String>[];
+
+  /// 있으면 끝날 때까지 삭제 응답을 미룬다(삭제 중 화면).
+  Completer<void>? deleteGate;
+
+  /// 삭제 예정 시각(지금 + 24시간)을 세는 기준 시각.
+  DateTime Function() now = DateTime.now;
+
+  @override
+  Future<MyCoursePage> myCourses({String? cursor, int? size}) async {
+    mineCursors.add(cursor);
+    if (mineError != null) throw mineError!;
+    final from = cursor == null ? 0 : int.parse(cursor);
+    final to = (from + myPageSize).clamp(0, mine.length);
+    return MyCoursePage(courses: mine.sublist(from, to), nextCursor: to < mine.length ? '$to' : null);
+  }
+
+  @override
+  Future<MyCourseSummary> myCourseSummary() async {
+    summaryRequests++;
+    if (summaryError != null) throw summaryError!;
+    return mySummary;
+  }
+
+  @override
+  Future<MyCourseItem> editCourse(
+    String courseId, {
+    required String name,
+    required Difficulty difficulty,
+    required Set<CourseTag> tags,
+  }) async {
+    edits.add((courseId: courseId, name: name, difficulty: difficulty, tags: {...tags}));
+    if (editError != null) throw editError!;
+    final course = mine.firstWhere((course) => course.courseId == courseId);
+    return _replaceMine(testMyCourse(
+      name,
+      courseId: courseId,
+      difficulty: difficulty,
+      tags: [for (final tag in CourseTag.values) if (tags.contains(tag)) tag],
+      courseType: course.courseType,
+      route: course.route,
+      expiresAt: course.expiresAt,
+      completionCount: course.completionCount,
+      lastCompletedOn: course.lastCompletedOn,
+    ));
+  }
+
+  @override
+  Future<MyCourseItem> deleteCourse(String courseId) async {
+    deletes.add(courseId);
+    await deleteGate?.future;
+    if (deleteError != null) throw deleteError!;
+    final course = mine.firstWhere((course) => course.courseId == courseId);
+    if (course.pendingDelete) return course;
+    return _replaceMine(testMyCourse(
+      course.name,
+      courseId: courseId,
+      difficulty: course.difficulty,
+      tags: course.tags,
+      courseType: course.courseType,
+      route: course.route,
+      expiresAt: course.expiresAt,
+      completionCount: course.completionCount,
+      lastCompletedOn: course.lastCompletedOn,
+      hiddenReason: CourseHiddenReason.userDeleted,
+      deleteAt: now().toUtc().add(const Duration(hours: 24)),
+    ));
+  }
+
+  MyCourseItem _replaceMine(MyCourseItem changed) {
+    mine = [for (final course in mine) course.courseId == changed.courseId ? changed : course];
+    return changed;
+  }
+
   static String _nameKey(String name) => name.replaceAll(RegExp(r'\s+'), '').toLowerCase();
 }
+
+/// 내 코스 카드(G4) 값. 이름 말고는 정해 둔 값이다. [hiddenReason]이 있으면 삭제 예정 코스다.
+MyCourseItem testMyCourse(
+  String name, {
+  String? courseId,
+  Difficulty difficulty = Difficulty.easy,
+  List<CourseTag> tags = const [],
+  CourseType courseType = CourseType.custom,
+  List<GeoPoint> route = const [GeoPoint(37.5666, 126.9784), GeoPoint(37.5700, 126.9800)],
+  DateTime? expiresAt,
+  int completionCount = 0,
+  DateTime? lastCompletedOn,
+  CourseHiddenReason? hiddenReason,
+  DateTime? deleteAt,
+}) =>
+    MyCourseItem(
+      courseId: courseId ?? 'id-$name',
+      name: name,
+      courseType: courseType,
+      difficulty: difficulty,
+      tags: tags,
+      route: route,
+      expiresAt: expiresAt ?? DateTime.utc(2026, 11, 13, 14, 59, 59),
+      hiddenReason: hiddenReason,
+      deleteAt: deleteAt,
+      completionCount: completionCount,
+      lastCompletedOn: lastCompletedOn,
+    );
 
 typedef ListRequest = ({
   GeoPoint southWest,

@@ -47,6 +47,9 @@ mixin CourseInfoInputs<T extends ConsumerStatefulWidget> on ConsumerState<T> {
   /// 이름 · 난이도를 다 넣었다. 특징은 고르지 않아도 된다.
   bool get inputsReady => nameValue.isNotEmpty && nameProblem == null && difficulty != null;
 
+  /// 이름을 확인할 때 빼고 볼 코스(B7 코스 수정의 그 코스). 등록에서는 없다.
+  String? get nameCheckCourseId => null;
+
   /// 등록 응답이 이미 있는 이름이라고 했다(COURSE-006).
   void markNameTaken() => setState(() => _takenName = nameValue);
 
@@ -64,7 +67,7 @@ mixin CourseInfoInputs<T extends ConsumerStatefulWidget> on ConsumerState<T> {
 
   Future<void> _checkName(String name) async {
     try {
-      final available = await ref.read(courseApiClientProvider).isNameAvailable(name);
+      final available = await ref.read(courseApiClientProvider).isNameAvailable(name, courseId: nameCheckCourseId);
       if (mounted && !available) setState(() => _takenName = name);
     } on ApiException {
       // 막지 않는다. 등록할 때 서버가 다시 확인한다.

@@ -6,6 +6,7 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 import '../../core/api/member_api_client.dart';
 import '../../core/auth/auth_controller.dart';
 import '../../routes.dart';
+import 'my_courses_screen.dart';
 import 'run_history_loader.dart';
 
 /// 내 정보(`GET /members/me`). 다시 로그인하면 새로 받는다. F6에서 저장하면 `ref.invalidate`로 다시 받는다.
@@ -21,9 +22,10 @@ final myProfileProvider = FutureProvider<MyProfile>((ref) async {
 /// 위에서부터 프로필(사진 · 닉네임 · 지역 · 소속 · 러닝 경력 · 편집) · 통계(총 거리 · 러닝 · 등록 코스) · 내 활동 메뉴다.
 /// - 프로필 아래 줄의 러닝 경력은 가입 때 고른 값이다(`러닝 6개월+`).
 /// - 총 거리 · 러닝 횟수는 I1처럼 내 기록을 끝까지 받아 앱이 더한다([AllRunHistory]). 다 받기 전에는 `—`다.
-/// - 등록 코스 · 내가 등록한 코스 · 저장한 코스는 코스 쪽 API가 아직 없어 `—`로 자리만 둔다.
+/// - 등록 코스 · 내가 등록한 코스는 공개 중인 내 코스 수([myCourseSummaryProvider])다. 받기 전이나 실패하면 `—`다.
+/// - 저장한 코스는 저장 기능이 아직 없어 `—`로 자리만 두고, 누르면 준비 중 안내다.
 /// - 오른쪽 위 설정 아이콘은 F4, [편집]은 F6을 연다. 로그아웃은 F4에 있다.
-/// (2026-10-29 사용자 결정)
+/// (2026-10-29 · 2026-11-02 사용자 결정)
 class MyScreen extends ConsumerStatefulWidget {
   const MyScreen({super.key});
 
@@ -56,6 +58,8 @@ class _MyScreenState extends ConsumerState<MyScreen> with AllRunHistory {
             final rows = loadingAllRuns || runs.historyNotice != null ? null : allRuns;
             final distance = rows?.fold<double>(0, (sum, row) => sum + row.distanceMeters);
             final count = rows == null ? '—' : '${rows.length}회';
+            final courses = ref.watch(myCourseSummaryProvider).value;
+            final courseCount = courses == null ? '—' : '${courses.courseCount}개';
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -64,7 +68,7 @@ class _MyScreenState extends ConsumerState<MyScreen> with AllRunHistory {
                   children: [
                     _StatTile('총 거리', distance == null ? '—' : _km(distance)),
                     _StatTile('러닝', count),
-                    const _StatTile('등록 코스', '—'),
+                    _StatTile('등록 코스', courseCount),
                   ],
                 ),
                 const SizedBox(height: WdSpace.s16),
@@ -73,7 +77,7 @@ class _MyScreenState extends ConsumerState<MyScreen> with AllRunHistory {
                 WdMenuCard(
                   items: [
                     WdMenuItem(label: '내 러닝 기록', value: count, onTap: () => context.push(Routes.myRecords)),
-                    WdMenuItem(label: '내가 등록한 코스', value: '—', onTap: () => _soon('내가 등록한 코스')),
+                    WdMenuItem(label: '내가 등록한 코스', value: courseCount, onTap: () => context.push(Routes.myCourses)),
                     WdMenuItem(label: '저장한 코스', value: '—', onTap: () => _soon('저장한 코스')),
                   ],
                 ),
