@@ -43,6 +43,18 @@ class GhostComparisonStore {
                 """,Long.class,owner,approval.sessionId(),Timestamp.from(cutoff),approval.course().courseId(),
                     approval.course().totalDistanceMeters(),json.writeValueAsString(approval.course().route()));
         }
+        if(!free) {
+            var cutoff=approval.startedAt().isBefore(approval.approvedAt())?approval.startedAt():approval.approvedAt();
+            Long linkedBest=db.queryForObject("""
+                SELECT min(l.course_elapsed_seconds) FROM run.gps_source_links l
+                WHERE l.member_id=? AND l.status='LINKED' AND l.source_record_id<>? AND l.registered_at<?
+                  AND l.linked_at<? AND l.course_id=?
+                  AND (l.snapshot_json::jsonb ->> 'distanceMeters')::integer=?
+                  AND l.snapshot_json::jsonb -> 'route'=?::jsonb
+                """,Long.class,owner,approval.sessionId(),Timestamp.from(cutoff),Timestamp.from(cutoff),
+                    approval.course().courseId(),approval.course().totalDistanceMeters(),json.writeValueAsString(approval.course().route()));
+            if(linkedBest!=null) baseline=baseline==null?linkedBest:Math.min(baseline,linkedBest);
+        }
         var context=new ComparisonContext(approval.playback(),free?"OWN_FREE":publicSource?"PUBLIC_COURSE":"OWN_COURSE",
                 approval.publicPeriod()==null?null:approval.publicPeriod().name(),sourceOwner,metrics,!free,baseline);
         db.update("INSERT INTO run.ghost_comparisons(session_id,registered_session_id,free_session_id,member_id,context_json) VALUES (?,?,?,?,?)",

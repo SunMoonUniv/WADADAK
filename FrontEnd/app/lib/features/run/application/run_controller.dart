@@ -553,7 +553,9 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
           sourceSeconds: freeGhost?.replay.seconds ?? ghost!.seconds,
           publicPeriod: ghost?.publicPeriod,
           referenceHash: freeGhost?.referenceHash,
-          playbackVersion: freeGhost?.replay.playback.version,
+          playbackVersion:
+              freeGhost?.replay.playback.version ??
+              ghost?.replay.playback.version,
           clock: reading,
         );
         final continued = await ghostStarts.begin(intent);

@@ -67,6 +67,7 @@ class EntryGhostSource implements OwnGhostSource {
     'courseDistanceMeters': 1112,
   });
   bool empty = false, unavailable = false;
+  String version = 'GHOST_PLAYBACK_V1';
   Completer<OwnGhostReplay>? delayed;
   int queries = 0;
   @override
@@ -88,6 +89,7 @@ class EntryGhostSource implements OwnGhostSource {
   OwnGhostReplay replay() => OwnGhostReplay.fromJson({
     ...(ghostApproval(ghostIntent())['playback'] as Map)
         .cast<String, dynamic>(),
+    'version': version,
     if (unavailable) 'eligible': false,
     if (unavailable) 'unavailableReasons': ['TOTAL_GAP_EXCEEDED'],
   });
@@ -344,6 +346,43 @@ void main() {
     },
   );
 
+  testWidgets('registration source version reaches real start approval', (
+    tester,
+  ) async {
+    source.version = 'GHOST_PLAYBACK_GPS_SOURCE_V1';
+    starts.onStart = (intent) async {
+      final receipt = ghostApproval(intent);
+      (receipt['playback'] as Map)['version'] = intent.playbackVersion;
+      return receipt;
+    };
+    await mount(tester);
+    await choose(tester);
+    final button = find.widgetWithText(WdButton, '고스트와 달리기');
+    await tester.ensureVisible(button);
+    await tester.runAsync(() async {
+      await tester.tap(button);
+      await until(() => !runs.preparing && runs.courseStart != null);
+    });
+    await tester.pumpAndSettle();
+    final hold = find.byType(RunHoldToStart);
+    await tester.runAsync(() async {
+      final gesture = await tester.startGesture(tester.getCenter(hold));
+      await Future<void>.delayed(const Duration(milliseconds: 1100));
+      await gesture.up();
+      await until(
+        () => !runs.preparing && (runs.recorder.active || runs.error != null),
+      );
+    });
+    await tester.pumpAndSettle();
+    expect(runs.error, isNull);
+    expect(starts.posts.single.playbackVersion, 'GHOST_PLAYBACK_GPS_SOURCE_V1');
+    expect(
+      runs.run!.ghost!.replay.playback.version,
+      'GHOST_PLAYBACK_GPS_SOURCE_V1',
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets(
     'no completion or unusable replay keeps the duel action disabled',
     (tester) async {
@@ -466,7 +505,9 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('이 고스트와 대결하기'));
       await tester.pumpAndSettle();
-      await tester.runAsync(() async => until(() => runs.selectedGhost != null));
+      await tester.runAsync(
+        () async => until(() => runs.selectedGhost != null),
+      );
       await tester.pumpAndSettle();
       expect(other.calls.single, 'alice/$sourceId/$courseId/WEEK');
       expect(runs.selectedGhost!.sourceId, sourceId);
@@ -476,21 +517,24 @@ void main() {
     },
   );
 
-  testWidgets('full own and public record tabs navigate both ways without starting a run', (tester) async {
-    await mount(tester);
-    await openPicker(tester);
-    await tester.tap(find.text('내 기록 전체 보기'));
-    await tester.pumpAndSettle();
-    expect(find.byType(OwnGhostSelectionView), findsOneWidget);
-    await tester.tap(find.text('다른 러너'));
-    await tester.pumpAndSettle();
-    expect(find.byType(PublicGhostSelectionView), findsOneWidget);
-    await tester.tap(find.text('내 기록'));
-    await tester.pumpAndSettle();
-    expect(find.byType(OwnGhostSelectionView), findsOneWidget);
-    expect(starts.posts, isEmpty);
-    expect(tester.takeException(), isNull);
-  });
+  testWidgets(
+    'full own and public record tabs navigate both ways without starting a run',
+    (tester) async {
+      await mount(tester);
+      await openPicker(tester);
+      await tester.tap(find.text('내 기록 전체 보기'));
+      await tester.pumpAndSettle();
+      expect(find.byType(OwnGhostSelectionView), findsOneWidget);
+      await tester.tap(find.text('다른 러너'));
+      await tester.pumpAndSettle();
+      expect(find.byType(PublicGhostSelectionView), findsOneWidget);
+      await tester.tap(find.text('내 기록'));
+      await tester.pumpAndSettle();
+      expect(find.byType(OwnGhostSelectionView), findsOneWidget);
+      expect(starts.posts, isEmpty);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   testWidgets('account change closes the public list and ignores a late page', (
     tester,

@@ -4,6 +4,8 @@ import com.wadadak.event.course.CourseStatus;
 import com.wadadak.event.course.CourseStatusChangedEvent;
 import com.wadadak.event.run.RunRecordDeletedEvent;
 import com.wadadak.event.run.RunSessionEndedEvent;
+import com.wadadak.event.run.GpsSourceLinkedEvent;
+import com.wadadak.event.run.GpsSourceUnlinkedEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.modulith.events.ApplicationModuleListener;
@@ -29,6 +31,23 @@ class ReviewEventHandler {
     private final JdbcClient jdbc;
     private final ReviewPhotos photos;
     private final CourseRunRecords runRecords;
+
+    /** Reuse only this module's copy logic; no synthetic run event is published. */
+    @ApplicationModuleListener
+    public void on(GpsSourceLinkedEvent event) {
+        on(new RunSessionEndedEvent(event.eventId(),event.occurredAt(),event.runRecordId(),event.memberId(),
+                event.courseId(),true,0,event.courseElapsedSeconds(),event.courseDistanceMeters(),
+                event.recognizedDistanceMeters()==null?0:event.recognizedDistanceMeters(),
+                event.progress()==null?0:event.progress(),event.reviewEligible(),event.completedAt(),
+                event.startedAt(),event.endedAt(),event.registeredAt(),event.policyVersion()));
+    }
+
+    @ApplicationModuleListener
+    public void on(GpsSourceUnlinkedEvent event) {
+        var e=event.source();
+        on(new RunRecordDeletedEvent(event.eventId(),event.occurredAt(),e.runRecordId(),e.memberId(),e.courseId(),
+                true,0,e.courseElapsedSeconds(),e.startedAt(),e.endedAt(),e.registeredAt()));
+    }
 
     /**
      * 삽입형. 코스 주행 기록 1건을 복사해 두고 리뷰 자격·최고 진행도·완주 횟수에 쓴다(정책 5.1·제4부 4.1 D-09).

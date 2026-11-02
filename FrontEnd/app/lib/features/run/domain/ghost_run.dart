@@ -27,7 +27,10 @@ class GhostStartIntent {
                 'GHOST_PLAYBACK_FREE_V1',
                 'GHOST_PLAYBACK_FREE_V2',
               ].contains(this.playbackVersion)
-            : this.playbackVersion != 'GHOST_PLAYBACK_V1') ||
+            : ![
+                'GHOST_PLAYBACK_V1',
+                'GHOST_PLAYBACK_GPS_SOURCE_V1',
+              ].contains(this.playbackVersion)) ||
         owner.isEmpty ||
         id.isEmpty ||
         id == sourceId ||

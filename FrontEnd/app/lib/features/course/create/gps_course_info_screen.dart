@@ -106,7 +106,9 @@ class _GpsCourseInfoScreenState extends ConsumerState<GpsCourseInfoScreen> with 
             tags: tags,
           );
       if (!mounted) return;
-      await showCourseRegistered(context);
+      final completionMessage = await ref.read(runCourseSourceApiProvider).completionMessage(route.recordId);
+      if (!mounted) return;
+      await showCourseRegistered(context, sourceCompletionMessage: completionMessage);
       if (!mounted) return;
       // 이 화면을 연 결과 화면은 그 탭에 그대로 남는다.
       ref.read(registeredCourseFocusProvider.notifier).show(course.startPoint);

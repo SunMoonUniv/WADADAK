@@ -73,7 +73,10 @@ class GhostRetryPreparation {
     );
     if (replay.sourceId != d.sourceId ||
         !replay.playback.eligible ||
-        replay.playback.version != 'GHOST_PLAYBACK_V1' ||
+        ![
+          'GHOST_PLAYBACK_V1',
+          'GHOST_PLAYBACK_GPS_SOURCE_V1',
+        ].contains(replay.playback.version) ||
         replay.courseId != course.id ||
         replay.courseVersion != course.version ||
         reference.totalDistanceMeters != current.totalDistanceMeters ||

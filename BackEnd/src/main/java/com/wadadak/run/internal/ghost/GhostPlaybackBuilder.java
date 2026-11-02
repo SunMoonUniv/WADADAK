@@ -19,6 +19,7 @@ public final class GhostPlaybackBuilder {
     public static final String VERSION = "GHOST_PLAYBACK_V1";
     public static final String FREE_VERSION = "GHOST_PLAYBACK_FREE_V1";
     public static final String FREE_VERSION_V2 = "GHOST_PLAYBACK_FREE_V2";
+    public static final String GPS_SOURCE_VERSION = "GHOST_PLAYBACK_GPS_SOURCE_V1";
     public static boolean freeVersion(String version) {return FREE_VERSION.equals(version)||FREE_VERSION_V2.equals(version);}
     private static final String SOURCE_POLICY_VERSION = "2026-10-14";
     private static final double EPSILON = 1e-6;
@@ -47,6 +48,20 @@ public final class GhostPlaybackBuilder {
     }
 
     public record ReferencePlayback(GhostPlayback playback, CourseJudge.Judgement judgement) {}
+
+    /** Registration-source exception: full original session time, with quality checks but no completion requalification. */
+    public GhostPlayback buildRegisteredSource(Result source,CourseSnapshot snapshot,List<Input> raw) {
+        if(!SOURCE_POLICY_VERSION.equals(source.policyVersion()) || !complete(raw)
+                || !Objects.equals(raw.getFirst().reason(),source.calculationVersion()))
+            return unavailable(source,snapshot,"MISSING_SOURCE_INPUTS");
+        var full=com.wadadak.run.internal.FullSessionInputs.of(raw);
+        var analysis=new CourseJudge().analyze(snapshot.route(),List.of(),full);
+        var j=analysis.judgement();
+        long duration=source.metrics().elapsedMs();
+        var fullJudgement=new CourseJudge.Judgement(j.ranges(),j.recognizedM(),j.courseLengthM(),j.progressPercent(),
+                true,j.reason(),source.endedAt(),duration/1000,source.metrics().activeMs()/1000,j.reviewEligible());
+        return compose(source,snapshot,full,new CourseJudge.Analysis(fullJudgement,analysis.samples(),duration),GPS_SOURCE_VERSION);
+    }
 
     public GhostPlayback buildReference(Result source, CourseSnapshot snapshot, List<Input> inputs) {
         return buildReferenceWithJudgement(source,snapshot,inputs).playback();

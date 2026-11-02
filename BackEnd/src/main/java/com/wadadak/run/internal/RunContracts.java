@@ -61,6 +61,7 @@ public final class RunContracts {
     public record Range(long fromSeq, long toSeq) {}
     public record Status(UUID sessionId, String processing, List<Range> missingRanges,
                          UUID recordId, String failure) {}
+    public record GpsSourceLinkStatus(UUID courseId, String status, String failure, Instant linkedAt) {}
     public record Metrics(double distanceM, long elapsedMs, long activeMs,
                           int gapCount, Double paceSecondsPerKm, long movingMs,
                           Double elapsedPaceSecondsPerKm, Double averageCadence, long cadenceCoverageMs, long steps) {
@@ -154,7 +155,7 @@ public final class RunContracts {
     /** After course preparation, approve one own opponent. Reuse every field when retrying. */
     public record GhostStart(UUID courseId, @Min(0) Long courseVersion,
                              @NotNull UUID sourceRecordId, @NotNull Instant startedAt,
-                             @NotNull @Pattern(regexp="GHOST_PLAYBACK_V1|GHOST_PLAYBACK_FREE_V1|GHOST_PLAYBACK_FREE_V2") String playbackVersion,
+                             @NotNull @Pattern(regexp="GHOST_PLAYBACK_V1|GHOST_PLAYBACK_GPS_SOURCE_V1|GHOST_PLAYBACK_FREE_V1|GHOST_PLAYBACK_FREE_V2") String playbackVersion,
                              @Size(max=64) String referenceHash, com.wadadak.ranking.RankingPeriod publicPeriod) {
         public GhostStart(UUID courseId, Long courseVersion, UUID sourceRecordId, Instant startedAt, String playbackVersion) {
             this(courseId,courseVersion,sourceRecordId,startedAt,playbackVersion,null,null);

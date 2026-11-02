@@ -105,6 +105,20 @@ class OwnGhostCandidates {
                       AND (r.result_json::jsonb #>> '{course,courseDistanceMeters}')::integer=:distance
                       AND c.route_json::jsonb=CAST(:route AS jsonb)))
                   AND NOT EXISTS (SELECT 1 FROM run.deleted_records d WHERE d.id = r.id)
+            """ + periodWhere + """
+                UNION ALL
+                SELECT l.source_record_id id,s.started_at,r.registered_at,l.completed_at,
+                       l.course_elapsed_seconds seconds,
+                       (l.performance_json::jsonb ->> 'courseDistanceMeters')::integer distance,
+                       (r.result_json::jsonb #>> '{metrics,averageCadence}')::double precision cadence
+                FROM run.gps_source_links l JOIN run.sessions s ON s.id=l.source_record_id
+                JOIN run.records r ON r.id=l.source_record_id
+                WHERE l.member_id=:owner AND s.processing='DONE' AND l.status='LINKED'
+                  AND l.course_id=:courseUuid
+                  AND (l.snapshot_json::jsonb ->> 'courseVersion')::bigint<=:numericVersion
+                  AND (l.snapshot_json::jsonb ->> 'distanceMeters')::integer=:distance
+                  AND l.snapshot_json::jsonb -> 'route'=CAST(:route AS jsonb)
+                  AND NOT EXISTS(SELECT 1 FROM run.deleted_records d WHERE d.id=l.source_record_id)
             """ + periodWhere + ") ";
         // Summary includes every matching completion, not only the currently loaded page.
         var summaries = db.query(base + """

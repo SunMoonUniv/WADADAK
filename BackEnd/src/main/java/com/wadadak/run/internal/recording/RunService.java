@@ -40,15 +40,18 @@ class RunService {
     private final Clock clock;
     private final CourseRunService courseRuns;
     private final GhostResultService ghostResults;
+    private final GpsSourceLinkService sourceLinks;
     static final String POLICY_VERSION = "2026-10-14";
     RunService(RunSessionRepository sessions, RunRecordRepository records,
                DeletedRunRecordRepository deletedRecords, WithdrawnRunMemberRepository withdrawnMembers,
                RunInputRepository inputs, RunLocks locks, JsonMapper json,
-               ApplicationEventPublisher events, Clock clock, CourseRunService courseRuns, GhostResultService ghostResults) {
+               ApplicationEventPublisher events, Clock clock, CourseRunService courseRuns, GhostResultService ghostResults,
+               GpsSourceLinkService sourceLinks) {
         this.sessions=sessions; this.records=records; this.deletedRecords=deletedRecords;
         this.withdrawnMembers=withdrawnMembers; this.inputs=inputs; this.locks=locks;
         this.json=json; this.events=events; this.clock=clock; this.courseRuns=courseRuns;
         this.ghostResults=ghostResults;
+        this.sourceLinks=sourceLinks;
     }
     private void ensureActiveMember(UUID member) {
         if (withdrawnMembers.existsById(member)) throw new AppException(RunErrorCode.NOT_FOUND);
@@ -81,6 +84,7 @@ class RunService {
         courseRuns.requireOwnerIfPresent(owner, id);
         var deleted=deletedRecords.findById(id);
         deleted.ifPresent(record -> requireOwner(owner,record.getMemberId()));
+        sourceLinks.remove(owner,id,"SOURCE_DELETED");
         records.findById(id).ifPresent(record -> {
             Result r=json.readValue(record.getResultJson(),Result.class);
             CourseOutcome c=r.course();
