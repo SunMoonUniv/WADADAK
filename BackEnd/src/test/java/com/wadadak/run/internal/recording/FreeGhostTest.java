@@ -252,6 +252,18 @@ class FreeGhostTest {
         assertThat(db.queryForObject("SELECT count(*) FROM run.records WHERE id=?",Long.class,id)).isZero();
         assertThat(db.queryForObject("SELECT count(*) FROM run.free_ghost_results WHERE session_id=?",Long.class,id)).isEqualTo(1);
     }
+    @Test void resultAuthorizationDoesNotDeserializeTheFreeApproval() {
+        upload(source, original, raw(original, 220, 1200, 2000, "INTERRUPTED", Set.of(), 0));
+        var prepared = free.prepare(owner, source);
+        starts.start(owner, id, request(prepared));
+        upload(id, now, raw(now, 220, 1200, 1000, "INTERRUPTED", Set.of(), 0));
+        var outcome = results.get(owner, id);
+        var detail = results.comparison(owner, id);
+        db.update("UPDATE run.free_ghost_starts SET approval_json='{}' WHERE session_id=?", id);
+        assertThat(results.get(owner, id)).isEqualTo(outcome);
+        assertThat(results.comparison(owner, id)).isEqualTo(detail);
+        assertThatThrownBy(() -> results.get(UUID.randomUUID(), id)).isInstanceOf(AppException.class);
+    }
 
     @Test void legacyFreeRecordCanBeSelectedAndApprovedThroughAuthenticatedHttp() throws Exception {
         var raw=new ArrayList<>(raw(original,220,1200,2000,"INTERRUPTED",Set.of(),0));

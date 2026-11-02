@@ -26,6 +26,7 @@ import '../domain/course_tracker.dart';
 import '../domain/route_guidance.dart';
 import '../domain/recording_models.dart';
 import 'run_recorder.dart';
+import 'run_sensor_session.dart';
 import 'run_sync_worker.dart';
 import 'ghost_start_flow.dart';
 import '../data/ghost_start_api.dart';
@@ -94,6 +95,15 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       nowMs ?? clock.nowMs,
       recoveryClock: _recoveryClock,
     );
+    _sensors = RunSensorSession(
+      device,
+      recorder,
+      canSample: (id) =>
+          !_disposed &&
+          !storageFault &&
+          run?.id == id &&
+          run?.phase == RunPhase.running,
+    );
     ghostStarts = GhostStartFlow(
       store,
       ghostApi ?? GhostStartApi(api),
@@ -126,13 +136,13 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   final RunDevice? device;
   RunVoiceSettings voiceSettings = const RunVoiceSettings();
   final AudioGuide audioGuide;
-  String cadenceStatus = '측정 전';
+  late final RunSensorSession _sensors;
+  String get cadenceStatus => _sensors.cadenceStatus;
+  set cadenceStatus(String value) => _sensors.cadenceStatus = value;
   String? get voiceNotice => audioGuide.notice;
   Set<String> deletedIds = {};
   int pendingDeleteCount = 0;
   int pendingGhostClosureCount = 0;
-  String? _deviceRunId;
-  bool _pressureStarted = false;
   Completer<void>? _syncDone;
   Future<void>? _extrasJob;
   final RunApiClient api;
@@ -1152,13 +1162,13 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     if (storageFault) return;
     try {
       try {
-        await _sampleCadence(force: true);
+        await _sensors.sampleCadence(force: true);
       } on RunStorageFailure {
         rethrow;
       } on Object {
         cadenceStatus = '센서 연결 실패';
       }
-      await _samplePressure();
+      await _sensors.samplePressure();
       await recorder.pause();
       await audioGuide.stop();
       await _refreshExtras();
@@ -1454,59 +1464,6 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _sampleCadence({bool force = false}) async {
-    if (device == null ||
-        _deviceRunId == null ||
-        !recorder.active ||
-        run?.phase != RunPhase.running) {
-      return;
-    }
-    final id = run!.id;
-    final sample = await device!.sampleSteps(force: force);
-    if (sample == null ||
-        _disposed ||
-        storageFault ||
-        run?.id != id ||
-        run?.phase != RunPhase.running) {
-      return;
-    }
-    await recorder.cadence(
-      (sample['steps'] as num).toInt(),
-      (sample['durationMs'] as num).toInt(),
-      sampleEndClockMs: (sample['sampleEndClockMs'] as num?)?.toInt(),
-    );
-    cadenceStatus = '측정 중';
-  }
-
-  Future<void> _samplePressure() async {
-    if (!_pressureStarted ||
-        _disposed ||
-        storageFault ||
-        run?.phase != RunPhase.running) {
-      return;
-    }
-    final id = run!.id;
-    try {
-      final sample = await device?.samplePressure();
-      if (sample == null ||
-          _disposed ||
-          storageFault ||
-          run?.id != id ||
-          run?.phase != RunPhase.running) {
-        return;
-      }
-      await recorder.barometer(
-        (sample['pressureHpa'] as num).toDouble(),
-        (sample['pressureAccuracy'] as num).toInt(),
-        sampleClockMs: (sample['sampleClockMs'] as num).toInt(),
-      );
-    } on RunStorageFailure {
-      rethrow;
-    } on Object {
-      // Optional sensor failure never interrupts GPS or durable recording.
-    }
-  }
-
   Future<void> _refreshExtras() {
     if (_disposed) return Future.value();
     return _extrasJob ??= _updateExtras().whenComplete(() => _extrasJob = null);
@@ -1517,26 +1474,15 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       final current = run;
       final running = !storageFault && current?.phase == RunPhase.running;
       if (!running) {
-        if (_deviceRunId != null) await _stopExtras();
+        if (_sensors.runId != null) await _stopExtras();
         if (current != null) {
           await audioGuide.update(current.id, current.phase, metrics);
         }
         return;
       }
-      if (_deviceRunId != current!.id) {
+      if (_sensors.runId != current!.id) {
         await _stopExtras();
-        _deviceRunId = current.id;
-        try {
-          cadenceStatus = await device?.startSteps() ?? '센서 미지원';
-        } on Object {
-          cadenceStatus = '센서 연결 실패';
-        }
-        // Pressure does not depend on the presence of a step sensor.
-        try {
-          _pressureStarted = await device?.startPressure() ?? false;
-        } on Object {
-          _pressureStarted = false;
-        }
+        await _sensors.start(current.id);
       }
       if (run?.id != current.id ||
           run?.phase != RunPhase.running ||
@@ -1556,9 +1502,9 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         _notify();
         return;
       }
-      await _samplePressure();
+      await _sensors.samplePressure();
       try {
-        await _sampleCadence();
+        await _sensors.sampleCadence();
       } on RunStorageFailure {
         rethrow;
       } on Object {
@@ -1579,7 +1525,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       }
     } finally {
       if (!_disposed &&
-          _deviceRunId != null &&
+          _sensors.runId != null &&
           run?.phase != RunPhase.running) {
         await _stopExtras();
       }
@@ -1587,22 +1533,12 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> _stopExtras() async {
-    _deviceRunId = null;
-    _pressureStarted = false;
-    try {
-      await device?.stopPressure();
-    } on Object {
-      /* Optional pressure sensor failure must not interrupt recording. */
-    }
+    await _sensors.stopPressure();
     if (run?.phase == RunPhase.paused) cadenceStatus = '일시정지';
     if (run?.phase == RunPhase.ended) {
       cadenceStatus = metrics.averageCadence == null ? '측정 없음' : '측정 완료';
     }
-    try {
-      await device?.stopSteps();
-    } on Object {
-      /* Recording remains durable. */
-    }
+    await _sensors.stopSteps();
     try {
       await audioGuide.stop();
     } on Object {

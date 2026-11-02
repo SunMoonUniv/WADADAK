@@ -56,8 +56,7 @@ class GhostResultService {
 
     @Transactional(readOnly = true)
     public GhostOutcome get(UUID owner, UUID id) {
-        if(attempts.findByIdAndMemberId(id, owner).isEmpty()
-            && freeGhosts.find(id).filter(saved->owner.equals(saved.owner())).isEmpty())
+        if (!attempts.existsByIdAndMemberId(id, owner) && !freeGhosts.belongsTo(id, owner))
             throw new AppException(RunErrorCode.NOT_FOUND);
         return results.find(id).orElseThrow(() -> new AppException(RunErrorCode.NOT_FOUND));
     }

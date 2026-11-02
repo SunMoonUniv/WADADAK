@@ -39,6 +39,11 @@ class FreeRunScreen extends ConsumerWidget {
       listenable: controller,
       builder: (context, _) {
         final run = controller.snapshot;
+        final comparison =
+            !controller.preparing &&
+                (run.state == RunState.running || run.state == RunState.paused)
+            ? controller.ghostComparison
+            : null;
         final courseStart = controller.courseStart;
         final resolvedGhostKind = controller.selectedFreeGhost != null
             ? GhostRecordKind.personal
@@ -127,10 +132,10 @@ class FreeRunScreen extends ConsumerWidget {
                         course: controller.courseLive,
                         courseNotice: controller.courseNotice,
                         ghostOpponent: controller.ghostOpponent,
-                        ghostPosition: controller.ghostComparison?.position,
-                        ghostGap: controller.ghostComparison == null
+                        ghostPosition: comparison?.position,
+                        ghostGap: comparison == null
                             ? null
-                            : '거리 ${controller.ghostComparison!.distance} · 시간 ${controller.ghostComparison!.time}',
+                            : '거리 ${comparison.distance} · 시간 ${comparison.time}',
                         onPause: controller.storageFault
                             ? null
                             : controller.pause,

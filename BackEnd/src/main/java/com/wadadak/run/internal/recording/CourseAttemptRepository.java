@@ -13,6 +13,8 @@ interface CourseAttemptRepository extends JpaRepository<CourseAttempt, UUID> {
 
     Optional<CourseAttempt> findByIdAndMemberId(UUID id, UUID memberId);
 
+    boolean existsByIdAndMemberId(UUID id, UUID memberId);
+
     // 잠금 전에 소유자만 읽는다. 엔티티를 미리 올려 두면 잠금 뒤 다시 읽을 때 낡은 값을 쓴다
     @Query("select a.memberId from CourseAttempt a where a.id = :id")
     Optional<UUID> findMemberId(UUID id);

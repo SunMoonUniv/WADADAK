@@ -136,14 +136,14 @@ class GhostRunContext {
     }
     DateTime.parse(approval['approvedAt'] as String);
     DateTime.parse(approval['courseValidatedAt'] as String);
+    _replay = replay;
   }
   final GhostStartIntent intent;
   final String approvalJson;
+  late final OwnGhostReplay _replay;
   Map<String, dynamic> get approval =>
       (jsonDecode(approvalJson) as Map).cast<String, dynamic>();
-  OwnGhostReplay get replay => OwnGhostReplay.fromJson(
-    (approval['playback'] as Map).cast<String, dynamic>(),
-  );
+  OwnGhostReplay get replay => _replay;
   Map<String, dynamic> toJson() => {
     'intent': intent.toJson(),
     'approval': approval,
