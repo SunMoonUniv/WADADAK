@@ -4,6 +4,8 @@ import com.wadadak.common.geo.GeoPoint;
 import com.wadadak.common.paging.CursorSlice;
 import com.wadadak.common.paging.Cursorable;
 import com.wadadak.course.internal.course.CourseGeometry;
+import com.wadadak.course.internal.course.CourseTag;
+import com.wadadak.course.internal.course.CourseType;
 import com.wadadak.course.internal.course.Difficulty;
 import com.wadadak.course.internal.course.Retention;
 import com.wadadak.event.course.CourseStatus;
@@ -17,6 +19,7 @@ import java.sql.SQLException;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -24,7 +27,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 
-/** 저장한 코스(B1-09 · G5 · C8). 저장 줄과 코스 · 코스 통계(평점)를 읽는다. */
+/** 저장한 코스(B1-09 · G5 · C8). 저장 줄과 코스 · 코스 통계(평점 · 리뷰 수) · 현재 러너 수를 읽는다. */
 @Repository
 @RequiredArgsConstructor
 class BookmarkRepository {
@@ -103,11 +106,14 @@ class BookmarkRepository {
         };
         int offset = page.offset();
         List<BookmarkItem> rows = jdbc.sql("""
-                        SELECT c.id, c.name, c.distance_meters, c.difficulty, %s AS average_rating, c.creator_id,
-                               ST_AsBinary(c.route) AS route, c.status, c.expires_at, c.hidden_at
+                        SELECT c.id, c.name, c.distance_meters, c.difficulty, c.tags, c.course_type, %s AS average_rating,
+                               GREATEST(coalesce(s.review_count, 0), 0) AS review_count,
+                               CASE WHEN c.status = 'ACTIVE' THEN GREATEST(coalesce(r.active_count, 0), 0) ELSE 0 END AS active_runners,
+                               c.creator_id, ST_AsBinary(c.route) AS route, c.status, c.expires_at, c.hidden_at
                         FROM course.course_bookmarks b
                         JOIN course.courses c ON c.id = b.course_id
                         LEFT JOIN course.course_stats s ON s.course_id = c.id
+                        LEFT JOIN course.course_active_runners r ON r.course_id = c.id
                         WHERE b.member_id = :memberId AND c.status IN ('ACTIVE', 'HIDDEN')
                         ORDER BY c.status = 'HIDDEN', %sb.created_at DESC, c.id
                         LIMIT :limit OFFSET :offset""".formatted(RATING, keys))
@@ -149,13 +155,18 @@ class BookmarkRepository {
         return "CASE WHEN c.status = 'ACTIVE' THEN " + key + " END";
     }
 
-    /** 삭제 예정 시각은 비공개 시각 + 24시간 */
+    /** 특징은 FIL-04 순서. 삭제 예정 시각은 비공개 시각 + 24시간 */
     private static BookmarkItem item(ResultSet rs) throws SQLException {
+        List<CourseTag> tags = Arrays.stream((String[]) rs.getArray("tags").getArray())
+                .map(CourseTag::valueOf)
+                .sorted()
+                .toList();
         BigDecimal rating = rs.getBigDecimal("average_rating");
         CourseStatus status = CourseStatus.valueOf(rs.getString("status"));
         OffsetDateTime hiddenAt = rs.getObject("hidden_at", OffsetDateTime.class);
         return new BookmarkItem(rs.getObject("id", UUID.class), rs.getString("name"), rs.getInt("distance_meters"),
-                Difficulty.valueOf(rs.getString("difficulty")), rating == null ? null : rating.doubleValue(),
+                Difficulty.valueOf(rs.getString("difficulty")), tags, CourseType.valueOf(rs.getString("course_type")),
+                rating == null ? null : rating.doubleValue(), rs.getInt("review_count"), rs.getInt("active_runners"),
                 rs.getObject("creator_id", UUID.class), null, CourseGeometry.points(rs.getBytes("route")), status,
                 rs.getObject("expires_at", OffsetDateTime.class).toInstant(),
                 status == CourseStatus.HIDDEN ? hiddenAt.toInstant().plus(Retention.DELETE_AFTER) : null);
