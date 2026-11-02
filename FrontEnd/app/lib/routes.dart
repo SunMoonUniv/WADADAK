@@ -61,6 +61,13 @@ abstract final class Routes {
   /// I1에서 고른 기록 하나(달리기 결과 화면을 기록 보기로). 하단 탭을 덮는다.
   static String myRecord(String id) => '/my/record/${Uri.encodeComponent(id)}';
 
+  /// G4 내 코스(등록한 코스 · 저장한 코스). E3 `내가 등록한 코스`에서 연다. MY 탭 안에 쌓아 하단 탭이 보인다(Figma G4).
+  static const myCourses = '/my/courses';
+
+  /// B7 코스 수정. G4 카드 [수정]에서 연다. 하단 탭을 덮는다. extra: `MyCourseItem`.
+  /// 저장하거나 지우면 바뀐 `MyCourseItem`을 돌려주며 닫힌다.
+  static const myCourseEdit = '/my/course-edit';
+
   /// F6 프로필 편집. E3 [편집]에서 연다. 하단 탭을 덮는다.
   static const myProfileEdit = '/my/profile-edit';
 

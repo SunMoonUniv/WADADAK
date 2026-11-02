@@ -14,6 +14,8 @@ import 'features/course/detail/course_rankings_screen.dart';
 import 'features/home/course_filter_screen.dart';
 import 'features/home/course_search_screen.dart';
 import 'features/home/home_screen.dart';
+import 'features/my/course_edit_screen.dart';
+import 'features/my/my_courses_screen.dart';
 import 'features/my/my_screen.dart';
 import 'features/my/profile_edit_screen.dart';
 import 'features/my/run_history_screen.dart';
@@ -103,7 +105,10 @@ final routerProvider = Provider<GoRouter>((ref) {
             GoRoute(
               path: Routes.my,
               builder: (_, _) => const MyScreen(),
-              routes: [GoRoute(path: 'records', builder: (_, _) => const MyRunHistoryScreen())],
+              routes: [
+                GoRoute(path: 'records', builder: (_, _) => const MyRunHistoryScreen()),
+                GoRoute(path: 'courses', builder: (_, _) => const MyCoursesScreen()),
+              ],
             ),
           ]),
         ],
@@ -120,6 +125,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/my/record/:id',
         builder: (_, state) => MyRunRecordScreen(id: state.pathParameters['id']!),
       ),
+      GoRoute(path: Routes.myCourseEdit, builder: (_, state) => CourseEditScreen(course: state.extra! as MyCourseItem)),
       GoRoute(path: Routes.myProfileEdit, builder: (_, _) => const ProfileEditScreen()),
       GoRoute(path: Routes.mySettings, builder: (_, _) => const SettingsScreen()),
       // 하단 탭을 덮는 화면
