@@ -306,7 +306,11 @@ class GpsSourceLinkTest {
         var p=new GpsSourceLinkedEvent(UUID.randomUUID(),Instant.now(),s.id(),s.owner(),e.courseId(),400,e.distanceMeters(),
                 1200.0,100.0,true,s.result().endedAt(),epoch,s.result().endedAt(),s.result().registeredAt(),"GPS_SOURCE_COMPLETION_V1");
         publish(new GpsSourceUnlinkedEvent(UUID.randomUUID(),Instant.now(),p,"SOURCE_DELETED"));drain();
-        publish(p);publish(p);drain();
+        // Real redelivery retains the event ID but creates a distinct message instance.
+        // Reusing one object concurrently collides with Modulith's in-flight publication keys.
+        var redelivery=json.readValue(json.writeValueAsString(p),GpsSourceLinkedEvent.class);
+        assertThat(redelivery).isEqualTo(p).isNotSameAs(p);
+        publish(p);publish(redelivery);drain();
         assertThat(count("SELECT count(*) FROM course.course_completions WHERE run_record_id=? AND deleted_at IS NULL",s.id())).isZero();
         assertThat(count("SELECT count(*) FROM ranking.course_ranking_entries WHERE run_record_id=? AND NOT deleted",s.id())).isZero();
         assertThat(count("SELECT count(*) FROM review.course_run_records WHERE run_record_id=? AND NOT deleted",s.id())).isZero();
