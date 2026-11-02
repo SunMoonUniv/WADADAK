@@ -103,6 +103,7 @@ public final class GhostPlaybackBuilder {
 
     private GhostPlayback compose(java.util.UUID sourceId,String sourcePolicy,String sourceCalculation,
             CourseSnapshot snapshot,List<Input> inputs,CourseJudge.Analysis analysis,String version) {
+        inputs = com.wadadak.run.internal.GpsPathFilter.normalize(inputs);
         long duration = analysis.courseElapsedMs();
         var points = playbackSamples(analysis.samples(), inputs, duration);
         List<Pause> pauses = pauses(inputs, points, duration);

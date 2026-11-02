@@ -71,6 +71,40 @@ class FreeGhostTest {
     }
     GhostStart request(FreeGhostPreparation p) {return new GhostStart(null,1L,source,now,"GHOST_PLAYBACK_FREE_V1",p.referenceHash());}
 
+    @Test void filteredV4RecordWithTwoLongStopsUploadsApprovesAndFinishesADraw() throws Exception {
+        var fixture=json.readTree(java.nio.file.Files.readString(java.nio.file.Path.of("../run/fixtures/gps_path_v4.json")));
+        var raw=new ArrayList<Input>();
+        for(var c:fixture.get("cases")) {
+            if(!"long".equals(c.get("behavior").asText()))continue;
+            for(var node:c.get("inputs"))raw.add(json.treeToValue(node,Input.class));
+        }
+        assertThat(raw).isNotEmpty();
+        var shifted=raw.stream().map(p->new Input(p.seq(),p.kind(),p.elapsedMs(),original.plusMillis(p.elapsedMs()),
+                p.location(),p.accuracyM(),p.reason(),p.speedMps(),p.speedAccuracyMps(),p.steps(),p.durationMs(),p.sampleEndMs(),
+                p.altitudeM(),p.altitudeAccuracyM(),p.pressureHpa(),p.pressureAccuracy())).toList();
+        runs.prepare(owner,source,new Prepare(original,"FREE"));
+        for(int from=0;from<shifted.size();from+=500)
+            runs.upload(owner,source,new Upload(shifted.size()-1,shifted.subList(from,Math.min(from+500,shifted.size()))));
+        runs.process(source);
+        var p=free.prepare(owner,source,"GHOST_PLAYBACK_FREE_V2");
+        assertThat(p.playback().eligible()).as(p.playback().unavailableReasons().toString()).isTrue();
+        assertThat(runs.result(owner,source).calculationVersion()).isEqualTo("PACE_V4");
+        String before=json.writeValueAsString(runs.result(owner,source));
+        var approval=starts.start(owner,id,new GhostStart(null,1L,source,now,"GHOST_PLAYBACK_FREE_V2",p.referenceHash()));
+        assertThat(approval.playback().eligible()).isTrue();
+        var runner=raw.stream().map(v->new Input(v.seq(),v.kind(),v.elapsedMs(),now.plusMillis(v.elapsedMs()),
+                v.location(),v.accuracyM(),v.reason(),v.speedMps(),v.speedAccuracyMps(),v.steps(),v.durationMs(),v.sampleEndMs(),
+                v.altitudeM(),v.altitudeAccuracyM(),v.pressureHpa(),v.pressureAccuracy())).toList();
+        runs.prepare(owner,id,new Prepare(now,"FREE"));
+        for(int from=0;from<runner.size();from+=500)
+            runs.upload(owner,id,new Upload(runner.size()-1,runner.subList(from,Math.min(from+500,runner.size()))));
+        runs.process(id);
+        assertThat(results.get(owner,id).completed()).isTrue();
+        assertThat(results.get(owner,id).outcome()).isEqualTo(GhostVerdict.DRAW);
+        assertThat(json.writeValueAsString(runs.result(owner,source))).isEqualTo(before);
+        verifyNoInteractions(courseApi);
+    }
+
     @Test void interruptedSourceStartsWithoutCourseAndSavesAWinAndSurvivesSourceDeletion(AssertablePublishedEvents events) {
         upload(source,original,raw(original,220,1200,2000,"INTERRUPTED",Set.of(),0));
         var p=free.prepare(owner,source);

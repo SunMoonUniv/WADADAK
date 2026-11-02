@@ -69,70 +69,7 @@ class FreeRunController extends ChangeNotifier {
   String? get ghostOpponent => onGhost
       ? '${_recording!.run!.ghost!.intent.publicPeriod == null ? '내 기록' : '공개 기록'} ${formatRunTime(Duration(seconds: _recording!.run!.ghost!.intent.sourceSeconds))}'
       : null;
-  GhostLiveComparison? get ghostComparison {
-    final engine = _recording,
-        current = _recording?.run,
-        tracker = _recording?.courseTracker;
-    if (!onGhost || current == null || tracker == null || engine == null) {
-      return null;
-    }
-    tracker.feed(current.inputs);
-    final replay = current.ghost!.replay.playback;
-    final moment = replay.at(engine.recorder.elapsedMs);
-    final ghostS = moment.coursePositionM;
-    final position = ghostS == null ? null : tracker.route.pointAt(ghostS);
-    final last = tracker.points.lastOrNull;
-    final boundary = current.inputs
-        .where(
-          (i) =>
-              i.kind == recording.RunKind.gap ||
-              i.kind == recording.RunKind.resume,
-        )
-        .lastOrNull;
-    final s = last?.s;
-    final fresh =
-        last != null &&
-        (boundary == null || boundary.seq < last.input.seq) &&
-        (current.phase == recording.RunPhase.paused ||
-            engine.recorder.elapsedMs - last.input.elapsedMs <= 10000);
-    if (!fresh || s == null) {
-      return GhostLiveComparison(
-        position: position,
-        ghostProgress: ghostS == null ? null : ghostS / tracker.route.length,
-      );
-    }
-    double? first;
-    for (var i = 1; i < tracker.points.length; i++) {
-      final a = tracker.points[i - 1], b = tracker.points[i];
-      if (b.connected &&
-          a.s != null &&
-          b.s != null &&
-          b.s! > a.s! &&
-          s >= a.s! &&
-          s <= b.s!) {
-        first =
-            a.input.elapsedMs +
-            (b.input.elapsedMs - a.input.elapsedMs) *
-                (s - a.s!) /
-                (b.s! - a.s!);
-        break;
-      }
-    }
-    final opponent = replay.firstArrivalMs(s);
-    final reversing =
-        tracker.points.length > 1 &&
-        tracker.points[tracker.points.length - 2].s != null &&
-        s < tracker.points[tracker.points.length - 2].s!;
-    final delta = first == null || opponent == null || reversing
-        ? null
-        : first - opponent;
-    return GhostLiveComparison(
-      position: position,
-      distanceM: ghostS == null ? null : s - ghostS,
-      timeDeltaMs: delta,
-      ghostProgress: ghostS == null ? null : ghostS / tracker.route.length,
-    );
-  }
+  GhostLiveComparison? get ghostComparison => _recording?.ghostComparison;
 
   void retrySync() {
     if (_recording != null) unawaited(_recording!.sync(manual: true));

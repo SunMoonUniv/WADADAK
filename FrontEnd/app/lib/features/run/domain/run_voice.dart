@@ -8,8 +8,10 @@ class RunVoiceSettings {
     this.unit = VoiceUnit.distance,
     this.distanceKm = 1,
     this.timeMinutes = 5,
+    this.ghostGapEnabled = false,
   });
   final bool enabled;
+  final bool ghostGapEnabled;
   final VoiceUnit unit;
   final int distanceKm, timeMinutes;
   RunVoiceSettings copyWith({
@@ -17,17 +19,20 @@ class RunVoiceSettings {
     VoiceUnit? unit,
     int? distanceKm,
     int? timeMinutes,
+    bool? ghostGapEnabled,
   }) => RunVoiceSettings(
     enabled: enabled ?? this.enabled,
     unit: unit ?? this.unit,
     distanceKm: distanceKm ?? this.distanceKm,
     timeMinutes: timeMinutes ?? this.timeMinutes,
+    ghostGapEnabled: ghostGapEnabled ?? this.ghostGapEnabled,
   );
   Map<String, dynamic> toJson() => {
     'enabled': enabled,
     'unit': unit.name,
     'distanceKm': distanceKm,
     'timeMinutes': timeMinutes,
+    'ghostGapEnabled': ghostGapEnabled,
   };
   factory RunVoiceSettings.fromJson(Map<String, dynamic> j) => RunVoiceSettings(
     enabled: j['enabled'] is bool ? j['enabled'] as bool : true,
@@ -38,7 +43,16 @@ class RunVoiceSettings {
     timeMinutes: const [5, 10, 15].contains(j['timeMinutes'])
         ? j['timeMinutes'] as int
         : 5,
+    ghostGapEnabled: j['ghostGapEnabled'] == true,
   );
+}
+
+/// AUD-07: a signed same-position arrival-time difference, never a lap delta.
+String? ghostGapVoice(double? deltaMs) {
+  if (deltaMs == null || !deltaMs.isFinite) return null;
+  if (deltaMs.abs() < 5000) return '고스트와 거의 나란히 달리고 있어요.';
+  final seconds = (deltaMs.abs() / 5000).round() * 5;
+  return '현재 고스트보다 $seconds초 ${deltaMs < 0 ? '앞서 있어요' : '뒤처져 있어요'}.';
 }
 
 /// One announcement per crossed interval; pause and setting changes never replay old intervals.

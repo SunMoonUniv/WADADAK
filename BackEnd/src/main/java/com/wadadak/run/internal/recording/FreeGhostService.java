@@ -85,7 +85,7 @@ class FreeGhostService {
                     throw new IllegalArgumentException("Source calculation mismatch");
                 }
                 if(source.calculationVersion()!=null
-                    && !List.of("PACE_V1","PACE_V2","PACE_V3").contains(source.calculationVersion())) {
+                    && !List.of("PACE_V1","PACE_V2","PACE_V3","PACE_V4").contains(source.calculationVersion())) {
                     sourceFailure="SOURCE_CALCULATION_UNSUPPORTED";
                     throw new IllegalArgumentException("Unsupported source calculation");
                 }

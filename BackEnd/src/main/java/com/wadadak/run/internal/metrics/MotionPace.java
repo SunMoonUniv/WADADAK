@@ -2,6 +2,7 @@ package com.wadadak.run.internal.metrics;
 
 import com.wadadak.common.geo.GeoPoint;
 import com.wadadak.run.internal.GpsQuality;
+import com.wadadak.run.internal.GpsPathFilter;
 import com.wadadak.run.internal.RunContracts.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -9,7 +10,7 @@ import java.util.List;
 /** Versioned motion replay; PACE_V3 rejects isolated speed-inconsistent fixes. */
 final class MotionPace {
     static boolean usesMotion(String version) {
-        return "PACE_V2".equals(version) || "PACE_V3".equals(version);
+        return "PACE_V2".equals(version) || "PACE_V3".equals(version) || "PACE_V4".equals(version);
     }
     private boolean balanced;
     private Input suspect;
@@ -27,9 +28,13 @@ final class MotionPace {
     private List<GeoPoint> segment;
     private boolean paused, ended;
 
-    void add(Input p) {
+    private final GpsPathFilter pathFilter = new GpsPathFilter();
+    void add(Input raw) {
+        for (Input p : pathFilter.add(raw)) addNormalized(p);
+    }
+    private void addNormalized(Input p) {
         if (ended) return;
-        if (p.kind() == Kind.START) balanced = "PACE_V3".equals(p.reason());
+        if (p.kind() == Kind.START) balanced = "PACE_V3".equals(p.reason()) || "PACE_V4".equals(p.reason());
         if (!balanced || p.kind() == Kind.START || p.kind() == Kind.CADENCE ||
             p.kind() == Kind.BAROMETER || p.kind() == Kind.SEGMENT_END) {
             accept(p); return;
