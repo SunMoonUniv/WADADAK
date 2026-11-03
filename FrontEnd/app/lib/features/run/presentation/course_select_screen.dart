@@ -109,11 +109,30 @@ class _CourseSelectScreenState extends ConsumerState<CourseSelectScreen> {
   String _query = '';
   CourseSelection? _picked;
   int _shown = _page;
+  final _scroll = ScrollController();
 
   void _show(_Source source) => setState(() {
     _source = source;
     _shown = _page;
   });
+
+  /// 고른 코스의 경로 미리보기는 맨 위라, 목록을 내려서 골랐으면 맨 위로 올린다
+  void _pick(CourseSelection course) {
+    setState(() => _picked = course);
+    if (_scroll.hasClients && _scroll.offset > 0) {
+      _scroll.animateTo(
+        0,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -175,6 +194,7 @@ class _CourseSelectScreenState extends ConsumerState<CourseSelectScreen> {
             ),
           ),
           body: ListView(
+            controller: _scroll,
             padding: const EdgeInsets.fromLTRB(
               WdSpace.s24,
               WdSpace.s20,
@@ -182,6 +202,13 @@ class _CourseSelectScreenState extends ConsumerState<CourseSelectScreen> {
               WdSpace.s24,
             ),
             children: [
+              if (_picked != null) ...[
+                _SelectedCourseMap(
+                  key: ValueKey(_picked!.courseId),
+                  course: _picked!,
+                ),
+                const SizedBox(height: WdSpace.s16),
+              ],
               WdSearchBar(
                 hintText: '코스 이름 검색',
                 onChanged: (value) => setState(() {
@@ -267,8 +294,7 @@ class _CourseSelectScreenState extends ConsumerState<CourseSelectScreen> {
                   item: c.item,
                   saved: savedIds.contains(c.id),
                   picked: _picked?.courseId == c.id,
-                  onTap: () =>
-                      setState(() => _picked = CourseSelection(c.id, c.name)),
+                  onTap: () => _pick(CourseSelection(c.id, c.name)),
                 ),
                 const SizedBox(height: WdSpace.s12),
               ],
@@ -279,13 +305,6 @@ class _CourseSelectScreenState extends ConsumerState<CourseSelectScreen> {
                   onPressed: () => setState(() => _shown += 6),
                 ),
               const SizedBox(height: WdSpace.s12),
-              if (_picked != null) ...[
-                _SelectedCourseMap(
-                  key: ValueKey(_picked!.courseId),
-                  course: _picked!,
-                ),
-                const SizedBox(height: WdSpace.s16),
-              ],
               const WdInfoBanner('코스를 고르지 않으면 자유 러닝으로 달려요.', plain: true),
             ],
           ),

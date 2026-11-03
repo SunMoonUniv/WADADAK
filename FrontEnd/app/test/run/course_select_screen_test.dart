@@ -173,6 +173,43 @@ void main() {
     expect(find.text('한강 코스 4'), findsOneWidget);
   });
 
+  testWidgets('the selected route preview is at the top, scrolled into view', (
+    tester,
+  ) async {
+    await open(
+      tester,
+      courses: FakeCourseApi()
+        ..searchable = [
+          for (var i = 1; i <= 4; i++) testCourse('한강 코스 $i'),
+        ],
+    );
+    // 고른 카드가 내린 목록 아래에 있게 화면을 줄인다
+    tester.view.physicalSize = const Size(402, 640);
+    await tester.enterText(find.byType(TextField), '한강');
+    await tester.pumpAndSettle();
+    await tester.dragUntilVisible(
+      find.text('코스 1개 더 보기'),
+      find.byType(ListView),
+      const Offset(0, -200),
+    );
+    await tester.tap(find.text('코스 1개 더 보기'));
+    await tester.pumpAndSettle();
+    await tester.dragUntilVisible(
+      find.text('한강 코스 4'),
+      find.byType(ListView),
+      const Offset(0, -200),
+    );
+
+    await tester.tap(find.text('한강 코스 4'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('선택한 코스의 경로').hitTestable(), findsOneWidget);
+    expect(
+      tester.getTopLeft(find.text('선택한 코스의 경로')).dy,
+      lessThan(tester.getTopLeft(find.byType(TextField)).dy),
+    );
+  });
+
   testWidgets(
     'selected course shows full detail route and retry only refetches that course',
     (tester) async {
