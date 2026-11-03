@@ -7,6 +7,8 @@ import 'package:wadadak/core/map/map_view.dart';
 import 'package:wadadak/features/run/domain/course_run.dart';
 import 'package:wadadak/features/run/domain/course_tracker.dart';
 import 'package:wadadak/features/run/domain/recording_models.dart';
+import 'package:wadadak/features/run/domain/ghost_live_comparison.dart';
+import 'package:wadadak/features/run/domain/route_guidance.dart';
 import 'package:wadadak/features/run/domain/run_models.dart' as live;
 import 'package:wadadak/features/run/presentation/free_run_live_view.dart';
 
@@ -19,8 +21,9 @@ GeoPoint geo(double x, double y) => GeoPoint(
   lng0 + x / (6371008.8 * math.cos(lat0 * math.pi / 180)) * 180 / math.pi,
 );
 
-RouteGeometry course(List<double> xy) =>
-    RouteGeometry([for (var i = 0; i < xy.length; i += 2) geo(xy[i], xy[i + 1])]);
+RouteGeometry course(List<double> xy) => RouteGeometry([
+  for (var i = 0; i < xy.length; i += 2) geo(xy[i], xy[i + 1]),
+]);
 
 final k1 = course([0, 0, 0, 1000]);
 final k3 = course([0, 0, 0, 1000, 0, 0]);
@@ -37,7 +40,8 @@ class Walk {
   double x = 0, y = 0;
 
   Walk walk(double toX, double toY, [double step = 5, int stepMs = 2000]) {
-    final n = (math.sqrt(math.pow(toX - x, 2) + math.pow(toY - y, 2)) / step).ceil();
+    final n = (math.sqrt(math.pow(toX - x, 2) + math.pow(toY - y, 2)) / step)
+        .ceil();
     final fromX = x, fromY = y;
     for (var i = 1; i <= n; i++) {
       x = fromX + (toX - fromX) * i / n;
@@ -65,32 +69,38 @@ class Walk {
 
   Walk gps([double accuracyM = 5]) {
     final p = geo(x, y);
-    inputs.add(RunInput(
-      seq: inputs.length,
-      kind: RunKind.gps,
-      elapsedMs: ms,
-      measuredAt: DateTime.utc(2026, 10, 15).add(Duration(milliseconds: ms)),
-      lat: p.lat,
-      lng: p.lng,
-      accuracyM: accuracyM,
-    ));
+    inputs.add(
+      RunInput(
+        seq: inputs.length,
+        kind: RunKind.gps,
+        elapsedMs: ms,
+        measuredAt: DateTime.utc(2026, 10, 15).add(Duration(milliseconds: ms)),
+        lat: p.lat,
+        lng: p.lng,
+        accuracyM: accuracyM,
+      ),
+    );
     return this;
   }
 
   Walk event(RunKind kind) {
-    inputs.add(RunInput(
-      seq: inputs.length,
-      kind: kind,
-      elapsedMs: ms,
-      measuredAt: DateTime.utc(2026, 10, 15).add(Duration(milliseconds: ms)),
-    ));
+    inputs.add(
+      RunInput(
+        seq: inputs.length,
+        kind: kind,
+        elapsedMs: ms,
+        measuredAt: DateTime.utc(2026, 10, 15).add(Duration(milliseconds: ms)),
+      ),
+    );
     return this;
   }
 }
 
-CourseTracker track(RouteGeometry route, Walk walk) => CourseTracker(route)..feed(walk.inputs);
+CourseTracker track(RouteGeometry route, Walk walk) =>
+    CourseTracker(route)..feed(walk.inputs);
 
-List<double> placed(CourseTracker tracker) => tracker.points.map((p) => p.s).nonNulls.toList();
+List<double> placed(CourseTracker tracker) =>
+    tracker.points.map((p) => p.s).nonNulls.toList();
 
 TrackPoint near(CourseTracker tracker, double s) =>
     tracker.points.firstWhere((p) => p.s != null && (p.s! - s).abs() < .5);
@@ -128,11 +138,17 @@ void main() {
   });
 
   test('standing at the loop start stays held (S-04)', () {
-    expect(placed(track(k4, Walk().at(0, 0).stay(60).event(RunKind.end))), isEmpty);
+    expect(
+      placed(track(k4, Walk().at(0, 0).stay(60).event(RunKind.end))),
+      isEmpty,
+    );
   });
 
   test('full loop ends at the finish, not the start (S-05)', () {
-    final t = track(k4, Walk().at(0, 0).walk(500, 0).walk(500, 500).walk(0, 500).walk(0, 0));
+    final t = track(
+      k4,
+      Walk().at(0, 0).walk(500, 0).walk(500, 500).walk(0, 500).walk(0, 0),
+    );
 
     expect(placed(t), sorted());
     expect(t.positionM, closeTo(2000, 1e-6));
@@ -146,29 +162,49 @@ void main() {
   });
 
   test('figure eight crossing does not confuse the legs (S-07)', () {
-    final t = track(k5, Walk().at(0, 0).walk(300, 300).walk(300, 0).walk(0, 300));
+    final t = track(
+      k5,
+      Walk().at(0, 0).walk(300, 300).walk(300, 0).walk(0, 300),
+    );
 
     expect(placed(t), allOf(sorted(), hasLength(t.points.length)));
     expect(t.positionM, closeTo(k5.length, 1e-6));
   });
 
   test('crossing after a gap is held until the direction is known (S-08)', () {
-    final t = track(k5, Walk().at(0, 0).walk(100, 100).event(RunKind.gap).at(150, 150).walk(250, 250));
+    final t = track(
+      k5,
+      Walk()
+          .at(0, 0)
+          .walk(100, 100)
+          .event(RunKind.gap)
+          .at(150, 150)
+          .walk(250, 250),
+    );
 
     expect(near(t, 212.13).connected, false);
     expect(placed(t), allOf(sorted(), hasLength(t.points.length)));
   });
 
-  test('movement while paused is ignored and the resume is not bridged (R-03)', () {
-    final t = track(
-      k1,
-      Walk().at(0, 0).walk(0, 300).event(RunKind.pause).walk(0, 500).event(RunKind.resume).walk(0, 600),
-    );
+  test(
+    'movement while paused is ignored and the resume is not bridged (R-03)',
+    () {
+      final t = track(
+        k1,
+        Walk()
+            .at(0, 0)
+            .walk(0, 300)
+            .event(RunKind.pause)
+            .walk(0, 500)
+            .event(RunKind.resume)
+            .walk(0, 600),
+      );
 
-    expect(placed(t).where((s) => s > 300 && s < 500), isEmpty);
-    expect(near(t, 505).connected, false);
-    expect(near(t, 510).connected, true);
-  });
+      expect(placed(t).where((s) => s > 300 && s < 500), isEmpty);
+      expect(near(t, 505).connected, false);
+      expect(near(t, 510).connected, true);
+    },
+  );
 
   test('more than ten seconds without GPS breaks the connection', () {
     final walk = Walk().at(0, 0).walk(0, 100);
@@ -184,7 +220,10 @@ void main() {
   });
 
   test('inputs after SEGMENT_END are dropped', () {
-    final t = track(k1, Walk().at(0, 0).walk(0, 500).event(RunKind.segmentEnd).walk(0, 1000));
+    final t = track(
+      k1,
+      Walk().at(0, 0).walk(0, 500).event(RunKind.segmentEnd).walk(0, 1000),
+    );
 
     expect(t.positionM, closeTo(500, 1e-6));
   });
@@ -192,7 +231,12 @@ void main() {
   test('a GPS jump over the speed limit breaks only that step', () {
     final t = track(
       k1,
-      Walk().at(0, 0).walk(0, 100).walk(0, 95, 5, 1000).walk(0, 111, 16, 1000).walk(0, 114, 3, 1000),
+      Walk()
+          .at(0, 0)
+          .walk(0, 100)
+          .walk(0, 95, 5, 1000)
+          .walk(0, 111, 16, 1000)
+          .walk(0, 114, 3, 1000),
     );
 
     expect(near(t, 111).connected, false);
@@ -207,18 +251,29 @@ void main() {
     expect(near(t, 405).connected, true);
   });
 
-  test('feeding new inputs bit by bit gives the same result as all at once', () {
-    final walk = Walk().at(0, 0).walk(500, 0).walk(500, 500).walk(0, 500).walk(0, 0);
-    final live = CourseTracker(k4);
-    for (var n = 1; n <= walk.inputs.length; n += 7) {
-      live.feed(walk.inputs.sublist(0, n));
-    }
-    live.feed(walk.inputs);
+  test(
+    'feeding new inputs bit by bit gives the same result as all at once',
+    () {
+      final walk = Walk()
+          .at(0, 0)
+          .walk(500, 0)
+          .walk(500, 500)
+          .walk(0, 500)
+          .walk(0, 0);
+      final live = CourseTracker(k4);
+      for (var n = 1; n <= walk.inputs.length; n += 7) {
+        live.feed(walk.inputs.sublist(0, n));
+      }
+      live.feed(walk.inputs);
 
-    final batch = track(k4, walk);
-    expect(live.points.map((p) => (p.s, p.connected)), batch.points.map((p) => (p.s, p.connected)));
-    expect(live.recognizedM, closeTo(batch.recognizedM, 1e-9));
-  });
+      final batch = track(k4, walk);
+      expect(
+        live.points.map((p) => (p.s, p.connected)),
+        batch.points.map((p) => (p.s, p.connected)),
+      );
+      expect(live.recognizedM, closeTo(batch.recognizedM, 1e-9));
+    },
+  );
 
   test('kilometre markers sit on the route every 1 km from the start', () {
     final markers = k3.kilometres();
@@ -228,54 +283,135 @@ void main() {
     expect(markers[1].$2.distanceTo(geo(0, 0)), lessThan(.01)); // 돌아온 출발점이 2 km
   });
 
-  test('course guidance shows progress, remaining distance and the next kilometre', () {
-    final guide = CourseLive('왕복 코스', track(k3, Walk().at(0, 0).walk(0, 500)));
+  test(
+    'course guidance shows progress, remaining distance and the next kilometre',
+    () {
+      final guide = CourseLive(
+        '왕복 코스',
+        track(k3, Walk().at(0, 0).walk(0, 500)),
+      );
 
-    expect(guide.progress, closeTo(.25, 1e-6));
-    expect(guide.remainingM, closeTo(1500, 1e-6));
-    expect(guide.nextTarget, '1 km 지점까지 500 m');
+      expect(guide.progress, closeTo(.25, 1e-6));
+      expect(guide.remainingM, closeTo(1500, 1e-6));
+      expect(guide.nextTarget, '1 km 지점까지 500 m');
 
-    final finishing = CourseLive('왕복 코스', track(k3, Walk().at(0, 0).walk(0, 1000).walk(0, 300)));
-    expect(finishing.nextTarget, '도착까지 300 m');
-  });
+      final finishing = CourseLive(
+        '왕복 코스',
+        track(k3, Walk().at(0, 0).walk(0, 1000).walk(0, 300)),
+      );
+      expect(finishing.nextTarget, '도착까지 300 m');
+    },
+  );
 
-  testWidgets('course run screen shows the course, its kilometres and the progress', (tester) async {
-    final guide = CourseLive('왕복 코스', track(k3, Walk().at(0, 0).walk(0, 500)));
-    await tester.pumpWidget(
-      ProviderScope(
-        overrides: [mapEngineProvider.overrideWithValue(MapEngine.dev)],
-        child: MaterialApp(
-          home: FreeRunLiveView(
-            run: live.RunSnapshot(
-              state: live.RunState.running,
-              sessionId: 'run-1',
-              startedAt: DateTime.utc(2026, 10, 21),
-              elapsed: const Duration(minutes: 4),
-              active: const Duration(minutes: 4),
-              distanceMeters: 500,
-              inputs: const [],
-              segments: [
-                [live.RunPoint(geo(0, 0).lat, geo(0, 0).lng), live.RunPoint(geo(0, 500).lat, geo(0, 500).lng)],
-              ],
+  testWidgets(
+    'course run screen shows the course, its kilometres and the progress',
+    (tester) async {
+      final guide = CourseLive(
+        '왕복 코스',
+        track(k3, Walk().at(0, 0).walk(0, 500)),
+      );
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [mapEngineProvider.overrideWithValue(MapEngine.dev)],
+          child: MaterialApp(
+            home: FreeRunLiveView(
+              run: live.RunSnapshot(
+                state: live.RunState.running,
+                sessionId: 'run-1',
+                startedAt: DateTime.utc(2026, 10, 21),
+                elapsed: const Duration(minutes: 4),
+                active: const Duration(minutes: 4),
+                distanceMeters: 500,
+                inputs: const [],
+                segments: [
+                  [
+                    live.RunPoint(geo(0, 0).lat, geo(0, 0).lng),
+                    live.RunPoint(geo(0, 500).lat, geo(0, 500).lng),
+                  ],
+                ],
+              ),
+              course: guide,
+              onPause: () {},
+              onResume: () {},
+              onStop: () {},
             ),
-            course: guide,
-            onPause: () {},
-            onResume: () {},
-            onStop: () {},
           ),
         ),
-      ),
+      );
+
+      expect(find.text('왕복 코스'), findsOneWidget);
+      expect(find.text('코스 진행'), findsOneWidget);
+      expect(find.text('25%'), findsOneWidget);
+      expect(find.text('1 km 지점까지 500 m'), findsOneWidget);
+
+      await tester.drag(find.byType(PageView), const Offset(700, 0)); // 왼쪽 지도
+      await tester.pumpAndSettle();
+      expect(find.text('1 km'), findsOneWidget);
+      expect(find.text('2 km'), findsOneWidget);
+      expect(find.text('남은 거리 1.50 km'), findsOneWidget);
+    },
+  );
+
+  for (final ghost in [false, true]) {
+    testWidgets(
+      '${ghost ? 'ghost' : 'course'} map shows the deviation band only while off the route is confirmed',
+      (tester) async {
+        Future<void> show(Walk walk) async {
+          final guidance = RouteGuidance(k1)..feed(walk.inputs);
+          final here = geo(walk.x, walk.y);
+          await tester.pumpWidget(
+            ProviderScope(
+              overrides: [mapEngineProvider.overrideWithValue(MapEngine.dev)],
+              child: MaterialApp(
+                home: FreeRunLiveView(
+                  run: live.RunSnapshot(
+                    state: live.RunState.running,
+                    sessionId: 'run-1',
+                    startedAt: DateTime.utc(2026, 11, 3),
+                    elapsed: const Duration(minutes: 1),
+                    active: const Duration(minutes: 1),
+                    distanceMeters: 135,
+                    inputs: const [],
+                    segments: [
+                      [
+                        live.RunPoint(geo(0, 0).lat, geo(0, 0).lng),
+                        live.RunPoint(here.lat, here.lng),
+                      ],
+                    ],
+                  ),
+                  course: CourseLive('직선 코스', track(k1, walk), guidance),
+                  ghostOpponent: ghost ? '내 최고 기록' : null,
+                  ghostComparison: ghost
+                      ? const GhostLiveComparison(
+                          distanceM: 12,
+                          timeDeltaMs: -4000,
+                        )
+                      : null,
+                  onPause: () {},
+                  onResume: () {},
+                  onStop: () {},
+                ),
+              ),
+            ),
+          );
+          await tester.drag(
+            find.byType(PageView),
+            const Offset(700, 0),
+          ); // 왼쪽 지도
+          await tester.pumpAndSettle();
+        }
+
+        final walk = Walk().at(0, 0).walk(0, 100).walk(35, 100);
+        await show(walk); // 후보만으로는 띠 없음
+        expect(find.text('경로로 돌아와야 완주로 인정돼요'), findsNothing);
+
+        await show(walk.stay(10)); // 이탈 확정
+        expect(find.text('코스에서 35 m 벗어났어요'), findsOneWidget);
+        expect(find.text('경로로 돌아와야 완주로 인정돼요'), findsOneWidget);
+
+        await show(walk.walk(0, 100).stay(6)); // 복귀 확정
+        expect(find.text('경로로 돌아와야 완주로 인정돼요'), findsNothing);
+      },
     );
-
-    expect(find.text('왕복 코스'), findsOneWidget);
-    expect(find.text('코스 진행'), findsOneWidget);
-    expect(find.text('25%'), findsOneWidget);
-    expect(find.text('1 km 지점까지 500 m'), findsOneWidget);
-
-    await tester.drag(find.byType(PageView), const Offset(700, 0)); // 왼쪽 지도
-    await tester.pumpAndSettle();
-    expect(find.text('1 km'), findsOneWidget);
-    expect(find.text('2 km'), findsOneWidget);
-    expect(find.text('남은 거리 1.50 km'), findsOneWidget);
-  });
+  }
 }
