@@ -326,6 +326,7 @@ class _GhostRunLiveViewState extends State<GhostRunLiveView> {
                   child: _legend(dark: true),
                 ),
               ),
+              ...courseDeviationBand(widget.course), // 위 고스트 카드를 덮는다
             ],
           ),
         ),
