@@ -8,6 +8,7 @@ import 'package:wadadak/core/api/ranking_api_client.dart';
 import 'package:wadadak/core/api/region_api_client.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/map/map_view.dart';
+import 'package:wadadak/features/my/my_screen.dart';
 import 'package:wadadak/features/ranking/runner_profile_screen.dart';
 import 'package:wadadak/main.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
@@ -171,29 +172,29 @@ void main() {
     expect(find.text(RunnerProfileScreen.unavailableTitle), findsOneWidget, reason: '그 러너 ID로 연다(없는 회원)');
   });
 
-  testWidgets('my row and my place on the podium cannot be tapped (E1 · I2 · I5)', (tester) async {
-    List<String> untappable() => [
-          for (final row in tester.widgetList<WdRankRow>(find.byType(WdRankRow)))
-            if (row.onTap == null) row.data.name,
-        ];
-    GestureDetector place(String name) =>
-        tester.widget(find.ancestor(of: find.text(name), matching: find.byType(GestureDetector)).first);
+  testWidgets('my row and my place on the podium go to MY (E1 · I2 · I5)', (tester) async {
+    Future<void> openMine(String reason) async {
+      await tap(tester, find.text('wonehgus'));
+      expect(find.byType(MyScreen), findsOneWidget, reason: reason);
+      await tap(tester, find.text('랭킹'));
+    }
+
     await openRanking(tester);
 
     await tap(tester, find.text('이번 달'));
-    expect(place('wonehgus').onTap, isNull, reason: 'E1 시상대의 내 자리는 누를 수 없다');
-    expect(place('러너_하늘').onTap, isNotNull);
+    await openMine('E1 시상대의 내 자리');
 
     await tap(tester, find.text('누적'));
     await tester.drag(find.byType(ListView), const Offset(0, -3000));
     await tester.pumpAndSettle();
-    expect(untappable(), ['wonehgus'], reason: 'E1 순위 줄: 내 줄만 누를 수 없고 눌림 효과도 없다');
+    await openMine('E1 순위 줄의 내 줄');
 
     await tap(tester, find.text('지역 주간 랭킹'));
-    expect(untappable(), ['wonehgus'], reason: 'I2');
+    await openMine('I2');
 
+    await tap(tester, find.text('지역 주간 랭킹'));
     await tap(tester, find.text('20명 더 보기'));
-    expect(untappable(), ['wonehgus'], reason: 'I5');
+    await openMine('I5');
   });
 
   testWidgets('whole ranking shows the podium and my rank, and loads more runners at the end', (tester) async {
