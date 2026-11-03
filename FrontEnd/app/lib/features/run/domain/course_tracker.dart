@@ -162,6 +162,10 @@ class TrackPoint {
   final RunInput input;
   double? s;
   bool connected;
+
+  /// Display-only certainty; this does not change recognized distance or judging.
+  bool certainAmong(int candidates) =>
+      s != null && (connected || candidates <= 1);
 }
 
 /// 윈도우 추적(서버 CourseTracker). 서버는 기록 전체를 한 번에 보지만 앱은 [feed]로 새 입력만 이어서 본다.

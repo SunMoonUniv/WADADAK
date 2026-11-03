@@ -149,11 +149,13 @@ class WdRemainingDistance extends StatelessWidget {
         children: [
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: WdSpace.s8,
             children: [
-              Text(leading,
-                  style: WdText.raw(14, FontWeight.w500).copyWith(color: dark ? WdColors.runTextSub : WdColors.green)),
-              Text(trailing,
-                  style: WdText.raw(14, FontWeight.w700).copyWith(color: dark ? WdColors.white : WdColors.nearBlack)),
+              Expanded(child: Text(leading,
+                  style: WdText.raw(14, FontWeight.w500).copyWith(color: dark ? WdColors.runTextSub : WdColors.green))),
+              Expanded(child: Text(trailing, textAlign: TextAlign.right,
+                  style: WdText.raw(14, FontWeight.w700).copyWith(color: dark ? WdColors.white : WdColors.nearBlack))),
             ],
           ),
           WdProgressBar(

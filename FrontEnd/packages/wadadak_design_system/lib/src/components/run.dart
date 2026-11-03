@@ -22,8 +22,8 @@ class WdRunHeader extends StatelessWidget {
 
   // Figma는 py12 안에 42px 글자 묶음을 가운데 정렬해 위아래로 1px씩 넘친다(클립). 같은 위치가 되도록 세로 패딩 없이 가운데 정렬.
   @override
-  Widget build(BuildContext context) => SizedBox(
-        height: 64,
+  Widget build(BuildContext context) => ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 64),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: WdSpace.s24),
           child: Row(
@@ -32,6 +32,7 @@ class WdRunHeader extends StatelessWidget {
               Expanded(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   spacing: 2,
                   children: [
@@ -42,7 +43,7 @@ class WdRunHeader extends StatelessWidget {
                 ),
               ),
               Container(
-                height: 30,
+                constraints: const BoxConstraints(minHeight: 30),
                 padding: const EdgeInsets.symmetric(horizontal: WdSpace.s8),
                 alignment: Alignment.center,
                 decoration: BoxDecoration(color: WdColors.runSurface, borderRadius: BorderRadius.circular(WdRadius.full)),
@@ -66,10 +67,11 @@ class WdElapsedTime extends StatelessWidget {
   final String? caption;
 
   @override
-  Widget build(BuildContext context) => SizedBox(
-        height: 154,
+  Widget build(BuildContext context) => ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 154),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           spacing: WdSpace.s6,
           children: [
             Text(label, style: WdText.raw(14, FontWeight.w500, 17).copyWith(color: WdColors.runTextSub)),
@@ -102,14 +104,19 @@ class WdRunMetricTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) => WdSurface(
         color: WdColors.runSurface,
-        height: 88,
+        minHeight: 88,
         padding: const EdgeInsets.all(WdSpace.s16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           spacing: WdSpace.s10,
           children: [
             Text(label, style: WdText.raw(13, FontWeight.w400, 17).copyWith(color: WdColors.runTextSub)),
-            Text(value, maxLines: 1, style: WdText.numeric24.copyWith(color: WdColors.white)),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(value, maxLines: 1, style: WdText.numeric24.copyWith(color: WdColors.white)),
+            ),
           ],
         ),
       );
@@ -150,8 +157,8 @@ class WdLapRecords extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       spacing: WdSpace.s8,
       children: [
-        SizedBox(
-          height: 22,
+        ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 22),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -162,8 +169,8 @@ class WdLapRecords extends StatelessWidget {
           ),
         ),
         for (final lap in laps)
-          SizedBox(
-            height: 30,
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 30),
             child: Row(
               spacing: WdSpace.s12,
               children: [
@@ -216,14 +223,15 @@ class WdGhostLeadCard extends StatelessWidget {
   Widget build(BuildContext context) => WdSurface(
         color: WdColors.lime,
         radius: WdRadius.r20,
-        height: 104,
+        minHeight: 104,
         padding: const EdgeInsets.symmetric(horizontal: WdSpace.s14, vertical: 11),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           spacing: WdSpace.s4,
           children: [
-            SizedBox(
-              height: 20,
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 20),
               child: Row(
                 spacing: 7,
                 children: [
@@ -237,18 +245,14 @@ class WdGhostLeadCard extends StatelessWidget {
                 ],
               ),
             ),
-            SizedBox(
-              height: 32,
-              child: Row(
+            ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 32),
+              child: Wrap(
                 spacing: WdSpace.s10,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Text(value, style: WdText.numeric28.copyWith(color: WdColors.nearBlack)),
-                  Flexible(
-                    child: Text(caption,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: WdText.raw(16, FontWeight.w500, 17).copyWith(color: WdColors.green)),
-                  ),
+                  Text(caption, style: WdText.raw(16, FontWeight.w500, 17).copyWith(color: WdColors.green)),
                 ],
               ),
             ),
@@ -291,13 +295,13 @@ class WdCourseProgress extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       spacing: WdSpace.s8,
       children: [
-        SizedBox(
-          height: 22,
+        ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 22),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(label, style: sub),
+              Expanded(child: Text(label, style: sub)),
               Text(percent, style: WdText.raw(16, FontWeight.w700, 14).copyWith(color: WdColors.lime)),
             ],
           ),
@@ -310,12 +314,13 @@ class WdCourseProgress extends StatelessWidget {
             child: CustomPaint(painter: _CourseTrackPainter(progress.clamp(0, 1).toDouble(), ghostProgress?.clamp(0, 1).toDouble())),
           ),
         ),
-        SizedBox(
-          height: 20,
+        ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 20),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [Text(leading, style: sub), Text(trailing, style: sub)],
+            spacing: WdSpace.s8,
+            children: [Expanded(child: Text(leading, style: sub)), Text(trailing, style: sub)],
           ),
         ),
       ],

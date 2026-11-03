@@ -158,8 +158,7 @@ class RouteGuidance {
     final branches = nearest.d <= offRouteM
         ? route.candidates(route.toLocal(input.lat!, input.lng!), offRouteM)
         : const <Projection>[];
-    if (branches.length > 1 &&
-        (tracked?.s == null || tracked?.connected != true)) {
+    if (branches.length > 1 && tracked?.certainAmong(branches.length) != true) {
       _unreliable();
       distanceM = null;
       nearestPoint = null;
