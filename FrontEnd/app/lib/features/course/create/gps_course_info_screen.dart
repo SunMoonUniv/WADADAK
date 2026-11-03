@@ -9,6 +9,7 @@ import '../../../core/api/course_api_client.dart';
 import '../../../core/error_message.dart';
 import '../../../routes.dart';
 import '../../home/registered_course_focus.dart';
+import '../../my/my_courses_screen.dart';
 import '../course_format.dart';
 import 'course_info_inputs.dart';
 import 'run_course_source_api.dart';
@@ -106,6 +107,8 @@ class _GpsCourseInfoScreenState extends ConsumerState<GpsCourseInfoScreen> with 
             tags: tags,
           );
       if (!mounted) return;
+      // 등록 코스 수(E3 · G4 위 칸)를 다시 받게 한다. 받아 둔 값을 계속 쓰는 provider라 알려 줘야 바뀐다
+      ref.invalidate(myCourseSummaryProvider);
       final completionMessage = await ref.read(runCourseSourceApiProvider).completionMessage(route.recordId);
       if (!mounted) return;
       await showCourseRegistered(context, sourceCompletionMessage: completionMessage);
