@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -111,6 +113,24 @@ void main() {
 
     expect(courses.bookmarkRequests.skip(1), [(BookmarkSort.rating, null, null), (BookmarkSort.nearest, here, null)]);
     expect(tester.widget<WdFilterChip>(find.widgetWithText(WdFilterChip, '가까운순')).selected, isTrue);
+  });
+
+  testWidgets('selects the nearest chip and shows loading while the location is read', (tester) async {
+    await openG5(tester);
+    location.fix = Completer();
+
+    await tester.tap(find.text('가까운순'));
+    await tester.pump();
+
+    expect(tester.widget<WdFilterChip>(find.widgetWithText(WdFilterChip, '가까운순')).selected, isTrue);
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byType(SavedCourseCard), findsNothing);
+
+    location.fix!.complete();
+    await tester.pumpAndSettle();
+
+    expect(courses.bookmarkRequests.last, (BookmarkSort.nearest, here, null));
+    expect(find.byType(SavedCourseCard), findsNWidgets(3));
   });
 
   testWidgets('keeps the sort when the location cannot be read', (tester) async {

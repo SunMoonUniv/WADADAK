@@ -792,7 +792,7 @@ class FakeMyLocation implements MyLocation {
   /// 기기에 남은 마지막 위치. 권한이 있을 때만 준다.
   GeoPoint? last;
 
-  /// 있으면 [ifAllowed]가 이것이 끝날 때까지 기다린다(지금 위치를 받는 데 걸리는 시간).
+  /// 있으면 [ifAllowed] · [request]가 이것이 끝날 때까지 기다린다(지금 위치를 받는 데 걸리는 시간).
   Completer<void>? fix;
 
   @override
@@ -807,6 +807,7 @@ class FakeMyLocation implements MyLocation {
   @override
   Future<GeoPoint> request() async {
     requests++;
+    await fix?.future;
     if (error != null) throw error!;
     allowed = true;
     return location!;

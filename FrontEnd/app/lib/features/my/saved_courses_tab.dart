@@ -38,6 +38,9 @@ class SavedCoursesTab extends ConsumerStatefulWidget {
 class _SavedCoursesTabState extends ConsumerState<SavedCoursesTab> with AutomaticKeepAliveClientMixin {
   var _sort = BookmarkSort.recent;
 
+  /// 바꾸는 중인 정렬([_chooseSort]). 받기 전까지 칩은 이 정렬로 보인다.
+  BookmarkSort? _pendingSort;
+
   /// 가까운순의 현재 위치. 다음 쪽도 같은 위치로 받는다.
   GeoPoint? _origin;
   List<BookmarkCourse> _courses = [];
@@ -98,14 +101,21 @@ class _SavedCoursesTabState extends ConsumerState<SavedCoursesTab> with Automati
     return _load();
   }
 
+  /// 칩을 누르면 바로 그 칩을 고른 것으로 보이고, 위치 · 목록을 받는 동안 목록 자리에 로딩을 보인다.
+  /// 못 받으면 칩과 목록을 그대로 둔다.
   Future<void> _chooseSort(BookmarkSort sort) async {
-    if (sort == _sort || _loading) return;
-    GeoPoint? origin;
-    if (sort == BookmarkSort.nearest) {
-      origin = await requestMyLocation(context, ref.read(myLocationProvider));
-      if (origin == null || !mounted) return;
+    if (sort == _sort || _loading || _pendingSort != null) return;
+    setState(() => _pendingSort = sort);
+    try {
+      GeoPoint? origin;
+      if (sort == BookmarkSort.nearest) {
+        origin = await requestMyLocation(context, ref.read(myLocationProvider));
+        if (origin == null || !mounted) return;
+      }
+      await _load(sort: sort, origin: origin);
+    } finally {
+      if (mounted) setState(() => _pendingSort = null);
     }
-    await _load(sort: sort, origin: origin);
   }
 
   Future<void> _open(BookmarkCourse course) async {
@@ -181,7 +191,8 @@ class _SavedCoursesTabState extends ConsumerState<SavedCoursesTab> with Automati
         runSpacing: WdSpace.s6,
         children: [
           for (final sort in BookmarkSort.values)
-            WdFilterChip(sort.label, height: 36, selected: sort == _sort, onTap: () => _chooseSort(sort)),
+            WdFilterChip(sort.label,
+                height: 36, selected: sort == (_pendingSort ?? _sort), onTap: () => _chooseSort(sort)),
         ],
       ),
       const SizedBox(height: WdSpace.s16),
@@ -212,11 +223,13 @@ class _SavedCoursesTabState extends ConsumerState<SavedCoursesTab> with Automati
       ),
       const SizedBox(height: WdSpace.s16),
     ];
+    const loading = Padding(
+      padding: EdgeInsets.all(WdSpace.s24),
+      child: Center(child: CircularProgressIndicator()),
+    );
     final Widget? status = switch ((_loaded, _error)) {
-      (false, null) => const Padding(
-          padding: EdgeInsets.all(WdSpace.s24),
-          child: Center(child: CircularProgressIndicator()),
-        ),
+      _ when _pendingSort != null => loading,
+      (false, null) => loading,
       (_, _?) when _courses.isEmpty => _Retry(onRetry: _load),
       (true, _) when _courses.isEmpty =>
         const WdStateMessage(title: SavedCoursesTab.emptyTitle, message: SavedCoursesTab.emptyMessage),
