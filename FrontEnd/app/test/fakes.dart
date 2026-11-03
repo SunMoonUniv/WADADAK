@@ -340,9 +340,13 @@ class FakeCourseApi implements CourseApiClient {
   final savedBookmarks = <String>[];
   final removedBookmarks = <List<String>>[];
 
+  /// 있으면 끝날 때까지 저장 여부 · 저장 · 해제 응답을 미룬다(B1 받는 중 · 보내는 중).
+  Completer<void>? bookmarkGate;
+
   @override
   Future<void> saveBookmark(String courseId) async {
     savedBookmarks.add(courseId);
+    await bookmarkGate?.future;
     if (saveBookmarkError != null) throw saveBookmarkError!;
     savedIds.add(courseId);
   }
@@ -351,13 +355,17 @@ class FakeCourseApi implements CourseApiClient {
   Future<void> removeBookmarks(Iterable<String> courseIds) async {
     final ids = courseIds.toList();
     removedBookmarks.add(ids);
+    await bookmarkGate?.future;
     if (saveBookmarkError != null) throw saveBookmarkError!;
     savedIds.removeAll(ids);
     bookmarkRows = [for (final row in bookmarkRows) if (!ids.contains(row.courseId)) row];
   }
 
   @override
-  Future<Set<String>> bookmarkedIds(Iterable<String> courseIds) async => courseIds.toSet().intersection(savedIds);
+  Future<Set<String>> bookmarkedIds(Iterable<String> courseIds) async {
+    await bookmarkGate?.future;
+    return courseIds.toSet().intersection(savedIds);
+  }
 
   @override
   Future<BookmarkPage> bookmarks({BookmarkSort sort = BookmarkSort.recent, GeoPoint? origin, String? cursor}) async {

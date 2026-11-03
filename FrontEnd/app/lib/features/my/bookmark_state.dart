@@ -22,12 +22,21 @@ class CourseBookmark extends AsyncNotifier<bool> {
 
   final String courseId;
 
+  /// 저장 · 해제를 보내는 중이다.
+  var _sending = false;
+
   @override
   Future<bool> build() async => (await ref.read(courseApiClientProvider).bookmarkedIds([courseId])).contains(courseId);
 
   /// 누르면 바로 바꿔 보이고 서버에 저장 · 해제한다. 실패하면 되돌리고 오류를 던진다.
+  /// 저장 여부를 받는 중이나 보내는 중에는 무시한다. 받기 전에 바꾸면 늦게 온 저장 여부가 덮어쓰고,
+  /// 보내는 중에 또 보내면 두 요청의 처리 순서에 따라 화면과 서버가 달라진다.
   Future<void> toggle() async {
+    if (state.isLoading || _sending) return;
     final saved = state.value ?? false;
+    _sending = true;
+    // B1을 닫아도 요청이 끝날 때까지 남아 있어야 저장한 코스 수를 다시 받게 할 수 있다
+    final keepAlive = ref.keepAlive();
     state = AsyncData(!saved);
     try {
       final api = ref.read(courseApiClientProvider);
@@ -36,6 +45,9 @@ class CourseBookmark extends AsyncNotifier<bool> {
     } catch (_) {
       if (ref.mounted) state = AsyncData(saved);
       rethrow;
+    } finally {
+      _sending = false;
+      keepAlive.close();
     }
   }
 }

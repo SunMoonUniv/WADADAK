@@ -144,7 +144,8 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
       ref.refresh(courseRankingProvider(_rankingKey).future).then((_) {}, onError: (_) {});
 
   /// B1-09 북마크. 누르면 바로 바꿔 보이고, 저장 · 해제에 실패하면 되돌린 뒤 알린다.
-  /// 저장 여부를 받기 전이나 받지 못하면 저장 안 함으로 보이고, 누르면 저장한다.
+  /// 저장 여부를 받기 전에는 저장 안 함으로 보이고, 받는 동안과 보내는 동안에는 눌러도 무시한다.
+  /// 받지 못하면 저장 안 함으로 보이고, 누르면 저장한다.
   WdAppBarAction _bookmarkAction() {
     final saved = ref.watch(courseBookmarkProvider(widget.courseId)).value ?? false;
     return WdAppBarAction.icon(

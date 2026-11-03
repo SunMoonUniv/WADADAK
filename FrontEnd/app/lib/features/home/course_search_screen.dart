@@ -115,6 +115,10 @@ class _CourseSearchScreenState extends ConsumerState<CourseSearchScreen> with Si
   /// 가장 최근 첫 쪽 조회 번호. 늦게 도착한 예전 응답은 버린다.
   var _request = 0;
 
+  /// 첫 쪽을 받는 중이다. 같은 검색어를 다시 받는 동안 전 결과가 보여도 다음 쪽은 받지 않는다.
+  /// 받으면 새 첫 쪽 뒤에 전 결과의 다음 쪽이 붙어 그 사이 코스가 빠진다(러너 탭 [_runnersLoading]과 같다).
+  var _loading = false;
+
   /// 마지막으로 검색한 검색어. 다른 탭으로 가면 그 탭도 이 검색어로 받는다. 지웠으면 null.
   String? _submitted;
 
@@ -207,6 +211,7 @@ class _CourseSearchScreenState extends ConsumerState<CourseSearchScreen> with Si
       _failed = false;
       _loadingMore = false;
       _moreFailed = false;
+      _loading = false;
       _regionsRequested = null;
       _regionsShown = null;
       _regions = null;
@@ -334,9 +339,13 @@ class _CourseSearchScreenState extends ConsumerState<CourseSearchScreen> with Si
   Future<void> _search(_SearchQuery query) async {
     final request = ++_request;
     final fresh = query.text != _shown?.text;
+    _loading = true;
     setState(() {
       _requested = query;
       _failed = false;
+      // 받던 다음 쪽은 버려진다.
+      _loadingMore = false;
+      _moreFailed = false;
       if (fresh) {
         _shown = null;
         _courses = null;
@@ -369,6 +378,9 @@ class _CourseSearchScreenState extends ConsumerState<CourseSearchScreen> with Si
         _origin = shown.origin;
       });
       showError(context, e);
+    } finally {
+      // 그사이 다시 검색했으면 그 검색이 끝날 때 푼다.
+      if (request == _request) _loading = false;
     }
   }
 
@@ -379,7 +391,7 @@ class _CourseSearchScreenState extends ConsumerState<CourseSearchScreen> with Si
   /// 지금 결과의 다음 쪽을 받아 붙인다.
   Future<void> _loadMore() async {
     final query = _shown, cursor = _nextCursor;
-    if (query == null || cursor == null || _loadingMore || _moreFailed) return;
+    if (query == null || cursor == null || _loading || _loadingMore || _moreFailed) return;
     final request = _request;
     setState(() => _loadingMore = true);
     try {

@@ -709,6 +709,44 @@ void main() {
     expect(courses.searchRequests, hasLength(2), reason: '마지막 쪽 뒤로는 받지 않는다');
   });
 
+  testWidgets('does not load the next page while the same query loads again, so no course is skipped', (tester) async {
+    courses
+      ..searchable = [for (var i = 1; i <= 45; i++) testCourse('한강 코스 $i', courseId: 'h$i')]
+      ..searchPageSize = 10;
+    await openSearch(tester);
+    await search(tester, '한강');
+
+    /// 러너 탭 시험과 같다. 응답을 잡아 둔 채 내리고, 로딩 표시가 돌아 [WidgetTester.pumpAndSettle]은 쓰지 않는다.
+    Future<void> dragHolding(double dy) async {
+      courses.searchGate ??= Completer();
+      await tester.drag(find.byType(ListView), Offset(0, dy));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+    }
+
+    Future<void> release() async {
+      courses.searchGate!.complete();
+      courses.searchGate = null;
+      await tester.pumpAndSettle();
+    }
+
+    await dragHolding(-600);
+    await release();
+    expect([for (final request in courses.searchRequests) request.cursor], [null, '10'], reason: '20개까지 받았고 아직 더 있다');
+
+    // 같은 검색어로 다시 검색하고, 응답이 오기 전에 끝까지 내린다.
+    courses.searchGate = Completer();
+    await search(tester, '한강');
+    await dragHolding(-2000);
+    expect(courses.searchRequests, hasLength(3), reason: '다시 받는 동안 21번째부터는 받지 않는다');
+
+    // 새 첫 쪽이 오면 맨 위로 가니 다시 내려 다음 쪽을 받는다.
+    await release();
+    await tester.drag(find.byType(ListView), const Offset(0, -600));
+    await tester.pumpAndSettle();
+    expect(courses.searchRequests[3].cursor, '10', reason: '새 첫 쪽 뒤로는 11번째부터 이어 받는다');
+  });
+
   testWidgets('the first search that fails can be retried (QST-02)', (tester) async {
     courses.searchError = const ApiException('COMMON-500', '서버 오류', status: 500);
     await openSearch(tester);
