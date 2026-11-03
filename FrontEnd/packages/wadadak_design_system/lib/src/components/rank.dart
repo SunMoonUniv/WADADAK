@@ -67,10 +67,13 @@ class WdRankRow extends StatelessWidget {
 
 /// Rank / List (top 5 · compact) — soft 카드 안 랭킹 목록. compact는 meta에 날짜를 빼면 된다.
 class WdRankList extends StatelessWidget {
-  const WdRankList({super.key, required this.ranks, this.onTap});
+  const WdRankList({super.key, required this.ranks, this.onTap, this.canTap});
 
   final List<WdRank> ranks;
   final ValueChanged<int>? onTap;
+
+  /// 줄마다 누를 수 있는지. false인 줄(예: 내 줄)은 눌림 효과 없이 그린다. 없으면 [onTap]이 있을 때 모든 줄을 누를 수 있다.
+  final bool Function(int index)? canTap;
 
   @override
   Widget build(BuildContext context) => WdSurface(
@@ -80,7 +83,7 @@ class WdRankList extends StatelessWidget {
           children: [
             for (var i = 0; i < ranks.length; i++) ...[
               if (i > 0) const Divider(height: 1, thickness: 1, color: WdColors.map),
-              WdRankRow(ranks[i], onTap: onTap == null ? null : () => onTap!(i)),
+              WdRankRow(ranks[i], onTap: onTap != null && (canTap?.call(i) ?? true) ? () => onTap!(i) : null),
             ],
           ],
         ),

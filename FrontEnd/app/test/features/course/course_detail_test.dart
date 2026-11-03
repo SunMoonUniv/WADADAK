@@ -644,6 +644,8 @@ void main() {
       expect(myRank(tester).name, '나', reason: '닉네임을 못 받으면 `나`만');
       expect([for (final rank in ranks(tester)) rank.name], ['새벽러닝', '나 (러닝왕김)', '야경러너'],
           reason: '내 줄은 B8 리뷰처럼 `나 (닉네임)`');
+      expect([for (final row in tester.widgetList<WdRankRow>(find.byType(WdRankRow))) row.onTap != null],
+          [true, false, true], reason: '내 줄은 누를 수 없고 눌림 효과도 없다(B9 범위)');
       expect(text('전체 순위 3명 보기'), findsOneWidget);
       expect(bottomButtons(tester).last, ('고스트 대결 ▶', true));
       expect(rankings.summaryRequests, [RankingPeriod.all, RankingPeriod.week]);

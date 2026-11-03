@@ -92,6 +92,10 @@ void main() {
     expect(rankings.entryRequests, [(RankingPeriod.all, null), (RankingPeriod.all, '20')], reason: '끝 가까이에서 이어 받는다');
     expect(ranks(tester), hasLength(25));
     expect(ranks(tester)[23].name, '나 (러닝왕김)');
+    expect([
+      for (final row in tester.widgetList<WdRankRow>(find.byType(WdRankRow)))
+        if (row.onTap == null) row.data.name,
+    ], ['나 (러닝왕김)'], reason: '내 줄만 누를 수 없고 눌림 효과도 없다(G3-03)');
   });
 
   testWidgets('opens with the period from B9 and asks again from the first runner on a change or a pull',

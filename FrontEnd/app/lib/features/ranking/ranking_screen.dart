@@ -82,7 +82,11 @@ class _DistanceTabState extends ConsumerState<_DistanceTab> with AutomaticKeepAl
               _myCard(value.summary.me, chip),
               if (value.rest.isNotEmpty) ...[
                 const WdSectionHeading('전체 순위'),
-                WdRankList(ranks: [for (final entry in value.rest) _rank(entry)], onTap: openRunnerAt(context, value.rest)),
+                WdRankList(
+                  ranks: [for (final entry in value.rest) _rank(entry)],
+                  canTap: (i) => !value.rest[i].mine,
+                  onTap: openRunnerAt(context, value.rest),
+                ),
               ],
               WdInfoBanner('앱 전체 러너 · $basis 달린 거리 기준 · 매일 자정 갱신', plain: true),
             ],
@@ -138,7 +142,10 @@ class _Podium extends StatelessWidget {
             for (final i in [1, 0, 2])
               Expanded(
                 child: i < top.length
-                    ? GestureDetector(onTap: () => openRunnerAt(context, top)(i), child: _place(top[i]))
+                    ? GestureDetector(
+                        onTap: top[i].mine ? null : () => openRunnerAt(context, top)(i),
+                        child: _place(top[i]),
+                      )
                     : const SizedBox(),
               ),
           ],
@@ -204,6 +211,7 @@ class _RegionTabState extends ConsumerState<_RegionTab> with AutomaticKeepAliveC
               else
                 WdRankList(
                   ranks: [for (final entry in ranking.top) regionRank(entry)],
+                  canTap: (i) => !ranking.top[i].mine,
                   onTap: openRunnerAt(context, ranking.top),
                 ),
               if (ranking.nextCursor != null)

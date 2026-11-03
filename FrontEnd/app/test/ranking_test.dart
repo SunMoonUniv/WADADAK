@@ -17,10 +17,10 @@ import 'fakes.dart';
 const _seongbuk = {'code': '1129000000', 'name': '성북구', 'fullName': '서울특별시 성북구'};
 const _asan = {'code': '4420000000', 'name': '아산시', 'fullName': '충청남도 아산시'};
 
-Map<String, Object?> _entry(int rank, String nickname, int meters) => {
+Map<String, Object?> _entry(int rank, String nickname, int meters, {bool mine = false}) => {
       'rank': rank,
       'memberId': 'member-$nickname',
-      'mine': false,
+      'mine': mine,
       'nickname': nickname,
       'profileImageUrl': null,
       'distanceMeters': meters,
@@ -35,8 +35,8 @@ List<Map<String, Object?>> _runners(int from, int to, int meters) =>
 RankingPage _page(List<Map<String, Object?>> entries, String? nextCursor) =>
     (entries: [for (final entry in entries) DistanceRankingEntry.fromJson(entry)], nextCursor: nextCursor);
 
-/// 전체 랭킹: 누적 25명 중 나 24위, 이번 주는 아무도 없다.
-/// 지역 주간: 성북구(내 지역) 30명 중 나 12위, 아산시 3명.
+/// 전체 랭킹: 누적 25명 중 나 24위, 이번 달 3명 중 나 2위(시상대), 이번 주는 아무도 없다.
+/// 지역 주간: 성북구(내 지역) 30명 중 나 3위, 아산시 3명.
 class FakeRankingApi extends Fake implements RankingApiClient {
   final calls = <String>[];
 
@@ -61,6 +61,14 @@ class FakeRankingApi extends Fake implements RankingApiClient {
         'nextCursor': null,
       });
     }
+    if (period == RankingPeriod.month) {
+      return DistanceRankingSummary.fromJson({
+        'participantCount': 3,
+        'me': {'status': 'RANKED', 'rank': 2, 'nickname': 'wonehgus', 'distanceMeters': 98000},
+        'top': [_entry(1, '러너_하늘', 112000), _entry(2, 'wonehgus', 98000, mine: true), _entry(3, '성북러너', 87000)],
+        'nextCursor': null,
+      });
+    }
     return DistanceRankingSummary.fromJson({
       'participantCount': 25,
       'me': {
@@ -79,7 +87,9 @@ class FakeRankingApi extends Fake implements RankingApiClient {
   @override
   Future<RankingPage> distanceEntries(RankingPeriod period, String cursor) async {
     _call('distance entries $cursor');
-    return cursor == '3' ? _page(_runners(4, 23, 912000), '23') : _page(_runners(24, 25, 128000), null);
+    return cursor == '3'
+        ? _page(_runners(4, 23, 912000), '23')
+        : _page([_entry(24, 'wonehgus', 128000, mine: true), ..._runners(25, 25, 127000)], null);
   }
 
   @override
@@ -92,8 +102,15 @@ class FakeRankingApi extends Fake implements RankingApiClient {
       'participantCount': asan ? 3 : 30,
       'me': asan
           ? {'status': 'OTHER_REGION'}
-          : {'status': 'RANKED', 'rank': 12, 'nickname': 'wonehgus', 'distanceMeters': 48200, 'lastWeekRank': 19},
-      'top': asan ? _runners(1, 3, 30000) : [_entry(1, '러너_하늘', 102400), ..._runners(2, 5, 88100)],
+          : {'status': 'RANKED', 'rank': 3, 'nickname': 'wonehgus', 'distanceMeters': 87100, 'lastWeekRank': 10},
+      'top': asan
+          ? _runners(1, 3, 30000)
+          : [
+              _entry(1, '러너_하늘', 102400),
+              _entry(2, '러너2', 88100),
+              _entry(3, 'wonehgus', 87100, mine: true),
+              ..._runners(4, 5, 86100),
+            ],
       'nextCursor': asan ? null : '5',
     });
   }
@@ -154,6 +171,31 @@ void main() {
     expect(find.text(RunnerProfileScreen.unavailableTitle), findsOneWidget, reason: '그 러너 ID로 연다(없는 회원)');
   });
 
+  testWidgets('my row and my place on the podium cannot be tapped (E1 · I2 · I5)', (tester) async {
+    List<String> untappable() => [
+          for (final row in tester.widgetList<WdRankRow>(find.byType(WdRankRow)))
+            if (row.onTap == null) row.data.name,
+        ];
+    GestureDetector place(String name) =>
+        tester.widget(find.ancestor(of: find.text(name), matching: find.byType(GestureDetector)).first);
+    await openRanking(tester);
+
+    await tap(tester, find.text('이번 달'));
+    expect(place('wonehgus').onTap, isNull, reason: 'E1 시상대의 내 자리는 누를 수 없다');
+    expect(place('러너_하늘').onTap, isNotNull);
+
+    await tap(tester, find.text('누적'));
+    await tester.drag(find.byType(ListView), const Offset(0, -3000));
+    await tester.pumpAndSettle();
+    expect(untappable(), ['wonehgus'], reason: 'E1 순위 줄: 내 줄만 누를 수 없고 눌림 효과도 없다');
+
+    await tap(tester, find.text('지역 주간 랭킹'));
+    expect(untappable(), ['wonehgus'], reason: 'I2');
+
+    await tap(tester, find.text('20명 더 보기'));
+    expect(untappable(), ['wonehgus'], reason: 'I5');
+  });
+
   testWidgets('whole ranking shows the podium and my rank, and loads more runners at the end', (tester) async {
     await openRanking(tester);
 
@@ -164,7 +206,7 @@ void main() {
     expect(find.text('128.0 km'), findsOneWidget);
     expect(find.text('러너4'), findsOneWidget);
     expect(find.text('주 평균 38 km'), findsWidgets);
-    expect(find.text('러너24'), findsNothing);
+    expect(find.text('러너25'), findsNothing);
 
     await tester.drag(find.byType(ListView), const Offset(0, -3000));
     await tester.pumpAndSettle();
@@ -197,7 +239,7 @@ void main() {
     await openRanking(tester);
     await tap(tester, find.text('지역 주간 랭킹'));
 
-    expect(find.text('성북구 · 지난주 19위 ▲7'), findsOneWidget);
+    expect(find.text('성북구 · 지난주 10위 ▲7'), findsOneWidget);
     expect(find.text('나 (wonehgus)'), findsOneWidget);
     expect(find.text('성북구 순위 · 이번 주'), findsOneWidget);
     expect(find.text('러너5'), findsOneWidget);
@@ -207,7 +249,7 @@ void main() {
     await tap(tester, find.text('20명 더 보기'));
     expect(find.text('10월 2주차'), findsOneWidget);
     expect(find.text('전체 순위 30명'), findsOneWidget);
-    expect(find.text('12위'), findsOneWidget);
+    expect(find.text('3위'), findsOneWidget);
     expect(find.text('러너6'), findsOneWidget);
     expect(find.text('러닝 3회 · 성북구'), findsWidgets);
 
