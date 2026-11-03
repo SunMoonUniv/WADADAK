@@ -32,10 +32,13 @@ class MyCourseRepository {
     /** 만료 임박 공개 코스. {@code :soonBefore}는 {@link Retention#expiringSoonBefore} */
     private static final String EXPIRING_SOON = "c.status = 'ACTIVE' AND c.expires_at < :soonBefore";
 
-    /** 카드 값({@link #item}). 뒤에 WHERE를 붙인다 */
+    /**
+     * 카드 값({@link #item}). 뒤에 WHERE를 붙인다. 완주 수는 0 아래로 내보내지 않는다: 기록 삭제를 완주보다 먼저 처리하면 -1이 될 수 있고,
+     * 그 사이 코스를 숨기면 그대로 남는다. greatest는 NULL(통계 행 없음)을 건너뛰어 0이 된다
+     */
     private static final String CARDS = """
             SELECT c.id, c.name, c.course_type, c.difficulty, c.tags, ST_AsBinary(c.route) AS route, c.status,
-                   c.status_reason, c.expires_at, c.hidden_at, coalesce(s.completion_count, 0) AS completion_count,
+                   c.status_reason, c.expires_at, c.hidden_at, greatest(s.completion_count, 0) AS completion_count,
                    k.last_completed_at
             FROM course.courses c
             LEFT JOIN course.course_stats s ON s.course_id = c.id
@@ -73,10 +76,10 @@ class MyCourseRepository {
                 .single();
     }
 
-    /** 공개 중인 코스만 센다 */
+    /** 공개 중인 코스만 센다. 완주 수는 카드와 같게 0 아래를 0으로 더한다 */
     MyCourseSummary summary(UUID memberId, Instant soonBefore) {
         return jdbc.sql("""
-                        SELECT count(*) AS course_count, coalesce(sum(s.completion_count), 0) AS completion_count,
+                        SELECT count(*) AS course_count, coalesce(sum(greatest(s.completion_count, 0)), 0) AS completion_count,
                                count(*) FILTER (WHERE c.expires_at < :soonBefore) AS expiring_soon_count
                         FROM course.courses c
                         LEFT JOIN course.course_stats s ON s.course_id = c.id

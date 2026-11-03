@@ -84,6 +84,16 @@ class RunnerCourseControllerTest {
                 .bodyJson().extractingPath("$.data.content").asArray().isEmpty();
     }
 
+    /** G4와 같게, 완주 수가 -1이면(기록 삭제를 완주보다 먼저 처리한 때) 0으로 보인다 */
+    @Test
+    void showsNegativeCompletionCountAsZero() {
+        UUID runner = UUID.randomUUID();
+        stats(course(runner, "ACTIVE", "2026-10-29T09:00:00Z"), -1, 0, 0);
+
+        assertThat(get("/api/v1/courses/members/" + runner)).bodyJson()
+                .extractingPath("$.data.content[0].completionCount").isEqualTo(0);
+    }
+
     @Test
     void summaryCountsOnlyPublicCourses() {
         UUID runner = UUID.randomUUID();

@@ -20,12 +20,12 @@ class RunnerCourseRepository {
 
     private final JdbcClient jdbc;
 
-    /** 최근 등록순, 같으면 ID순. 한 회원의 코스라 G4처럼 오프셋 커서로 넘긴다 */
+    /** 최근 등록순, 같으면 ID순. 한 회원의 코스라 G4처럼 오프셋 커서로 넘긴다. 완주 수는 G4와 같게 0 아래를 0으로 읽는다 */
     CursorSlice<RunnerCourseItem> list(UUID memberId, Cursorable page) {
         int offset = page.offset();
         List<RunnerCourseItem> rows = jdbc.sql("""
                         SELECT c.id, c.name, c.distance_meters, %s AS average_rating,
-                               coalesce(s.completion_count, 0) AS completion_count, ST_AsBinary(c.route) AS route
+                               greatest(s.completion_count, 0) AS completion_count, ST_AsBinary(c.route) AS route
                         FROM course.courses c
                         LEFT JOIN course.course_stats s ON s.course_id = c.id
                         WHERE c.creator_id = :memberId AND c.status = 'ACTIVE'

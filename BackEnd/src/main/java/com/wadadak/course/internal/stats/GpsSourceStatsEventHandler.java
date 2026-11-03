@@ -33,7 +33,8 @@ class GpsSourceStatsEventHandler {
         String status=lockCourse(e.courseId());
         receipt(e,true);
         var state=lockReceipt(e.runRecordId());
-        if(state.applied() && status!=null && !"DELETED".equals(status)) {
+        // 기록 삭제처럼 공개 중일 때만 뺀다. 숨긴 코스 통계는 코스를 지울 때 함께 지운다(정책 공통 4, 2026-10-31 결정)
+        if(state.applied() && "ACTIVE".equals(status)) {
             stats.addCompletions(e.courseId(),-1,-e.courseElapsedSeconds());
             stats.removeCompletion(e.runRecordId(),e.courseId());
         }

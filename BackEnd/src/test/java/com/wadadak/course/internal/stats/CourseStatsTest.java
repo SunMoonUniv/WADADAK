@@ -6,6 +6,8 @@ import com.wadadak.event.review.ReviewDeletedEvent;
 import com.wadadak.event.review.ReviewUpdatedEvent;
 import com.wadadak.event.run.CourseActiveRunnersChangedEvent;
 import com.wadadak.event.run.CourseRunStartedEvent;
+import com.wadadak.event.run.GpsSourceLinkedEvent;
+import com.wadadak.event.run.GpsSourceUnlinkedEvent;
 import com.wadadak.event.run.RunRecordDeletedEvent;
 import com.wadadak.event.run.RunSessionEndedEvent;
 import com.wadadak.member.MemberApi;
@@ -221,6 +223,21 @@ class CourseStatsTest {
         assertThat(completionRows(hidden)).isEmpty();
     }
 
+    /** GPS 등록 원본 연결이 풀려도 기록 삭제처럼 공개 중인 코스에서만 뺀다. 숨긴 뒤면 코스를 지울 때 함께 지운다(정책 공통 4) */
+    @Test
+    void gpsSourceUnlinkedAfterHidingKeepsTheCompletion() {
+        UUID course = insert("ACTIVE", 5_000);
+        GpsSourceLinkedEvent linked = linked(course, 1_500);
+        receive(linked);
+        assertThat(stats(course)).containsEntry("completion_count", 1);
+
+        jdbc.update("UPDATE course.courses SET status = 'HIDDEN', status_reason = 'EXPIRED', hidden_at = now() WHERE id = ?", course);
+        receive(new GpsSourceUnlinkedEvent(UUID.randomUUID(), Instant.now(), linked, "SOURCE_DELETED"));
+
+        assertThat(stats(course)).containsEntry("completion_count", 1).containsEntry("completion_seconds", 1_500L);
+        assertThat(completionRows(course)).containsOnly(entry(linked.runRecordId(), false));
+    }
+
     private void receive(Object event) {
         transactionTemplate.executeWithoutResult(status -> publisher.publishEvent(event));
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
@@ -256,6 +273,13 @@ class CourseStatsTest {
         Instant endedAt = startedAt.plusSeconds(elapsedSeconds);
         return new RunRecordDeletedEvent(UUID.randomUUID(), deletedAt, recordId, UUID.randomUUID(), courseId, completed, 5_000,
                 elapsedSeconds, startedAt, endedAt, endedAt);
+    }
+
+    /** GPS 등록 원본 한 건의 자동 완주 연결(정책 공통 3-1) */
+    private static GpsSourceLinkedEvent linked(UUID courseId, int elapsedSeconds) {
+        Instant now = Instant.now();
+        return new GpsSourceLinkedEvent(UUID.randomUUID(), now, UUID.randomUUID(), UUID.randomUUID(), courseId, elapsedSeconds,
+                5_000, 5_000.0, 1.0, true, now, now.minusSeconds(elapsedSeconds), now, now, "2026-11-02");
     }
 
     private static CourseRunStartedEvent started(UUID courseId, Instant startedAt) {
