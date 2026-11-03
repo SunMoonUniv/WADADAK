@@ -347,10 +347,11 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                     ),
                     WdSurface(
                       color: WdColors.runSurface,
-                      height: 74,
+                      minHeight: 74,
                       padding: const EdgeInsets.all(WdSpace.s16),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
+                        mainAxisSize: MainAxisSize.min,
                         spacing: WdSpace.s4,
                         children: [
                           Text(

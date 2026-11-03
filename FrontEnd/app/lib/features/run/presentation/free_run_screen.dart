@@ -375,7 +375,7 @@ class _Preparation extends StatelessWidget {
                           ),
                           const SizedBox(height: WdSpace.s8),
                           WdSurface(
-                            height: 96,
+                            minHeight: 96,
                             padding: const EdgeInsets.all(WdSpace.s12),
                             child: Row(
                               spacing: WdSpace.s12,
@@ -417,10 +417,11 @@ class _Preparation extends StatelessWidget {
                           WdSurface(
                             color: WdColors.dark,
                             radius: WdRadius.r20,
-                            height: 178,
+                            minHeight: 178,
                             padding: const EdgeInsets.all(WdSpace.s20),
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
+                              mainAxisSize: MainAxisSize.min,
                               children: [
                                 Row(
                                   spacing: WdSpace.s10,
@@ -466,7 +467,7 @@ class _Preparation extends StatelessWidget {
                                     color: WdColors.white,
                                   ),
                                 ),
-                                const Spacer(),
+                                const SizedBox(height: WdSpace.s16),
                                 const ColoredBox(
                                   color: WdColors.darkLine,
                                   child: SizedBox(height: WdSpace.s1),

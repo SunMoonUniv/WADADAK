@@ -464,10 +464,14 @@ class _GhostRunLiveViewState extends State<GhostRunLiveView> {
       ),
       Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        spacing: WdSpace.s8,
         children: [
-          Text(
-            '● 나   ○ 고스트',
-            style: WdText.ko13.copyWith(color: WdColors.green),
+          Expanded(
+            child: Text(
+              '● 나   ○ 고스트',
+              style: WdText.ko13.copyWith(color: WdColors.green),
+            ),
           ),
           Text(widget.comparison.value, style: WdText.ko13Bold),
         ],

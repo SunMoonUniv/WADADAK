@@ -14,6 +14,7 @@ class WdSurface extends StatelessWidget {
     this.border,
     this.width,
     this.height,
+    this.minHeight,
     this.onTap,
     required this.child,
   });
@@ -23,6 +24,9 @@ class WdSurface extends StatelessWidget {
   final EdgeInsetsGeometry padding;
   final BorderSide? border;
   final double? width, height;
+
+  /// Preserve the default card size while allowing enlarged text to grow.
+  final double? minHeight;
   final VoidCallback? onTap;
   final Widget child;
 
@@ -30,7 +34,7 @@ class WdSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     Widget content = Padding(padding: padding, child: child);
     if (onTap != null) content = InkWell(onTap: onTap, child: content);
-    return SizedBox(
+    final surface = SizedBox(
       width: width,
       height: height,
       child: Material(
@@ -43,5 +47,8 @@ class WdSurface extends StatelessWidget {
         child: content,
       ),
     );
+    return minHeight == null
+        ? surface
+        : ConstrainedBox(constraints: BoxConstraints(minHeight: minHeight!), child: surface);
   }
 }
