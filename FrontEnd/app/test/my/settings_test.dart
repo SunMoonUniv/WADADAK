@@ -116,6 +116,7 @@ void main() {
     WidgetTester tester, {
     double width = 402,
     double height = 2400,
+    Future<void> Function(String member)? cleanup,
   }) async {
     tester.view
       ..physicalSize = Size(width, height)
@@ -158,7 +159,7 @@ void main() {
         overrides: [
           runControllerProvider.overrideWithValue(runs),
           accountDataCleanupProvider.overrideWithValue(
-            runs.purgeWithdrawnOwner,
+            cleanup ?? runs.purgeWithdrawnOwner,
           ),
           memberApiClientProvider.overrideWithValue(members),
           tokenStorageProvider.overrideWithValue(tokens),
@@ -511,6 +512,19 @@ void main() {
     expect(members.withdrawals, 1);
     expect(tokens.tokens, isNull);
     expect(find.text('탈퇴했어요. 그동안 함께 달려 주셔서 고마워요.'), findsOneWidget);
+  });
+
+  testWidgets('a failed device cleanup after the server withdrawal still ends as withdrawn', (tester) async {
+    await openSettings(tester, cleanup: (_) async => throw StateError('기기 DB를 열 수 없어요'));
+
+    await tap(tester, find.text('회원 탈퇴'));
+    await tap(tester, find.text('탈퇴'));
+
+    // 서버 탈퇴는 끝났으니 오류 대신 탈퇴 안내가 보이고 로그아웃된다
+    expect(members.withdrawals, 1);
+    expect(tokens.tokens, isNull);
+    expect(find.text('탈퇴했어요. 그동안 함께 달려 주셔서 고마워요.'), findsOneWidget);
+    expect(find.textContaining('기기 DB'), findsNothing);
   });
 
   testWidgets('a failed withdrawal keeps me signed in on F4', (tester) async {
