@@ -50,7 +50,6 @@ class _CourseRankingsScreenState extends ConsumerState<CourseRankingsScreen> {
   (RankingPeriod, CourseRankingFeed)? _shown;
 
   void _openRunner(CourseRankingEntry entry, RankingPeriod period) {
-    if (entry.mine) return;
     openRunnerProfile(context, entry.memberId,
         course: (courseId: widget.courseId, courseName: widget.courseName, route: widget.route, period: period));
   }
@@ -99,6 +98,8 @@ class _CourseRankingsScreenState extends ConsumerState<CourseRankingsScreen> {
                 else
                   WdRankList(
                     ranks: [for (final entry in value.entries) courseRank(entry, withDate: true)],
+                    // 내 줄은 누를 수 없다(G3-03)
+                    canTap: (index) => !value.entries[index].mine,
                     onTap: (index) => _openRunner(value.entries[index], shownPeriod),
                   ),
               ],

@@ -96,9 +96,9 @@ class CourseRankingTab extends StatelessWidget {
         else
           WdRankList(
             ranks: [for (final entry in value.top) courseRank(entry)],
-            onTap: (index) {
-              if (!value.top[index].mine) onRunner(value.top[index], shownPeriod);
-            },
+            // 내 줄은 누를 수 없다(B9 범위)
+            canTap: (index) => !value.top[index].mine,
+            onTap: (index) => onRunner(value.top[index], shownPeriod),
           ),
         if (ranking.hasError) CourseRefreshFailed(staleMessage, onRetry: onRetry),
         if (value.participantCount > 0)
