@@ -15,3 +15,7 @@ app:
   course:
     retention-batch:
       enabled: false
+  # 시험이 넣은 발송 줄을 발송 작업이 먼저 보내지 않게 끈다. 발송 시험은 PushDispatcher를 직접 부른다.
+  notification:
+    dispatch:
+      enabled: false
