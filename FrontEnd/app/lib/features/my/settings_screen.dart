@@ -12,7 +12,7 @@ import '../../core/auth/auth_controller.dart';
 import '../../core/error_message.dart';
 import '../../routes.dart';
 import '../run/application/run_controller.dart';
-import '../run/domain/run_voice.dart';
+import '../run/run_settings_events.dart';
 import 'my_screen.dart';
 import 'voice_sheet.dart';
 
@@ -56,7 +56,9 @@ final appVersionProvider = FutureProvider<String>(
 /// - 권한: 휴대폰 권한 상태. 누르면 휴대폰 설정을 열고, 돌아오면 다시 읽는다.
 /// - 오디오 안내는 달리기의 음성 안내 설정이다(기기에 저장). 누르면 F5 시트.
 /// - 공개 여부 두 스위치는 바꾸는 즉시 서버에 저장한다(`PUT /members/me/settings`). 실패하면 되돌린다.
-/// - 정책이 없는 자동 일시정지 · 화면 항상 켜기 · 기본 고스트 · 구간 격차 음성 안내는
+/// - 고스트 격차 음성 안내는 AUD-07의 계정별 설정 이벤트로 저장한다. 전체 음성 OFF면 선택값을 보존하고 잠근다.
+/// - 자동 일시정지는 정상 GPS 정지 10초 뒤 적용한다. 화면 항상 켜기는 진행 중 세션·앱 전면에서만 적용한다.
+/// - 정책이 없는 기본 고스트는
 ///   보이기만 하고 누르면 준비 중 안내. 거리 단위는 km 고정이라 뺐다.
 /// - 약관 및 개인정보 처리방침은 F7 약관 및 정책을 연다.
 /// - 회원 탈퇴는 확인 창 하나로 묻고 바로 탈퇴한다(`DELETE /members/me`). 끝나면 로그인 화면으로 간다(2026-11-02 사용자 결정).
@@ -76,6 +78,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   /// 서버에 저장한(또는 저장 중인) 공개 여부. 없으면 내 정보 값을 쓴다.
   bool? _infoPublic, _searchable;
   bool _savingSettings = false;
+  bool _savingRunSettings = false;
 
   /// 탈퇴 요청 중. 두 번 누르지 못하게 줄을 잠근다.
   bool _withdrawing = false;
@@ -162,8 +165,46 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   }
 
   Future<void> _editVoice(RunController runs) async {
+    final member = runs.currentOwner;
+    if (_savingRunSettings || member == null) return;
     final picked = await showVoiceSheet(context, runs.voiceSettings);
-    if (picked != null) await runs.saveVoiceSettings(picked);
+    if (picked == null || !mounted) return;
+    await _saveRunSettings(runs, RunSettingsChanged(
+      owner: member,
+      enabled: picked.enabled,
+      unit: picked.unit,
+      distanceKm: picked.distanceKm,
+      timeMinutes: picked.timeMinutes,
+    ));
+  }
+
+  Future<void> _setGhostGapVoice(RunController runs, bool enabled) async {
+    final member = runs.currentOwner;
+    if (_savingRunSettings || !runs.voiceSettings.enabled || member == null) return;
+    await _saveRunSettings(runs, RunSettingsChanged(owner: member, ghostGapEnabled: enabled));
+  }
+
+  Future<void> _setRunOption(RunController runs, {bool? autoPauseEnabled, bool? keepScreenOn}) async {
+    final member = runs.currentOwner;
+    if (_savingRunSettings || member == null) return;
+    await _saveRunSettings(runs, RunSettingsChanged(
+      owner: member, autoPauseEnabled: autoPauseEnabled, keepScreenOn: keepScreenOn,
+    ));
+  }
+
+  Future<void> _saveRunSettings(RunController runs, RunSettingsChanged change) async {
+    if (_savingRunSettings) return;
+    setState(() => _savingRunSettings = true);
+    try {
+      final saved = await runs.receiveSettings(change);
+      if (!saved && mounted) {
+        showError(context, StateError('account changed'), message: '계정이 변경되어 설정을 적용하지 못했어요. 다시 시도해 주세요.');
+      }
+    } catch (error) {
+      if (mounted) showError(context, error, message: '러닝 설정을 저장하지 못했어요. 다시 시도해 주세요.');
+    } finally {
+      if (mounted) setState(() => _savingRunSettings = false);
+    }
   }
 
   static String _voiceLabel(RunVoiceSettings voice) => !voice.enabled
@@ -207,15 +248,39 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ListenableBuilder(
               listenable: runs,
               builder: (context, _) =>
-                  SettingsRow('오디오 안내', value: _voiceLabel(runs.voiceSettings), onTap: () => _editVoice(runs)),
+                  SettingsRow('오디오 안내', value: _voiceLabel(runs.voiceSettings), onTap: _savingRunSettings || runs.currentOwner == null ? null : () => _editVoice(runs)),
             ),
-            SettingsRow('자동 일시정지', toggle: false, onToggle: (_) => _soon()),
-            SettingsRow('화면 항상 켜기', toggle: false, onToggle: (_) => _soon()),
+            ListenableBuilder(
+              listenable: runs,
+              builder: (context, _) => SettingsRow('자동 일시정지',
+                toggle: runs.settings.autoPauseEnabled,
+                onToggle: !_savingRunSettings && runs.currentOwner != null ? (on) => _setRunOption(runs, autoPauseEnabled: on) : null,
+                help: '10초간 멈추면 일시정지해요.\n움직이면 다시 시작해요.',
+              ),
+            ),
+            ListenableBuilder(
+              listenable: runs,
+              builder: (context, _) => SettingsRow('화면 항상 켜기',
+                toggle: runs.settings.keepScreenOn,
+                onToggle: !_savingRunSettings && runs.currentOwner != null ? (on) => _setRunOption(runs, keepScreenOn: on) : null,
+                help: '러닝 중 앱을 보고 있을 때 화면을 켜 둬요.',
+              ),
+            ),
           ]),
           const SettingsHeading('고스트 · 대결'),
           SettingsCard([
             SettingsRow('기본 고스트', onTap: _soon),
-            SettingsRow('구간 격차 음성 안내', toggle: false, onToggle: (_) => _soon()),
+            ListenableBuilder(
+              listenable: runs,
+              builder: (context, _) => SettingsRow(
+                ghostGapVoiceSettingLabel,
+                toggle: runs.voiceSettings.ghostGapEnabled,
+                onToggle: runs.voiceSettings.enabled && runs.currentOwner != null && !_savingRunSettings
+                    ? (enabled) => _setGhostGapVoice(runs, enabled)
+                    : null,
+                help: runs.voiceSettings.enabled ? null : '음성 안내를 켜면 사용할 수 있어요',
+              ),
+            ),
           ]),
           const SettingsHeading('알림'),
           const SettingsCard([SettingsRow('내 코스 만료 임박', toggle: false, help: '알림 기능이 준비되면 켤 수 있어요.')]),

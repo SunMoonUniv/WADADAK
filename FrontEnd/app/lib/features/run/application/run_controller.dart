@@ -34,7 +34,8 @@ import '../domain/own_ghost.dart';
 import '../domain/free_ghost.dart';
 import '../domain/ghost_live_comparison.dart';
 import '../domain/ghost_playback.dart';
-import '../run_voice_settings_events.dart';
+import '../run_settings_events.dart';
+import '../data/run_screen_awake.dart';
 
 final runControllerProvider = Provider<RunController>((ref) {
   final controller = RunController(
@@ -43,7 +44,7 @@ final runControllerProvider = Provider<RunController>((ref) {
     RunApiClient(ref.read(dioProvider)),
     () async => (await ref.read(tokenStorageProvider).read())?.memberId,
     device: RunDevice(),
-    voiceSettingsEvents: ref.read(runVoiceSettingsEventsProvider).changes,
+    voiceSettingsEvents: ref.read(runSettingsEventsProvider).changes,
   );
   ref.listen(authControllerProvider, (_, next) {
     if (next.value is SignedIn) {
@@ -82,12 +83,15 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     Future<RunClockSample> Function()? recoveryClock,
     GhostStartSource? ghostApi,
     Stream<RunVoiceSettingsChanged>? voiceSettingsEvents,
+    RunScreenAwake? screenAwake,
   }) : audioGuide = audio ?? AudioGuide(RunAudioOutput()),
+       screenAwake = screenAwake ?? RunScreenAwake(),
        _wait = wait ?? Future<void>.delayed,
        _utcNow = utcNow ?? (() => DateTime.now().toUtc()),
        _lifecycleState =
            lifecycleState ?? (() => WidgetsBinding.instance.lifecycleState) {
     audioGuide.onChanged = _notify;
+    _screenForeground = _lifecycleState() == AppLifecycleState.resumed;
     final clock = MonotonicClock();
     _recoveryClock =
         recoveryClock ??
@@ -124,6 +128,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     _changes = recorder.changes.stream.listen((_) {
       _checkCourseEnd();
       _guide();
+      unawaited(_refreshScreenAwake());
       _notify();
       unawaited(_refreshExtras());
     });
@@ -131,7 +136,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       unawaited(
         receiveVoiceSettings(event).catchError((Object _) {
           if (!_disposed && currentOwner == event.owner) {
-            error = '음성 안내 설정을 저장하지 못했어요. 다시 시도해 주세요.';
+            error = '러닝 설정을 저장하지 못했어요. 다시 시도해 주세요.';
             _notify();
           }
           return false;
@@ -150,6 +155,12 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   final LocationService location;
   final RunDevice? device;
   RunVoiceSettings voiceSettings = const RunVoiceSettings();
+  RunSettings get settings => voiceSettings;
+  final RunScreenAwake screenAwake;
+  bool _screenForeground = false, _screenWanted = false;
+  bool? _screenApplied;
+  Future<void> _screenJobs = Future.value();
+  String? screenNotice;
   final AudioGuide audioGuide;
   late final RunSensorSession _sensors;
   String get cadenceStatus => _sensors.cadenceStatus;
@@ -311,6 +322,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         routeGuidance = null;
         courseEndReason = null;
         currentOwner = null;
+        unawaited(_refreshScreenAwake());
         ghostStartRejection = null;
         selectedGhost = null;
         _ghostPreparation = null;
@@ -339,10 +351,13 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         pendingDeleteCount = 0;
         pendingGhostClosureCount = 0;
         voiceSettings = const RunVoiceSettings();
+        recorder.autoPauseEnabled = false;
         audioGuide.restoreSettings(voiceSettings);
         if (member == null) return;
         voiceSettings = await store.voiceSettings(member);
+        recorder.autoPauseEnabled = voiceSettings.autoPauseEnabled;
         audioGuide.restoreSettings(voiceSettings);
+        await _refreshScreenAwake();
         deletedIds = await store.deletedIds(member);
         pendingDeleteCount = (await store.pendingDeletions(member)).length;
         pendingGhostClosureCount = (await store.pendingGhostClosures(member))
@@ -1509,7 +1524,10 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     unawaited(sync(manual: true));
   }
 
-  /// Public receiver for a future MY/F4 publisher; owner-scoped partial updates.
+  Future<bool> receiveSettings(RunSettingsChanged event) =>
+      receiveVoiceSettings(event);
+
+  /// Owner-scoped partial updates; the original voice entry point remains compatible.
   Future<bool> receiveVoiceSettings(RunVoiceSettingsChanged event) {
     final next = _voiceSettingsUpdates.then((_) async {
       final authenticatedOwner = await owner();
@@ -1536,12 +1554,14 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     await store.saveVoiceSettings(member, settings);
     if (await owner() != member || currentOwner != member || _disposed) return;
     voiceSettings = settings;
+    recorder.autoPauseEnabled = settings.autoPauseEnabled;
     await audioGuide.configure(
       settings,
       id: run?.id,
       phase: run?.phase,
       metrics: run == null ? null : metrics,
     );
+    await _refreshScreenAwake();
     _notify();
   }
 
@@ -1655,6 +1675,8 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    _screenForeground = state == AppLifecycleState.resumed;
+    unawaited(_refreshScreenAwake());
     if (state != AppLifecycleState.resumed &&
         countdown != null &&
         canCancelStart &&
@@ -1671,10 +1693,35 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   static String _message(Object e) => e is ApiException
       ? e.message
       : e.toString().replaceFirst('Bad state: ', '');
+
+  Future<void> _refreshScreenAwake() {
+    _screenWanted =
+        !_disposed &&
+        !storageFault &&
+        _screenForeground &&
+        voiceSettings.keepScreenOn &&
+        currentOwner != null &&
+        run?.owner == currentOwner &&
+        recorder.active;
+    return _screenJobs = _screenJobs.then((_) async {
+      final wanted = _screenWanted;
+      if (_screenApplied == wanted) return;
+      try {
+        await screenAwake.setEnabled(wanted);
+        _screenApplied = wanted;
+        screenNotice = null;
+      } on Object {
+        screenNotice = '화면 켜짐 유지를 적용하지 못했어요. 기록 측정은 계속돼요.';
+      }
+    });
+  }
+
   Future<void> shutdown() => _shutdown ??= _close();
 
   Future<void> _close() async {
     _disposed = true;
+    await _refreshScreenAwake();
+    await screenAwake.close();
     ++_generation;
     _timer?.cancel();
     WidgetsBinding.instance.removeObserver(this);

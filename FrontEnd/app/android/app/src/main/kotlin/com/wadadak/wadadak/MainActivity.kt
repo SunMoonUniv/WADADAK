@@ -9,10 +9,13 @@ import android.provider.Settings
 class MainActivity : FlutterActivity() {
     private var runDevices: RunDevices? = null
     private var audioOutput: RunAudioOutput? = null
+    private var screenAwake: RunScreenAwake? = null
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         runDevices?.close()
         audioOutput?.close()
+        screenAwake?.close()
+        screenAwake = RunScreenAwake(this, flutterEngine.dartExecutor.binaryMessenger)
         audioOutput = RunAudioOutput(this, flutterEngine.dartExecutor.binaryMessenger)
         runDevices = RunDevices(this, flutterEngine.dartExecutor.binaryMessenger)
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "com.wadadak.app/run_clock")
@@ -29,8 +32,11 @@ class MainActivity : FlutterActivity() {
             }
     }
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        screenAwake?.close(); screenAwake = null
         audioOutput?.close(); audioOutput = null
         runDevices?.close(); runDevices = null
         super.cleanUpFlutterEngine(flutterEngine)
     }
+    override fun onResume() { super.onResume(); screenAwake?.resume() }
+    override fun onPause() { screenAwake?.pause(); super.onPause() }
 }
