@@ -123,8 +123,10 @@ class AuthController extends AsyncNotifier<AuthState> {
     }
   }
 
-  /// F4 회원 탈퇴. 서버가 탈퇴를 마쳐야 기기의 토큰을 지우고 로그인 화면으로 간다.
-  /// 실패하면 [ApiException]을 던지고 로그인 상태는 그대로다. 서버가 리프레시 토큰을 모두 지워 따로 로그아웃하지 않는다.
+  /// F4 회원 탈퇴. 서버가 탈퇴를 마쳐야 기기의 러닝 자료 · 토큰을 지우고 로그인 화면으로 간다.
+  /// 서버 탈퇴가 실패하면 [ApiException]을 던지고 로그인 상태는 그대로다. 서버가 리프레시 토큰을 모두 지워 따로 로그아웃하지 않는다.
+  /// 서버 탈퇴가 끝난 뒤의 기기 정리 실패는 던지지 않는다. 탈퇴는 이미 끝났고 되돌릴 수 없는데, 던지면 F4가
+  /// "탈퇴 실패"처럼 오류를 띄운다. 못 지운 러닝 자료는 기기 DB에 표시가 남아 다음에 앱을 열 때 다시 지운다.
   Future<void> withdraw() async {
     final tokens = await ref.read(tokenStorageProvider).read();
     final member = tokens?.memberId;
@@ -133,14 +135,16 @@ class AuthController extends AsyncNotifier<AuthState> {
     await ref.read(memberApiClientProvider).withdraw();
     try {
       await cleanup(member);
-    } finally {
-      try {
-        await ref.read(tokenStorageProvider).eraseRunWeight(member);
-      } finally {
-        await ref.read(tokenStorageProvider).clear();
-        state = const AsyncData(SignedOut());
-      }
+    } on Object {
+      // 위 설명처럼 다음에 앱을 열 때 다시 지운다
     }
+    try {
+      await ref.read(tokenStorageProvider).eraseRunWeight(member);
+    } on Object {
+      // 체중 캐시는 탈퇴 표시가 메모리에 남아 이번 실행에서는 다시 쓰이지 않는다
+    }
+    await ref.read(tokenStorageProvider).clear();
+    state = const AsyncData(SignedOut());
   }
 
   /// 가입을 그만두고 로그인 화면으로 돌아간다.
