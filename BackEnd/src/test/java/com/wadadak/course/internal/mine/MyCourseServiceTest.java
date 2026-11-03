@@ -140,6 +140,23 @@ class MyCourseServiceTest {
         assertThat(result).bodyJson().extractingPath("$.data.completionCount").isEqualTo(0);
     }
 
+    /**
+     * 기록 삭제를 완주보다 먼저 처리하면 완주 수가 -1이 될 수 있고, 그 사이 숨기면(삭제 예정) 그대로 남는다.
+     * 카드에는 0으로 보이고 합계에도 0으로 더한다
+     */
+    @Test
+    void showsNegativeCompletionCountAsZero() {
+        UUID me = UUID.randomUUID();
+        completions(course(me, "ACTIVE", "2026-11-20T23:59:59", "2026-10-29T09:00:00"), -1);
+        completions(course(me, "ACTIVE", "2026-11-19T23:59:59", "2026-10-28T09:00:00"), 5);
+        completions(course(me, "HIDDEN", "2026-11-18T23:59:59", "2026-10-27T09:00:00"), -1);
+
+        assertThat(mine("/api/v1/courses/mine", me)).bodyJson()
+                .extractingPath("$.data.content[*].completionCount").asArray().containsExactly(0, 5, 0);
+        assertThat(mine("/api/v1/courses/mine/summary", me)).bodyJson()
+                .extractingPath("$.data.completionCount").isEqualTo(5);
+    }
+
     @Test
     void editsNameDifficultyAndTags() {
         UUID me = UUID.randomUUID();
