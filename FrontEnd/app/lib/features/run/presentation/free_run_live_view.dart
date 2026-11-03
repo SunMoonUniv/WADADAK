@@ -191,12 +191,19 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                   _scroll([
                     SizedBox(
                       height: 434,
-                      child: RunRouteView(
-                        run: run,
-                        dark: true,
-                        showDistanceMarkers: true,
-                        course: course,
-                        ghostPosition: widget.ghostPosition,
+                      child: Stack(
+                        children: [
+                          Positioned.fill(
+                            child: RunRouteView(
+                              run: run,
+                              dark: true,
+                              showDistanceMarkers: true,
+                              course: course,
+                              ghostPosition: widget.ghostPosition,
+                            ),
+                          ),
+                          ...courseDeviationBand(course),
+                        ],
                       ),
                     ),
                     Row(
@@ -624,3 +631,44 @@ class RunRouteEmpty extends StatelessWidget {
     ),
   );
 }
+
+/// Figma C4-3 · 지도 위 이탈 띠(정책 7.1). 지도 [Stack] 위쪽에 놓고, 이탈 확정 동안만 보인다('다시 표시하지 않음'과 무관)
+List<Widget> courseDeviationBand(CourseLive? course) => [
+  if (course != null && course.offRoute)
+    if (course.deviation case final deviation?)
+      Positioned(
+        left: 12,
+        right: 12,
+        top: 12,
+        child: Container(
+          padding: const EdgeInsets.all(WdSpace.s16),
+          decoration: BoxDecoration(
+            color: WdColors.warningText,
+            borderRadius: BorderRadius.circular(WdRadius.r16),
+            boxShadow: const [
+              BoxShadow(
+                color: Color(0x59000000),
+                offset: Offset(0, 4),
+                blurRadius: 16,
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            spacing: WdSpace.s4,
+            children: [
+              Text(
+                '코스에서 ${CourseLive.formatMeters(deviation.d)} 벗어났어요',
+                style: WdText.ko16Bold.copyWith(color: WdColors.textInverse),
+              ),
+              Text(
+                '경로로 돌아와야 완주로 인정돼요',
+                style: WdText.ko13.copyWith(
+                  color: WdColors.textInverse.withValues(alpha: 0.85),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+];
