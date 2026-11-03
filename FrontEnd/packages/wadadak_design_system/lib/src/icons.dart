@@ -30,6 +30,7 @@ enum WdIcons {
   ghostInfoBrand('ghost_info_brand'), // Information / Speed ghost · Brand (어두운 배경)
   ghostWarning('ghost_warning'), // Notice / Speed ghost · Warning
   ghostSuccess('ghost_success'), // Notice / Speed ghost · Success
+  warning('warning'), // Run / Course deviation dialog · 경고 아이콘 · 28 (white)
   kakao('kakao'),
   apple('apple'), // Figma 메모: Apple 공식 아트워크로 교체 필요
   google('google');
