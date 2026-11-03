@@ -1,51 +1,7 @@
 import 'recording_models.dart';
 
-enum VoiceUnit { distance, time }
-
-class RunVoiceSettings {
-  const RunVoiceSettings({
-    this.enabled = true,
-    this.unit = VoiceUnit.distance,
-    this.distanceKm = 1,
-    this.timeMinutes = 5,
-    this.ghostGapEnabled = false,
-  });
-  final bool enabled;
-  final bool ghostGapEnabled;
-  final VoiceUnit unit;
-  final int distanceKm, timeMinutes;
-  RunVoiceSettings copyWith({
-    bool? enabled,
-    VoiceUnit? unit,
-    int? distanceKm,
-    int? timeMinutes,
-    bool? ghostGapEnabled,
-  }) => RunVoiceSettings(
-    enabled: enabled ?? this.enabled,
-    unit: unit ?? this.unit,
-    distanceKm: distanceKm ?? this.distanceKm,
-    timeMinutes: timeMinutes ?? this.timeMinutes,
-    ghostGapEnabled: ghostGapEnabled ?? this.ghostGapEnabled,
-  );
-  Map<String, dynamic> toJson() => {
-    'enabled': enabled,
-    'unit': unit.name,
-    'distanceKm': distanceKm,
-    'timeMinutes': timeMinutes,
-    'ghostGapEnabled': ghostGapEnabled,
-  };
-  factory RunVoiceSettings.fromJson(Map<String, dynamic> j) => RunVoiceSettings(
-    enabled: j['enabled'] is bool ? j['enabled'] as bool : true,
-    unit: j['unit'] == 'time' ? VoiceUnit.time : VoiceUnit.distance,
-    distanceKm: const [1, 2, 5].contains(j['distanceKm'])
-        ? j['distanceKm'] as int
-        : 1,
-    timeMinutes: const [5, 10, 15].contains(j['timeMinutes'])
-        ? j['timeMinutes'] as int
-        : 5,
-    ghostGapEnabled: j['ghostGapEnabled'] == true,
-  );
-}
+import 'run_settings.dart';
+export 'run_settings.dart';
 
 /// AUD-07: a signed same-position arrival-time difference, never a lap delta.
 String? ghostGapVoice(double? deltaMs) {

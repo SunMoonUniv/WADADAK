@@ -3,6 +3,7 @@ import 'dart:async';
 import '../data/run_local_store.dart';
 import '../domain/recording_models.dart';
 import '../domain/ghost_run.dart';
+import '../domain/run_auto_pause.dart';
 import '../../../core/time/monotonic_clock.dart';
 
 class RunStorageFailure implements Exception {
@@ -27,6 +28,13 @@ class RunRecorder {
   LocalRun? current;
   RunCalculator calculator = RunCalculator();
   final RunAutoResume _autoResume = RunAutoResume();
+  final RunAutoPause _autoPause = RunAutoPause();
+  bool _autoPauseEnabled = false;
+  set autoPauseEnabled(bool enabled) {
+    if (_autoPauseEnabled != enabled) _autoPause.reset();
+    _autoPauseEnabled = enabled;
+  }
+
   int _originMs = 0;
   int _pressureBoundaryMs = 0, _lastPressureMs = -1;
   int elapsedMs = 0;
@@ -82,6 +90,7 @@ class RunRecorder {
         _lastPressureMs = -1;
         elapsedMs = 0;
         _autoResume.reset();
+        _autoPause.reset();
         if (originMs != null && now > origin) {
           // The request wait counts as elapsed time, with an explicit unmeasured gap.
           await _commit(
@@ -128,6 +137,7 @@ class RunRecorder {
         ms,
       );
       _autoResume.reset();
+      _autoPause.reset();
       return;
     }
     // An absent or invalid vertical measurement must not discard usable GPS.
@@ -166,6 +176,7 @@ class RunRecorder {
       batch.add(_input(RunKind.resume, ms, reason: 'MOVEMENT'));
       phase = RunPhase.running;
       _autoResume.reset();
+      _autoPause.reset();
       point = RunInput(
         seq: run.inputs.length + 1,
         kind: RunKind.gps,
@@ -181,6 +192,23 @@ class RunRecorder {
       );
     }
     batch.add(point);
+    if (phase == RunPhase.running && _autoPauseEnabled && !confirmingEnd) {
+      if (_autoPause.add(point)) {
+        batch.add(
+          RunInput(
+            seq: run.inputs.length + batch.length,
+            kind: RunKind.pause,
+            elapsedMs: ms,
+            measuredAt: run.startedAt.add(Duration(milliseconds: ms)),
+          ),
+        );
+        phase = RunPhase.paused;
+        _autoResume.reset();
+        _autoPause.reset();
+      }
+    } else {
+      _autoPause.reset();
+    }
     await _commit(batch, phase, ms);
   });
   Future<void> cadence(int steps, int durationMs, {int? sampleEndClockMs}) =>
@@ -248,6 +276,7 @@ class RunRecorder {
     final ms = await _elapsed();
     await _commit([_input(RunKind.pause, ms)], RunPhase.paused, ms);
     _autoResume.reset();
+    _autoPause.reset();
   });
   Future<void> resume() => _serial(() async {
     if (!active || current!.phase != RunPhase.paused) return;
@@ -258,6 +287,7 @@ class RunRecorder {
       ms,
     );
     _autoResume.reset();
+    _autoPause.reset();
   });
   Future<void> gap(String reason) => _serial(() async {
     if (!active) return;
@@ -268,6 +298,7 @@ class RunRecorder {
       ms,
     );
     _autoResume.reset();
+    _autoPause.reset();
   });
 
   /// 코스 구간 종료(F6). 서버는 이 입력 전까지로 코스를 판정한다. 세션은 같은 상태로 계속된다
@@ -328,6 +359,7 @@ class RunRecorder {
             _originMs = anchor.originMs;
             elapsedMs = run.checkpointMs;
             _autoResume.reset();
+            _autoPause.reset();
             confirmingEnd = false;
             final ms = reading!.elapsedMs - _originMs;
             await _commit(_recoveryGap(run, ms), run.phase, ms);
@@ -521,6 +553,7 @@ class RunRecorder {
     _pressureBoundaryMs = 0;
     _lastPressureMs = -1;
     _autoResume.reset();
+    _autoPause.reset();
     confirmingEnd = false;
     if (canContinue) {
       final ms = reading!.elapsedMs - _originMs;

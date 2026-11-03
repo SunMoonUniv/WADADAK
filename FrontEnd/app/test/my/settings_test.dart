@@ -1,6 +1,10 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
@@ -14,7 +18,7 @@ import 'package:wadadak/features/run/application/run_controller.dart';
 import 'package:wadadak/features/run/data/run_audio_output.dart';
 import 'package:wadadak/features/run/domain/ghost_run.dart';
 import 'package:wadadak/features/run/domain/recording_models.dart' as recording;
-import 'package:wadadak/features/run/domain/run_voice.dart';
+import 'package:wadadak/features/run/run_settings_events.dart';
 import 'package:wadadak/routes.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
@@ -24,12 +28,18 @@ import '../run/recording/run_controller_test.dart' as fake;
 /// 기기 저장소. 기록은 없고 음성 안내 설정만 메모리에 둔다.
 class _LocalStore extends fake.FailingStore {
   RunVoiceSettings voice = const RunVoiceSettings();
+  Object? voiceError;
+  Completer<void>? voiceGate;
 
   @override
   Future<RunVoiceSettings> voiceSettings(String owner) async => voice;
 
   @override
-  Future<void> saveVoiceSettings(String owner, RunVoiceSettings settings) async => voice = settings;
+  Future<void> saveVoiceSettings(String owner, RunVoiceSettings settings) async {
+    await voiceGate?.future;
+    if (voiceError != null) throw voiceError!;
+    voice = settings;
+  }
 
   @override
   Future<Set<String>> deletedIds(String owner) async => {};
@@ -70,16 +80,24 @@ class _SilentOutput extends RunAudioOutput {
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(() async {
+    final font = FontLoader('packages/wadadak_design_system/Pretendard');
+    for (final weight in ['Regular', 'Medium', 'Bold', 'ExtraBold']) {
+      font.addFont(rootBundle.load('packages/wadadak_design_system/assets/fonts/Pretendard-$weight.otf'));
+    }
+    await font.load();
+  });
 
   late FakeMemberApi members;
   late MemoryTokenStorage tokens;
   late _LocalStore store;
   late FakeDevicePermissions permissions;
+  final capture = GlobalKey();
 
   /// E3(글자만) 위에 F4를 연다. 닉네임을 누르면 F6(글자만)으로 간다.
-  Future<void> openSettings(WidgetTester tester) async {
+  Future<RunController> openSettings(WidgetTester tester, {double width = 402, double height = 2400}) async {
     tester.view
-      ..physicalSize = const Size(402, 2400)
+      ..physicalSize = Size(width, height)
       ..devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final gps = fake.TestLocation();
@@ -113,12 +131,13 @@ void main() {
           tokenStorageProvider.overrideWithValue(tokens),
           devicePermissionsProvider.overrideWithValue(permissions),
         ],
-        child: MaterialApp.router(theme: WdTheme.light(), routerConfig: router),
+        child: RepaintBoundary(key: capture, child: MaterialApp.router(debugShowCheckedModeBanner: false, theme: WdTheme.light(), routerConfig: router)),
       ),
     );
     await tester.pumpAndSettle();
     router.push(Routes.mySettings);
     await tester.pumpAndSettle();
+    return runs;
   }
 
   setUp(() {
@@ -260,11 +279,6 @@ void main() {
       ScaffoldMessenger.of(tester.element(find.text(label))).removeCurrentSnackBar();
       await tester.pumpAndSettle();
     }
-    toggle(tester, '자동 일시정지').onChanged!(true);
-    await tester.pump();
-    expect(find.text('준비 중인 기능이에요.'), findsOneWidget);
-    expect(toggle(tester, '자동 일시정지').value, isFalse);
-
     // 알림 기능이 없어 만료 임박 스위치는 잠겨 있다
     expect(toggle(tester, '내 코스 만료 임박').onChanged, isNull);
   });
@@ -275,6 +289,120 @@ void main() {
     await tap(tester, find.text('약관 및 개인정보 처리방침'));
 
     expect(find.text('F7'), findsOneWidget);
+  });
+
+  testWidgets('ghost switch saves through the public receiver and updates running audio settings', (tester) async {
+    final runs = await openSettings(tester);
+    expect(find.text('구간 격차 음성 안내'), findsNothing);
+    expect(toggle(tester, ghostGapVoiceSettingLabel).value, false);
+    toggle(tester, ghostGapVoiceSettingLabel).onChanged!(true);
+    await tester.pumpAndSettle();
+    expect(store.voice.ghostGapEnabled, true);
+    expect(runs.audioGuide.settings.ghostGapEnabled, true);
+    expect(toggle(tester, ghostGapVoiceSettingLabel).value, true);
+    toggle(tester, ghostGapVoiceSettingLabel).onChanged!(false);
+    await tester.pumpAndSettle();
+    expect(store.voice.ghostGapEnabled, false);
+    expect(runs.audioGuide.settings.ghostGapEnabled, false);
+    expect(members.savedSettings, isEmpty);
+    expect(find.text('준비 중인 기능이에요.'), findsNothing);
+  });
+
+  testWidgets('global audio OFF locks ghost switch but keeps its selection; enabling restores it', (tester) async {
+    store.voice = const RunVoiceSettings(ghostGapEnabled: true);
+    final runs = await openSettings(tester);
+    await tap(tester, find.text('오디오 안내'));
+    await tap(tester, find.text('안내 안 함'));
+    await tap(tester, find.text('적용'));
+    expect(toggle(tester, ghostGapVoiceSettingLabel).value, true);
+    expect(toggle(tester, ghostGapVoiceSettingLabel).onChanged, isNull);
+    expect(find.text('음성 안내를 켜면 사용할 수 있어요'), findsOneWidget);
+    expect(store.voice.ghostGapEnabled, true);
+    expect(runs.audioGuide.settings.enabled, false);
+    await tap(tester, find.text('오디오 안내'));
+    await tap(tester, find.text('거리마다'));
+    await tap(tester, find.text('적용'));
+    expect(toggle(tester, ghostGapVoiceSettingLabel).value, true);
+    expect(toggle(tester, ghostGapVoiceSettingLabel).onChanged, isNotNull);
+    expect(find.text('음성 안내를 켜면 사용할 수 있어요'), findsNothing);
+  });
+
+  testWidgets('auto pause and screen options save independently even when global audio is OFF', (tester) async {
+    store.voice = const RunVoiceSettings(enabled: false, ghostGapEnabled: true);
+    final runs = await openSettings(tester);
+    toggle(tester, '자동 일시정지').onChanged!(true);
+    await tester.pumpAndSettle();
+    toggle(tester, '화면 항상 켜기').onChanged!(true);
+    await tester.pumpAndSettle();
+    expect(store.voice.autoPauseEnabled, true);
+    expect(store.voice.keepScreenOn, true);
+    expect(runs.settings.autoPauseEnabled, true);
+    expect(runs.settings.keepScreenOn, true);
+    expect(store.voice.enabled, false);
+    expect(store.voice.ghostGapEnabled, true);
+    toggle(tester, '자동 일시정지').onChanged!(false);
+    await tester.pumpAndSettle();
+    toggle(tester, '화면 항상 켜기').onChanged!(false);
+    await tester.pumpAndSettle();
+    expect(store.voice.autoPauseEnabled, false);
+    expect(store.voice.keepScreenOn, false);
+  });
+
+  testWidgets('persisted options are restored at 320px without overflow', (tester) async {
+    store.voice = const RunVoiceSettings(ghostGapEnabled: true, autoPauseEnabled: true, keepScreenOn: true, unit: VoiceUnit.time, timeMinutes: 10);
+    await openSettings(tester, width: 320, height: 874);
+    await Scrollable.ensureVisible(tester.element(find.ancestor(of: find.text(ghostGapVoiceSettingLabel), matching: find.byType(SettingsRow)).first), alignment: 1);
+    await tester.pumpAndSettle();
+    expect(toggle(tester, ghostGapVoiceSettingLabel).value, true);
+    expect(toggle(tester, '자동 일시정지').value, true);
+    expect(toggle(tester, '화면 항상 켜기').value, true);
+    expect(row('오디오 안내', '10분마다'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    final screenshot = Platform.environment['RUN_SETTINGS_SCREENSHOT'];
+    if (screenshot != null) {
+      await tester.runAsync(() async {
+        final image = await (capture.currentContext!.findRenderObject() as RenderRepaintBoundary).toImage();
+        final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+        await File(screenshot).writeAsBytes(bytes!.buffer.asUint8List());
+        image.dispose();
+      });
+    }
+  });
+
+  testWidgets('failed save keeps old option and allows retry', (tester) async {
+    store.voiceError = StateError('disk full');
+    await openSettings(tester);
+    toggle(tester, ghostGapVoiceSettingLabel).onChanged!(true);
+    await tester.pumpAndSettle();
+    expect(toggle(tester, ghostGapVoiceSettingLabel).value, false);
+    expect(store.voice.ghostGapEnabled, false);
+    expect(find.text('러닝 설정을 저장하지 못했어요. 다시 시도해 주세요.'), findsOneWidget);
+    expect(toggle(tester, ghostGapVoiceSettingLabel).onChanged, isNotNull);
+    store.voiceError = null;
+    toggle(tester, ghostGapVoiceSettingLabel).onChanged!(true);
+    await tester.pumpAndSettle();
+    expect(toggle(tester, ghostGapVoiceSettingLabel).value, true);
+  });
+
+  testWidgets('pending settings save locks all related controls and partial audio changes preserve other options', (tester) async {
+    store.voiceGate = Completer<void>();
+    await openSettings(tester);
+    final change = toggle(tester, '자동 일시정지').onChanged!;
+    change(true);
+    change(false);
+    await tester.pump();
+    expect(toggle(tester, '자동 일시정지').onChanged, isNull);
+    expect(toggle(tester, '화면 항상 켜기').onChanged, isNull);
+    expect(toggle(tester, ghostGapVoiceSettingLabel).onChanged, isNull);
+    store.voiceGate!.complete();
+    await tester.pumpAndSettle();
+    expect(store.voice.autoPauseEnabled, true);
+    await tap(tester, find.text('오디오 안내'));
+    await tap(tester, find.bySemanticsLabel('안내 시간 늘리기'));
+    await tap(tester, find.text('적용'));
+    expect(store.voice.unit, VoiceUnit.time);
+    expect(store.voice.timeMinutes, 10);
+    expect(store.voice.autoPauseEnabled, true);
   });
 
   testWidgets('withdrawal asks once, then clears the tokens', (tester) async {
