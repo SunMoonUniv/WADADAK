@@ -4,7 +4,8 @@ import '../icons.dart';
 import '../tokens.dart';
 import 'surface.dart';
 
-enum WdButtonVariant { primary, secondary }
+/// [secondaryDark]: 어두운 배경(러닝 화면 팝업)의 보조 버튼 — darkLine 배경 · 흰 글자
+enum WdButtonVariant { primary, secondary, secondaryDark }
 
 /// A DS / Button — h54 · radius 16 · 16 Bold. 부모 너비를 꽉 채운다.
 ///
@@ -28,16 +29,22 @@ class WdButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final enabled = onPressed != null;
-    final fg = enabled ? WdColors.textPrimary : WdColors.disabledText;
+    final fg = !enabled
+        ? WdColors.disabledText
+        : variant == WdButtonVariant.secondaryDark
+            ? WdColors.textInverse
+            : WdColors.textPrimary;
     return Semantics(
       button: true,
       enabled: enabled,
       child: WdSurface(
         color: !enabled
             ? WdColors.disabledBg
-            : variant == WdButtonVariant.primary
-                ? WdColors.actionPrimary
-                : WdColors.surfaceSubtle,
+            : switch (variant) {
+                WdButtonVariant.primary => WdColors.actionPrimary,
+                WdButtonVariant.secondary => WdColors.surfaceSubtle,
+                WdButtonVariant.secondaryDark => WdColors.darkLine,
+              },
         width: double.infinity,
         height: 54,
         onTap: onPressed,
