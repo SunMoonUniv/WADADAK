@@ -19,13 +19,31 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 import '../run/recording/run_controller_test.dart' as fake;
 
 /// 서버 기록 한 줄(RecordSummary). [course]가 있으면 코스 러닝, [ghost]가 있으면 고스트 대결이다.
-Map<String, dynamic> _summary(String id, String startedAt, {Map<String, dynamic>? course, String? ghost}) => {
+Map<String, dynamic> _summary(
+  String id,
+  String startedAt, {
+  Map<String, dynamic>? course,
+  String? ghost,
+}) => {
   'id': id,
   'startedAt': startedAt,
   'endReason': 'USER',
-  'metrics': {'distanceM': 5210.0, 'elapsedMs': 1634000, 'activeMs': 1634000, 'movingMs': 1634000, 'paceSecondsPerKm': 313.6, 'gapCount': 0},
+  'metrics': {
+    'distanceM': 5210.0,
+    'elapsedMs': 1634000,
+    'activeMs': 1634000,
+    'movingMs': 1634000,
+    'paceSecondsPerKm': 313.6,
+    'gapCount': 0,
+  },
   'course': course,
-  'ghost': ghost == null ? null : {'outcome': ghost, 'reason': 'COMPLETED_TIME_COMPARISON', 'completed': true},
+  'ghost': ghost == null
+      ? null
+      : {
+          'outcome': ghost,
+          'reason': 'COMPLETED_TIME_COMPARISON',
+          'completed': true,
+        },
 };
 
 const _course = {
@@ -46,18 +64,41 @@ class _HistoryApi extends fake.TestApi {
   bool withGhosts = false;
 
   @override
-  Future<Map<String, dynamic>> history(String owner, {String? cursor, int? size}) async {
+  Future<Map<String, dynamic>> history(
+    String owner, {
+    String? cursor,
+    int? size,
+  }) async {
     cursors.add(cursor);
     sizes.add(size);
     return cursor == null
         ? {
             'content': [
               _summary('run-course', '2026-10-14T03:00:00Z', course: _course),
-              _summary('run-half', '2026-10-13T03:00:00Z', course: {..._course, 'courseId': 'course-2', 'courseName': '성북천 벚꽃길 3K', 'completed': false, 'progressPercent': 62.4}),
+              _summary(
+                'run-half',
+                '2026-10-13T03:00:00Z',
+                course: {
+                  ..._course,
+                  'courseId': 'course-2',
+                  'courseName': '성북천 벚꽃길 3K',
+                  'completed': false,
+                  'progressPercent': 62.4,
+                },
+              ),
               _summary('run-free', '2026-10-12T03:00:00Z'),
               if (withGhosts) ...[
-                _summary('run-ghost-course', '2026-10-11T03:00:00Z', course: _course, ghost: 'WIN'),
-                _summary('run-ghost-free', '2026-10-10T03:00:00Z', ghost: 'LOSE'),
+                _summary(
+                  'run-ghost-course',
+                  '2026-10-11T03:00:00Z',
+                  course: _course,
+                  ghost: 'WIN',
+                ),
+                _summary(
+                  'run-ghost-free',
+                  '2026-10-10T03:00:00Z',
+                  ghost: 'LOSE',
+                ),
               ],
             ],
             'nextCursor': withSeptember ? 'next' : null,
@@ -113,7 +154,11 @@ class _LocalStore extends fake.FailingStore {
             inputsLoaded: !summaryOnly,
             // 거리 0인 기록은 목록에서 빠져서(정책) 거리를 준다
             summary: {
-              'metrics': {'distanceM': 1200.0, 'elapsedMs': 480000, 'paceSecondsPerKm': 400.0},
+              'metrics': {
+                'distanceM': 1200.0,
+                'elapsedMs': 480000,
+                'paceSecondsPerKm': 400.0,
+              },
             },
           ),
         ];
@@ -142,7 +187,8 @@ class _ReviewApi implements ReviewApiClient {
   }
 
   @override
-  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError('${invocation.memberName}');
+  dynamic noSuchMethod(Invocation invocation) =>
+      throw UnimplementedError('${invocation.memberName}');
 
   @override
   Future<UploadForm> photoUploadForm() => throw UnimplementedError();
@@ -162,7 +208,14 @@ void main() {
       ..devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     final gps = fake.TestLocation();
-    final c = RunController(store, gps, history, () async => 'alice', automaticTicks: false, nowMs: gps.nowMs);
+    final c = RunController(
+      store,
+      gps,
+      history,
+      () async => 'alice',
+      automaticTicks: false,
+      nowMs: gps.nowMs,
+    );
     final ui = FreeRunController.recording(c);
     addTearDown(() {
       ui.dispose();
@@ -171,10 +224,24 @@ void main() {
     final router = GoRouter(
       routes: [
         // 오늘은 2026-10-15(목)이다
-        GoRoute(path: '/', builder: (_, _) => MyRunHistoryScreen(now: () => DateTime(2026, 10, 15, 12))),
-        GoRoute(path: '/course/:id', builder: (_, state) => Text('B1 ${state.pathParameters['id']}')),
-        GoRoute(path: '/my/record/:id', builder: (_, state) => Text('기록 ${state.pathParameters['id']}')),
-        GoRoute(path: Routes.reviewForm, builder: (_, state) => ReviewFormScreen(args: state.extra! as ReviewFormArgs)),
+        GoRoute(
+          path: '/',
+          builder: (_, _) =>
+              MyRunHistoryScreen(now: () => DateTime(2026, 10, 15, 12)),
+        ),
+        GoRoute(
+          path: '/course/:id',
+          builder: (_, state) => Text('B1 ${state.pathParameters['id']}'),
+        ),
+        GoRoute(
+          path: '/my/record/:id',
+          builder: (_, state) => Text('기록 ${state.pathParameters['id']}'),
+        ),
+        GoRoute(
+          path: Routes.reviewForm,
+          builder: (_, state) =>
+              ReviewFormScreen(args: state.extra! as ReviewFormArgs),
+        ),
       ],
     );
     addTearDown(router.dispose);
@@ -192,11 +259,13 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Finder cardOf(String title) => find.ancestor(of: find.text(title), matching: find.byType(RunRecordCard));
+  Finder cardOf(String title) =>
+      find.ancestor(of: find.text(title), matching: find.byType(RunRecordCard));
 
   /// 의미 라벨로 찾는다(막대 · 화살표는 글자가 없다).
-  Finder labeled(String label) =>
-      find.byWidgetPredicate((widget) => widget is Semantics && widget.properties.label == label);
+  Finder labeled(String label) => find.byWidgetPredicate(
+    (widget) => widget is Semantics && widget.properties.label == label,
+  );
 
   setUp(() {
     store = _LocalStore();
@@ -211,7 +280,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('I1 loads every record 50 at a time and sums the whole period', (tester) async {
+  testWidgets('I1 loads every record 50 at a time and sums the whole period', (
+    tester,
+  ) async {
     await openHistory(tester);
 
     expect(history.cursors, [null, 'next']);
@@ -223,10 +294,12 @@ void main() {
     expect(find.text('20.84'), findsOneWidget);
     expect(find.text('01:48:56'), findsOneWidget);
     expect(find.text('5′14″'), findsOneWidget);
-    expect(find.text('칼로리(kcal)'), findsOneWidget);
+    expect(find.text('추정 칼로리(kcal)'), findsOneWidget);
   });
 
-  testWidgets('calendar stamps run days and the list shows only that month', (tester) async {
+  testWidgets('calendar stamps run days and the list shows only that month', (
+    tester,
+  ) async {
     await openHistory(tester);
 
     expect(find.text('2026.10'), findsOneWidget);
@@ -235,39 +308,63 @@ void main() {
     }
     expect(labeled('10월 15일 달림'), findsNothing);
     expect(find.text('10월 분석'), findsOneWidget);
-    expect(find.text('15.63km  /  01:21:42  /  5′14″  /  —kcal'), findsOneWidget);
+    expect(find.text('15.63km  /  01:21:42  /  5′14″  /  —'), findsOneWidget);
     expect(find.byType(RunRecordCard), findsNWidgets(3)); // 9월 기록은 빠진다
-    expect(find.descendant(of: cardOf('한강 야경 5K'), matching: find.text('완주')), findsOneWidget);
-    expect(find.descendant(of: cardOf('성북천 벚꽃길 3K'), matching: find.text('62% 주행')), findsOneWidget);
-    expect(find.descendant(of: cardOf('자유 러닝'), matching: find.text('기록')), findsOneWidget);
-    expect(find.descendant(of: cardOf('한강 야경 5K'), matching: find.text('27:14 · 5.21km · 5′14″/km')), findsOneWidget);
-    expect(find.descendant(of: cardOf('한강 야경 5K'), matching: find.text('수')), findsOneWidget); // 10/14 수요일
+    expect(
+      find.descendant(of: cardOf('한강 야경 5K'), matching: find.text('완주')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: cardOf('성북천 벚꽃길 3K'), matching: find.text('62% 주행')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: cardOf('자유 러닝'), matching: find.text('기록')),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: cardOf('한강 야경 5K'),
+        matching: find.text('27:14 · 5.21km · 5′14″/km'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: cardOf('한강 야경 5K'), matching: find.text('수')),
+      findsOneWidget,
+    ); // 10/14 수요일
     // 코스 러닝에만 버튼이 있다
     expect(find.text('리뷰 쓰기'), findsNWidgets(2));
-    expect(find.descendant(of: cardOf('자유 러닝'), matching: find.text('리뷰 쓰기')), findsNothing);
+    expect(
+      find.descendant(of: cardOf('자유 러닝'), matching: find.text('리뷰 쓰기')),
+      findsNothing,
+    );
   });
 
-  testWidgets('moving the month changes the calendar, analysis and list but not the total', (tester) async {
-    await openHistory(tester);
+  testWidgets(
+    'moving the month changes the calendar, analysis and list but not the total',
+    (tester) async {
+      await openHistory(tester);
 
-    await tap(tester, labeled('이전 달'));
-    expect(find.text('2026.09'), findsOneWidget);
-    expect(labeled('9월 20일 달림'), findsOneWidget);
-    expect(find.text('9월 분석'), findsOneWidget);
-    expect(find.text('5.21km  /  27:14  /  5′14″  /  —kcal'), findsOneWidget);
-    expect(find.byType(RunRecordCard), findsOneWidget);
-    expect(find.text('20.84'), findsOneWidget); // 전체 기간은 그대로
+      await tap(tester, labeled('이전 달'));
+      expect(find.text('2026.09'), findsOneWidget);
+      expect(labeled('9월 20일 달림'), findsOneWidget);
+      expect(find.text('9월 분석'), findsOneWidget);
+      expect(find.text('5.21km  /  27:14  /  5′14″  /  —'), findsOneWidget);
+      expect(find.byType(RunRecordCard), findsOneWidget);
+      expect(find.text('20.84'), findsOneWidget); // 전체 기간은 그대로
 
-    // 첫 기록이 9월이라 더 앞으로는 못 간다
-    await tap(tester, labeled('이전 달'));
-    expect(find.text('2026.09'), findsOneWidget);
+      // 첫 기록이 9월이라 더 앞으로는 못 간다
+      await tap(tester, labeled('이전 달'));
+      expect(find.text('2026.09'), findsOneWidget);
 
-    await tap(tester, find.text('오늘'));
-    expect(find.text('2026.10'), findsOneWidget);
-    // 이번 달보다 뒤로는 못 간다
-    await tap(tester, labeled('다음 달'));
-    expect(find.text('2026.10'), findsOneWidget);
-  });
+      await tap(tester, find.text('오늘'));
+      expect(find.text('2026.10'), findsOneWidget);
+      // 이번 달보다 뒤로는 못 간다
+      await tap(tester, labeled('다음 달'));
+      expect(find.text('2026.10'), findsOneWidget);
+    },
+  );
 
   testWidgets('a month with no runs says so', (tester) async {
     history.withSeptember = false;
@@ -279,21 +376,29 @@ void main() {
     expect(find.byType(RunRecordCard), findsNothing);
   });
 
-  testWidgets('the month sheet picks a month but not one after this month', (tester) async {
+  testWidgets('the month sheet picks a month but not one after this month', (
+    tester,
+  ) async {
     await openHistory(tester);
 
     await tap(tester, labeled('연 · 월 고르기'));
     expect(find.text('연 · 월 선택'), findsOneWidget);
 
     // 월 휠을 한 칸 아래로(11월): 이번 달보다 뒤라 적용할 수 없다
-    await tester.drag(find.byType(ListWheelScrollView).last, const Offset(0, -48));
+    await tester.drag(
+      find.byType(ListWheelScrollView).last,
+      const Offset(0, -48),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('적용'));
     await tester.pumpAndSettle();
     expect(find.text('연 · 월 선택'), findsOneWidget);
 
     // 두 칸 위로(9월) 고르고 적용
-    await tester.drag(find.byType(ListWheelScrollView).last, const Offset(0, 96));
+    await tester.drag(
+      find.byType(ListWheelScrollView).last,
+      const Offset(0, 96),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('적용'));
     await tester.pumpAndSettle();
@@ -316,48 +421,77 @@ void main() {
     expect(find.text('아직 고스트 대결 기록이 없어요.'), findsOneWidget);
   });
 
-  testWidgets('ghost duels show only in the ghost tab with the server verdict', (tester) async {
-    history.withGhosts = true;
-    await openHistory(tester);
+  testWidgets(
+    'ghost duels show only in the ghost tab with the server verdict',
+    (tester) async {
+      history.withGhosts = true;
+      await openHistory(tester);
 
-    // 전체에는 다 보이고, 대결 기록은 승 · 패 태그를 단다
-    expect(find.byType(RunRecordCard), findsNWidgets(5));
-    expect(find.descendant(of: cardOf('고스트 대결'), matching: find.text('패배')), findsOneWidget);
-    final courseDuel = find.ancestor(of: find.text('승리'), matching: find.byType(RunRecordCard));
-    expect(find.descendant(of: courseDuel, matching: find.text('한강 야경 5K')), findsOneWidget);
-    // 코스 위 대결이라 코스 버튼은 그대로 있다
-    expect(find.descendant(of: courseDuel, matching: find.text('리뷰 쓰기')), findsOneWidget);
+      // 전체에는 다 보이고, 대결 기록은 승 · 패 태그를 단다
+      expect(find.byType(RunRecordCard), findsNWidgets(5));
+      expect(
+        find.descendant(of: cardOf('고스트 대결'), matching: find.text('패배')),
+        findsOneWidget,
+      );
+      final courseDuel = find.ancestor(
+        of: find.text('승리'),
+        matching: find.byType(RunRecordCard),
+      );
+      expect(
+        find.descendant(of: courseDuel, matching: find.text('한강 야경 5K')),
+        findsOneWidget,
+      );
+      // 코스 위 대결이라 코스 버튼은 그대로 있다
+      expect(
+        find.descendant(of: courseDuel, matching: find.text('리뷰 쓰기')),
+        findsOneWidget,
+      );
 
-    // 자유 · 코스 탭에는 대결 기록이 없다. 자유 러닝은 카드 제목과 겹쳐서 탭 막대 안에서 찾는다
-    await tap(tester, find.descendant(of: find.byType(WdTabBar), matching: find.text('자유 러닝')));
-    expect(find.text('자유 러닝 2'), findsOneWidget); // 10/12 + 9월
-    expect(find.text('패배'), findsNothing);
-    await tap(tester, find.text('코스 러닝'));
-    expect(find.text('코스 러닝 2'), findsOneWidget);
-    expect(find.text('승리'), findsNothing);
+      // 자유 · 코스 탭에는 대결 기록이 없다. 자유 러닝은 카드 제목과 겹쳐서 탭 막대 안에서 찾는다
+      await tap(
+        tester,
+        find.descendant(
+          of: find.byType(WdTabBar),
+          matching: find.text('자유 러닝'),
+        ),
+      );
+      expect(find.text('자유 러닝 2'), findsOneWidget); // 10/12 + 9월
+      expect(find.text('패배'), findsNothing);
+      await tap(tester, find.text('코스 러닝'));
+      expect(find.text('코스 러닝 2'), findsOneWidget);
+      expect(find.text('승리'), findsNothing);
 
-    await tap(tester, find.text('고스트 대결'));
-    expect(find.text('고스트 대결 2'), findsOneWidget);
-    expect(find.byType(RunRecordCard), findsNWidgets(2));
-    expect(find.text('승리'), findsOneWidget);
-    expect(find.text('패배'), findsOneWidget);
-    for (final day in [10, 11]) {
-      expect(labeled('10월 $day일 달림'), findsOneWidget);
-    }
-    expect(labeled('10월 12일 달림'), findsNothing);
-  });
+      await tap(tester, find.text('고스트 대결'));
+      expect(find.text('고스트 대결 2'), findsOneWidget);
+      expect(find.byType(RunRecordCard), findsNWidgets(2));
+      expect(find.text('승리'), findsOneWidget);
+      expect(find.text('패배'), findsOneWidget);
+      for (final day in [10, 11]) {
+        expect(labeled('10월 $day일 달림'), findsOneWidget);
+      }
+      expect(labeled('10월 12일 달림'), findsNothing);
+    },
+  );
 
   testWidgets('a run still on the device waits for sync', (tester) async {
     store.withLocal = true;
     await openHistory(tester);
 
-    expect(find.descendant(of: cardOf('러닝'), matching: find.text('동기화 대기')), findsOneWidget);
+    expect(
+      find.descendant(of: cardOf('러닝'), matching: find.text('동기화 대기')),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('write review opens B2 with the eligible record of that course', (tester) async {
+  testWidgets('write review opens B2 with the eligible record of that course', (
+    tester,
+  ) async {
     await openHistory(tester);
 
-    await tap(tester, find.descendant(of: cardOf('한강 야경 5K'), matching: find.text('리뷰 쓰기')));
+    await tap(
+      tester,
+      find.descendant(of: cardOf('한강 야경 5K'), matching: find.text('리뷰 쓰기')),
+    );
 
     expect(reviews.asked, ['course-1']);
     final form = tester.widget<ReviewFormScreen>(find.byType(ReviewFormScreen));
@@ -369,7 +503,10 @@ void main() {
   testWidgets('course detail opens B1 of that course', (tester) async {
     await openHistory(tester);
 
-    await tap(tester, find.descendant(of: cardOf('성북천 벚꽃길 3K'), matching: find.text('코스 상세')));
+    await tap(
+      tester,
+      find.descendant(of: cardOf('성북천 벚꽃길 3K'), matching: find.text('코스 상세')),
+    );
 
     expect(find.text('B1 course-2'), findsOneWidget);
   });

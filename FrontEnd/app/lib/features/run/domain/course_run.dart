@@ -74,18 +74,21 @@ class CourseStartIntent {
     this.id,
     this.startedAt,
     this.snapshot,
-    this.clock,
-  );
+    this.clock, {
+    this.weightKg,
+  });
   final String owner, id;
   final DateTime startedAt;
   final CourseSnapshot snapshot;
   final RunClockSample clock;
+  final double? weightKg;
   Map<String, dynamic> toJson() => {
     'owner': owner,
     'id': id,
     'startedAt': startedAt.toUtc().toIso8601String(),
     'snapshot': snapshot.toJson(),
     'clock': clock.toJson(),
+    if (weightKg != null) 'weightKg': weightKg,
   };
   factory CourseStartIntent.fromJson(Map<String, dynamic> j) =>
       CourseStartIntent(
@@ -94,6 +97,7 @@ class CourseStartIntent {
         DateTime.parse(j['startedAt'] as String),
         CourseSnapshot.fromJson((j['snapshot'] as Map).cast<String, dynamic>()),
         RunClockSample.fromJson((j['clock'] as Map).cast<String, dynamic>()),
+        weightKg: (j['weightKg'] as num?)?.toDouble(),
       );
 }
 
@@ -132,12 +136,14 @@ class CourseLive {
   final RouteGuidance? guidance;
 
   /// 이탈 확정(머리말 "경로 이탈")
-  bool get offRoute => guidance?.state == GuidanceState.off;
+  bool get offRoute =>
+      guidance?.uncertain == false && guidance?.state == GuidanceState.off;
 
   /// 이탈 후보·확정이면 경로까지 거리와 가장 가까운 경로 지점(Figma C4-3 점선). 아니면 null
   ({double d, GeoPoint point})? get deviation {
     final g = guidance, d = g?.distanceM, point = g?.nearestPoint;
     if (g == null ||
+        g.uncertain ||
         g.state == GuidanceState.onRoute ||
         d == null ||
         point == null) {

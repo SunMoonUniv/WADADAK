@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'course_run.dart';
 import 'run_lap.dart';
 import 'run_result_stats.dart';
+import 'run_calories.dart';
+export 'run_calories.dart';
 
 enum RunState { ready, running, paused, finished }
 
@@ -92,15 +94,16 @@ class RunSnapshot {
     this.voiceNotice,
     this.resultStats,
     this.liveElevationGainM,
+    this.estimatedCaloriesKcal,
     this.course,
     this.gpsGapPassed,
     this.ghost,
-    this.ghostPending=false,
+    this.ghostPending = false,
   }) : inputs = List.unmodifiable(inputs);
 
   /// 서버 코스 판정. 코스 러닝 기록을 서버가 처리한 뒤에만 있다
   final RunCourseResult? course;
-  final Map<String,dynamic>? ghost;
+  final Map<String, dynamic>? ghost;
   final bool ghostPending;
 
   /// 서버의 GPS 코스 등록 끊긴 구간 판단(`gpsGap.passed`). 판단 전·업로드 전이면 null
@@ -126,6 +129,8 @@ class RunSnapshot {
   final String? voiceNotice;
   final RunResultStats? resultStats;
   final double? liveElevationGainM;
+  final double? estimatedCaloriesKcal;
+  String get caloriesLabel => formatRunCalories(estimatedCaloriesKcal);
   final List<List<RunPoint>> segments;
   bool get hasLocation =>
       segments.any((s) => s.isNotEmpty) ||

@@ -123,9 +123,11 @@ public final class FreeRunCalculator {
         if (v2) { distanceM = motion.distanceM; segments = motion.segments; }
         long movingMs = v2 ? motion.movingMs(lastMs, activeMs) : activeMs;
         List<Lap> laps = laps(v2?motion.travels:travels,distanceM,lastMs,pauses,motion,v2);
+        Double weight = inputs.getFirst().weightKg();
+        Double calories = weight == null ? null : weight * distanceM / 1000.0;
         return new Calculation(new Metrics(distanceM, lastMs, activeMs, gaps,
             distanceM > 0 && movingMs > 0 ? movingMs/distanceM : null, movingMs,
-            distanceM > 0 ? lastMs/distanceM : null, coverage>0?steps*60000.0/coverage:null, coverage, steps),
+            distanceM > 0 ? lastMs/distanceM : null, coverage>0?steps*60000.0/coverage:null, coverage, steps, weight, calories),
             segments, end.measuredAt(), end.reason(), laps,
             RunResultStatsCalculator.calculate(inputs,v2?motion.samples:samples,laps), v2?motion.samples:samples, List.copyOf(cadence));
     }

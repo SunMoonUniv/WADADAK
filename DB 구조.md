@@ -1004,3 +1004,12 @@ erDiagram
 #### 상승 고도 기준 변경 · RESULT_V2 (2026-10-16)
 
 stats의 구조와 테이블은 유지하고 새 계산의 `version`을 `RESULT_V2`로 기록한다. 별도 SQLite/Flyway 스키마 이관은 없다. 앱/서버 상세에서 원본이 남은 V1 결과의 stats만 계산해 표시하며 기존 원본·저장 결과·등록 시각·랭킹을 덮어쓰지 않는다. 원본 없는 이전 결과는 버전과 값을 보존한다. 새로 종료/등록하는 기록의 요약·상세에는 V2 stats를 저장한다.
+
+
+#### 2026-11-03 추정 칼로리·기기 정리 확장
+
+- `run.inputs.payload`: START에 선택 `weightKg`(20~300 유한값). 과거 누락값은 null, 원본을 소급 보완하지 않는다.
+- `run.records.result_json` 및 `summary_json`의 `metrics`: 선택 `weightKg`, `estimatedCaloriesKcal`. 값은 시작 체중 × 서버 검증 총 주행 m / 1000이며 저장 정밀도를 유지한다. 서버 스키마/컬럼 변경은 없다. 공개 재생/비교 자료에는 추가하지 않는다.
+- 기기 SQLite v6는 `sessions.guidance_state TEXT`(이번 세션 이탈 안내 억제·반복 시점·유예 시점)와 `withdrawn_run_owners(owner PRIMARY KEY)`를 추가한다. 후자는 삭제 이후 재생성 차단용 계정 식별자뿐이다.
+- 성공한 탈퇴 시 현재 기기의 해당 owner에 속한 inputs, sessions, ghost_closures, ghost_start_intents, course_start_intents, run_settings, run_deletions를 한 트랜잭션으로 삭제한다. 다른 계정·일반 로그아웃에는 적용하지 않는다. owner가 있는 테이블의 INSERT/UPDATE 트리거로 늦은 저장을 차단한다. 체중 캐시도 별도로 지운다.
+- v1~v5 원본·결과·등록 시각·계산 버전은 이관 때 보존한다. 체중/칼로리의 과거 기록 소급 계산은 하지 않는다.

@@ -17,7 +17,8 @@ enum SocialProvider {
   final String label;
 
   /// 서버 값(`KAKAO`)으로 찾는다. 모르는 값이면 없다.
-  static SocialProvider? fromApi(String? name) => values.where((e) => e.name.toUpperCase() == name).firstOrNull;
+  static SocialProvider? fromApi(String? name) =>
+      values.where((e) => e.name.toUpperCase() == name).firstOrNull;
 }
 
 /// 로그인 결과: 가입된 회원이면 토큰, 처음이면 가입 토큰(1시간 유효).
@@ -46,15 +47,16 @@ class Agreements {
   });
 
   const Agreements.all(bool value)
-      : over14 = value,
-        serviceTerms = value,
-        privacyPolicy = value,
-        locationTerms = value,
-        profileInfo = value;
+    : over14 = value,
+      serviceTerms = value,
+      privacyPolicy = value,
+      locationTerms = value,
+      profileInfo = value;
 
   final bool over14, serviceTerms, privacyPolicy, locationTerms, profileInfo;
 
-  bool get all => over14 && serviceTerms && privacyPolicy && locationTerms && profileInfo;
+  bool get all =>
+      over14 && serviceTerms && privacyPolicy && locationTerms && profileInfo;
 
   Agreements copyWith({
     bool? over14,
@@ -62,22 +64,21 @@ class Agreements {
     bool? privacyPolicy,
     bool? locationTerms,
     bool? profileInfo,
-  }) =>
-      Agreements(
-        over14: over14 ?? this.over14,
-        serviceTerms: serviceTerms ?? this.serviceTerms,
-        privacyPolicy: privacyPolicy ?? this.privacyPolicy,
-        locationTerms: locationTerms ?? this.locationTerms,
-        profileInfo: profileInfo ?? this.profileInfo,
-      );
+  }) => Agreements(
+    over14: over14 ?? this.over14,
+    serviceTerms: serviceTerms ?? this.serviceTerms,
+    privacyPolicy: privacyPolicy ?? this.privacyPolicy,
+    locationTerms: locationTerms ?? this.locationTerms,
+    profileInfo: profileInfo ?? this.profileInfo,
+  );
 
   Map<String, Object?> toJson() => {
-        'over14': over14,
-        'serviceTerms': serviceTerms,
-        'privacyPolicy': privacyPolicy,
-        'locationTerms': locationTerms,
-        'profileInfo': profileInfo,
-      };
+    'over14': over14,
+    'serviceTerms': serviceTerms,
+    'privacyPolicy': privacyPolicy,
+    'locationTerms': locationTerms,
+    'profileInfo': profileInfo,
+  };
 }
 
 enum RunningExperience {
@@ -90,7 +91,8 @@ enum RunningExperience {
   final String apiName;
   final String label;
 
-  static RunningExperience? fromApi(String? name) => values.where((e) => e.apiName == name).firstOrNull;
+  static RunningExperience? fromApi(String? name) =>
+      values.where((e) => e.apiName == name).firstOrNull;
 }
 
 enum Gender {
@@ -104,13 +106,20 @@ enum Gender {
 
 /// 신체 정보(정책 공통 9). 선택 입력이고 네 값은 한 묶음이다. 보내면 신체 정보 수집 및 이용에 동의한 것이다.
 class BodyInfo {
-  const BodyInfo({required this.birthYear, required this.heightCm, required this.weightKg, required this.gender});
+  const BodyInfo({
+    required this.birthYear,
+    required this.heightCm,
+    required this.weightKg,
+    required this.gender,
+  });
 
   BodyInfo.fromJson(Map json)
-      : birthYear = json['birthYear'] as int,
-        heightCm = json['heightCm'] as int,
-        weightKg = json['weightKg'] as int,
-        gender = Gender.values.firstWhere((gender) => gender.apiName == json['gender']);
+    : birthYear = json['birthYear'] as int,
+      heightCm = json['heightCm'] as int,
+      weightKg = json['weightKg'] as int,
+      gender = Gender.values.firstWhere(
+        (gender) => gender.apiName == json['gender'],
+      );
 
   final int birthYear, heightCm, weightKg;
   final Gender gender;
@@ -118,32 +127,48 @@ class BodyInfo {
   /// 고를 수 있는 출생연도, 최근 순. 연도만으로 만 14세 이상이 확실한 해(올해 − 15)부터 100년 전까지. 올해는 Asia/Seoul 기준.
   static List<int> birthYears(DateTime now) {
     final thisYear = now.toUtc().add(const Duration(hours: 9)).year;
-    return [for (var year = thisYear - 15; year >= thisYear - 100; year--) year];
+    return [
+      for (var year = thisYear - 15; year >= thisYear - 100; year--) year,
+    ];
   }
 
   /// 키 100~250cm, 체중 20~300kg 정수. 서버도 같은 범위를 확인한다.
   static bool isValidHeight(int cm) => cm >= 100 && cm <= 250;
   static bool isValidWeight(int kg) => kg >= 20 && kg <= 300;
 
-  Map<String, Object?> toJson() =>
-      {'birthYear': birthYear, 'heightCm': heightCm, 'weightKg': weightKg, 'gender': gender.apiName};
+  Map<String, Object?> toJson() => {
+    'birthYear': birthYear,
+    'heightCm': heightCm,
+    'weightKg': weightKg,
+    'gender': gender.apiName,
+  };
 }
 
 /// 내 정보(`GET /members/me`). E3 마이페이지 · F6 프로필 편집 · F4 설정이 쓴다. 지금은 E3 · F6가 쓰는 값만 읽는다.
 class MyProfile {
   MyProfile.fromJson(Map json)
-      : nickname = json['nickname'] as String,
-        nicknameChangeableAt = DateTime.tryParse(json['nicknameChangeableAt'] as String? ?? ''),
-        bio = json['bio'] as String?,
-        region = json['region'] == null ? null : Region.fromJson(json['region'] as Map),
-        affiliation = json['affiliation'] as String?,
-        runningExperience = RunningExperience.fromApi(json['runningExperience'] as String?),
-        profileImageKey = json['profileImageKey'] as String?,
-        profileImageUrl = json['profileImageUrl'] as String?,
-        bodyInfo = json['bodyInfo'] == null ? null : BodyInfo.fromJson(json['bodyInfo'] as Map),
-        socialProvider = SocialProvider.fromApi(json['socialProvider'] as String?),
-        infoPublic = json['infoPublic'] as bool? ?? true,
-        profileSearchable = json['profileSearchable'] as bool? ?? true;
+    : nickname = json['nickname'] as String,
+      nicknameChangeableAt = DateTime.tryParse(
+        json['nicknameChangeableAt'] as String? ?? '',
+      ),
+      bio = json['bio'] as String?,
+      region = json['region'] == null
+          ? null
+          : Region.fromJson(json['region'] as Map),
+      affiliation = json['affiliation'] as String?,
+      runningExperience = RunningExperience.fromApi(
+        json['runningExperience'] as String?,
+      ),
+      profileImageKey = json['profileImageKey'] as String?,
+      profileImageUrl = json['profileImageUrl'] as String?,
+      bodyInfo = json['bodyInfo'] == null
+          ? null
+          : BodyInfo.fromJson(json['bodyInfo'] as Map),
+      socialProvider = SocialProvider.fromApi(
+        json['socialProvider'] as String?,
+      ),
+      infoPublic = json['infoPublic'] as bool? ?? true,
+      profileSearchable = json['profileSearchable'] as bool? ?? true;
 
   final String nickname;
 
@@ -178,12 +203,16 @@ class MyProfile {
 /// 러너 검색 결과 한 줄(G7). 내 줄([mine])은 누르면 I3 대신 MY로 간다.
 class SearchedRunner {
   SearchedRunner.fromJson(Map json)
-      : memberId = json['memberId'] as String,
-        nickname = json['nickname'] as String,
-        profileImageUrl = json['profileImageUrl'] as String?,
-        region = json['region'] == null ? null : Region.fromJson(json['region'] as Map),
-        runningExperience = RunningExperience.fromApi(json['runningExperience'] as String?),
-        mine = json['mine'] as bool;
+    : memberId = json['memberId'] as String,
+      nickname = json['nickname'] as String,
+      profileImageUrl = json['profileImageUrl'] as String?,
+      region = json['region'] == null
+          ? null
+          : Region.fromJson(json['region'] as Map),
+      runningExperience = RunningExperience.fromApi(
+        json['runningExperience'] as String?,
+      ),
+      mine = json['mine'] as bool;
 
   final String memberId;
   final String nickname;
@@ -196,15 +225,23 @@ class SearchedRunner {
 }
 
 /// 러너 검색 결과 한 쪽(G7). [totalCount]는 검색어에 걸린 러너 수(`검색 결과 · N명`)이고, 마지막 쪽이면 [nextCursor]가 null이다.
-typedef RunnerSearchPage = ({int totalCount, List<SearchedRunner> runners, String? nextCursor});
+typedef RunnerSearchPage = ({
+  int totalCount,
+  List<SearchedRunner> runners,
+  String? nextCursor,
+});
 
 /// 다른 러너 프로필(I3) 머리 부분. 내 정보 공개 · 프로필 검색 허용과 관계없이 보인다(정책 공통 6).
 class RunnerProfile {
   RunnerProfile.fromJson(Map json)
-      : nickname = json['nickname'] as String,
-        profileImageUrl = json['profileImageUrl'] as String?,
-        region = json['region'] == null ? null : Region.fromJson(json['region'] as Map),
-        runningExperience = RunningExperience.fromApi(json['runningExperience'] as String?);
+    : nickname = json['nickname'] as String,
+      profileImageUrl = json['profileImageUrl'] as String?,
+      region = json['region'] == null
+          ? null
+          : Region.fromJson(json['region'] as Map),
+      runningExperience = RunningExperience.fromApi(
+        json['runningExperience'] as String?,
+      );
 
   final String nickname;
   final String? profileImageUrl;
@@ -216,7 +253,8 @@ class RunnerProfile {
 
 /// 회원 API(`/api/v1/members`). 서버 모듈 prefix 하나에 클라이언트 하나(개발 정책 9장).
 class MemberApiClient {
-  MemberApiClient(this._publicDio, this._authDio);
+  MemberApiClient(this._publicDio, this._authDio, [this._weightStorage]);
+  final TokenStorage? _weightStorage;
 
   final Dio _publicDio;
 
@@ -225,7 +263,19 @@ class MemberApiClient {
   static const _auth = '/api/v1/members/auth';
   static const _me = '/api/v1/members/me';
 
-  Future<MyProfile> me() async => MyProfile.fromJson(await callApi(() => _authDio().get(_me)) as Map);
+  Future<MyProfile> _profile(Future<Object?> Function() request) async {
+    final owner = (await _weightStorage?.read())?.memberId;
+    final profile = MyProfile.fromJson(await request() as Map);
+    if (owner != null && (await _weightStorage?.read())?.memberId == owner) {
+      await _weightStorage!.rememberRunWeight(
+        owner,
+        profile.bodyInfo?.weightKg.toDouble(),
+      );
+    }
+    return profile;
+  }
+
+  Future<MyProfile> me() => _profile(() => callApi(() => _authDio().get(_me)));
 
   /// F6 저장. 화면 값을 통째로 보낸다. [profileImageKey]는 그대로 두면 지금 키, 새 사진이면 올린 키, 지우면 null.
   /// [bodyInfo]가 null이면 저장된 신체 정보가 지워진다. 닉네임 30일 규칙에 걸리면 MEMBER-010, 중복이면 MEMBER-006.
@@ -237,23 +287,38 @@ class MemberApiClient {
     required RunningExperience runningExperience,
     required String? profileImageKey,
     required BodyInfo? bodyInfo,
-  }) async =>
-      MyProfile.fromJson(await callApi(() => _authDio().put(_me, data: {
-            'nickname': nickname,
-            'bio': bio,
-            'regionCode': regionCode,
-            'affiliation': affiliation,
-            'runningExperience': runningExperience.apiName,
-            'profileImageKey': profileImageKey,
-            'bodyInfo': bodyInfo?.toJson(),
-          })) as Map);
+  }) async => _profile(
+    () => callApi(
+      () => _authDio().put(
+        _me,
+        data: {
+          'nickname': nickname,
+          'bio': bio,
+          'regionCode': regionCode,
+          'affiliation': affiliation,
+          'runningExperience': runningExperience.apiName,
+          'profileImageKey': profileImageKey,
+          'bodyInfo': bodyInfo?.toJson(),
+        },
+      ),
+    ),
+  );
 
   /// F4 공개 여부. 화면의 두 스위치 값을 둘 다 보낸다.
-  Future<MyProfile> changeSettings({required bool infoPublic, required bool profileSearchable}) async =>
-      MyProfile.fromJson(await callApi(() => _authDio().put('$_me/settings', data: {
-            'infoPublic': infoPublic,
-            'profileSearchable': profileSearchable,
-          })) as Map);
+  Future<MyProfile> changeSettings({
+    required bool infoPublic,
+    required bool profileSearchable,
+  }) async => MyProfile.fromJson(
+    await callApi(
+      () => _authDio().put(
+        '$_me/settings',
+        data: {
+          'infoPublic': infoPublic,
+          'profileSearchable': profileSearchable,
+        },
+      ),
+    ) as Map,
+  );
 
   /// F4 회원 탈퇴. 러닝 기록 · 랭킹 · 리뷰 · 저장한 코스가 지워지고 모든 기기의 리프레시 토큰이 폐기된다.
   /// 이미 탈퇴했으면 COMMON-002(401)이라 AuthInterceptor가 로그아웃시킨다.
@@ -263,28 +328,46 @@ class MemberApiClient {
   /// 프로필 검색 허용을 끈 회원 · 탈퇴 회원은 빠지고 나도 나온다. 공백을 빼고 2글자 미만이면 COMMON-001.
   Future<RunnerSearchPage> searchRunners(String query, {String? cursor}) async {
     final data = await callApi(
-        () => _authDio().get('/api/v1/members/search', queryParameters: {'query': query, 'cursor': ?cursor})) as Map;
+      () => _authDio().get(
+        '/api/v1/members/search',
+        queryParameters: {'query': query, 'cursor': ?cursor},
+      ),
+    ) as Map;
     return (
       totalCount: data['totalCount'] as int,
-      runners: [for (final runner in data['content'] as List) SearchedRunner.fromJson(runner as Map)],
+      runners: [
+        for (final runner in data['content'] as List)
+          SearchedRunner.fromJson(runner as Map),
+      ],
       nextCursor: data['nextCursor'] as String?,
     );
   }
 
   /// 다른 러너 프로필(I3). 탈퇴했거나 없는 회원은 [runnerNotFoundCode].
-  Future<RunnerProfile> runnerProfile(String memberId) async => RunnerProfile.fromJson(
-      await callApi(() => _authDio().get('/api/v1/members/${Uri.encodeComponent(memberId)}')) as Map);
+  Future<RunnerProfile> runnerProfile(String memberId) async =>
+      RunnerProfile.fromJson(
+        await callApi(
+          () => _authDio().get(
+            '/api/v1/members/${Uri.encodeComponent(memberId)}',
+          ),
+        ) as Map,
+      );
 
   /// 탈퇴했거나 없는 회원(I3를 열지 않는다).
   static const runnerNotFoundCode = 'MEMBER-011';
 
   /// F6 새 프로필 사진 업로드 폼. 올린 키를 [editProfile]에 담는다.
-  Future<UploadForm> photoUploadForm() async =>
-      UploadForm.fromJson(await callApi(() => _authDio().post('$_me/photo-uploads')) as Map);
+  Future<UploadForm> photoUploadForm() async => UploadForm.fromJson(
+    await callApi(() => _authDio().post('$_me/photo-uploads')) as Map,
+  );
 
   Future<LoginResult> login(SocialProvider provider, String socialToken) async {
     final data = await callApi(
-        () => _publicDio.post('$_auth/login', data: {'provider': provider.name.toUpperCase(), 'token': socialToken}));
+      () => _publicDio.post(
+        '$_auth/login',
+        data: {'provider': provider.name.toUpperCase(), 'token': socialToken},
+      ),
+    );
     data as Map;
     return data['signupRequired'] == true
         ? LoginSignupRequired(data['signupToken'] as String)
@@ -302,7 +385,10 @@ class MemberApiClient {
     required String? profileImageKey,
     required BodyInfo? bodyInfo,
   }) async {
-    final data = await callApi(() => _publicDio.post('$_auth/signup', data: {
+    final data = await callApi(
+      () => _publicDio.post(
+        '$_auth/signup',
+        data: {
           'signupToken': signupToken,
           'agreements': agreements.toJson(),
           'nickname': nickname,
@@ -312,24 +398,45 @@ class MemberApiClient {
           'runningExperience': runningExperience.apiName,
           'profileImageKey': profileImageKey,
           'bodyInfo': bodyInfo?.toJson(),
-        }));
+        },
+      ),
+    );
     return AuthTokens.fromJson(data as Map);
   }
 
   /// 가입 전 프로필 사진 업로드 폼. 로그인 전이라 가입 토큰으로 받는다(만료 MEMBER-003).
   Future<UploadForm> signupPhotoUploadForm(String signupToken) async =>
-      UploadForm.fromJson(await callApi(() => _publicDio.post('$_auth/photo-uploads', data: {'signupToken': signupToken})) as Map);
+      UploadForm.fromJson(
+        await callApi(
+          () => _publicDio.post(
+            '$_auth/photo-uploads',
+            data: {'signupToken': signupToken},
+          ),
+        ) as Map,
+      );
 
   /// 보낸 리프레시 토큰은 폐기되고 새 토큰을 받는다. 같은 토큰을 다시 쓰면 MEMBER-004.
   Future<AuthTokens> refresh(String refreshToken) async {
-    final data = await callApi(() => _publicDio.post('$_auth/refresh', data: {'refreshToken': refreshToken}));
+    final data = await callApi(
+      () => _publicDio.post(
+        '$_auth/refresh',
+        data: {'refreshToken': refreshToken},
+      ),
+    );
     return AuthTokens.fromJson(data as Map);
   }
 
-  Future<void> logout(String refreshToken) =>
-      callApi(() => _publicDio.post('$_auth/logout', data: {'refreshToken': refreshToken}));
+  Future<void> logout(String refreshToken) => callApi(
+    () =>
+        _publicDio.post('$_auth/logout', data: {'refreshToken': refreshToken}),
+  );
 }
 
 // dioProvider가 토큰 갱신에 이 클라이언트를 쓰고 이 클라이언트도 dioProvider를 써서, 타입을 적어 순환 추론을 끊는다
 final Provider<MemberApiClient> memberApiClientProvider = Provider(
-    (ref) => MemberApiClient(ref.watch(publicDioProvider), () => ref.read(dioProvider)));
+  (ref) => MemberApiClient(
+    ref.watch(publicDioProvider),
+    () => ref.read(dioProvider),
+    ref.read(tokenStorageProvider),
+  ),
+);

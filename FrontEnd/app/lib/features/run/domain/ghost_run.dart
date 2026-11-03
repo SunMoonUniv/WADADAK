@@ -16,6 +16,7 @@ class GhostStartIntent {
     required this.clock,
     this.referenceHash,
     this.publicPeriod,
+    this.weightKg,
     String? playbackVersion,
   }) : playbackVersion =
            playbackVersion ??
@@ -53,6 +54,7 @@ class GhostStartIntent {
   final String owner, id, sourceId;
   final String? referenceHash;
   final String? publicPeriod;
+  final double? weightKg;
   bool get isFree => course.courseId == null;
   final String playbackVersion;
   bool get freeGhostV2 => isFree && playbackVersion == 'GHOST_PLAYBACK_FREE_V2';
@@ -81,6 +83,7 @@ class GhostStartIntent {
     'referenceHash': ?referenceHash,
     'publicPeriod': ?publicPeriod,
     'clock': clock.toJson(),
+    if (weightKg != null) 'weightKg': weightKg,
   };
   factory GhostStartIntent.fromJson(Map<String, dynamic> j) {
     if (j['version'] != 'GHOST_DEVICE_V1') {
@@ -98,6 +101,7 @@ class GhostStartIntent {
       referenceHash: j['referenceHash'] as String?,
       playbackVersion: j['playbackVersion'] as String?,
       publicPeriod: j['publicPeriod'] as String?,
+      weightKg: (j['weightKg'] as num?)?.toDouble(),
       clock: RunClockSample.fromJson(
         (j['clock'] as Map).cast<String, dynamic>(),
       ),

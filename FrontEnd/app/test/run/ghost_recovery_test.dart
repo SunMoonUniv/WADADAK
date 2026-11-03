@@ -169,7 +169,7 @@ void main() {
 
   test('a recovered pending POST that is definitively refused becomes selectable without waiting 60 seconds', () async {
     await store.saveGhostIntent(ghostIntent());
-      api.onGet = (_, _) async =>
+    api.onGet = (_, _) async =>
         throw const ApiException('RUN-002', 'no approval', status: 404);
     api.onStart = (_) async =>
         throw const ApiException('RUN-004', 'denied', status: 409);
@@ -185,7 +185,7 @@ void main() {
   test('a mismatching saved receipt never cancels the pending start', () async {
     api.onStart = (_) async =>
         throw const ApiException('RUN-004', 'denied', status: 409);
-      api.onGet = (_, _) async => {
+    api.onGet = (_, _) async => {
       ...ghostApproval(ghostIntent()),
       'sourceRecordId': 'wrong-source',
     };
@@ -198,7 +198,7 @@ void main() {
   test('an account switch during refusal confirmation preserves the original owner request', () async {
     api.onStart = (_) async =>
         throw const ApiException('RUN-004', 'denied', status: 409);
-      api.onGet = (_, _) async {
+    api.onGet = (_, _) async {
       member = 'bob';
       throw const ApiException('RUN-002', 'missing', status: 404);
     };
@@ -584,7 +584,14 @@ void main() {
     await db.execute('ALTER TABLE sessions DROP COLUMN ghost_context');
     await db.execute('ALTER TABLE sessions DROP COLUMN recovery_anchor');
     await db.execute('DROP TABLE course_start_intents');
-      await db.execute('PRAGMA user_version=3');
+    for (final trigger in await db.rawQuery(
+      "SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE '%_withdrawn_%'",
+    )) {
+      await db.execute('DROP TRIGGER "${trigger['name']}"');
+    }
+    await db.execute('DROP TABLE withdrawn_run_owners');
+    await db.execute('ALTER TABLE sessions DROP COLUMN guidance_state');
+    await db.execute('PRAGMA user_version=3');
     await restart();
     final recovered = (await recorder.recover('alice')).single;
     expect(recovered.endReason, 'INTERRUPTED');
@@ -601,7 +608,7 @@ void main() {
           : run.inputs.first.toJson(),
     );
     expect(await store.deletedIds('bob'), {'deleted-remote'});
-    expect((await store.database).getVersion(), completion(5));
+    expect((await store.database).getVersion(), completion(6));
     expect(jsonEncode(recovered.inputs.last.toJson()), contains('INTERRUPTED'));
   });
 

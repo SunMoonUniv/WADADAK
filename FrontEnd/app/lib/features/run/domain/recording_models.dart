@@ -40,6 +40,7 @@ class RunInput {
     this.altitudeAccuracyM,
     this.pressureHpa,
     this.pressureAccuracy,
+    this.weightKg,
   });
   factory RunInput.fromJson(Map<String, dynamic> j) => RunInput(
     seq: j['seq'] as int,
@@ -61,6 +62,7 @@ class RunInput {
     altitudeAccuracyM: (j['altitudeAccuracyM'] as num?)?.toDouble(),
     pressureHpa: (j['pressureHpa'] as num?)?.toDouble(),
     pressureAccuracy: (j['pressureAccuracy'] as num?)?.toInt(),
+    weightKg: (j['weightKg'] as num?)?.toDouble(),
   );
   final int seq, elapsedMs;
   final int? steps, durationMs, sampleEndMs;
@@ -76,6 +78,7 @@ class RunInput {
   /// Raw hPa and Android accuracy status (0..3); status is not an error in metres.
   final double? pressureHpa;
   final int? pressureAccuracy;
+  final double? weightKg;
   bool get good =>
       kind == RunKind.gps &&
       lat != null &&
@@ -107,6 +110,7 @@ class RunInput {
     if (altitudeAccuracyM != null) 'altitudeAccuracyM': altitudeAccuracyM,
     if (pressureHpa != null) 'pressureHpa': pressureHpa,
     if (pressureAccuracy != null) 'pressureAccuracy': pressureAccuracy,
+    if (weightKg != null) 'weightKg': weightKg,
   };
   double distanceTo(RunInput other) {
     const radius = 6371008.8;
@@ -135,11 +139,13 @@ class LocalRun {
     this.syncFailure,
     this.ghost,
     this.recoveryAnchor,
+    this.guidanceState,
     List<RunInput>? inputs,
   }) : inputs = inputs ?? [];
   final String id, owner;
   final GhostRunContext? ghost;
   RunRecoveryAnchor? recoveryAnchor;
+  Map<String, dynamic>? guidanceState;
   final DateTime startedAt;
   RunPhase phase;
   int checkpointMs;
@@ -150,6 +156,9 @@ class LocalRun {
   Map<String, dynamic>? result, summary;
   final bool inputsLoaded;
   final List<RunInput> inputs;
+  double? get weightKg =>
+      inputs.firstOrNull?.weightKg ??
+      (summary?['metrics']?['weightKg'] as num?)?.toDouble();
   DateTime get endedAt => startedAt.add(Duration(milliseconds: checkpointMs));
 }
 

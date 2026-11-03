@@ -63,44 +63,50 @@ class RunRecorder {
 
   RunMetrics get metrics => calculator.at(elapsedMs);
   bool get active => current != null && current!.phase != RunPhase.ended;
-  Future<void> start(String id, String owner, DateTime utc, {int? originMs}) =>
-      _serial(() async {
-        if (active) {
-          throw StateError('진행 중인 러닝이 있어요.');
-        }
-        final now = await nowMs();
-        final origin = originMs ?? now;
-        if (origin > now || now - origin > 60000) {
-          throw StateError('코스 시작 시간을 다시 확인해 주세요.');
-        }
-        final run = LocalRun(id: id, owner: owner, startedAt: utc.toUtc());
-        final start = RunInput(
-          seq: 0,
-          kind: RunKind.start,
-          elapsedMs: 0,
-          measuredAt: run.startedAt,
-          reason: motionFiltering ? 'PACE_V4' : null,
-        );
-        await _persist(() => store.create(run, start));
-        run.inputs.add(start);
-        current = run;
-        calculator = RunCalculator()..add(start);
-        _originMs = origin;
-        _pressureBoundaryMs = 0;
-        _lastPressureMs = -1;
-        elapsedMs = 0;
-        _autoResume.reset();
-        _autoPause.reset();
-        if (originMs != null && now > origin) {
-          // The request wait counts as elapsed time, with an explicit unmeasured gap.
-          await _commit(
-            _recoveryGap(run, now - origin),
-            RunPhase.running,
-            now - origin,
-          );
-        }
-        changes.add(null);
-      });
+  Future<void> start(
+    String id,
+    String owner,
+    DateTime utc, {
+    int? originMs,
+    double? weightKg,
+  }) => _serial(() async {
+    if (active) {
+      throw StateError('진행 중인 러닝이 있어요.');
+    }
+    final now = await nowMs();
+    final origin = originMs ?? now;
+    if (origin > now || now - origin > 60000) {
+      throw StateError('코스 시작 시간을 다시 확인해 주세요.');
+    }
+    final run = LocalRun(id: id, owner: owner, startedAt: utc.toUtc());
+    final start = RunInput(
+      seq: 0,
+      kind: RunKind.start,
+      elapsedMs: 0,
+      measuredAt: run.startedAt,
+      reason: motionFiltering ? 'PACE_V4' : null,
+      weightKg: weightKg,
+    );
+    await _persist(() => store.create(run, start));
+    run.inputs.add(start);
+    current = run;
+    calculator = RunCalculator()..add(start);
+    _originMs = origin;
+    _pressureBoundaryMs = 0;
+    _lastPressureMs = -1;
+    elapsedMs = 0;
+    _autoResume.reset();
+    _autoPause.reset();
+    if (originMs != null && now > origin) {
+      // The request wait counts as elapsed time, with an explicit unmeasured gap.
+      await _commit(
+        _recoveryGap(run, now - origin),
+        RunPhase.running,
+        now - origin,
+      );
+    }
+    changes.add(null);
+  });
   Future<void> tick({bool persist = false}) => _serial(() async {
     if (!active) return;
     final ms = await _elapsed();
@@ -543,6 +549,7 @@ class RunRecorder {
       elapsedMs: 0,
       measuredAt: run.startedAt,
       reason: motionFiltering ? 'PACE_V4' : null,
+      weightKg: intent.weightKg,
     );
     await _persist(() => store.create(run, start));
     run.inputs.add(start);
@@ -577,6 +584,19 @@ class RunRecorder {
     );
     return false;
   });
+
+  Future<void> discardOwner(String owner) async {
+    await _queue;
+    if (current?.owner != owner) return;
+    current = null;
+    calculator = RunCalculator();
+    elapsedMs = 0;
+    confirmingEnd = false;
+    faulted = false;
+    _autoResume.reset();
+    _autoPause.reset();
+    changes.add(null);
+  }
 
   Future<void> close() async {
     await _queue;

@@ -5,6 +5,7 @@ import '../api/api_client.dart';
 import '../api/member_api_client.dart';
 import '../upload/photo_uploader.dart';
 import 'social_login.dart';
+import 'account_data_cleanup.dart';
 import 'token_storage.dart';
 
 sealed class AuthState {
@@ -73,7 +74,12 @@ class AuthController extends AsyncNotifier<AuthState> {
     final api = ref.read(memberApiClientProvider);
     final profileImageKey = photo == null
         ? null
-        : await ref.read(photoUploaderProvider).upload(photo, () => api.signupPhotoUploadForm(current.signupToken));
+        : await ref
+              .read(photoUploaderProvider)
+              .upload(
+                photo,
+                () => api.signupPhotoUploadForm(current.signupToken),
+              );
     final tokens = await api.signup(
       signupToken: current.signupToken,
       agreements: agreements,
@@ -86,6 +92,12 @@ class AuthController extends AsyncNotifier<AuthState> {
       bodyInfo: bodyInfo,
     );
     await _signedIn(tokens);
+    final member = tokens.memberId;
+    if (member != null) {
+      await ref
+          .read(tokenStorageProvider)
+          .rememberRunWeight(member, bodyInfo?.weightKg.toDouble());
+    }
   }
 
   /// 기기의 토큰을 먼저 지운다. 서버의 리프레시 토큰 폐기가 실패해도 로그아웃은 끝난다.
@@ -105,9 +117,21 @@ class AuthController extends AsyncNotifier<AuthState> {
   /// F4 회원 탈퇴. 서버가 탈퇴를 마쳐야 기기의 토큰을 지우고 로그인 화면으로 간다.
   /// 실패하면 [ApiException]을 던지고 로그인 상태는 그대로다. 서버가 리프레시 토큰을 모두 지워 따로 로그아웃하지 않는다.
   Future<void> withdraw() async {
+    final tokens = await ref.read(tokenStorageProvider).read();
+    final member = tokens?.memberId;
+    if (member == null) throw StateError('로그인 후 다시 시도해 주세요.');
+    final cleanup = ref.read(accountDataCleanupProvider);
     await ref.read(memberApiClientProvider).withdraw();
-    await ref.read(tokenStorageProvider).clear();
-    state = const AsyncData(SignedOut());
+    try {
+      await cleanup(member);
+    } finally {
+      try {
+        await ref.read(tokenStorageProvider).eraseRunWeight(member);
+      } finally {
+        await ref.read(tokenStorageProvider).clear();
+        state = const AsyncData(SignedOut());
+      }
+    }
   }
 
   /// 가입을 그만두고 로그인 화면으로 돌아간다.

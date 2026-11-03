@@ -60,6 +60,56 @@ class TokenStorage {
     await _storage.write(key: _refreshKey, value: tokens.refreshToken);
   }
 
+  Future<void> _weightJobs = Future.value();
+  final Set<String> _withdrawnOwners = {};
+  Future<T> _weightSerial<T>(Future<T> Function() job) {
+    final next = _weightJobs.then((_) => job());
+    _weightJobs = next.then<void>((_) {}, onError: (Object _) {});
+    return next;
+  }
+
+  Future<double?> runWeight(String owner) => _weightSerial(() async {
+    try {
+      if (_withdrawnOwners.contains(owner) ||
+          await _storage.read(key: 'run_weight_withdrawn_$owner') != null) {
+        return null;
+      }
+      final value = double.tryParse(
+        await _storage.read(key: 'run_weight_$owner') ?? '',
+      );
+      return value != null && value.isFinite && value >= 20 && value <= 300
+          ? value
+          : null;
+    } on Object {
+      return null;
+    }
+  });
+
+  Future<void> rememberRunWeight(String owner, double? value) =>
+      _weightSerial(() async {
+        try {
+          if (_withdrawnOwners.contains(owner) ||
+              await _storage.read(key: 'run_weight_withdrawn_$owner') != null) {
+            return;
+          }
+          if (value == null || !value.isFinite || value < 20 || value > 300) {
+            await _storage.delete(key: 'run_weight_$owner');
+          } else {
+            await _storage.write(key: 'run_weight_$owner', value: '$value');
+          }
+        } on Object {
+          /* A cache failure never changes the saved member profile. */
+        }
+      });
+
+  Future<void> eraseRunWeight(String owner) {
+    _withdrawnOwners.add(owner);
+    return _weightSerial(() async {
+      await _storage.write(key: 'run_weight_withdrawn_$owner', value: '1');
+      await _storage.delete(key: 'run_weight_$owner');
+    });
+  }
+
   Future<void> clear() async {
     _cached = null;
     _loaded = true;

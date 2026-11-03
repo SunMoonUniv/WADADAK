@@ -208,12 +208,16 @@ class FreeRunResultView extends StatelessWidget {
                         : [
                             ('평균 속도', speed),
                             ('케이던스', cadence),
-                            ('소모 칼로리', '—'),
+                            ('추정 소모 칼로리', run.caloriesLabel),
                           ],
                   ),
                   WdStatSummary(
                     courseRun || ghost
-                        ? [('상승 고도', gain), ('소모 칼로리', '—'), ('최고 구간', best)]
+                        ? [
+                            ('상승 고도', gain),
+                            ('추정 소모 칼로리', run.caloriesLabel),
+                            ('최고 구간', best),
+                          ]
                         : [
                             ('상승 고도', gain),
                             ('최고 구간', best),
