@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
+import '../../core/api/api_client.dart';
 import '../../core/api/review_api_client.dart';
 import '../../core/error_message.dart';
 import '../../core/upload/photo_uploader.dart';
@@ -74,6 +75,9 @@ class _ReviewFormScreenState extends ConsumerState<ReviewFormScreen> {
   late final List<_FormPhoto> _photos;
   var _saving = false;
 
+  /// 이미 올린 새 사진의 키. 저장이 실패해 다시 누르면 다시 올리지 않는다(올린 파일은 1시간 동안 남고 업로드 폼은 1시간에 20개까지다).
+  final Map<XFile, String> _uploadedKeys = {};
+
   ReviewCard? get _review => widget.args.review;
 
   bool get _complete => [_rating, _safety, _road, _lighting, _amenity].every((value) => value > 0);
@@ -125,10 +129,16 @@ class _ReviewFormScreenState extends ConsumerState<ReviewFormScreen> {
     final api = ref.read(reviewApiClientProvider);
     final uploader = ref.read(photoUploaderProvider);
     try {
-      // 보이는 순서대로 키를 모은다. 새 사진은 이때 한 장씩 올린다
-      final keys = [
-        for (final photo in _photos) photo.saved?.key ?? await uploader.upload(photo.file!, api.photoUploadForm),
-      ];
+      // 보이는 순서대로 키를 모은다. 새 사진은 이때 한 장씩 올리고, 올린 키는 기억해 둔다
+      final keys = <String>[];
+      for (final photo in _photos) {
+        final saved = photo.saved?.key;
+        if (saved != null) {
+          keys.add(saved);
+        } else {
+          keys.add(_uploadedKeys[photo.file!] ??= await uploader.upload(photo.file!, api.photoUploadForm));
+        }
+      }
       final input = ReviewInput(
         rating: _rating,
         safetyRating: _safety,
@@ -150,6 +160,8 @@ class _ReviewFormScreenState extends ConsumerState<ReviewFormScreen> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(review == null ? '리뷰를 등록했어요.' : '리뷰를 수정했어요.')));
       context.pop();
     } on Object catch (e) {
+      // 올린 지 1시간이 지나 지워진 사진이면 기억한 키를 버린다. 다음에 누르면 다시 올린다
+      if (e is ApiException && e.code == 'REVIEW-007') _uploadedKeys.clear();
       if (mounted) showError(context, e);
     } finally {
       if (mounted) setState(() => _saving = false);

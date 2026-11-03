@@ -289,6 +289,10 @@ class _ProfileEditFormState extends ConsumerState<_ProfileEditForm> {
       switch (e.code) {
         case 'MEMBER-006' || 'MEMBER-010':
           setState(() => _nicknameError = e.message);
+        case 'MEMBER-008':
+          // 올린 지 1시간이 지나 지워진 사진이다. 기억한 키를 버려서 다음에 누르면 다시 올린다
+          _uploadedKey = null;
+          showError(context, e);
         default:
           showError(context, e);
       }

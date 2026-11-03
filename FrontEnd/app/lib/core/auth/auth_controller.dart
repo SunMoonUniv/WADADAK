@@ -29,6 +29,10 @@ final class SignedIn extends AuthState {
 
 /// 로그인 상태. 라우터가 이 값으로 화면을 고른다.
 class AuthController extends AsyncNotifier<AuthState> {
+  /// 가입 때 이미 올린 사진과 그 키. 가입 요청이 실패해 다시 시도할 때 같은 사진을 다시 올리지 않는다.
+  XFile? _uploadedPhoto;
+  String? _uploadedKey;
+
   @override
   Future<AuthState> build() async {
     // 토큰이 있으면 서버에 묻지 않고 로그인 상태로 시작한다. 오프라인에서도 자유 러닝을 시작할 수 있어야 한다(개발 정책 4.5).
@@ -72,25 +76,30 @@ class AuthController extends AsyncNotifier<AuthState> {
     final current = state.value;
     if (current is! SignupRequired) throw StateError('가입 토큰이 없습니다');
     final api = ref.read(memberApiClientProvider);
-    final profileImageKey = photo == null
-        ? null
-        : await ref
-              .read(photoUploaderProvider)
-              .upload(
-                photo,
-                () => api.signupPhotoUploadForm(current.signupToken),
-              );
-    final tokens = await api.signup(
-      signupToken: current.signupToken,
-      agreements: agreements,
-      nickname: nickname,
-      bio: bio,
-      regionCode: regionCode,
-      affiliation: affiliation,
-      runningExperience: runningExperience,
-      profileImageKey: profileImageKey,
-      bodyInfo: bodyInfo,
-    );
+    // 가입이 실패해 다시 누르면 같은 사진을 다시 올리지 않는다(업로드 폼 한도 1시간 20개)
+    if (photo != null && !identical(photo, _uploadedPhoto)) {
+      _uploadedKey = await ref.read(photoUploaderProvider).upload(photo, () => api.signupPhotoUploadForm(current.signupToken));
+      _uploadedPhoto = photo;
+    }
+    final profileImageKey = photo == null ? null : _uploadedKey;
+    final AuthTokens tokens;
+    try {
+      tokens = await api.signup(
+        signupToken: current.signupToken,
+        agreements: agreements,
+        nickname: nickname,
+        bio: bio,
+        regionCode: regionCode,
+        affiliation: affiliation,
+        runningExperience: runningExperience,
+        profileImageKey: profileImageKey,
+        bodyInfo: bodyInfo,
+      );
+    } on ApiException catch (e) {
+      // 올린 지 1시간이 지나 지워진 사진이면 기억한 키를 버린다. 다음에 누르면 다시 올린다
+      if (e.code == 'MEMBER-008') _uploadedPhoto = _uploadedKey = null;
+      rethrow;
+    }
     await _signedIn(tokens);
     final member = tokens.memberId;
     if (member != null) {

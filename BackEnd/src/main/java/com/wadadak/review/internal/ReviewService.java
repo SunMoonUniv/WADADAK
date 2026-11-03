@@ -95,9 +95,12 @@ class ReviewService {
                 review.getRating(), review.getCreatedAt()));
     }
 
-    /** 리뷰를 찾고, 요청한 회원이 쓴 리뷰인지 확인한다. 없으면 REVIEW-003, 남의 리뷰면 REVIEW-004. */
+    /**
+     * 리뷰를 찾고, 요청한 회원이 쓴 리뷰인지 확인한다. 없으면 REVIEW-003, 남의 리뷰면 REVIEW-004.
+     * 행을 잠그고 읽는다. 수정·삭제가 겹쳐도 이전 별점을 최신 값으로 읽어야 course 평점 합계가 맞는다.
+     */
     private Review ownReview(UUID memberId, UUID reviewId) {
-        Review review = reviewRepository.findById(reviewId)
+        Review review = reviewRepository.findLockedById(reviewId)
                 .orElseThrow(() -> new AppException(ReviewErrorCode.REVIEW_NOT_FOUND));
         if (!review.isWrittenBy(memberId)) {
             throw new AppException(ReviewErrorCode.NOT_REVIEW_OWNER);

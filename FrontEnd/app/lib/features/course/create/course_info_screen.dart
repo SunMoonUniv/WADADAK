@@ -7,6 +7,7 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/api/course_api_client.dart';
 import '../../../core/error_message.dart';
+import '../../my/my_courses_screen.dart';
 import '../course_format.dart';
 import 'course_info_inputs.dart';
 
@@ -49,6 +50,8 @@ class _CourseInfoScreenState extends ConsumerState<CourseInfoScreen> with Course
             tags: tags,
           );
       if (!mounted) return;
+      // 등록 코스 수(E3 · G4 위 칸)를 다시 받게 한다. 받아 둔 값을 계속 쓰는 provider라 알려 줘야 바뀐다
+      ref.invalidate(myCourseSummaryProvider);
       await showCourseRegistered(context);
       if (mounted) context.pop(course);
     } on ApiException catch (e) {

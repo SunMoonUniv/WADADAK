@@ -100,11 +100,11 @@ class _ReviewListScreenState extends ConsumerState<ReviewListScreen> {
           : RefreshIndicator(
               color: WdColors.ink,
               onRefresh: _refresh,
-              child: NotificationListener<ScrollNotification>(
-                // 끝에서 400px 안으로 내려오면 다음 페이지를 받는다
+              child: NotificationListener<ScrollEndNotification>(
+                // 스크롤이 멈췄을 때 끝에서 400px 안이면 다음 페이지를 받는다.
+                // 스크롤하는 매 순간(ScrollUpdateNotification) 부르면 받기가 실패했을 때 오류를 계속 다시 띄운다
                 onNotification: (notification) {
                   if (notification.metrics.extentAfter < 400 &&
-                      notification is ScrollUpdateNotification &&
                       notification.metrics.axisDirection == AxisDirection.down) {
                     _loadMore();
                   }
