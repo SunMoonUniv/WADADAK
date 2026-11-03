@@ -53,8 +53,8 @@ class MyLocation {
   }
 
   /// 기기에 남은 마지막 위치가 이만큼 안에 [_lastAccuracyMeters] 이내로 잰 것이면 새로 재지 않고 쓴다.
-  static const _lastMaxAge = Duration(minutes: 2);
-  static const _lastAccuracyMeters = 100;
+  static const _lastMaxAge = Duration(minutes: 5);
+  static const _lastAccuracyMeters = 150;
 
   /// 권한을 물어서라도 현재 위치를 받는다(가까운순 · 내 위치 버튼). 최근에 잰 마지막 위치가 있으면 바로 쓰고,
   /// 없으면 새로 잰다(실내에서는 10초까지 걸린다). 못 받으면 [DeviceSetupException]이다.

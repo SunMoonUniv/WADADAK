@@ -45,8 +45,8 @@ void main() {
     location = MyLocation(service);
   });
 
-  test('uses the last location measured within 2 minutes without a new fix', () async {
-    service.last = position(37.4, ago: const Duration(seconds: 30));
+  test('uses the last location measured within 5 minutes within 150 m without a new fix', () async {
+    service.last = position(37.4, ago: const Duration(minutes: 4), accuracy: 140);
 
     expect(await location.request(), const GeoPoint(37.4, 127));
     expect(service.fixes, 0);
@@ -54,8 +54,8 @@ void main() {
 
   test('measures again when the last location is old, rough or missing', () async {
     for (final last in [
-      position(37.4, ago: const Duration(minutes: 3)),
-      position(37.4, ago: const Duration(seconds: 30), accuracy: 500),
+      position(37.4, ago: const Duration(minutes: 6)),
+      position(37.4, ago: const Duration(seconds: 30), accuracy: 200),
       null,
     ]) {
       service.last = last;
