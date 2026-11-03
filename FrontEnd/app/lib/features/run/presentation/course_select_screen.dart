@@ -19,7 +19,55 @@ import '../domain/run_models.dart';
 import 'course_prep_view.dart';
 import 'route_preview_map.dart';
 
-enum _Source { recent, nearby }
+enum _Source { recent, saved, nearby, mine }
+
+/// 저장한 코스(G5와 같은 저장 목록): 공개 중인 것만 최근 저장순. 삭제 예정 코스는 달릴 수 없어 뺀다
+final _savedProvider = FutureProvider.autoDispose<List<CourseListItem>>((
+  ref,
+) async {
+  final api = ref.watch(courseApiClientProvider);
+  final courses = <CourseListItem>[];
+  String? cursor;
+  do {
+    final page = await api.bookmarks(cursor: cursor);
+    courses.addAll([
+      for (final course in page.courses)
+        if (!course.pendingDelete) course.card,
+    ]);
+    cursor = page.nextCursor;
+  } while (cursor != null);
+  return courses;
+}, retry: (_, _) => null);
+
+/// 내가 만든 코스(G4와 같은 내 코스 목록): 공개 중인 것만 G4 순서. 카드 값은 최근 달린 코스처럼 상세로 채운다
+final _mineProvider =
+    FutureProvider.autoDispose<List<({String id, String name})>>((ref) async {
+      final api = ref.watch(courseApiClientProvider);
+      final courses = <({String id, String name})>[];
+      String? cursor;
+      do {
+        final page = await api.myCourses(cursor: cursor);
+        courses.addAll([
+          for (final course in page.courses)
+            if (!course.pendingDelete) (id: course.courseId, name: course.name),
+        ]);
+        cursor = page.nextCursor;
+      } while (cursor != null);
+      return courses;
+    }, retry: (_, _) => null);
+
+/// 보이는 카드 중 저장한 코스(카드 아래 `저장한 코스`). 키는 쉼표로 이은 코스 ID.
+/// 표시만 하는 값이라 받지 못하면 저장 표시 없이 보인다
+final _bookmarkedProvider = FutureProvider.autoDispose
+    .family<Set<String>, String>((ref, ids) async {
+      try {
+        return await ref
+            .watch(courseApiClientProvider)
+            .bookmarkedIds(ids.split(','));
+      } on Exception {
+        return const {};
+      }
+    }, retry: (_, _) => null);
 
 /// 내 주변: 현재 위치에서 가까운 코스(약 3km 안). 위치 권한이 없으면 빈 목록
 final _nearbyProvider = FutureProvider.autoDispose<List<CourseListItem>>((
@@ -61,15 +109,30 @@ class _CourseSelectScreenState extends ConsumerState<CourseSelectScreen> {
   String _query = '';
   CourseSelection? _picked;
   int _shown = _page;
+  final _scroll = ScrollController();
 
   void _show(_Source source) => setState(() {
     _source = source;
     _shown = _page;
   });
 
-  void _notReady(String what) =>
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('$what은 준비 중이에요.')));
+  /// 고른 코스의 경로 미리보기는 맨 위라, 목록을 내려서 골랐으면 맨 위로 올린다
+  void _pick(CourseSelection course) {
+    setState(() => _picked = course);
+    if (_scroll.hasClients && _scroll.offset > 0) {
+      _scroll.animateTo(
+        0,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeOut,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -89,14 +152,37 @@ class _CourseSelectScreenState extends ConsumerState<CourseSelectScreen> {
               ]
             : switch (_source) {
                 _Source.recent => recentCourses(runs.remoteRecords),
+                _Source.saved => [
+                  for (final c
+                      in ref.watch(_savedProvider).value ??
+                          const <CourseListItem>[])
+                    (id: c.courseId, name: c.name, item: c),
+                ],
                 _Source.nearby => [
                   for (final c
                       in ref.watch(_nearbyProvider).value ??
                           const <CourseListItem>[])
                     (id: c.courseId, name: c.name, item: c),
                 ],
+                _Source.mine => [
+                  for (final c
+                      in ref.watch(_mineProvider).value ??
+                          const <({String id, String name})>[])
+                    (id: c.id, name: c.name, item: null),
+                ],
               };
         final visible = courses.take(_shown).toList();
+        // 저장한 코스 탭은 모두 저장한 코스라 묻지 않는다
+        final savedIds = !searching && _source == _Source.saved
+            ? {for (final c in visible) c.id}
+            : visible.isEmpty
+            ? const <String>{}
+            : ref
+                      .watch(
+                        _bookmarkedProvider(visible.map((c) => c.id).join(',')),
+                      )
+                      .value ??
+                  const <String>{};
         return Scaffold(
           backgroundColor: WdColors.paper,
           appBar: WdAppBar(
@@ -108,6 +194,7 @@ class _CourseSelectScreenState extends ConsumerState<CourseSelectScreen> {
             ),
           ),
           body: ListView(
+            controller: _scroll,
             padding: const EdgeInsets.fromLTRB(
               WdSpace.s24,
               WdSpace.s20,
@@ -115,6 +202,13 @@ class _CourseSelectScreenState extends ConsumerState<CourseSelectScreen> {
               WdSpace.s24,
             ),
             children: [
+              if (_picked != null) ...[
+                _SelectedCourseMap(
+                  key: ValueKey(_picked!.courseId),
+                  course: _picked!,
+                ),
+                const SizedBox(height: WdSpace.s16),
+              ],
               WdSearchBar(
                 hintText: '코스 이름 검색',
                 onChanged: (value) => setState(() {
@@ -134,8 +228,9 @@ class _CourseSelectScreenState extends ConsumerState<CourseSelectScreen> {
                   ),
                   WdFilterChip(
                     '저장한 코스',
+                    selected: !searching && _source == _Source.saved,
                     height: 36,
-                    onTap: () => _notReady('저장한 코스'),
+                    onTap: () => _show(_Source.saved),
                   ),
                   WdFilterChip(
                     '내 주변',
@@ -145,8 +240,9 @@ class _CourseSelectScreenState extends ConsumerState<CourseSelectScreen> {
                   ),
                   WdFilterChip(
                     '내가 만든',
+                    selected: !searching && _source == _Source.mine,
                     height: 36,
-                    onTap: () => _notReady('내가 만든 코스'),
+                    onTap: () => _show(_Source.mine),
                   ),
                 ],
               ),
@@ -157,9 +253,12 @@ class _CourseSelectScreenState extends ConsumerState<CourseSelectScreen> {
                     child: Text(
                       searching
                           ? '검색 결과'
-                          : (_source == _Source.recent
-                                ? '최근 달린 코스'
-                                : '내 주변 코스'),
+                          : switch (_source) {
+                              _Source.recent => '최근 달린 코스',
+                              _Source.saved => '저장한 코스',
+                              _Source.nearby => '내 주변 코스',
+                              _Source.mine => '내가 만든 코스',
+                            },
                       style: WdText.ko16Bold.copyWith(color: WdColors.muted),
                     ),
                   ),
@@ -176,9 +275,14 @@ class _CourseSelectScreenState extends ConsumerState<CourseSelectScreen> {
                   child: Text(
                     searching
                         ? '찾는 코스가 없어요.'
-                        : _source == _Source.recent
-                        ? '아직 달린 코스가 없어요. 내 주변이나 검색으로 골라 보세요.'
-                        : '가까운 코스가 없거나 위치를 확인할 수 없어요.',
+                        : switch (_source) {
+                            _Source.recent =>
+                              '아직 달린 코스가 없어요. 내 주변이나 검색으로 골라 보세요.',
+                            _Source.saved =>
+                              '저장한 코스가 없어요. 코스 상세에서 북마크로 저장해 보세요.',
+                            _Source.nearby => '가까운 코스가 없거나 위치를 확인할 수 없어요.',
+                            _Source.mine => '공개 중인 내 코스가 없어요.',
+                          },
                     textAlign: TextAlign.center,
                     style: WdText.ko12.copyWith(color: WdColors.muted),
                   ),
@@ -188,9 +292,9 @@ class _CourseSelectScreenState extends ConsumerState<CourseSelectScreen> {
                   courseId: c.id,
                   name: c.name,
                   item: c.item,
+                  saved: savedIds.contains(c.id),
                   picked: _picked?.courseId == c.id,
-                  onTap: () =>
-                      setState(() => _picked = CourseSelection(c.id, c.name)),
+                  onTap: () => _pick(CourseSelection(c.id, c.name)),
                 ),
                 const SizedBox(height: WdSpace.s12),
               ],
@@ -201,13 +305,6 @@ class _CourseSelectScreenState extends ConsumerState<CourseSelectScreen> {
                   onPressed: () => setState(() => _shown += 6),
                 ),
               const SizedBox(height: WdSpace.s12),
-              if (_picked != null) ...[
-                _SelectedCourseMap(
-                  key: ValueKey(_picked!.courseId),
-                  course: _picked!,
-                ),
-                const SizedBox(height: WdSpace.s16),
-              ],
               const WdInfoBanner('코스를 고르지 않으면 자유 러닝으로 달려요.', plain: true),
             ],
           ),
@@ -253,19 +350,24 @@ List<({String id, String name, CourseListItem? item})> recentCourses(
   ];
 }
 
-/// Figma C8 코스 카드: 선택 원 · 경로 썸네일 · 이름 · 거리·난이도·평점 · 내 최고 기록·순위 · 현재 러너/만료 임박
+/// Figma C8 코스 카드: 선택 원 · 경로 썸네일 · 이름 · 거리·난이도·평점 · 내 최고 기록·순위 · 아래 줄 하나.
+/// 아래 줄은 만료 임박 → 현재 러너(1명 이상) → `저장한 코스` → `달리는 러너 없음` 중 먼저인 것이다(2026-11-02 사용자 결정)
 class _PickCard extends ConsumerWidget {
   const _PickCard({
     required this.courseId,
     required this.name,
     required this.item,
+    required this.saved,
     required this.picked,
     required this.onTap,
   });
   final String courseId, name;
 
-  /// 목록 API 값(내 주변·검색). 최근 달린 코스는 없어서 상세를 받는다
+  /// 목록 API 값(저장한 코스·내 주변·검색). 최근 달린·내가 만든 코스는 없어서 상세를 받는다
   final CourseListItem? item;
+
+  /// 내가 저장한 코스
+  final bool saved;
   final bool picked;
   final VoidCallback onTap;
 
@@ -364,10 +466,15 @@ class _PickCard extends ConsumerWidget {
                 formatExpiry(daysLeft),
                 style: WdText.ko12.copyWith(color: WdColors.warning),
               )
-            else
+            else if (runners > 0 || !saved)
               Text(
                 formatActiveRunners(runners),
                 style: WdText.ko12.copyWith(color: WdColors.green),
+              )
+            else
+              Text(
+                '저장한 코스',
+                style: WdText.ko12.copyWith(color: WdColors.muted),
               ),
           ],
         ),

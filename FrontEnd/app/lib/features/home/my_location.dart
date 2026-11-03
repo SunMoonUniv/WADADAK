@@ -52,9 +52,21 @@ class MyLocation {
     return permission == LocationPermission.whileInUse || permission == LocationPermission.always;
   }
 
-  /// 권한을 물어서라도 현재 위치를 받는다(가까운순). 못 받으면 [DeviceSetupException]이다.
+  /// 기기에 남은 마지막 위치가 이만큼 안에 [_lastAccuracyMeters] 이내로 잰 것이면 새로 재지 않고 쓴다.
+  static const _lastMaxAge = Duration(minutes: 5);
+  static const _lastAccuracyMeters = 150;
+
+  /// 권한을 물어서라도 현재 위치를 받는다(가까운순 · 내 위치 버튼). 최근에 잰 마지막 위치가 있으면 바로 쓰고,
+  /// 없으면 새로 잰다(실내에서는 10초까지 걸린다). 못 받으면 [DeviceSetupException]이다.
   Future<GeoPoint> request() async {
     try {
+      await _service.ensurePermission();
+      final last = await _service.lastKnownPosition();
+      if (last != null &&
+          DateTime.now().difference(last.timestamp) < _lastMaxAge &&
+          last.accuracy <= _lastAccuracyMeters) {
+        return _point(last);
+      }
       return _point(await _service.currentPosition(settings: _settings));
     } on DeviceSetupException {
       rethrow;

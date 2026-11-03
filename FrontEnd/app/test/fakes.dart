@@ -717,13 +717,18 @@ BookmarkCourse testBookmark(
   String? creator = '러너_하늘',
   String expiresAt = '2026-11-20T14:59:59Z',
   bool pendingDelete = false,
+  int activeRunners = 0,
 }) =>
     BookmarkCourse.fromJson({
       'courseId': name,
       'name': name,
       'distanceMeters': distanceMeters,
       'difficulty': difficulty,
+      'tags': const ['FLAT'],
+      'courseType': 'CUSTOM',
       'averageRating': rating,
+      'reviewCount': rating == null ? 0 : 3,
+      'activeRunners': activeRunners,
       'creatorNickname': creator,
       'route': [
         {'lat': 37.52, 'lng': 126.93},
@@ -787,7 +792,7 @@ class FakeMyLocation implements MyLocation {
   /// 기기에 남은 마지막 위치. 권한이 있을 때만 준다.
   GeoPoint? last;
 
-  /// 있으면 [ifAllowed]가 이것이 끝날 때까지 기다린다(지금 위치를 받는 데 걸리는 시간).
+  /// 있으면 [ifAllowed] · [request]가 이것이 끝날 때까지 기다린다(지금 위치를 받는 데 걸리는 시간).
   Completer<void>? fix;
 
   @override
@@ -802,6 +807,7 @@ class FakeMyLocation implements MyLocation {
   @override
   Future<GeoPoint> request() async {
     requests++;
+    await fix?.future;
     if (error != null) throw error!;
     allowed = true;
     return location!;
