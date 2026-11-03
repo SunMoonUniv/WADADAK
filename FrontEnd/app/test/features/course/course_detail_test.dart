@@ -19,6 +19,7 @@ import 'package:wadadak/features/course/detail/course_reviews_tab.dart';
 import 'package:wadadak/features/course/detail/course_run_bar.dart';
 import 'package:wadadak/features/course/course_public_period_sheet.dart';
 import 'package:wadadak/features/home/my_location.dart';
+import 'package:wadadak/features/my/bookmark_state.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
 import 'package:wadadak/features/review/review_list_screen.dart';
 import 'package:wadadak/features/review/review_state.dart';
@@ -34,7 +35,10 @@ void main() {
   late FakeCourseReviewApi reviews;
   late FakeCourseRankingApi rankings;
 
-  const route = [GeoPoint(37.5666, 126.9784), GeoPoint(37.5700, 126.9800), GeoPoint(37.5750, 126.9850)];
+  /// MY 등이 받아 둔 저장한 코스 수를 몇 번 받았나. B1에서 저장 · 해제하면 다시 받는다.
+  var summaryBuilds = 0;
+
+  const route =[GeoPoint(37.5666, 126.9784), GeoPoint(37.5700, 126.9800), GeoPoint(37.5750, 126.9850)];
 
   CourseDetail detail({String? nickname = '러닝왕김', DateTime? expiresAt, int? pace, int activeRunners = 0}) => CourseDetail(
         courseId: 'c1',
@@ -111,6 +115,10 @@ void main() {
         courseApiClientProvider.overrideWithValue(courses),
         reviewApiClientProvider.overrideWithValue(reviews),
         rankingApiClientProvider.overrideWithValue(rankings),
+        bookmarkSummaryProvider.overrideWith((ref) async {
+          summaryBuilds++;
+          return const BookmarkSummary(courseCount: 0, expiringSoonCount: 0);
+        }),
       ],
       child: MaterialApp(theme: WdTheme.light(), home: CourseDetailScreen(courseId: 'c1', now: () => today)),
     ));
@@ -131,6 +139,7 @@ void main() {
       ];
 
   setUp(() {
+    summaryBuilds = 0;
     courses = FakeCourseApi()..details = {'c1': detail()};
     reviews = FakeCourseReviewApi(reviewSummary(count: 128, average: 4.6, items: (4.7, 4.4, 4.8, 4.1)));
     rankings = FakeCourseRankingApi({RankingPeriod.all: allRanking()});
@@ -259,6 +268,54 @@ void main() {
     await tester.pumpAndSettle();
     expect(bookmark().icon, WdIcons.bookmark, reason: '실패하면 되돌린다');
     expect(find.byType(SnackBar), findsOneWidget);
+  });
+
+  testWidgets('ignores the bookmark until its saved state arrives and while it is being saved (B1-09)', (tester) async {
+    courses.bookmarkGate = Completer();
+    await openDetail(tester);
+    WdAppBarAction bookmark() => tester.widget<WdAppBar>(find.byType(WdAppBar)).action!;
+
+    // 받기 전에 바꾸면 늦게 온 저장 여부가 덮어쓴다.
+    bookmark().onTap!();
+    await tester.pump();
+    expect(courses.savedBookmarks, isEmpty, reason: '저장 여부를 받기 전에는 누르지 않는다');
+
+    courses.bookmarkGate!.complete();
+    courses.bookmarkGate = Completer();
+    await tester.pumpAndSettle();
+    bookmark().onTap!();
+    await tester.pump();
+    bookmark().onTap!();
+    await tester.pump();
+    expect(courses.savedBookmarks, ['c1']);
+    expect(courses.removedBookmarks, isEmpty, reason: '보내는 중에 또 보내면 처리 순서에 따라 화면과 서버가 달라진다');
+
+    courses.bookmarkGate!.complete();
+    await tester.pumpAndSettle();
+    expect(bookmark().icon, WdIcons.bookmarkFilled);
+    expect(courses.savedIds, {'c1'});
+  });
+
+  testWidgets('refreshes the saved count even if B1 closes before saving ends (B1-09)', (tester) async {
+    await openDetail(tester);
+    final scope = container(tester);
+    await scope.read(bookmarkSummaryProvider.future);
+    expect(summaryBuilds, 1);
+
+    courses.bookmarkGate = Completer();
+    tester.widget<WdAppBar>(find.byType(WdAppBar)).action!.onTap!();
+    await tester.pump();
+    // 응답 전에 B1을 닫는다.
+    unawaited(Navigator.of(tester.element(find.byType(CourseDetailScreen)))
+        .pushReplacement(MaterialPageRoute<void>(builder: (_) => const SizedBox())));
+    await tester.pumpAndSettle();
+    expect(find.byType(CourseDetailScreen), findsNothing);
+
+    courses.bookmarkGate!.complete();
+    await tester.pumpAndSettle();
+    await scope.read(bookmarkSummaryProvider.future);
+    expect(courses.savedIds, {'c1'});
+    expect(summaryBuilds, 2, reason: 'MY의 저장한 코스 수를 다시 받는다');
   });
 
   testWidgets('picks this course and no longer shows the obsolete ghost placeholder', (tester) async {
