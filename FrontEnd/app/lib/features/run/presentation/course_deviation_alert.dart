@@ -56,28 +56,48 @@ class _CourseDeviationAlertState extends State<CourseDeviationAlert> {
     final route = _route = DialogRoute<bool>(
       context: context,
       barrierDismissible: false,
+      barrierColor: const Color(0x66000000), // Figma 이탈 팝업 배경 딤
+      // Figma C4 · 코스 이탈 팝업(2412:6739) · Run / Course deviation dialog
       builder: (context) => Dialog(
-        backgroundColor: WdColors.paper,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(WdRadius.r20)),
+        backgroundColor: WdColors.darkCard,
+        insetPadding: const EdgeInsets.symmetric(horizontal: WdSpace.s24),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+          side: const BorderSide(color: WdColors.darkLine),
+        ),
         child: Padding(
           padding: const EdgeInsets.all(WdSpace.s24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            spacing: WdSpace.s20,
             children: [
-              Text('코스를 벗어났어요', style: WdText.ko20Bold),
-              const SizedBox(height: WdSpace.s24),
+              Container(
+                width: 56,
+                height: 56,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: WdColors.warningText,
+                  borderRadius: BorderRadius.circular(WdRadius.r16),
+                ),
+                child: const WdIcon(WdIcons.warning),
+              ),
+              Text(
+                '코스를 벗어났어요',
+                textAlign: TextAlign.center,
+                style: WdText.ko22Bold.copyWith(color: WdColors.textInverse),
+              ),
               Row(
                 spacing: WdSpace.s8,
                 children: [
                   Expanded(
+                    flex: 190,
                     child: WdButton(
                       '다시 표시하지 않음',
-                      variant: WdButtonVariant.secondary,
+                      variant: WdButtonVariant.secondaryDark,
                       onPressed: () => Navigator.pop(context, false),
                     ),
                   ),
-                  Expanded(child: WdButton('확인', onPressed: () => Navigator.pop(context, true))),
+                  Expanded(flex: 106, child: WdButton('확인', onPressed: () => Navigator.pop(context, true))),
                 ],
               ),
             ],

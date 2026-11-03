@@ -13,7 +13,7 @@ import 'ranking_widgets.dart';
 /// E1 · 랭킹. 전체 랭킹(이번 주 · 이번 달 · 누적)과 지역 주간 랭킹(I2) 탭.
 ///
 /// 순위는 매일 자정에 계산한 값이라 들어올 때 · 기간이나 지역을 바꿀 때 · 당겨서 새로고침할 때만 받는다.
-/// 다른 러너(시상대 · 순위 줄)를 누르면 I3로 간다. 내 줄은 누를 수 없고 내 순위 카드는 MY로 간다.
+/// 다른 러너(시상대 · 순위 줄)를 누르면 I3로 가고, 내 줄과 내 순위 카드는 MY로 간다.
 class RankingScreen extends StatelessWidget {
   const RankingScreen({super.key});
 
@@ -82,11 +82,7 @@ class _DistanceTabState extends ConsumerState<_DistanceTab> with AutomaticKeepAl
               _myCard(value.summary.me, chip),
               if (value.rest.isNotEmpty) ...[
                 const WdSectionHeading('전체 순위'),
-                WdRankList(
-                  ranks: [for (final entry in value.rest) _rank(entry)],
-                  canTap: (i) => !value.rest[i].mine,
-                  onTap: openRunnerAt(context, value.rest),
-                ),
+                WdRankList(ranks: [for (final entry in value.rest) _rank(entry)], onTap: openRunnerAt(context, value.rest)),
               ],
               WdInfoBanner('앱 전체 러너 · $basis 달린 거리 기준 · 매일 자정 갱신', plain: true),
             ],
@@ -142,10 +138,7 @@ class _Podium extends StatelessWidget {
             for (final i in [1, 0, 2])
               Expanded(
                 child: i < top.length
-                    ? GestureDetector(
-                        onTap: top[i].mine ? null : () => openRunnerAt(context, top)(i),
-                        child: _place(top[i]),
-                      )
+                    ? GestureDetector(onTap: () => openRunnerAt(context, top)(i), child: _place(top[i]))
                     : const SizedBox(),
               ),
           ],
@@ -211,7 +204,6 @@ class _RegionTabState extends ConsumerState<_RegionTab> with AutomaticKeepAliveC
               else
                 WdRankList(
                   ranks: [for (final entry in ranking.top) regionRank(entry)],
-                  canTap: (i) => !ranking.top[i].mine,
                   onTap: openRunnerAt(context, ranking.top),
                 ),
               if (ranking.nextCursor != null)

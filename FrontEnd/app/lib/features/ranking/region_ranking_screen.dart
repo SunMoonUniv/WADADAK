@@ -70,7 +70,6 @@ class RegionRankingScreen extends ConsumerWidget {
       else
         WdRankList(
           ranks: [for (final entry in entries) regionRank(entry, ranking.region.name)],
-          canTap: (i) => !entries[i].mine,
           onTap: openRunnerAt(context, entries),
         ),
       const WdInfoBanner('매일 자정에 갱신되고, 매주 월요일 00:00에 초기화돼요.', plain: true),
