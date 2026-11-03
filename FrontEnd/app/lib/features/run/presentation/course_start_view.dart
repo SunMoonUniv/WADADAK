@@ -56,127 +56,169 @@ class _CourseStartViewState extends State<CourseStartView> {
                   : '준비',
             ),
             Expanded(
-              child: Stack(
-                children: [
-                  Positioned.fill(
-                    child: MapView(
-                      initialCenter: position,
-                      initialZoom: 16,
-                      dark: true,
-                      myLocationSource: MyLocationSource.app,
-                      myLocation: position,
-                      padding: const EdgeInsets.only(bottom: 56),
-                      lines: [
-                        for (
-                          var i = 0;
-                          i < start.snapshot.routeSegments.length;
-                          i++
-                        )
-                          MapLine(
-                            id: i == 0 ? 'course' : 'course-$i',
-                            points: start.snapshot.routeSegments[i],
-                          ),
-                        MapLine(
-                          id: 'to-start',
-                          points: [position, start.start],
-                          style: MapLineStyle.guide,
+              child: LayoutBuilder(
+                builder: (context, constraints) => SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(
+                        height: (constraints.maxHeight / 2).clamp(160.0, 434.0),
+                        child: Stack(
+                          children: [
+                            Positioned.fill(
+                              child: MapView(
+                                initialCenter: position,
+                                initialZoom: 16,
+                                dark: true,
+                                myLocationSource: MyLocationSource.app,
+                                myLocation: position,
+                                padding: const EdgeInsets.only(bottom: 56),
+                                lines: [
+                                  for (
+                                    var i = 0;
+                                    i < start.snapshot.routeSegments.length;
+                                    i++
+                                  )
+                                    MapLine(
+                                      id: i == 0 ? 'course' : 'course-$i',
+                                      points: start.snapshot.routeSegments[i],
+                                    ),
+                                  MapLine(
+                                    id: 'to-start',
+                                    points: [position, start.start],
+                                    style: MapLineStyle.guide,
+                                  ),
+                                ],
+                                markers: [
+                                  MapMarker(
+                                    id: 'course-start',
+                                    position: start.start,
+                                    child: const WdCourseStartDot(),
+                                    imageKey: 'course-start',
+                                  ),
+                                  MapMarker(
+                                    id: 'course-start-label',
+                                    position: start.start,
+                                    anchor: const Offset(0.5, 1.7), // 출발점 표지 위
+                                    child: const _Label(
+                                      '출발점',
+                                      color: WdColors.lime,
+                                      textColor: WdColors.ink,
+                                    ),
+                                    imageKey: 'label:start',
+                                  ),
+                                  MapMarker(
+                                    id: 'my-location-label',
+                                    position: position,
+                                    anchor: const Offset(
+                                      0.5,
+                                      -0.8,
+                                    ), // 현재 위치 점 아래
+                                    child: const _Label(
+                                      '현재 위치',
+                                      color: WdColors.runSurface,
+                                      textColor: WdColors.white,
+                                    ),
+                                    imageKey: 'label:me',
+                                  ),
+                                ],
+                                onCreated: (map) async {
+                                  _map = map;
+                                  await map.fitPoints([
+                                    ...start.snapshot.route,
+                                    position,
+                                  ]);
+                                  map.showMyLocation(follow: false);
+                                },
+                              ),
+                            ),
+                            const Positioned(
+                              left: WdSpace.s24,
+                              bottom: WdSpace.s16,
+                              child: _Legend(),
+                            ),
+                            Positioned(
+                              right: WdSpace.s24,
+                              bottom: WdSpace.s12,
+                              child: WdMapLocateButton(
+                                onPressed: () =>
+                                    _map?.fitPoints([position, start.start]),
+                              ),
+                            ),
+                          ],
                         ),
-                      ],
-                      markers: [
-                        MapMarker(
-                          id: 'course-start',
-                          position: start.start,
-                          child: const WdCourseStartDot(),
-                          imageKey: 'course-start',
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(
+                          WdSpace.s24,
+                          WdSpace.s24,
+                          WdSpace.s24,
+                          WdSpace.s24,
                         ),
-                        MapMarker(
-                          id: 'course-start-label',
-                          position: start.start,
-                          anchor: const Offset(0.5, 1.7), // 출발점 표지 위
-                          child: const _Label(
-                            '출발점',
-                            color: WdColors.lime,
-                            textColor: WdColors.ink,
-                          ),
-                          imageKey: 'label:start',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          spacing: WdSpace.s12,
+                          children: [
+                            Text(
+                              near ? '출발점에 도착했어요' : '출발점으로 이동해 주세요',
+                              style: WdText.ko22Bold.copyWith(
+                                color: WdColors.white,
+                              ),
+                            ),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.baseline,
+                              textBaseline: TextBaseline.alphabetic,
+                              spacing: WdSpace.s8,
+                              children: [
+                                Text(
+                                  distance,
+                                  style: WdText.run56W800H74.copyWith(
+                                    color: near
+                                        ? WdColors.lime
+                                        : WdColors.white,
+                                  ),
+                                ),
+                                Text(
+                                  unit,
+                                  style: WdText.ko13.copyWith(
+                                    color: WdColors.runTextSub,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Text(
+                              near
+                                  ? '출발점 ${CourseStart.radiusM.round()} m 안에 도착했어요.\n준비됐다면 $mode을 시작해 주세요.'
+                                  : '출발점 ${CourseStart.radiusM.round()} m 안에 들어오면\n$mode을 시작할 수 있어요.',
+                              style: WdText.ko13.copyWith(
+                                color: WdColors.runTextSub,
+                              ),
+                            ),
+                            if (widget.error != null)
+                              WdInfoBanner(
+                                widget.error!,
+                                tone: WdBannerTone.warning,
+                              ),
+                          ],
                         ),
-                        MapMarker(
-                          id: 'my-location-label',
-                          position: position,
-                          anchor: const Offset(0.5, -0.8), // 현재 위치 점 아래
-                          child: const _Label(
-                            '현재 위치',
-                            color: WdColors.runSurface,
-                            textColor: WdColors.white,
-                          ),
-                          imageKey: 'label:me',
-                        ),
-                      ],
-                      onCreated: (map) async {
-                        _map = map;
-                        await map.fitPoints([
-                          ...start.snapshot.route,
-                          position,
-                        ]);
-                        map.showMyLocation(follow: false);
-                      },
-                    ),
+                      ),
+                    ],
                   ),
-                  const Positioned(
-                    left: WdSpace.s24,
-                    bottom: WdSpace.s16,
-                    child: _Legend(),
-                  ),
-                  Positioned(
-                    right: WdSpace.s24,
-                    bottom: WdSpace.s12,
-                    child: WdMapLocateButton(
-                      onPressed: () => _map?.fitPoints([position, start.start]),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(
                 WdSpace.s24,
-                WdSpace.s24,
+                0,
                 WdSpace.s24,
                 WdSpace.s24,
               ),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 spacing: WdSpace.s12,
                 children: [
-                  Text(
-                    near ? '출발점에 도착했어요' : '출발점으로 이동해 주세요',
-                    style: WdText.ko22Bold.copyWith(color: WdColors.white),
-                  ),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.baseline,
-                    textBaseline: TextBaseline.alphabetic,
-                    spacing: WdSpace.s8,
-                    children: [
-                      Text(
-                        distance,
-                        style: WdText.run56W800H74.copyWith(
-                          color: near ? WdColors.lime : WdColors.white,
-                        ),
-                      ),
-                      Text(
-                        unit,
-                        style: WdText.ko13.copyWith(color: WdColors.runTextSub),
-                      ),
-                    ],
-                  ),
-                  Text(
-                    near
-                        ? '출발점 ${CourseStart.radiusM.round()} m 안에 도착했어요.\n준비됐다면 $mode을 시작해 주세요.'
-                        : '출발점 ${CourseStart.radiusM.round()} m 안에 들어오면\n$mode을 시작할 수 있어요.',
-                    style: WdText.ko13.copyWith(color: WdColors.runTextSub),
-                  ),
-                  if (widget.error != null)
-                    WdInfoBanner(widget.error!, tone: WdBannerTone.warning),
                   const SizedBox(height: WdSpace.s4),
                   // 1초 누르기 → 3초 카운트다운(RUN-04)
                   if (widget.pendingGhost)

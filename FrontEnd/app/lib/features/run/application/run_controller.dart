@@ -190,6 +190,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   int pendingGhostClosureCount = 0;
   Completer<void>? _syncDone;
   Completer<void>? _preparationDone;
+  Future<void>? _ending;
   Future<void>? _extrasJob;
   final RunApiClient api;
   final Future<String?> Function() _rawOwner;
@@ -323,6 +324,8 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     try {
       while (!_disposed) {
         final member = await owner();
+        await _ending;
+        if (_disposed) return;
         if (member == currentOwner) return;
         final previousOwner = currentOwner;
         if (previousOwner != null) {
@@ -533,6 +536,18 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   /// 처음은 준비까지 하고 측정 전([courseStart])에 멈추고, 출발점 반경 안에서 다시 부르면 카운트다운 뒤 측정.
   Future<void> prepareStart() async {
     if (preparing || recorder.active || storageFault || _disposed) return;
+    // The result can be confirmed before optional hardware has stopped.
+    // Drain the previous session before creating another GPS subscription.
+    final requestGeneration = _generation;
+    await _ending;
+    await _extrasJob;
+    if (requestGeneration != _generation ||
+        preparing ||
+        recorder.active ||
+        storageFault ||
+        _disposed) {
+      return;
+    }
     await bindOwner();
     if (hasPendingGhostStart) {
       await retryGhostStart();
@@ -1031,6 +1046,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     countdown = null;
     preparing = false;
     await _preparationDone?.future;
+    await _ending;
     await _binding;
     if (currentOwner == member || run?.owner == member) {
       currentOwner = null;
@@ -1318,11 +1334,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
           permission == LocationPermission.deniedForever) {
         error = '위치 권한이 해제되어 러닝을 종료했어요. 저장한 기록은 보존되어 있어요.';
         setupAction = DeviceSettingsAction.appSettings;
-        await recorder.end(reason: 'PERMISSION_REVOKED');
-        await _stopLocation();
-        await _stopExtras();
-        await _reloadLocal();
-        unawaited(sync());
+        await _finishRun(reason: 'PERMISSION_REVOKED');
       } else {
         // Keep the foreground service alive so GPS can recover while the screen is off.
         await _markGap('LOCATION_ERROR');
@@ -1401,15 +1413,25 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  Future<void> end() async {
-    if (storageFault) return;
+  Future<void> end() => _finishRun();
+
+  Future<void> _finishRun({String reason = 'USER'}) {
+    if (_ending != null) return _ending!;
+    if (storageFault || !recorder.active || _disposed) return Future.value();
+    return _ending = _finishRunNow(reason).whenComplete(() => _ending = null);
+  }
+
+  Future<void> _finishRunNow(String reason) async {
+    final finished = run, member = currentOwner;
     try {
-      await recorder.end();
+      await recorder.end(reason: reason);
+      final distance = metrics.distanceM;
       await _stopExtras();
       await _stopLocation();
       await _reloadLocal();
-      if (metrics.distanceM <= 0 && run?.ghost == null) {
-        error = '측정된 거리가 없어 기록을 저장하지 않았어요.';
+      if (currentOwner != member || _disposed) return;
+      if (distance <= 0 && finished?.ghost == null) {
+        if (reason == 'USER') error = '측정된 거리가 없어 기록을 저장하지 않았어요.';
       } else {
         unawaited(sync());
       }
@@ -1739,10 +1761,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
           !await device!.permissionGranted()) {
         error = '신체 활동 권한이 해제되어 마지막 기록까지 저장했어요.';
         setupAction = DeviceSettingsAction.appSettings;
-        await recorder.end(reason: 'PERMISSION_REVOKED');
-        await _stopLocation();
-        await _stopExtras();
-        await _reloadLocal();
+        await _finishRun(reason: 'PERMISSION_REVOKED');
         _notify();
         return;
       }
@@ -1854,6 +1873,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     await screenAwake.close();
     ++_generation;
     _timer?.cancel();
+    await _ending;
     WidgetsBinding.instance.removeObserver(this);
     await _voiceSettingsSubscription?.cancel();
     await _voiceSettingsUpdates;

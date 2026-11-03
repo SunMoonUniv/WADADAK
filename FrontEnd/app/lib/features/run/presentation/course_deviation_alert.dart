@@ -42,12 +42,23 @@ class _CourseDeviationAlertState extends State<CourseDeviationAlert> {
     if (widget.open && _route == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _show());
     } else if (!widget.open && _route != null) {
-      final route = _route!;
-      _route = null; // 코드로 닫으면 버튼을 누른 것으로 치지 않는다
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (route.isActive) route.navigator?.removeRoute(route);
-      });
+      _close();
     }
+  }
+
+  void _close() {
+    final route = _route;
+    _route = null; // Programmatic closure never acknowledges or mutes the run.
+    if (route == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (route.isActive) route.navigator?.removeRoute(route);
+    });
+  }
+
+  @override
+  void dispose() {
+    _close();
+    super.dispose();
   }
 
   Future<void> _show() async {
@@ -97,7 +108,13 @@ class _CourseDeviationAlertState extends State<CourseDeviationAlert> {
                       onPressed: () => Navigator.pop(context, false),
                     ),
                   ),
-                  Expanded(flex: 106, child: WdButton('확인', onPressed: () => Navigator.pop(context, true))),
+                  Expanded(
+                    flex: 106,
+                    child: WdButton(
+                      '확인',
+                      onPressed: () => Navigator.pop(context, true),
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -106,7 +123,7 @@ class _CourseDeviationAlertState extends State<CourseDeviationAlert> {
       ),
     );
     final confirmed = await Navigator.of(context).push(route);
-    if (_route != route) return; // 복귀·일시정지로 닫혔다
+    if (!mounted || _route != route) return; // 복귀·일시정지·화면 제거로 닫혔다
     _route = null;
     // 뒤로 가기로 닫으면 확인과 같다
     if (confirmed == false) {

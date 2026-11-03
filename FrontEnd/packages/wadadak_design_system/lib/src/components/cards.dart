@@ -89,10 +89,11 @@ class WdStatSummary extends StatelessWidget {
           for (final (label, value) in items)
             Expanded(
               child: WdSurface(
-                height: 86,
+                minHeight: 86,
                 padding: const EdgeInsets.all(WdSpace.s12),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
                   spacing: WdSpace.s6,
                   children: [
                     FittedBox(

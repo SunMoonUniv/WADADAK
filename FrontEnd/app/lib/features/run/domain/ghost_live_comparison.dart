@@ -1,6 +1,7 @@
 import '../../../core/map/geo_point.dart';
 import 'course_tracker.dart';
 import 'recording_models.dart' as recording;
+import 'route_guidance.dart';
 
 /// Signed values from the existing live replay comparison, never from UI text.
 class GhostLiveComparison {
@@ -69,12 +70,24 @@ GhostLiveComparison compareGhostLive({
       )
       .lastOrNull;
   final s = last?.s;
+  final certain =
+      last != null &&
+      s != null &&
+      (last.connected ||
+          last.certainAmong(
+            tracker.route
+                .candidates(
+                  tracker.route.toLocal(last.input.lat!, last.input.lng!),
+                  RouteGuidance.offRouteM,
+                )
+                .length,
+          ));
   final fresh =
       last != null &&
       (boundary == null || boundary.seq < last.input.seq) &&
       (current.phase == recording.RunPhase.paused ||
           elapsedMs - last.input.elapsedMs <= 10000);
-  if (!fresh || s == null) {
+  if (!fresh || s == null || !certain) {
     return GhostLiveComparison(
       position: position,
       ghostProgress: ghostS == null ? null : ghostS / tracker.route.length,
