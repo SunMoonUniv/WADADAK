@@ -68,13 +68,14 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
     }
   }
 
-  void _cycle(int slot) => setState(() => _metrics[slot] = _metrics[slot].next);
+  void _cycle(int slot) =>
+      setState(() => _metrics[slot] = _metrics[slot].nextFree);
 
   Widget _metricButton(int slot, Widget child) => Semantics(
     key: ValueKey('run-metric-$slot'),
     button: true,
     label: '${_metrics[slot].label}, ${_metrics[slot].value(widget.run)}',
-    hint: '터치하면 ${_metrics[slot].next.label} 표시',
+    hint: '터치하면 ${_metrics[slot].nextFree.label} 표시',
     onTap: () => _cycle(slot),
     child: ExcludeSemantics(
       child: InkWell(onTap: () => _cycle(slot), child: child),
@@ -279,8 +280,8 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                     ),
                     WdGhostLeadCard(
                       title: paused ? '잠시 쉬어가는 중이에요' : '나만의 리듬으로 달리는 중',
-                      value: '—',
-                      caption: '소모 칼로리',
+                      value: run.caloriesLabel,
+                      caption: '추정 소모 칼로리',
                       message: paused
                           ? '이동하면 자동으로 다시 달려요.'
                           : '편안하게 나만의 속도로 이어가세요.',

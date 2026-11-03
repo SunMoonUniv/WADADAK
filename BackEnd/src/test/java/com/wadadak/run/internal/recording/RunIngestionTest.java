@@ -67,6 +67,26 @@ class RunIngestionTest {
         for(var node:fixture.get("inputs")) inputs.add(json.treeToValue(node,Input.class));
         runs.prepare(owner,id,new Prepare(start,"FREE"));
     }
+    @Test void calorieSnapshotSurvivesHttpUploadStorageAndOwnHistory() throws Exception {
+        Input old=inputs.getFirst();
+        inputs.set(0,new Input(old.seq(),old.kind(),old.elapsedMs(),old.measuredAt(),old.location(),old.accuracyM(),
+            old.reason(),old.speedMps(),old.speedAccuracyMps(),old.steps(),old.durationMs(),old.sampleEndMs(),
+            old.altitudeM(),old.altitudeAccuracyM(),old.pressureHpa(),old.pressureAccuracy(),65.0));
+        var upload=new Upload(inputs.size()-1,inputs);
+        mvc.perform(post("/api/v1/runs/sessions/"+id+"/record").with(jwt().jwt(j->j.subject(owner.toString())))
+            .contentType("application/json").content(json.writeValueAsString(upload))).andExpect(status().isOk());
+        runs.upload(owner,id,upload); // Identical retry preserves the original START weight.
+        runs.process(id);
+        var result=runs.result(owner,id);
+        double expected=65*result.metrics().distanceM()/1000.0;
+        assertThat(result.metrics().weightKg()).isEqualTo(65.0);
+        assertThat(result.metrics().estimatedCaloriesKcal()).isEqualTo(expected);
+        assertThat(runs.history(owner,new Cursorable(null,null)).content().getFirst().metrics().estimatedCaloriesKcal()).isEqualTo(expected);
+        mvc.perform(get("/api/v1/runs/records/"+id).with(jwt().jwt(j->j.subject(owner.toString()))))
+            .andExpect(status().isOk()).andExpect(jsonPath("$.data.metrics.weightKg").value(65.0))
+            .andExpect(jsonPath("$.data.metrics.estimatedCaloriesKcal").value(expected));
+        assertThat(json.readValue(db.queryForObject("SELECT payload FROM run.inputs WHERE session_id=? AND stream_seq=0",String.class,id),Input.class).weightKg()).isEqualTo(65.0);
+    }
     @Test void partialUploadIsDurableThenRegistersExactlyOnce() {
         var first=runs.upload(owner,id,new Upload(9,inputs.subList(0,5)));
         assertThat(first.processing()).isEqualTo("NEEDS_DATA");

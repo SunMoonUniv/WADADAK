@@ -200,4 +200,20 @@ void main() {
     expect(ui.snapshot.ghost!['outcome'], 'LOSE');
     expect(ui.snapshot.storageStatus, contains('거리 기록 없음'));
   });
+  test('zero-distance duel must auto-sync after normal UI end', () async {
+    await begin();
+    await runs.pause();
+    location.clock += 250000;
+    api.zero = true;
+    await runs.end();
+    for (var i = 0; i < 30; i++) {
+      await runs.refreshMeasurement();
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    expect(
+      api.verdictReads,
+      1,
+      reason: 'Final duel verdict must not require a manual sync tap',
+    );
+  });
 }

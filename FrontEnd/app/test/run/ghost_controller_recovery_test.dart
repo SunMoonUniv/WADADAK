@@ -153,7 +153,7 @@ void main() {
 
   test('a refused saved start is cleared during account binding and allows a fresh selection', () async {
     await controller.store.saveGhostIntent(ghostIntent());
-      ghostApi.onGet = (_, _) async =>
+    ghostApi.onGet = (_, _) async =>
         throw const ApiException('RUN-002', 'missing', status: 404);
     ghostApi.onStart = (_) async =>
         throw const ApiException('RUN-004', 'denied', status: 409);
@@ -279,5 +279,22 @@ void main() {
     expect(controller.hasPendingGhostStart, false);
     expect(await controller.store.pendingGhostStarts('alice'), isEmpty);
     expect(await controller.store.pendingDeletions('alice'), [id]);
+  });
+  test('mute choice must survive same-session recovery', () async {
+    await begin();
+    controller.muteDeviation();
+    expect(controller.routeGuidance!.muted, true);
+    location.clock += 10000;
+    await controller.recorder.tick(persist: true);
+    final restartAt = location.clock + 1000;
+    await close();
+    connect(restartAt);
+    await controller.bindOwner();
+    expect(controller.recorder.active, true);
+    expect(
+      controller.routeGuidance!.muted,
+      true,
+      reason: 'Policy 7.2: preserve deviation mute on same-run recovery',
+    );
   });
 }

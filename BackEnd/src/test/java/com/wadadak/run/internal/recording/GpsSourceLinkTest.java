@@ -298,7 +298,7 @@ class GpsSourceLinkTest {
         var course=UUID.fromString(json.readTree(response.getResponse().getContentAsString()).get("data").get("courseId").asText());
         await().atMost(Duration.ofSeconds(15)).untilAsserted(()->assertThat(links.status(s.owner(),s.id()).status()).isEqualTo("LINKED"));
         assertThat(count("SELECT count(*) FROM run.sessions WHERE member_id=?",s.owner())).isOne();
-        assertThat(count("SELECT count(*) FROM course.gps_source_completion_receipts WHERE course_id=?",course)).isOne();
+        await().atMost(Duration.ofSeconds(15)).untilAsserted(()->assertThat(count("SELECT count(*) FROM course.gps_source_completion_receipts WHERE course_id=?",course)).isOne());
     }
 
     @Test void removalFirstDeliveryNeverCreatesACompletionOrDistanceCopy() {

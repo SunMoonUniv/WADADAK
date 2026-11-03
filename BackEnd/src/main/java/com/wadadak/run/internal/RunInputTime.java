@@ -11,6 +11,8 @@ public final class RunInputTime {
     private RunInputTime() {}
     public static boolean valid(Instant start, Input input) {
         if (start == null || input == null || input.kind() == null || input.measuredAt() == null ||
+            (input.weightKg() != null && (input.kind() != Kind.START || !Double.isFinite(input.weightKg()) ||
+                input.weightKg() < 20 || input.weightKg() > 300)) ||
             input.elapsedMs() < 0 || input.elapsedMs() > 7L * 86400000) return false;
         try {
             Duration delta = Duration.between(start.plusMillis(input.elapsedMs()), input.measuredAt());

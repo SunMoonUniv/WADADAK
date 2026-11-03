@@ -153,6 +153,13 @@ void main() {
       await db.execute('ALTER TABLE sessions DROP COLUMN ghost_context');
       await db.execute('ALTER TABLE sessions DROP COLUMN recovery_anchor');
       await db.execute('DROP TABLE course_start_intents');
+      for (final trigger in await db.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type='trigger' AND name LIKE '%_withdrawn_%'",
+      )) {
+        await db.execute('DROP TRIGGER "${trigger['name']}"');
+      }
+      await db.execute('DROP TABLE withdrawn_run_owners');
+      await db.execute('ALTER TABLE sessions DROP COLUMN guidance_state');
       await db.execute('PRAGMA user_version=2');
       await disk.close();
       disk = RunLocalStore(factory: databaseFactoryFfi, databasePath: path);

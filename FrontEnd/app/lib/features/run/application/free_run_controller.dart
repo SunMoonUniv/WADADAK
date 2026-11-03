@@ -268,6 +268,10 @@ class FreeRunController extends ChangeNotifier {
           ? '측정 없음'
           : '측정 완료',
       distanceMeters: metrics.distanceM,
+      estimatedCaloriesKcal: estimateRunCalories(
+        run.weightKg,
+        metrics.distanceM,
+      ),
       ghostPending: run.ghost != null,
       inputs: run.inputs
           .map(

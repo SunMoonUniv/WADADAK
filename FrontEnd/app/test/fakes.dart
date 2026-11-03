@@ -26,7 +26,10 @@ const testTokens = AuthTokens(accessToken: 'access', refreshToken: 'refresh');
 CourseListItem testCourse(
   String name, {
   String? courseId,
-  List<GeoPoint> route = const [GeoPoint(37.5666, 126.9784), GeoPoint(37.5700, 126.9800)],
+  List<GeoPoint> route = const [
+    GeoPoint(37.5666, 126.9784),
+    GeoPoint(37.5700, 126.9800),
+  ],
   int distanceMeters = 1000,
   Difficulty difficulty = Difficulty.easy,
   List<CourseTag> tags = const [],
@@ -35,25 +38,38 @@ CourseListItem testCourse(
   double? averageRating,
   int reviewCount = 0,
   int activeRunners = 0,
-}) =>
-    CourseListItem(
-      courseId: courseId ?? 'id-$name',
-      name: name,
-      distanceMeters: distanceMeters,
-      difficulty: difficulty,
-      tags: tags,
-      courseType: courseType,
-      expiresAt: expiresAt ?? DateTime.utc(2026, 11, 13, 14, 59, 59),
-      averageRating: averageRating,
-      reviewCount: reviewCount,
-      activeRunners: activeRunners,
-      route: route,
-    );
+}) => CourseListItem(
+  courseId: courseId ?? 'id-$name',
+  name: name,
+  distanceMeters: distanceMeters,
+  difficulty: difficulty,
+  tags: tags,
+  courseType: courseType,
+  expiresAt: expiresAt ?? DateTime.utc(2026, 11, 13, 14, 59, 59),
+  averageRating: averageRating,
+  reviewCount: reviewCount,
+  activeRunners: activeRunners,
+  route: route,
+);
 
 class MemoryTokenStorage implements TokenStorage {
   MemoryTokenStorage([this.tokens]);
 
   AuthTokens? tokens;
+  final runWeights = <String, double?>{};
+  final withdrawnOwners = <String>{};
+  @override
+  Future<double?> runWeight(String owner) async => runWeights[owner];
+  @override
+  Future<void> rememberRunWeight(String owner, double? value) async {
+    if (!withdrawnOwners.contains(owner)) runWeights[owner] = value;
+  }
+
+  @override
+  Future<void> eraseRunWeight(String owner) async {
+    withdrawnOwners.add(owner);
+    runWeights.remove(owner);
+  }
 
   @override
   Future<AuthTokens?> read() async => tokens;
@@ -75,7 +91,10 @@ class FakeMemberApi implements MemberApiClient {
   final photoFormTokens = <String>[];
 
   @override
-  Future<LoginResult> login(SocialProvider provider, String socialToken) async => loginResult;
+  Future<LoginResult> login(
+    SocialProvider provider,
+    String socialToken,
+  ) async => loginResult;
 
   @override
   Future<AuthTokens> signup({
@@ -107,7 +126,11 @@ class FakeMemberApi implements MemberApiClient {
   @override
   Future<UploadForm> signupPhotoUploadForm(String signupToken) async {
     photoFormTokens.add(signupToken);
-    return UploadForm.fromJson({'url': 'https://files.test/wadadak', 'key': 'member/photo.jpg', 'fields': <String, String>{}});
+    return UploadForm.fromJson({
+      'url': 'https://files.test/wadadak',
+      'key': 'member/photo.jpg',
+      'fields': <String, String>{},
+    });
   }
 
   @override
@@ -183,8 +206,14 @@ class FakeMemberApi implements MemberApiClient {
   ApiException? settingsError;
 
   @override
-  Future<MyProfile> changeSettings({required bool infoPublic, required bool profileSearchable}) async {
-    savedSettings.add({'infoPublic': infoPublic, 'profileSearchable': profileSearchable});
+  Future<MyProfile> changeSettings({
+    required bool infoPublic,
+    required bool profileSearchable,
+  }) async {
+    savedSettings.add({
+      'infoPublic': infoPublic,
+      'profileSearchable': profileSearchable,
+    });
     if (settingsError != null) throw settingsError!;
     profile = {...profile, ...savedSettings.last};
     return MyProfile.fromJson(profile);
@@ -195,7 +224,11 @@ class FakeMemberApi implements MemberApiClient {
   @override
   Future<UploadForm> photoUploadForm() async {
     myPhotoForms++;
-    return UploadForm.fromJson({'url': 'https://files.test/wadadak', 'key': 'member/new.jpg', 'fields': <String, String>{}});
+    return UploadForm.fromJson({
+      'url': 'https://files.test/wadadak',
+      'key': 'member/new.jpg',
+      'fields': <String, String>{},
+    });
   }
 
   /// G7 러너 검색이 찾는 러너. 서버처럼 닉네임에 검색어(공백 · 대소문자 무시)가 들어간 러너를 [runnerPageSize]명씩 준다.
@@ -215,10 +248,19 @@ class FakeMemberApi implements MemberApiClient {
     await runnersGate?.future;
     if (searchRunnersError != null) throw searchRunnersError!;
     final key = query.replaceAll(RegExp(r'\s'), '').toLowerCase();
-    final found = [for (final runner in runners) if (runner.nickname.toLowerCase().contains(key)) runner];
+    final found = [
+      for (final runner in runners)
+        if (runner.nickname.toLowerCase().contains(key)) runner,
+    ];
     final from = int.parse(cursor ?? '0');
-    final to = from + runnerPageSize < found.length ? from + runnerPageSize : found.length;
-    return (totalCount: found.length, runners: found.sublist(from, to), nextCursor: to < found.length ? '$to' : null);
+    final to = from + runnerPageSize < found.length
+        ? from + runnerPageSize
+        : found.length;
+    return (
+      totalCount: found.length,
+      runners: found.sublist(from, to),
+      nextCursor: to < found.length ? '$to' : null,
+    );
   }
 
   /// I3 다른 러너 프로필(회원 ID → 응답). 없는 ID는 서버처럼 MEMBER-011이다. [runnerProfileError]가 있으면 그 오류다.
@@ -228,14 +270,22 @@ class FakeMemberApi implements MemberApiClient {
   @override
   Future<RunnerProfile> runnerProfile(String memberId) async {
     if (runnerProfileError != null) throw runnerProfileError!;
-    return RunnerProfile.fromJson(runnerProfiles[memberId] ??
-        (throw const ApiException(MemberApiClient.runnerNotFoundCode, '회원을 찾을 수 없습니다.', status: 404)));
+    return RunnerProfile.fromJson(
+      runnerProfiles[memberId] ??
+          (throw const ApiException(
+            MemberApiClient.runnerNotFoundCode,
+            '회원을 찾을 수 없습니다.',
+            status: 404,
+          )),
+    );
   }
 }
 
 /// 1×1 PNG. 미리보기가 그림으로 읽을 수 있는 사진이다.
 final testPhoto = XFile.fromData(
-  base64Decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg=='),
+  base64Decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  ),
   name: 'me.png',
 );
 
@@ -248,7 +298,10 @@ class FakePhotoUploader implements PhotoUploader {
   Future<List<XFile>> pick({int limit = 1}) async => [?photo];
 
   @override
-  Future<String> upload(XFile photo, Future<UploadForm> Function() requestForm) async {
+  Future<String> upload(
+    XFile photo,
+    Future<UploadForm> Function() requestForm,
+  ) async {
     uploaded.add(photo);
     return (await requestForm()).key;
   }
@@ -267,8 +320,10 @@ class FakeRegionApi implements RegionApiClient {
   ];
 
   @override
-  Future<List<Region>> search(String query) async =>
-      [for (final region in _regions) if (region['fullName']!.contains(query)) Region.fromJson(region)];
+  Future<List<Region>> search(String query) async => [
+    for (final region in _regions)
+      if (region['fullName']!.contains(query)) Region.fromJson(region),
+  ];
 }
 
 class FakeRunPermissions implements RunPermissions {
@@ -301,13 +356,29 @@ class FakeCourseApi implements CourseApiClient {
 
   /// 있으면 끝날 때까지 지도 범위 코스 응답을 미룬다. 끝난 뒤의 [mapError] · [onMap]으로 답한다.
   Completer<void>? mapGate;
-  final mapRequests = <({GeoPoint southWest, GeoPoint northEast, CourseFilter filter, CourseSearchPick? pick})>[];
+  final mapRequests =
+      <
+        ({
+          GeoPoint southWest,
+          GeoPoint northEast,
+          CourseFilter filter,
+          CourseSearchPick? pick,
+        })
+      >[];
 
   /// 지도 범위 · 단위 · 필터와 상관없이 돌려줄 지역별 코스 수.
   List<RegionCount> regions = [];
   ApiException? regionsError;
   final regionRequests =
-      <({GeoPoint southWest, GeoPoint northEast, RegionLevel level, CourseFilter filter, CourseSearchPick? pick})>[];
+      <
+        ({
+          GeoPoint southWest,
+          GeoPoint northEast,
+          RegionLevel level,
+          CourseFilter filter,
+          CourseSearchPick? pick,
+        })
+      >[];
 
   @override
   Future<RegistrationQuota> registrationQuota() async => quota;
@@ -318,16 +389,25 @@ class FakeCourseApi implements CourseApiClient {
   final runnerCourseRequests = <String?>[];
 
   @override
-  Future<RunnerCoursePage> runnerCourses(String memberId, {String? cursor}) async {
+  Future<RunnerCoursePage> runnerCourses(
+    String memberId, {
+    String? cursor,
+  }) async {
     runnerCourseRequests.add(cursor);
     final all = runnerCourseRows[memberId] ?? const <RunnerCourse>[];
     final from = int.parse(cursor ?? '0');
-    final to = from + runnerCoursePageSize < all.length ? from + runnerCoursePageSize : all.length;
-    return (courses: all.sublist(from, to), nextCursor: to < all.length ? '$to' : null);
+    final to = from + runnerCoursePageSize < all.length
+        ? from + runnerCoursePageSize
+        : all.length;
+    return (
+      courses: all.sublist(from, to),
+      nextCursor: to < all.length ? '$to' : null,
+    );
   }
 
   @override
-  Future<int> runnerCourseCount(String memberId) async => runnerCourseRows[memberId]?.length ?? 0;
+  Future<int> runnerCourseCount(String memberId) async =>
+      runnerCourseRows[memberId]?.length ?? 0;
 
   /// 저장한 코스(G5). 서버가 정렬해 준 순서라고 보고 [bookmarkPageSize]개씩 준다. [savedIds]는 저장 여부(B1)다.
   List<BookmarkCourse> bookmarkRows = [];
@@ -358,7 +438,10 @@ class FakeCourseApi implements CourseApiClient {
     await bookmarkGate?.future;
     if (saveBookmarkError != null) throw saveBookmarkError!;
     savedIds.removeAll(ids);
-    bookmarkRows = [for (final row in bookmarkRows) if (!ids.contains(row.courseId)) row];
+    bookmarkRows = [
+      for (final row in bookmarkRows)
+        if (!ids.contains(row.courseId)) row,
+    ];
   }
 
   @override
@@ -368,19 +451,28 @@ class FakeCourseApi implements CourseApiClient {
   }
 
   @override
-  Future<BookmarkPage> bookmarks({BookmarkSort sort = BookmarkSort.recent, GeoPoint? origin, String? cursor}) async {
+  Future<BookmarkPage> bookmarks({
+    BookmarkSort sort = BookmarkSort.recent,
+    GeoPoint? origin,
+    String? cursor,
+  }) async {
     bookmarkRequests.add((sort, origin, cursor));
     if (bookmarksError != null) throw bookmarksError!;
     final from = int.parse(cursor ?? '0');
-    final to = from + bookmarkPageSize < bookmarkRows.length ? from + bookmarkPageSize : bookmarkRows.length;
-    return BookmarkPage(courses: bookmarkRows.sublist(from, to), nextCursor: to < bookmarkRows.length ? '$to' : null);
+    final to = from + bookmarkPageSize < bookmarkRows.length
+        ? from + bookmarkPageSize
+        : bookmarkRows.length;
+    return BookmarkPage(
+      courses: bookmarkRows.sublist(from, to),
+      nextCursor: to < bookmarkRows.length ? '$to' : null,
+    );
   }
 
   @override
   Future<BookmarkSummary> bookmarkSummary() async => BookmarkSummary(
-        courseCount: bookmarkRows.where((row) => !row.pendingDelete).length,
-        expiringSoonCount: expiringSoonBookmarks,
-      );
+    courseCount: bookmarkRows.where((row) => !row.pendingDelete).length,
+    expiringSoonCount: expiringSoonBookmarks,
+  );
 
   /// 코스 상세(B1). 없는 ID는 서버처럼 COURSE-001이다. [detailError]가 있으면 그 오류다.
   Map<String, CourseDetail> details = {};
@@ -392,7 +484,11 @@ class FakeCourseApi implements CourseApiClient {
     detailRequests.add(courseId);
     if (detailError != null) throw detailError!;
     return details[courseId] ??
-        (throw const ApiException(CourseApiClient.courseNotFoundCode, '코스를 찾을 수 없습니다.', status: 404));
+        (throw const ApiException(
+          CourseApiClient.courseNotFoundCode,
+          '코스를 찾을 수 없습니다.',
+          status: 404,
+        ));
   }
 
   /// 서버처럼 입력점을 그대로 잇고, 끝점에 1km 표지 하나를 둔다.
@@ -415,8 +511,14 @@ class FakeCourseApi implements CourseApiClient {
   @override
   Future<bool> isNameAvailable(String name, {String? courseId}) async {
     nameCheckCourseIds.add(courseId);
-    final own = [for (final course in mine) if (course.courseId == courseId) _nameKey(course.name)];
-    return !takenNames.map(_nameKey).where((taken) => !own.contains(taken)).contains(_nameKey(name));
+    final own = [
+      for (final course in mine)
+        if (course.courseId == courseId) _nameKey(course.name),
+    ];
+    return !takenNames
+        .map(_nameKey)
+        .where((taken) => !own.contains(taken))
+        .contains(_nameKey(name));
   }
 
   @override
@@ -436,12 +538,17 @@ class FakeCourseApi implements CourseApiClient {
     ));
     await registerGate?.future;
     if (registerError != null) throw registerError!;
-    return RegisteredCourse(courseId: 'course-${registrations.length}', name: name, startPoint: anchorPoints.first);
+    return RegisteredCourse(
+      courseId: 'course-${registrations.length}',
+      name: name,
+      startPoint: anchorPoints.first,
+    );
   }
 
   /// D4 미리보기 오류(이미 등록됨 · 1 km 미만 · GPS 정확도 부족 등). 있으면 그 오류로 답한다.
   ApiException? gpsRouteError;
-  final gpsPreviews = <({String recordId, List<List<GpsSourcePoint>> segments})>[];
+  final gpsPreviews =
+      <({String recordId, List<List<GpsSourcePoint>> segments})>[];
   final gpsRegistrations = <FakeGpsRegistration>[];
 
   /// 서버처럼 조각을 달린 순서대로 잇고, 끝점에 1km 표지 하나를 둔다.
@@ -452,7 +559,10 @@ class FakeCourseApi implements CourseApiClient {
   }) async {
     gpsPreviews.add((recordId: recordId, segments: segments));
     if (gpsRouteError != null) throw gpsRouteError!;
-    final route = [for (final segment in segments) for (final point in segment) GeoPoint(point.lat, point.lng)];
+    final route = [
+      for (final segment in segments)
+        for (final point in segment) GeoPoint(point.lat, point.lng),
+    ];
     return GpsCourseRoute(
       recordId: recordId,
       segments: segments,
@@ -497,19 +607,30 @@ class FakeCourseApi implements CourseApiClient {
     CourseFilter filter = CourseFilter.none,
     CourseSearchPick? pick,
   }) async {
-    mapRequests.add((southWest: southWest, northEast: northEast, filter: filter, pick: pick));
+    mapRequests.add((
+      southWest: southWest,
+      northEast: northEast,
+      filter: filter,
+      pick: pick,
+    ));
     if (mapGate case final gate?) await gate.future;
     if (mapError != null) throw mapError!;
-    final courses = [for (final course in onMap) if (matches(course, filter) && _picked(course, pick)) course];
+    final courses = [
+      for (final course in onMap)
+        if (matches(course, filter) && _picked(course, pick)) course,
+    ];
     return CourseMap(totalCount: courses.length, courses: courses);
   }
 
   /// 서버처럼 [course]가 [filter]에 맞나(FIL-02~05). 최소 평점이 있으면 리뷰가 없는 코스는 빠진다.
   static bool matches(CourseListItem course, CourseFilter filter) =>
       course.distanceMeters >= (filter.minDistanceMeters ?? 0) &&
-      course.distanceMeters <= (filter.maxDistanceMeters ?? course.distanceMeters) &&
-      (filter.difficulties.isEmpty || filter.difficulties.contains(course.difficulty)) &&
-      (filter.minRating == null || (course.averageRating ?? -1) >= filter.minRating!) &&
+      course.distanceMeters <=
+          (filter.maxDistanceMeters ?? course.distanceMeters) &&
+      (filter.difficulties.isEmpty ||
+          filter.difficulties.contains(course.difficulty)) &&
+      (filter.minRating == null ||
+          (course.averageRating ?? -1) >= filter.minRating!) &&
       course.tags.toSet().containsAll(filter.tags) &&
       (filter.courseType == null || filter.courseType == course.courseType);
 
@@ -524,9 +645,18 @@ class FakeCourseApi implements CourseApiClient {
     CourseFilter filter = CourseFilter.none,
     CourseSearchPick? pick,
   }) async {
-    regionRequests.add((southWest: southWest, northEast: northEast, level: level, filter: filter, pick: pick));
+    regionRequests.add((
+      southWest: southWest,
+      northEast: northEast,
+      level: level,
+      filter: filter,
+      pick: pick,
+    ));
     if (regionsError != null) throw regionsError!;
-    return RegionCounts(totalCount: regions.fold(0, (sum, region) => sum + region.count), regions: regions);
+    return RegionCounts(
+      totalCount: regions.fold(0, (sum, region) => sum + region.count),
+      regions: regions,
+    );
   }
 
   /// 지도 범위 · 정렬과 상관없이 돌려줄 목록. 필터는 [matches]로 거른다.
@@ -558,10 +688,16 @@ class FakeCourseApi implements CourseApiClient {
       cursor: cursor,
     ));
     if (listError != null) throw listError!;
-    final courses = [for (final course in listed) if (matches(course, filter) && _picked(course, pick)) course];
+    final courses = [
+      for (final course in listed)
+        if (matches(course, filter) && _picked(course, pick)) course,
+    ];
     final from = cursor == null ? 0 : int.parse(cursor);
     final to = (from + listPageSize).clamp(0, courses.length);
-    return CourseListPage(courses: courses.sublist(from, to), nextCursor: to < courses.length ? '$to' : null);
+    return CourseListPage(
+      courses: courses.sublist(from, to),
+      nextCursor: to < courses.length ? '$to' : null,
+    );
   }
 
   /// 검색할 코스. 서버처럼 공백 · 대소문자를 무시하고 이름에 검색어가 들어간 코스를 순서대로 돌려준다(정렬은 보지 않는다).
@@ -572,7 +708,10 @@ class FakeCourseApi implements CourseApiClient {
 
   /// 있으면 끝날 때까지 검색 응답을 미룬다(받는 중 화면).
   Completer<void>? searchGate;
-  final searchRequests = <({String query, CourseListSort sort, GeoPoint? origin, String? cursor})>[];
+  final searchRequests =
+      <
+        ({String query, CourseListSort sort, GeoPoint? origin, String? cursor})
+      >[];
 
   @override
   Future<CourseSearchPage> searchCourses({
@@ -581,11 +720,19 @@ class FakeCourseApi implements CourseApiClient {
     GeoPoint? origin,
     String? cursor,
   }) async {
-    searchRequests.add((query: query, sort: sort, origin: origin, cursor: cursor));
+    searchRequests.add((
+      query: query,
+      sort: sort,
+      origin: origin,
+      cursor: cursor,
+    ));
     await searchGate?.future;
     if (searchError != null) throw searchError!;
     final key = _nameKey(query);
-    final courses = [for (final course in searchable) if (_nameKey(course.name).contains(key)) course];
+    final courses = [
+      for (final course in searchable)
+        if (_nameKey(course.name).contains(key)) course,
+    ];
     final from = cursor == null ? 0 : int.parse(cursor);
     final to = (from + searchPageSize).clamp(0, courses.length);
     return CourseSearchPage(
@@ -632,12 +779,24 @@ class FakeCourseApi implements CourseApiClient {
   ApiException? mineError;
   final mineCursors = <String?>[];
 
-  MyCourseSummary mySummary = const MyCourseSummary(courseCount: 0, completionCount: 0, expiringSoonCount: 0);
+  MyCourseSummary mySummary = const MyCourseSummary(
+    courseCount: 0,
+    completionCount: 0,
+    expiringSoonCount: 0,
+  );
   ApiException? summaryError;
   int summaryRequests = 0;
 
   ApiException? editError;
-  final edits = <({String courseId, String name, Difficulty difficulty, Set<CourseTag> tags})>[];
+  final edits =
+      <
+        ({
+          String courseId,
+          String name,
+          Difficulty difficulty,
+          Set<CourseTag> tags,
+        })
+      >[];
   ApiException? deleteError;
   final deletes = <String>[];
 
@@ -653,7 +812,10 @@ class FakeCourseApi implements CourseApiClient {
     if (mineError != null) throw mineError!;
     final from = cursor == null ? 0 : int.parse(cursor);
     final to = (from + myPageSize).clamp(0, mine.length);
-    return MyCoursePage(courses: mine.sublist(from, to), nextCursor: to < mine.length ? '$to' : null);
+    return MyCoursePage(
+      courses: mine.sublist(from, to),
+      nextCursor: to < mine.length ? '$to' : null,
+    );
   }
 
   @override
@@ -670,20 +832,30 @@ class FakeCourseApi implements CourseApiClient {
     required Difficulty difficulty,
     required Set<CourseTag> tags,
   }) async {
-    edits.add((courseId: courseId, name: name, difficulty: difficulty, tags: {...tags}));
+    edits.add((
+      courseId: courseId,
+      name: name,
+      difficulty: difficulty,
+      tags: {...tags},
+    ));
     if (editError != null) throw editError!;
     final course = mine.firstWhere((course) => course.courseId == courseId);
-    return _replaceMine(testMyCourse(
-      name,
-      courseId: courseId,
-      difficulty: difficulty,
-      tags: [for (final tag in CourseTag.values) if (tags.contains(tag)) tag],
-      courseType: course.courseType,
-      route: course.route,
-      expiresAt: course.expiresAt,
-      completionCount: course.completionCount,
-      lastCompletedOn: course.lastCompletedOn,
-    ));
+    return _replaceMine(
+      testMyCourse(
+        name,
+        courseId: courseId,
+        difficulty: difficulty,
+        tags: [
+          for (final tag in CourseTag.values)
+            if (tags.contains(tag)) tag,
+        ],
+        courseType: course.courseType,
+        route: course.route,
+        expiresAt: course.expiresAt,
+        completionCount: course.completionCount,
+        lastCompletedOn: course.lastCompletedOn,
+      ),
+    );
   }
 
   @override
@@ -693,27 +865,33 @@ class FakeCourseApi implements CourseApiClient {
     if (deleteError != null) throw deleteError!;
     final course = mine.firstWhere((course) => course.courseId == courseId);
     if (course.pendingDelete) return course;
-    return _replaceMine(testMyCourse(
-      course.name,
-      courseId: courseId,
-      difficulty: course.difficulty,
-      tags: course.tags,
-      courseType: course.courseType,
-      route: course.route,
-      expiresAt: course.expiresAt,
-      completionCount: course.completionCount,
-      lastCompletedOn: course.lastCompletedOn,
-      hiddenReason: CourseHiddenReason.userDeleted,
-      deleteAt: now().toUtc().add(const Duration(hours: 24)),
-    ));
+    return _replaceMine(
+      testMyCourse(
+        course.name,
+        courseId: courseId,
+        difficulty: course.difficulty,
+        tags: course.tags,
+        courseType: course.courseType,
+        route: course.route,
+        expiresAt: course.expiresAt,
+        completionCount: course.completionCount,
+        lastCompletedOn: course.lastCompletedOn,
+        hiddenReason: CourseHiddenReason.userDeleted,
+        deleteAt: now().toUtc().add(const Duration(hours: 24)),
+      ),
+    );
   }
 
   MyCourseItem _replaceMine(MyCourseItem changed) {
-    mine = [for (final course in mine) course.courseId == changed.courseId ? changed : course];
+    mine = [
+      for (final course in mine)
+        course.courseId == changed.courseId ? changed : course,
+    ];
     return changed;
   }
 
-  static String _nameKey(String name) => name.replaceAll(RegExp(r'\s+'), '').toLowerCase();
+  static String _nameKey(String name) =>
+      name.replaceAll(RegExp(r'\s+'), '').toLowerCase();
 }
 
 /// 저장한 코스 카드(G5) 값. ID는 [name] 그대로다. [pendingDelete]면 삭제 예정 코스다.
@@ -726,25 +904,24 @@ BookmarkCourse testBookmark(
   String expiresAt = '2026-11-20T14:59:59Z',
   bool pendingDelete = false,
   int activeRunners = 0,
-}) =>
-    BookmarkCourse.fromJson({
-      'courseId': name,
-      'name': name,
-      'distanceMeters': distanceMeters,
-      'difficulty': difficulty,
-      'tags': const ['FLAT'],
-      'courseType': 'CUSTOM',
-      'averageRating': rating,
-      'reviewCount': rating == null ? 0 : 3,
-      'activeRunners': activeRunners,
-      'creatorNickname': creator,
-      'route': [
-        {'lat': 37.52, 'lng': 126.93},
-        {'lat': 37.53, 'lng': 126.95},
-      ],
-      'status': pendingDelete ? 'HIDDEN' : 'ACTIVE',
-      'expiresAt': expiresAt,
-    });
+}) => BookmarkCourse.fromJson({
+  'courseId': name,
+  'name': name,
+  'distanceMeters': distanceMeters,
+  'difficulty': difficulty,
+  'tags': const ['FLAT'],
+  'courseType': 'CUSTOM',
+  'averageRating': rating,
+  'reviewCount': rating == null ? 0 : 3,
+  'activeRunners': activeRunners,
+  'creatorNickname': creator,
+  'route': [
+    {'lat': 37.52, 'lng': 126.93},
+    {'lat': 37.53, 'lng': 126.95},
+  ],
+  'status': pendingDelete ? 'HIDDEN' : 'ACTIVE',
+  'expiresAt': expiresAt,
+});
 
 /// 내 코스 카드(G4) 값. 이름 말고는 정해 둔 값이다. [hiddenReason]이 있으면 삭제 예정 코스다.
 MyCourseItem testMyCourse(
@@ -753,26 +930,28 @@ MyCourseItem testMyCourse(
   Difficulty difficulty = Difficulty.easy,
   List<CourseTag> tags = const [],
   CourseType courseType = CourseType.custom,
-  List<GeoPoint> route = const [GeoPoint(37.5666, 126.9784), GeoPoint(37.5700, 126.9800)],
+  List<GeoPoint> route = const [
+    GeoPoint(37.5666, 126.9784),
+    GeoPoint(37.5700, 126.9800),
+  ],
   DateTime? expiresAt,
   int completionCount = 0,
   DateTime? lastCompletedOn,
   CourseHiddenReason? hiddenReason,
   DateTime? deleteAt,
-}) =>
-    MyCourseItem(
-      courseId: courseId ?? 'id-$name',
-      name: name,
-      courseType: courseType,
-      difficulty: difficulty,
-      tags: tags,
-      route: route,
-      expiresAt: expiresAt ?? DateTime.utc(2026, 11, 13, 14, 59, 59),
-      hiddenReason: hiddenReason,
-      deleteAt: deleteAt,
-      completionCount: completionCount,
-      lastCompletedOn: lastCompletedOn,
-    );
+}) => MyCourseItem(
+  courseId: courseId ?? 'id-$name',
+  name: name,
+  courseType: courseType,
+  difficulty: difficulty,
+  tags: tags,
+  route: route,
+  expiresAt: expiresAt ?? DateTime.utc(2026, 11, 13, 14, 59, 59),
+  hiddenReason: hiddenReason,
+  deleteAt: deleteAt,
+  completionCount: completionCount,
+  lastCompletedOn: lastCompletedOn,
+);
 
 typedef ListRequest = ({
   GeoPoint southWest,
@@ -822,7 +1001,8 @@ class FakeMyLocation implements MyLocation {
   }
 
   @override
-  Future<void> openSettings(DeviceSettingsAction action) async => openedSettings.add(action);
+  Future<void> openSettings(DeviceSettingsAction action) async =>
+      openedSettings.add(action);
 }
 
 typedef FakeRegistration = ({
@@ -860,7 +1040,8 @@ class FakeRunCourseSource implements RunCourseSourceApi {
   Future<List<List<GpsSourcePoint>>> segments(String recordId) async {
     requests.add(recordId);
     if (error != null) throw error!;
-    return records[recordId] ?? (throw const ApiException('RUN-002', '러닝 기록을 찾을 수 없어요.', status: 404));
+    return records[recordId] ??
+        (throw const ApiException('RUN-002', '러닝 기록을 찾을 수 없어요.', status: 404));
   }
 }
 
@@ -876,9 +1057,11 @@ class FakeCourseReviewApi extends Fake implements ReviewApiClient {
   /// 목록이 돌려줄 카드. 사진 조건이면 사진 있는 카드만 준다. 정렬은 [listRequests]로 확인한다.
   List<ReviewCard> cards = [];
   ApiException? listError;
+
   /// 있으면 목록 응답이 이것이 끝날 때까지 늦는다.
   Completer<void>? listGate;
-  final listRequests = <({ReviewSort sort, bool photoOnly, bool excludeMine})>[];
+  final listRequests =
+      <({ReviewSort sort, bool photoOnly, bool excludeMine})>[];
 
   @override
   Future<ReviewSummary> summary(String courseId) async {
@@ -895,13 +1078,19 @@ class FakeCourseReviewApi extends Fake implements ReviewApiClient {
     bool excludeMine = false,
     String? cursor,
   }) async {
-    listRequests.add((sort: sort, photoOnly: photoOnly, excludeMine: excludeMine));
+    listRequests.add((
+      sort: sort,
+      photoOnly: photoOnly,
+      excludeMine: excludeMine,
+    ));
     await listGate?.future;
     if (listError != null) throw listError!;
     return (
       cards: [
         for (final card in cards)
-          if ((!excludeMine || !card.mine) && (!photoOnly || card.photos.isNotEmpty)) card,
+          if ((!excludeMine || !card.mine) &&
+              (!photoOnly || card.photos.isNotEmpty))
+            card,
       ],
       nextCursor: null,
     );
@@ -909,30 +1098,38 @@ class FakeCourseReviewApi extends Fake implements ReviewApiClient {
 
   /// 내 리뷰도, 쓸 수 있는 기록도 없다.
   @override
-  Future<MyReview> mine(String courseId) async =>
-      MyReview.fromJson({'review': null, 'sourceRecord': null, 'sourceRecordDeleted': false, 'eligibleRecord': null});
+  Future<MyReview> mine(String courseId) async => MyReview.fromJson({
+    'review': null,
+    'sourceRecord': null,
+    'sourceRecordDeleted': false,
+    'eligibleRecord': null,
+  });
 }
 
 /// 리뷰 카드 값. 2026-09-06 작성, 완주 100% · 4회 주행.
-ReviewCard reviewCard(String nickname, {int rating = 5, bool mine = false, String content = '야간 조명이 밝아요.'}) =>
-    ReviewCard.fromJson({
-      'reviewId': 'review-$nickname',
-      'memberId': 'member-$nickname',
-      'nickname': nickname,
-      'profileImageUrl': null,
-      'mine': mine,
-      'rating': rating,
-      'safetyRating': rating,
-      'roadRating': rating,
-      'lightingRating': rating,
-      'amenityRating': rating,
-      'content': content,
-      'tags': ['NIGHT_VIEW'],
-      'photos': [],
-      'bestProgressPercent': 100,
-      'completedCount': 4,
-      'createdAt': '2026-09-06T03:00:00Z',
-    });
+ReviewCard reviewCard(
+  String nickname, {
+  int rating = 5,
+  bool mine = false,
+  String content = '야간 조명이 밝아요.',
+}) => ReviewCard.fromJson({
+  'reviewId': 'review-$nickname',
+  'memberId': 'member-$nickname',
+  'nickname': nickname,
+  'profileImageUrl': null,
+  'mine': mine,
+  'rating': rating,
+  'safetyRating': rating,
+  'roadRating': rating,
+  'lightingRating': rating,
+  'amenityRating': rating,
+  'content': content,
+  'tags': ['NIGHT_VIEW'],
+  'photos': [],
+  'bestProgressPercent': 100,
+  'completedCount': 4,
+  'createdAt': '2026-09-06T03:00:00Z',
+});
 
 /// 리뷰 요약 값. 리뷰가 없으면 평균은 모두 null이다(서버와 같다).
 /// [counts]는 5점부터 1점까지의 개수다. 없으면 모두 5점이다.
@@ -941,28 +1138,28 @@ ReviewSummary reviewSummary({
   double? average,
   (double, double, double, double)? items,
   (int, int, int, int, int)? counts,
-}) =>
-    ReviewSummary.fromJson({
-      'reviewCount': count,
-      'averageRating': average,
-      'ratingCounts': {
-        'five': counts?.$1 ?? count,
-        'four': counts?.$2 ?? 0,
-        'three': counts?.$3 ?? 0,
-        'two': counts?.$4 ?? 0,
-        'one': counts?.$5 ?? 0,
-      },
-      'itemAverages': {
-        'safety': items?.$1,
-        'road': items?.$2,
-        'lighting': items?.$3,
-        'amenity': items?.$4,
-      },
-    });
+}) => ReviewSummary.fromJson({
+  'reviewCount': count,
+  'averageRating': average,
+  'ratingCounts': {
+    'five': counts?.$1 ?? count,
+    'four': counts?.$2 ?? 0,
+    'three': counts?.$3 ?? 0,
+    'two': counts?.$4 ?? 0,
+    'one': counts?.$5 ?? 0,
+  },
+  'itemAverages': {
+    'safety': items?.$1,
+    'road': items?.$2,
+    'lighting': items?.$3,
+    'amenity': items?.$4,
+  },
+});
 
 /// 코스 랭킹만 받는 랭킹 API(B1 · B8 · B9 · G3). 기간마다 [summaries]를 돌려준다. 없는 기간은 참여 0명이다.
 class FakeCourseRankingApi extends Fake implements RankingApiClient {
-  FakeCourseRankingApi([Map<RankingPeriod, CourseRankingSummary>? summaries]) : summaries = summaries ?? {};
+  FakeCourseRankingApi([Map<RankingPeriod, CourseRankingSummary>? summaries])
+    : summaries = summaries ?? {};
 
   Map<RankingPeriod, CourseRankingSummary> summaries;
   ApiException? error;
@@ -977,7 +1174,8 @@ class FakeCourseRankingApi extends Fake implements RankingApiClient {
   ApiException? entriesError;
   Map<RankingPeriod, List<PublicGhostCandidate>> publicRows = {};
   final publicRequests = <(RankingPeriod, PublicGhostSort, String?, String)>[];
-  Future<PublicGhostPage> Function(RankingPeriod, PublicGhostSort, String?)? onPublicPage;
+  Future<PublicGhostPage> Function(RankingPeriod, PublicGhostSort, String?)?
+  onPublicPage;
 
   @override
   Future<PublicGhostPage> publicGhostCandidates(
@@ -1009,7 +1207,10 @@ class FakeCourseRankingApi extends Fake implements RankingApiClient {
     }
     final from = int.parse(cursor ?? '0');
     final to = (from + pageSize).clamp(0, all.length);
-    return (entries: all.sublist(from, to), nextCursor: to < all.length ? '$to' : null);
+    return (
+      entries: all.sublist(from, to),
+      nextCursor: to < all.length ? '$to' : null,
+    );
   }
 
   final entryRequests = <(RankingPeriod, String?)>[];
@@ -1019,21 +1220,30 @@ class FakeCourseRankingApi extends Fake implements RankingApiClient {
 
   @override
   Future<MemberDistanceTotal> memberDistanceTotal(String memberId) async =>
-      MemberDistanceTotal.fromJson(distanceTotals[memberId] ?? {'totalDistanceMeters': 0, 'runCount': 0});
+      MemberDistanceTotal.fromJson(
+        distanceTotals[memberId] ?? {'totalDistanceMeters': 0, 'runCount': 0},
+      );
 
   /// I3 이 코스 기록(회원 ID → 응답). 없으면 순위에 없는 러너(null)다. 받은 요청을 [recordRequests]에 남긴다.
   Map<String, Map<String, Object?>> runnerRecords = {};
   final recordRequests = <(String, String, RankingPeriod)>[];
 
   @override
-  Future<RunnerCourseRecord?> runnerCourseRecord(String courseId, String memberId, RankingPeriod period) async {
+  Future<RunnerCourseRecord?> runnerCourseRecord(
+    String courseId,
+    String memberId,
+    RankingPeriod period,
+  ) async {
     recordRequests.add((courseId, memberId, period));
     final record = runnerRecords[memberId];
     return record == null ? null : RunnerCourseRecord.fromJson(record);
   }
 
   @override
-  Future<CourseRankingSummary> courseSummary(String courseId, RankingPeriod period) async {
+  Future<CourseRankingSummary> courseSummary(
+    String courseId,
+    RankingPeriod period,
+  ) async {
     summaryRequests.add(period);
     await gate?.future;
     if (error != null) throw error!;
@@ -1041,14 +1251,21 @@ class FakeCourseRankingApi extends Fake implements RankingApiClient {
   }
 
   @override
-  Future<CourseRankingPage> courseEntries(String courseId, RankingPeriod period, {String? cursor}) async {
+  Future<CourseRankingPage> courseEntries(
+    String courseId,
+    RankingPeriod period, {
+    String? cursor,
+  }) async {
     entryRequests.add((period, cursor));
     await gate?.future;
     if (entriesError != null) throw entriesError!;
     final all = rows[period] ?? const <CourseRankingEntry>[];
     final from = int.parse(cursor ?? '0');
     final to = from + pageSize < all.length ? from + pageSize : all.length;
-    return (entries: all.sublist(from, to), nextCursor: to < all.length ? '$to' : null);
+    return (
+      entries: all.sublist(from, to),
+      nextCursor: to < all.length ? '$to' : null,
+    );
   }
 
   /// G7 `주 n km`(m). 여기 없는 회원은 기록이 없어 0이고, null이면 내 정보 비공개다.
@@ -1060,23 +1277,31 @@ class FakeCourseRankingApi extends Fake implements RankingApiClient {
   Future<Map<String, int?>> weekDistances(List<String> memberIds) async {
     weekDistanceRequests.add(memberIds);
     if (weekDistancesError != null) throw weekDistancesError!;
-    return {for (final id in memberIds) id: weekMeters.containsKey(id) ? weekMeters[id] : 0};
+    return {
+      for (final id in memberIds)
+        id: weekMeters.containsKey(id) ? weekMeters[id] : 0,
+    };
   }
 }
 
 /// 코스 순위 한 줄. [pace]가 없으면 1km 코스처럼 시간과 같다. 2026-09-07 완주.
-CourseRankingEntry courseRankingEntry(int rank, String nickname, int seconds,
-        {int? pace, bool mine = false, String completedAt = '2026-09-07T01:00:00Z'}) =>
-    CourseRankingEntry.fromJson({
-      'rank': rank,
-      'memberId': 'member-$nickname',
-      'nickname': nickname,
-      'profileImageUrl': null,
-      'courseElapsedSeconds': seconds,
-      'paceSecondsPerKm': pace ?? seconds,
-      'completedAt': completedAt,
-      'mine': mine,
-    });
+CourseRankingEntry courseRankingEntry(
+  int rank,
+  String nickname,
+  int seconds, {
+  int? pace,
+  bool mine = false,
+  String completedAt = '2026-09-07T01:00:00Z',
+}) => CourseRankingEntry.fromJson({
+  'rank': rank,
+  'memberId': 'member-$nickname',
+  'nickname': nickname,
+  'profileImageUrl': null,
+  'courseElapsedSeconds': seconds,
+  'paceSecondsPerKm': pace ?? seconds,
+  'completedAt': completedAt,
+  'mine': mine,
+});
 
 /// 코스 랭킹 요약 값. [me]가 없으면 그 기간 내 기록이 없다. [ghost]는 공개 고스트의 순위다.
 CourseRankingSummary courseRankingSummary({
@@ -1085,28 +1310,32 @@ CourseRankingSummary courseRankingSummary({
   Map<String, Object?> me = const {'status': 'NO_RECORD'},
   List<CourseRankingEntry> top = const [],
   int? ghost,
-}) =>
-    CourseRankingSummary.fromJson({
-      'participantCount': participants,
-      'averageCourseElapsedSeconds': average,
-      'me': me,
-      'top': [
-        for (final entry in top)
-          {
-            'rank': entry.rank,
-            'memberId': entry.memberId,
-            'nickname': entry.nickname,
-            'profileImageUrl': entry.profileImageUrl,
-            'courseElapsedSeconds': entry.courseElapsedSeconds,
-            'paceSecondsPerKm': entry.paceSecondsPerKm,
-            'completedAt': entry.completedAt.toIso8601String(),
-            'mine': entry.mine,
-          },
-      ],
-      'ghost': ghost == null
-          ? null
-          : {'runRecordId': 'run-$ghost', 'memberId': 'member-$ghost', 'rank': ghost, 'courseElapsedSeconds': 1452},
-    });
+}) => CourseRankingSummary.fromJson({
+  'participantCount': participants,
+  'averageCourseElapsedSeconds': average,
+  'me': me,
+  'top': [
+    for (final entry in top)
+      {
+        'rank': entry.rank,
+        'memberId': entry.memberId,
+        'nickname': entry.nickname,
+        'profileImageUrl': entry.profileImageUrl,
+        'courseElapsedSeconds': entry.courseElapsedSeconds,
+        'paceSecondsPerKm': entry.paceSecondsPerKm,
+        'completedAt': entry.completedAt.toIso8601String(),
+        'mine': entry.mine,
+      },
+  ],
+  'ghost': ghost == null
+      ? null
+      : {
+          'runRecordId': 'run-$ghost',
+          'memberId': 'member-$ghost',
+          'rank': ghost,
+          'courseElapsedSeconds': 1452,
+        },
+});
 
 /// 위치만 허용된 휴대폰.
 class FakeDevicePermissions extends DevicePermissions {
@@ -1114,7 +1343,8 @@ class FakeDevicePermissions extends DevicePermissions {
   int settingsOpened = 0;
 
   @override
-  Future<bool> granted(AppPermission permission) async => allowed.contains(permission);
+  Future<bool> granted(AppPermission permission) async =>
+      allowed.contains(permission);
 
   @override
   Future<void> openSettings() async => settingsOpened++;

@@ -9,6 +9,7 @@ import 'package:uuid/uuid.dart';
 import '../../../core/api/api_client.dart';
 import '../../../core/auth/auth_controller.dart';
 import '../../../core/auth/token_storage.dart';
+import '../../../core/api/member_api_client.dart';
 import '../../../core/api/run_api_client.dart';
 import '../data/run_local_store.dart';
 import '../../../core/location/location_service.dart';
@@ -44,6 +45,21 @@ final runControllerProvider = Provider<RunController>((ref) {
     RunApiClient(ref.read(dioProvider)),
     () async => (await ref.read(tokenStorageProvider).read())?.memberId,
     device: RunDevice(),
+    weightAtStart: (owner) async {
+      final storage = ref.read(tokenStorageProvider);
+      final cached = await storage.runWeight(owner);
+      if (cached != null) return cached;
+      try {
+        await ref
+            .read(memberApiClientProvider)
+            .me()
+            .timeout(const Duration(seconds: 2));
+      } on Object {
+        return null;
+      }
+      if ((await storage.read())?.memberId != owner) return null;
+      return storage.runWeight(owner);
+    },
     voiceSettingsEvents: ref.read(runSettingsEventsProvider).changes,
   );
   ref.listen(authControllerProvider, (_, next) {
@@ -72,7 +88,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     this.store,
     this.location,
     this.api,
-    this.owner, {
+    this._rawOwner, {
     Future<void> Function(Duration)? wait,
     DateTime Function()? utcNow,
     AppLifecycleState? Function()? lifecycleState,
@@ -84,6 +100,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     GhostStartSource? ghostApi,
     Stream<RunVoiceSettingsChanged>? voiceSettingsEvents,
     RunScreenAwake? screenAwake,
+    this.weightAtStart,
   }) : audioGuide = audio ?? AudioGuide(RunAudioOutput()),
        screenAwake = screenAwake ?? RunScreenAwake(),
        _wait = wait ?? Future<void>.delayed,
@@ -152,6 +169,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
   }
   final RunLocalStore store;
+  final Future<double?> Function(String)? weightAtStart;
   final LocationService location;
   final RunDevice? device;
   RunVoiceSettings voiceSettings = const RunVoiceSettings();
@@ -168,11 +186,19 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   String? get voiceNotice => audioGuide.notice;
   Set<String> deletedIds = {};
   int pendingDeleteCount = 0;
+  int pendingUploadCount = 0;
   int pendingGhostClosureCount = 0;
   Completer<void>? _syncDone;
+  Completer<void>? _preparationDone;
   Future<void>? _extrasJob;
   final RunApiClient api;
-  final Future<String?> Function() owner;
+  final Future<String?> Function() _rawOwner;
+  final Set<String> _withdrawnOwners = {};
+  Future<String?> owner() async {
+    final member = await _rawOwner();
+    return _withdrawnOwners.contains(member) ? null : member;
+  }
+
   late final RunRecorder recorder;
   late final RunSyncWorker syncWorker;
   late final GhostStartFlow ghostStarts;
@@ -244,7 +270,8 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         current?.ghost == null ||
         current?.phase != RunPhase.running ||
         _gapOpen ||
-        routeGuidance?.state != GuidanceState.onRoute) {
+        routeGuidance?.state != GuidanceState.onRoute ||
+        routeGuidance?.uncertain == true) {
       return null;
     }
     final moment = current!.ghost!.replay.playback.at(recorder.elapsedMs);
@@ -349,6 +376,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         historyNotice = null;
         deletedIds = {};
         pendingDeleteCount = 0;
+        pendingUploadCount = 0;
         pendingGhostClosureCount = 0;
         voiceSettings = const RunVoiceSettings();
         recorder.autoPauseEnabled = false;
@@ -362,7 +390,11 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         pendingDeleteCount = (await store.pendingDeletions(member)).length;
         pendingGhostClosureCount = (await store.pendingGhostClosures(member))
             .length;
-        records = (await recorder.recover(member, summaryOnly: true))
+        final recovered = await recorder.recover(member, summaryOnly: true);
+        pendingUploadCount = recovered
+            .where((r) => r.pending && r.syncState != 'blocked')
+            .length;
+        records = recovered
             .where(
               (r) =>
                   (r.summary?['metrics']?['distanceM'] as num? ??
@@ -530,6 +562,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     setupAction = null;
     gpsNotice = null;
     int? locationToken;
+    final preparationDone = _preparationDone = Completer<void>();
     _notify();
     try {
       await _syncDone?.future;
@@ -571,6 +604,15 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
           GeoPoint(position.latitude, position.longitude),
         );
         _watchStart();
+        return;
+      }
+      double? weight;
+      try {
+        weight = start?.intent?.weightKg ?? await weightAtStart?.call(member);
+      } on Object {
+        weight = null;
+      }
+      if (generation != _generation || _disposed || await owner() != member) {
         return;
       }
       await _stopWatchingStart();
@@ -630,6 +672,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
               freeGhost?.replay.playback.version ??
               ghost?.replay.playback.version,
           clock: reading,
+          weightKg: weight,
         );
         final continued = await ghostStarts.begin(intent);
         hasPendingGhostStart = (await store.pendingGhostStarts(member))
@@ -655,6 +698,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
             startedAt,
             start.snapshot,
             clock,
+            weightKg: weight,
           );
           try {
             await store.saveCourseIntent(intent);
@@ -688,6 +732,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
           member,
           startedAt,
           originMs: courseOriginMs,
+          weightKg: start?.intent == null ? weight : start!.intent!.weightKg,
         );
         _liveCourseIntent = null;
       }
@@ -702,7 +747,12 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
               geometry,
               freeGhostV2: recorder.current?.ghost?.intent.freeGhostV2 == true,
             );
-      routeGuidance = geometry == null ? null : RouteGuidance(geometry);
+      routeGuidance = geometry == null
+          ? null
+          : RouteGuidance(
+              geometry,
+              freeGhostV2: recorder.current?.ghost?.intent.freeGhostV2 == true,
+            );
       courseEndReason = null;
       courseStart = null;
       selectedCourse = null;
@@ -741,6 +791,8 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         countdown = null;
       }
       _committing = false;
+      if (!preparationDone.isCompleted) preparationDone.complete();
+      if (identical(_preparationDone, preparationDone)) _preparationDone = null;
       if (!recorder.active && locationToken != null) {
         await _stopLocation(expectedToken: locationToken);
       }
@@ -866,7 +918,11 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       geometry,
       freeGhostV2: context.intent.freeGhostV2,
     )..feed(courseInputs);
-    routeGuidance = RouteGuidance(geometry)..feed(courseInputs);
+    routeGuidance = RouteGuidance(
+      geometry,
+      freeGhostV2: context.intent.freeGhostV2,
+    )..feed(courseInputs);
+    routeGuidance!.restoreUserState(current.guidanceState);
     routeGuidance!.alertOpen = false; // Do not replay historical alerts/audio.
     _latest = null;
     _lastFixAt = null;
@@ -933,12 +989,82 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   /// 이탈 팝업 [확인]: 이탈이 이어지면 30초 뒤 다시 안내한다
   void acknowledgeDeviation() {
     routeGuidance?.acknowledge(recorder.elapsedMs);
+    unawaited(_saveGuidanceState());
     _notify();
   }
 
   /// 이탈 팝업 [다시 표시하지 않음]: 이번 러닝 끝까지 이탈 팝업·진동·음성을 끈다
   void muteDeviation() {
     routeGuidance?.mute();
+    unawaited(_saveGuidanceState());
+    _notify();
+  }
+
+  Future<void> _guidanceWrites = Future.value();
+  Future<void> _saveGuidanceState() {
+    final current = run, state = routeGuidance?.userState;
+    if (current == null || state == null) return Future.value();
+    final next = _guidanceWrites.then((_) async {
+      if (run?.id != current.id ||
+          currentOwner != current.owner ||
+          await owner() != current.owner ||
+          !recorder.active) {
+        return;
+      }
+      try {
+        await store.saveGuidanceState(current, state);
+      } on Object {
+        if (currentOwner == current.owner && !_disposed) {
+          error = '안내 설정을 저장하지 못했어요. 다시 선택해 주세요.';
+          _notify();
+        }
+      }
+    });
+    _guidanceWrites = next;
+    return next;
+  }
+
+  /// Stop producers before erasing only the successfully withdrawn owner's data.
+  Future<void> purgeWithdrawnOwner(String member) async {
+    _withdrawnOwners.add(member);
+    ++_generation;
+    countdown = null;
+    preparing = false;
+    await _preparationDone?.future;
+    await _binding;
+    if (currentOwner == member || run?.owner == member) {
+      currentOwner = null;
+      _syncDisabled = true;
+      cancelStart();
+      cancelCourseStart();
+      await _stopWatchingStart();
+      await _stopLocation();
+      await _extrasJob;
+      await _stopExtras();
+      await _binding;
+      await _syncDone?.future;
+      await _guidanceWrites;
+      await recorder.discardOwner(member);
+      records = [];
+      remoteRecords = [];
+      deletedIds = {};
+      selectedCourse = null;
+      selectedGhost = null;
+      courseStart = null;
+      course = null;
+      courseRunId = null;
+      courseTracker = null;
+      routeGuidance = null;
+      courseEndReason = null;
+      _ghostPreparation = null;
+      hasPendingGhostStart = false;
+      pendingUploadCount = pendingDeleteCount = pendingGhostClosureCount = 0;
+      voiceSettings = const RunVoiceSettings();
+      recorder.autoPauseEnabled = false;
+      audioGuide.restoreSettings(voiceSettings);
+      await _refreshScreenAwake();
+    }
+    await store.purgeWithdrawnOwner(member);
     _notify();
   }
 
@@ -1236,7 +1362,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
           !syncing &&
           (pendingDeleteCount > 0 ||
               pendingGhostClosureCount > 0 ||
-              records.any((r) => r.pending && r.syncState != 'blocked'))) {
+              pendingUploadCount > 0)) {
         unawaited(sync());
       }
     } on Object catch (e) {
@@ -1282,7 +1408,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       await _stopExtras();
       await _stopLocation();
       await _reloadLocal();
-      if (metrics.distanceM <= 0) {
+      if (metrics.distanceM <= 0 && run?.ghost == null) {
         error = '측정된 거리가 없어 기록을 저장하지 않았어요.';
       } else {
         unawaited(sync());
@@ -1345,10 +1471,14 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     final removed = await store.deletedIds(member);
     final deletions = await store.pendingDeletions(member);
     final ghostClosures = await store.pendingGhostClosures(member);
+    final uploads = loaded
+        .where((r) => r.pending && r.syncState != 'blocked')
+        .length;
     if (currentOwner != member) return;
     deletedIds = {...deletedIds, ...removed};
     pendingDeleteCount = deletions.length;
     pendingGhostClosureCount = ghostClosures.length;
+    pendingUploadCount = uploads;
     remoteRecords.removeWhere((r) => removed.contains(r['id']));
     records = loaded
         .where(
@@ -1735,6 +1865,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     await device?.close();
     await _changes.cancel();
     await recorder.close();
+    await _guidanceWrites;
     await store.close();
   }
 

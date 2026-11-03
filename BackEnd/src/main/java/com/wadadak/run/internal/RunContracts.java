@@ -40,7 +40,13 @@ public final class RunContracts {
     public record Input(@Min(0) long seq, @NotNull Kind kind, @Min(0) long elapsedMs,
                         @NotNull Instant measuredAt, GeoPoint location, Double accuracyM,
                         @Size(max=40) String reason, Double speedMps, Double speedAccuracyMps, Integer steps, Long durationMs, Long sampleEndMs,
-                        Double altitudeM, Double altitudeAccuracyM, Double pressureHpa, Integer pressureAccuracy) {
+                        Double altitudeM, Double altitudeAccuracyM, Double pressureHpa, Integer pressureAccuracy, Double weightKg) {
+        public Input(long seq, Kind kind, long elapsedMs, Instant measuredAt, GeoPoint location, Double accuracyM,
+                     String reason, Double speedMps, Double speedAccuracyMps, Integer steps, Long durationMs, Long sampleEndMs,
+                     Double altitudeM, Double altitudeAccuracyM, Double pressureHpa, Integer pressureAccuracy) {
+            this(seq,kind,elapsedMs,measuredAt,location,accuracyM,reason,speedMps,speedAccuracyMps,steps,durationMs,sampleEndMs,
+                altitudeM,altitudeAccuracyM,pressureHpa,pressureAccuracy,null);
+        }
         public Input(long seq, Kind kind, long elapsedMs, Instant measuredAt, GeoPoint location, Double accuracyM, String reason, Double speedMps, Double speedAccuracyMps, Integer steps, Long durationMs, Long sampleEndMs, Double altitudeM, Double altitudeAccuracyM) {
             this(seq,kind,elapsedMs,measuredAt,location,accuracyM,reason,speedMps,speedAccuracyMps,steps,durationMs,sampleEndMs,altitudeM,altitudeAccuracyM,null,null);
         }
@@ -64,7 +70,13 @@ public final class RunContracts {
     public record GpsSourceLinkStatus(UUID courseId, String status, String failure, Instant linkedAt) {}
     public record Metrics(double distanceM, long elapsedMs, long activeMs,
                           int gapCount, Double paceSecondsPerKm, long movingMs,
-                          Double elapsedPaceSecondsPerKm, Double averageCadence, long cadenceCoverageMs, long steps) {
+                          Double elapsedPaceSecondsPerKm, Double averageCadence, long cadenceCoverageMs, long steps,
+                          Double weightKg, Double estimatedCaloriesKcal) {
+        public Metrics(double distanceM, long elapsedMs, long activeMs, int gapCount, Double paceSecondsPerKm,
+                       long movingMs, Double elapsedPaceSecondsPerKm, Double averageCadence, long cadenceCoverageMs, long steps) {
+            this(distanceM,elapsedMs,activeMs,gapCount,paceSecondsPerKm,movingMs,elapsedPaceSecondsPerKm,
+                averageCadence,cadenceCoverageMs,steps,null,null);
+        }
         public Metrics(double distanceM, long elapsedMs, long activeMs, int gapCount, Double paceSecondsPerKm, long movingMs, Double elapsedPaceSecondsPerKm) {
             this(distanceM,elapsedMs,activeMs,gapCount,paceSecondsPerKm,movingMs,elapsedPaceSecondsPerKm,null,0,0);
         }

@@ -4,6 +4,7 @@ import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart';
 
 import '../domain/recording_models.dart';
+import '../domain/run_calories.dart';
 import '../domain/run_voice.dart';
 import '../domain/ghost_run.dart';
 import '../domain/course_run.dart';
@@ -61,7 +62,7 @@ class RunLocalStore implements RunStore, RunHistoryStore, RunGhostStore {
       databasePath ??
           path.join(await dbFactory.getDatabasesPath(), 'runs_v1.db'),
       options: OpenDatabaseOptions(
-        version: 5,
+        version: 6,
         onUpgrade: (db, old, _) async {
           if (old < 2) await _createExtras(db);
           if (old < 3) {
@@ -69,7 +70,9 @@ class RunLocalStore implements RunStore, RunHistoryStore, RunGhostStore {
           }
           if (old < 4) await _createGhostStorage(db);
           if (old < 5) await _createCourseStarts(db);
+          if (old < 6) await _createAccountAndGuidanceStorage(db);
         },
+        onOpen: _retryWithdrawnOwners,
         onConfigure: (db) async {
           await db.execute('PRAGMA foreign_keys = ON');
         },
@@ -90,9 +93,93 @@ class RunLocalStore implements RunStore, RunHistoryStore, RunGhostStore {
           await db.execute('ALTER TABLE sessions ADD COLUMN summary TEXT');
           await _createGhostStorage(db);
           await _createCourseStarts(db);
+          await _createAccountAndGuidanceStorage(db);
         },
       ),
     );
+  }
+
+  static Future<void> _createAccountAndGuidanceStorage(Database db) async {
+    await db.execute('ALTER TABLE sessions ADD COLUMN guidance_state TEXT');
+    await db.execute(
+      'CREATE TABLE withdrawn_run_owners (owner TEXT PRIMARY KEY)',
+    );
+    for (final table in [
+      'sessions',
+      'run_settings',
+      'run_deletions',
+      'course_start_intents',
+      'ghost_start_intents',
+      'ghost_closures',
+    ]) {
+      for (final action in ['INSERT', 'UPDATE']) {
+        await db.execute(
+          "CREATE TRIGGER ${table}_withdrawn_${action.toLowerCase()} "
+          "BEFORE $action ON $table WHEN EXISTS "
+          "(SELECT 1 FROM withdrawn_run_owners WHERE owner=NEW.owner) "
+          "BEGIN SELECT RAISE(ABORT, 'WITHDRAWN_ACCOUNT'); END",
+        );
+      }
+    }
+  }
+
+  Future<void> saveGuidanceState(
+    LocalRun run,
+    Map<String, dynamic> state,
+  ) async {
+    final updated = await (await database).update(
+      'sessions',
+      {'guidance_state': jsonEncode(state)},
+      where: 'id=? AND owner=? AND phase<>?',
+      whereArgs: [run.id, run.owner, 'ended'],
+    );
+    if (updated != 1) throw StateError('러닝 안내 설정을 저장하지 못했어요.');
+    run.guidanceState = Map.of(state);
+  }
+
+  /// The committed marker also retries failed cleanup when the store reopens.
+  Future<void> purgeWithdrawnOwner(String owner) async {
+    final db = await database;
+    await db.insert('withdrawn_run_owners', {
+      'owner': owner,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    await db.transaction((tx) => _deleteOwnerRows(tx, owner));
+  }
+
+  static Future<void> _deleteOwnerRows(
+    DatabaseExecutor tx,
+    String owner,
+  ) async {
+    await tx.delete(
+      'inputs',
+      where: 'session_id IN (SELECT id FROM sessions WHERE owner=?)',
+      whereArgs: [owner],
+    );
+    for (final table in [
+      'ghost_closures',
+      'sessions',
+      'ghost_start_intents',
+      'course_start_intents',
+      'run_deletions',
+      'run_settings',
+    ]) {
+      await tx.delete(table, where: 'owner=?', whereArgs: [owner]);
+    }
+  }
+
+  static Future<void> _retryWithdrawnOwners(Database db) async {
+    for (final row in await db.query(
+      'withdrawn_run_owners',
+      columns: ['owner'],
+    )) {
+      try {
+        await db.transaction(
+          (tx) => _deleteOwnerRows(tx, row['owner'] as String),
+        );
+      } on Object {
+        // Preserve the durable marker and other accounts; retry on the next open.
+      }
+    }
   }
 
   @override
@@ -347,6 +434,10 @@ class RunLocalStore implements RunStore, RunHistoryStore, RunGhostStore {
                   (jsonDecode(row['ghost_context'] as String) as Map)
                       .cast<String, dynamic>(),
                 ),
+          guidanceState: row['guidance_state'] == null
+              ? null
+              : (jsonDecode(row['guidance_state'] as String) as Map)
+                    .cast<String, dynamic>(),
           recoveryAnchor: row['recovery_anchor'] == null
               ? null
               : RunRecoveryAnchor.fromJson(
@@ -438,7 +529,14 @@ class RunLocalStore implements RunStore, RunHistoryStore, RunGhostStore {
           .toUtc()
           .toIso8601String(),
       'endReason': row['end_reason'],
-      'metrics': calculator.at(ms).toJson(),
+      'metrics': {
+        ...calculator.at(ms).toJson(),
+        'weightKg': inputs.firstOrNull?.weightKg,
+        'estimatedCaloriesKcal': estimateRunCalories(
+          inputs.firstOrNull?.weightKg,
+          calculator.at(ms).distanceM,
+        ),
+      },
       'stats': calculator.resultStats(inputs).toJson(),
       'calculationVersion': inputs.firstOrNull?.reason,
     };
@@ -482,6 +580,16 @@ class RunLocalStore implements RunStore, RunHistoryStore, RunGhostStore {
         where: 'owner=? AND pending=1',
         whereArgs: [owner],
       )).map((r) => r['id'] as String).toList();
+
+  /// Permanently removes this owner's local runs, GPS, start receipts and settings.
+  ///
+  /// After server withdrawal succeeds, stop recording and other writes before
+  /// calling this method. Unlike [deleteRecord], this creates no server deletion
+  /// requests. Errors propagate and the entire transaction is rolled back.
+  Future<void> deleteOwner(String owner) async {
+    await (await database).transaction((tx) => _deleteOwnerRows(tx, owner));
+  }
+
   @override
   Future<void> deleteRecord(String owner, String id) async {
     await (await database).transaction((tx) async {

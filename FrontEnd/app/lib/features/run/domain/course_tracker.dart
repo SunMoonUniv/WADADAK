@@ -167,11 +167,16 @@ class TrackPoint {
 /// 윈도우 추적(서버 CourseTracker). 서버는 기록 전체를 한 번에 보지만 앱은 [feed]로 새 입력만 이어서 본다.
 /// 보류했던 표본은 가설이 하나로 모이면 소급해 정한다(순환 코스 출발점 등).
 class CourseTracker {
-  CourseTracker(this.route, {bool freeGhostV2 = false}) {
+  CourseTracker(
+    this.route, {
+    bool freeGhostV2 = false,
+    this.inputsAreFiltered = false,
+  }) {
     if (freeGhostV2) _freeV2 = _FreeGhostTracker(route);
   }
   final RouteGeometry route;
   _FreeGhostTracker? _freeV2;
+  final bool inputsAreFiltered;
   final _points = <TrackPoint>[];
   List<TrackPoint> get points => _freeV2?.points ?? _points;
 
@@ -191,7 +196,9 @@ class CourseTracker {
   int _rawFed = 0;
 
   void feed(List<RunInput> inputs) {
-    if (inputs.isEmpty || inputs.first.reason != 'PACE_V4') {
+    if (inputsAreFiltered ||
+        inputs.isEmpty ||
+        inputs.first.reason != 'PACE_V4') {
       _feedFiltered(inputs);
       return;
     }

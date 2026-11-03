@@ -14,7 +14,7 @@ public final class FullSessionInputs {
             if (p.kind() == Kind.SEGMENT_END) continue;
             result.add(new Input(result.size(), p.kind(), p.elapsedMs(), p.measuredAt(), p.location(), p.accuracyM(),
                     p.reason(), p.speedMps(), p.speedAccuracyMps(), p.steps(), p.durationMs(), p.sampleEndMs(),
-                    p.altitudeM(), p.altitudeAccuracyM(), p.pressureHpa(), p.pressureAccuracy()));
+                    p.altitudeM(), p.altitudeAccuracyM(), p.pressureHpa(), p.pressureAccuracy(), p.weightKg()));
         }
         return List.copyOf(result);
     }

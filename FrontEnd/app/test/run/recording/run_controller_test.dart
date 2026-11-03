@@ -64,7 +64,11 @@ class TestApi extends RunApiClient {
   TestApi() : super(Dio());
   final historyOwners = <String>[];
   @override
-  Future<Map<String, dynamic>> history(String owner, {String? cursor, int? size}) async {
+  Future<Map<String, dynamic>> history(
+    String owner, {
+    String? cursor,
+    int? size,
+  }) async {
     historyOwners.add(owner);
     return {'content': <Object>[], 'nextCursor': null};
   }
@@ -326,6 +330,52 @@ void main() {
     await controller.prepareStart();
     expect(controller.run!.owner, 'bob');
   });
+
+  for (final paused in [false, true]) {
+    test(
+      'withdrawal cleanup stops ${paused ? 'paused' : 'running'} recording before purging owner',
+      () async {
+        await controller.prepareStart();
+        if (paused) await controller.pause();
+        final oldRun = controller.recorder.current!;
+        location.clock = 3000;
+
+        // The withdrawal caller clears tokens first, then explicitly awaits this
+        // transition rather than relying on the provider's unawaited listener.
+        owner = null;
+        await controller.accountChanged();
+        expect(controller.recorder.active, false);
+        expect(controller.currentOwner, isNull);
+        expect(controller.recorder.current, isNull);
+        expect(location.streams.single.hasListener, false);
+        expect((await store.list('alice')).single.endReason, 'ACCOUNT_CHANGED');
+
+        await store.deleteOwner('alice');
+        location.streams.single.add(location.point(36.001));
+        await controller.refreshMeasurement();
+        await controller.recorder.gps(36.002, 127, 3);
+        await controller.sync();
+        await store.synced(oldRun, {'id': oldRun.id});
+        for (final table in [
+          'sessions',
+          'inputs',
+          'ghost_closures',
+          'ghost_start_intents',
+          'course_start_intents',
+          'run_deletions',
+          'run_settings',
+        ]) {
+          expect(
+            await (await store.database).query(table),
+            isEmpty,
+            reason: table,
+          );
+        }
+        expect(controller.records, isEmpty);
+        expect(controller.remoteRecords, isEmpty);
+      },
+    );
+  }
 
   test('system permission dialog does not cancel preparation', () async {
     location.pendingReady = Completer<Position>();

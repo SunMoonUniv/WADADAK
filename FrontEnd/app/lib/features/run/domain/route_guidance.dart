@@ -2,9 +2,12 @@
 /// 수치는 정책의 기존 테스트 수치로 주행 검증 전 개발값이다(D-16).
 library;
 
+import 'dart:math' as math;
+
 import '../../../core/map/geo_point.dart';
 import 'course_tracker.dart';
 import 'recording_models.dart';
+import 'gps_path_filter.dart';
 
 enum GuidanceState {
   /// 경로 위(또는 아직 판단 전)
@@ -30,7 +33,18 @@ enum GuidanceCue {
 }
 
 class RouteGuidance {
-  RouteGuidance(this.route);
+  RouteGuidance(this.route, {bool freeGhostV2 = false})
+    : _tracker = CourseTracker(
+        route,
+        freeGhostV2: freeGhostV2,
+        inputsAreFiltered: true,
+      );
+  final CourseTracker _tracker;
+  final GpsPathFilter _pathFilter = GpsPathFilter();
+  final List<RunInput> _inputs = [];
+  int _rawFed = 0, _indexedPoints = 0;
+  final Map<int, TrackPoint> _trackedBySeq = {};
+  bool uncertain = true;
   final RouteGeometry route;
 
   static const offRouteM = 30.0, returnM = 20.0;
@@ -62,7 +76,22 @@ class RouteGuidance {
   int _offFixes = 0, _backFixes = 0;
 
   /// 같은 기록의 입력 목록을 계속 넘긴다. 새 입력만 보고 할 일을 돌려준다. `SEGMENT_END`·`END` 뒤는 안내하지 않는다
-  List<GuidanceCue> feed(List<RunInput> inputs) {
+  List<GuidanceCue> feed(List<RunInput> raw) {
+    final filtered = raw.isNotEmpty && raw.first.reason == 'PACE_V4';
+    for (; _rawFed < raw.length; _rawFed++) {
+      if (filtered) {
+        _inputs.addAll(_pathFilter.add(raw[_rawFed]));
+      } else {
+        _inputs.add(raw[_rawFed]);
+      }
+    }
+    final inputs = _inputs;
+    _tracker.feed(inputs);
+    final trackedPoints = _tracker.points;
+    for (; _indexedPoints < trackedPoints.length; _indexedPoints++) {
+      final p = trackedPoints[_indexedPoints];
+      _trackedBySeq[p.input.seq] = p;
+    }
     final cues = <GuidanceCue>[];
     for (; _fed < inputs.length && !_done; _fed++) {
       final input = inputs[_fed];
@@ -94,6 +123,19 @@ class RouteGuidance {
   }
 
   /// [다시 표시하지 않음]: 이번 러닝 끝까지 이탈 팝업·진동·음성을 끈다
+  Map<String, dynamic> get userState => {
+    'muted': muted,
+    'alertAt': _alertAt,
+    'graceUntil': _graceUntil,
+  };
+  void restoreUserState(Map<String, dynamic>? saved) {
+    if (saved == null) return;
+    muted = saved['muted'] == true;
+    _alertAt = (saved['alertAt'] as num?)?.toInt();
+    _graceUntil = (saved['graceUntil'] as num?)?.toInt();
+    if (muted) alertOpen = false;
+  }
+
   void mute() {
     muted = true;
     alertOpen = false;
@@ -101,27 +143,55 @@ class RouteGuidance {
 
   void _sample(RunInput input, List<GuidanceCue> cues) {
     final last = _last;
-    if (last != null && input.elapsedMs - last.elapsedMs > _maxIntervalMs) _unreliable();
+    if (last != null && input.elapsedMs - last.elapsedMs > _maxIntervalMs) {
+      _unreliable();
+    }
     if (!_reliable(input)) {
       _unreliable(); // 판단 보류, 쌓던 지속 시간 초기화(6장 GPS 불량·순간 튐)
       return;
     }
     _last = input;
     final nearest = route.nearest(input.lat!, input.lng!);
-    distanceM = nearest.d;
-    nearestPoint = nearest.point;
+    final tracked = _trackedBySeq[input.seq];
+    // Far from every segment is unambiguously off route. Near the route,
+    // correspondence must come from the same ordered tracker as progress.
+    final branches = nearest.d <= offRouteM
+        ? route.candidates(route.toLocal(input.lat!, input.lng!), offRouteM)
+        : const <Projection>[];
+    if (branches.length > 1 &&
+        (tracked?.s == null || tracked?.connected != true)) {
+      _unreliable();
+      distanceM = null;
+      nearestPoint = null;
+      return;
+    }
+    uncertain = false;
+    final point = tracked?.s == null
+        ? nearest.point
+        : route.pointAt(tracked!.s!);
+    if (point == null) {
+      _unreliable();
+      return;
+    }
+    final here = route.toLocal(input.lat!, input.lng!),
+        target = route.toLocal(point.lat, point.lng);
+    final distance = math.sqrt(
+      math.pow(here.$1 - target.$1, 2) + math.pow(here.$2 - target.$2, 2),
+    );
+    distanceM = distance;
+    nearestPoint = point;
     final ms = input.elapsedMs;
 
     switch (state) {
       case GuidanceState.onRoute:
-        if (nearest.d > offRouteM) {
+        if (distance > offRouteM) {
           state = GuidanceState.candidate;
           _offSince = ms;
           _offFixes = 1;
           if (!muted && !_inGrace(ms)) cues.add(GuidanceCue.candidate);
         }
       case GuidanceState.candidate:
-        if (nearest.d <= offRouteM) {
+        if (distance <= offRouteM) {
           state = GuidanceState.onRoute;
           _offSince = null;
           _offFixes = 0;
@@ -134,7 +204,7 @@ class RouteGuidance {
           }
         }
       case GuidanceState.off:
-        if (nearest.d <= returnM) {
+        if (distance <= returnM) {
           _backSince ??= ms;
           _backFixes++;
           if (ms - _backSince! >= returnMs && _backFixes >= minFixes) {
@@ -171,10 +241,12 @@ class RouteGuidance {
     final last = _last;
     if (last == null) return true;
     final interval = input.elapsedMs - last.elapsedMs;
-    return interval > 0 && last.distanceTo(input) <= interval / 1000 * _maxSpeedMps;
+    return interval > 0 &&
+        last.distanceTo(input) <= interval / 1000 * _maxSpeedMps;
   }
 
   void _unreliable() {
+    uncertain = true;
     if (state == GuidanceState.candidate) {
       _offSince = null;
       _offFixes = 0;
@@ -187,6 +259,7 @@ class RouteGuidance {
     if (alertOpen) cues.add(GuidanceCue.dismiss);
     alertOpen = false;
     state = GuidanceState.onRoute;
+    uncertain = true;
     _last = null;
     _offSince = _backSince = _alertAt = null;
     _offFixes = _backFixes = 0;
