@@ -71,3 +71,11 @@ app:
       apple-client-ids: ${APPLE_CLIENT_IDS:}
       # Google 웹 클라이언트 ID(wadadak-server)도 공개 값이다. 앱이 serverClientId로 넘겨 ID 토큰의 aud가 된다.
       google-client-ids: ${GOOGLE_CLIENT_IDS:1048451496052-jmrq4n20oah17vkcru3qv6gikrc23obs.apps.googleusercontent.com}
+  notification:
+    fcm:
+      # Firebase 서비스 계정 키(JSON) 위치. file:/경로/key.json 또는 base64:<키 JSON을 base64로>. 비밀값이라 커밋하지 않는다.
+      # 비어 있으면 푸시를 보내지 않고 로그로만 남긴다(로컬 · 시험). 알림 만들기 · 발송 기록은 그대로 돈다.
+      credentials-location: ${FCM_CREDENTIALS_LOCATION:}
+    # 발송 작업(10초마다 차례가 된 푸시를 보낸다). 시험은 끄고 직접 부른다.
+    dispatch:
+      enabled: true

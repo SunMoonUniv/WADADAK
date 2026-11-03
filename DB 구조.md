@@ -19,9 +19,8 @@
 | `ranking` | ranking | `course_ranking_entries`, `distance_run_records`, `course_status_copies`, `member_visibility_copies`, `member_region_history`, `withdrawn_members` |
 | `review` | review | `reviews`, `review_photos`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
 | `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members`, `course_attempts`, `course_runner_counts`, `ghost_starts`, `ghost_start_playbacks`, `ghost_results`, `free_ghost_starts`, `free_ghost_results`, `ghost_comparisons`, `gps_source_links`, `gps_course_status_copies` |
+| `notification` | notification | `device_tokens`, `notification_settings`, `notifications`, `deliveries`, `withdrawn_members` |
 | `common` | common | `region`, `event_publication`, `shedlock`, `photo_uploads`, `flyway_schema_history` |
-
-notification 스키마는 아직 없다. 해당 모듈을 구현할 때 이 문서에 추가한다.
 
 ### 공통 규칙 (개발 정책 6장)
 
@@ -39,7 +38,7 @@ notification 스키마는 아직 없다. 해당 모듈을 구현할 때 이 문�
 - 점선: 다른 모듈(스키마)의 ID를 값으로만 저장한 참조. FK 없음
 - 모든 엔티티 테이블에 있는 `created_at`·`updated_at`은 생략했다. `common`의 인프라 테이블(`event_publication`, `shedlock`, `photo_uploads`, `flyway_schema_history`)은 다른 테이블과 관계가 없어 3.5에서만 설명한다.
 - `course_ranking_entries.run_record_id`, `course_run_records.run_record_id`, `reviews.source_run_record_id`, `gps_course_sources.run_record_id`, `course_completions.run_record_id`는 run 모듈의 러닝 기록 ID다. 아래 `run_records`에 점선으로 연결했다. 다른 스키마이므로 FK는 없다.
-- `course_status_copies`·`withdrawn_members`는 ranking과 review에 같은 이름으로 있다. ERD에서는 review 쪽을 `review_` 접두사로 구분했다.
+- `course_status_copies`·`withdrawn_members`는 ranking과 review에 같은 이름으로 있다. ERD에서는 review 쪽을 `review_` 접두사로 구분했다. notification의 `withdrawn_members`는 `notification_` 접두사로 구분했다.
 
 ```mermaid
 erDiagram
@@ -75,6 +74,12 @@ erDiagram
     members ||..o{ course_run_records : "member_id"
     courses ||..o| review_course_status_copies : "course_id"
     members ||..o| review_withdrawn_members : "member_id"
+    members ||..o{ device_tokens : "member_id"
+    members ||..o| notification_settings : "member_id"
+    members ||..o{ notifications : "member_id"
+    notifications ||--o{ deliveries : "notification_id"
+    device_tokens ||--o{ deliveries : "device_token_id"
+    members ||..o| notification_withdrawn_members : "member_id"
 
     members {
         uuid id PK
@@ -329,6 +334,39 @@ erDiagram
         DOUBLE distance_meters
         TIMESTAMPTZ registered_at
         BOOLEAN deleted
+    }
+    device_tokens {
+        uuid id PK
+        uuid member_id
+        varchar(1024) token UK "FCM 등록 토큰"
+        varchar(10) platform "ANDROID, IOS"
+    }
+    notification_settings {
+        uuid member_id PK
+        boolean course_expiring_soon
+    }
+    notifications {
+        uuid id PK
+        uuid member_id
+        varchar(40) kind "COURSE_EXPIRING_SOON"
+        varchar(200) dedupe_key "kind와 함께 UK"
+        varchar(100) title
+        varchar(300) body
+        jsonb data "FCM data"
+        timestamptz send_until
+    }
+    deliveries {
+        uuid notification_id PK,FK
+        uuid device_token_id PK,FK
+        varchar(10) status "PENDING, SENT, FAILED, EXPIRED"
+        smallint attempts
+        timestamptz next_attempt_at
+        varchar(200) last_error
+        timestamptz sent_at
+    }
+    notification_withdrawn_members {
+        uuid member_id PK
+        timestamptz withdrawn_at
     }
 ```
 
@@ -1013,3 +1051,75 @@ stats의 구조와 테이블은 유지하고 새 계산의 `version`을 `RESULT_
 - 기기 SQLite v6는 `sessions.guidance_state TEXT`(이번 세션 이탈 안내 억제·반복 시점·유예 시점)와 `withdrawn_run_owners(owner PRIMARY KEY)`를 추가한다. 후자는 삭제 이후 재생성 차단용 계정 식별자뿐이다.
 - 성공한 탈퇴 시 현재 기기의 해당 owner에 속한 inputs, sessions, ghost_closures, ghost_start_intents, course_start_intents, run_settings, run_deletions를 한 트랜잭션으로 삭제한다. 다른 계정·일반 로그아웃에는 적용하지 않는다. owner가 있는 테이블의 INSERT/UPDATE 트리거로 늦은 저장을 차단한다. 체중 캐시도 별도로 지운다.
 - v1~v5 원본·결과·등록 시각·계산 버전은 이관 때 보존한다. 체중/칼로리의 과거 기록 소급 계산은 하지 않는다.
+
+### 3.7 notification
+
+푸시 알림(F14)과 알림 설정(F4 `알림`). 다른 모듈을 호출하지 않고 이벤트만 받는다(`CourseExpiringSoonEvent`, `MemberWithdrawnEvent`). 알림을 만드는 일(이벤트 처리)과 보내는 일(발송 작업 `PushDispatcher`, 10초마다 · ShedLock)을 나눴다. 보내기는 네트워크라서, FCM이 느리거나 멈춰도 다른 모듈의 이벤트 처리가 밀리지 않는다. FCM 연동은 `PushSender`로 감싸고, 서비스 계정 키(`app.notification.fcm.credentials-location`)가 없으면 로그만 남기는 구현을 쓴다(개발 정책 2장).
+
+#### `notification.device_tokens` — 기기 푸시 토큰
+
+FCM 등록 토큰 하나가 기기 하나다. 앱이 로그인 · 실행할 때 `PUT /api/v1/notifications/tokens`로 다시 등록하고, 로그아웃할 때 `DELETE`로 지운다.
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `id` | `UUID` | | PK |
+| `member_id` | `UUID` | | 회원 ID(member 모듈, FK 없음) |
+| `token` | `VARCHAR(1024)` | | FCM 등록 토큰. 유일(`device_tokens_token_uk`) |
+| `platform` | `VARCHAR(10)` | | `ANDROID` · `IOS` |
+| `updated_at` | `TIMESTAMPTZ` | | 마지막으로 등록한 시각 |
+
+- `device_tokens_member_id_idx`: `(member_id, updated_at DESC)`. 알림 만들 때 회원의 기기 찾기 · 오래된 기기 정리 · 탈퇴
+- 같은 기기에 다른 계정이 로그인하면(같은 토큰) 예전 계정의 줄을 지우고 새 계정으로 등록한다. 한 회원에 10개까지 두고 넘으면 `updated_at`이 오래된 기기부터 지운다.
+- FCM이 없는 토큰이라고 답하면(`UNREGISTERED` · `SENDER_ID_MISMATCH`) 발송 작업이 지운다. 토큰을 지우면 그 기기의 `deliveries`도 함께 지워진다.
+
+#### `notification.notification_settings` — 알림 설정
+
+회원당 한 줄. 행이 없으면 모두 켜져 있다(바꾸면 생긴다).
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `member_id` | `UUID` | | PK. 회원 ID(member 모듈) |
+| `course_expiring_soon` | `BOOLEAN` | | `내 코스 만료 임박`(정책 공통 4). 끄면 그 뒤로 만드는 만료 임박 알림부터 만들지 않는다 |
+
+#### `notification.notifications` — 알림(발송 기록)
+
+회원에게 보낼 알림 한 건. 문구는 만들 때 정해 저장한다.
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `id` | `UUID` | | PK |
+| `member_id` | `UUID` | | 받는 회원 ID(member 모듈) |
+| `kind` | `VARCHAR(40)` | | 알림 종류. 지금은 `COURSE_EXPIRING_SOON`뿐이다 |
+| `dedupe_key` | `VARCHAR(200)` | | 같은 일이면 같은 값. 만료 임박은 `코스 ID/만료 시각/남은 날` |
+| `title` · `body` | `VARCHAR(100)` · `VARCHAR(300)` | | 제목 · 본문. 예: `내 코스 만료 임박` · `‘한강 야경’ 코스가 7일 뒤 만료돼요.`(D-1은 `내일`, 구현 값) |
+| `data` | `JSONB` | | 앱이 알림을 누를 때 쓰는 값(FCM data, 값은 모두 문자열). 만료 임박은 `{"type": "COURSE_EXPIRING_SOON", "courseId": "..."}` → B1 |
+| `send_until` | `TIMESTAMPTZ` | | 이 시각까지 못 보내면 보내지 않는다. 만료 임박은 이벤트 발행 + 12시간(만료 시각을 넘지 않음) |
+
+- `notifications_kind_dedupe_key_uk`: `UNIQUE (kind, dedupe_key)`. 같은 이벤트가 다시 와도 한 번만 만든다(개발 정책 5.4 삽입형). 완주로 만료가 연장되면 만료 시각이 바뀌어 다음 D-7 · D-1에 다시 알린다.
+- `notifications_member_id_idx`: `(member_id)`. 탈퇴 때 지우기
+- 등록자가 탈퇴했거나 설정을 껐거나 `send_until`이 지난 이벤트는 알림을 만들지 않는다.
+
+#### `notification.deliveries` — 기기별 발송
+
+알림 한 건 × 그 회원의 기기마다 한 줄. 알림을 만들 때 그 회원의 기기만큼 `PENDING`으로 만든다. 기기마다 따로 적어서, 한 기기만 실패해 다시 보낼 때 이미 받은 기기에는 또 보내지 않는다.
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `notification_id` | `UUID` | | PK · FK `notifications.id`(`ON DELETE CASCADE`) |
+| `device_token_id` | `UUID` | | PK · FK `device_tokens.id`(`ON DELETE CASCADE`) |
+| `status` | `VARCHAR(10)` | | `PENDING`(보낼 차례를 기다림) · `SENT` · `FAILED`(다시 보내도 안 되는 메시지) · `EXPIRED`(`send_until`이 지났거나 그 사이 기기 주인이 바뀜) |
+| `attempts` | `SMALLINT` | | 보낸 횟수 |
+| `next_attempt_at` | `TIMESTAMPTZ` | | 다음에 보낼 시각. 잠깐의 실패(FCM 점검 · 한도 · 연결)면 1분 · 2분 · 4분 … 30분까지 늘린다 |
+| `last_error` | `VARCHAR(200)` | ✓ | 마지막 실패 이유(예: `503 UNAVAILABLE`) |
+| `sent_at` | `TIMESTAMPTZ` | ✓ | 보낸 시각 |
+
+- `deliveries_pending_idx`: `(next_attempt_at)`, `PENDING`만. 발송 작업이 차례가 된 줄을 찾는다(한 번에 50줄).
+- `deliveries_device_token_id_idx`: `(device_token_id)`. 토큰을 지울 때 CASCADE가 찾는다.
+- 발송 작업은 트랜잭션 없이 줄마다 결과 UPDATE 한 번으로 끝낸다(보내는 동안 DB 연결 · 잠금을 붙잡지 않는다). 잠깐의 실패가 3번 이어지면 FCM이 멈춘 것으로 보고 그 차례를 멈춘다.
+
+#### `notification.withdrawn_members` — 탈퇴 회원
+
+ranking · review의 같은 이름 테이블과 같다(3.3).
+
+- `MemberWithdrawnEvent`를 받으면 이 행을 남기고 그 회원의 알림(발송 줄 포함) · 기기 토큰 · 설정을 지운다.
+- 탈퇴 회원이 등록한 코스는 남아 만료 임박 이벤트가 계속 올 수 있다. 받지 않는다. 탈퇴 뒤에도 남은 액세스 토큰(1시간)으로 오는 토큰 등록 · 설정 요청은 `COMMON-002`다.
