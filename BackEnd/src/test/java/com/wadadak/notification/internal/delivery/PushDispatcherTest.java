@@ -66,8 +66,11 @@ class PushDispatcherTest {
         assertThat(dispatcher.dispatchDue()).isOne();
         assertThat(dispatcher.dispatchDue()).as("보낸 줄은 다시 보내지 않는다").isZero();
 
+        String notificationId = jdbc.queryForObject("SELECT id::text FROM notification.notifications WHERE member_id = ?",
+                String.class, member);
+        // 앱이 푸시를 눌러 알림함의 그 알림을 읽음으로 바꾸도록 알림 ID를 붙인다
         verify(sender, times(1)).send(eq("phone"), eq(new PushMessage("내 코스 만료 임박", "‘한강’ 코스가 내일 만료돼요.",
-                Map.of("type", "COURSE_EXPIRING_SOON", "courseId", "c-1"))));
+                Map.of("type", "COURSE_EXPIRING_SOON", "courseId", "c-1", "notificationId", notificationId))));
         Map<String, Object> line = delivery(member);
         assertThat(line.get("status")).isEqualTo("SENT");
         assertThat(line.get("attempts")).isEqualTo(1);
@@ -170,7 +173,7 @@ class PushDispatcherTest {
     private void enqueue(UUID member, Instant sendUntil) {
         store.enqueue(new NotificationDraft(member, NotificationKind.COURSE_EXPIRING_SOON, "key-" + member,
                 "내 코스 만료 임박", "‘한강’ 코스가 내일 만료돼요.", Map.of("type", "COURSE_EXPIRING_SOON", "courseId", "c-1"),
-                sendUntil), Instant.now());
+                sendUntil), Instant.now(), true);
     }
 
     private Map<String, Object> delivery(UUID member) {

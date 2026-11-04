@@ -76,20 +76,33 @@ class NotificationEventHandlerTest {
     }
 
     @Test
-    void skipsWhenTurnedOffWithdrawnOrTooLate() {
+    void turnedOffKeepsItInTheInboxButDoesNotPush() {
         UUID turnedOff = UUID.randomUUID();
         jdbc.update("INSERT INTO notification.notification_settings VALUES (?, FALSE, now(), now())", turnedOff);
+        device(turnedOff, "phone-" + turnedOff);
+
+        publish(expiringSoon(turnedOff, 7, Instant.now().plus(Duration.ofDays(7))));
+
+        assertThat(notifications(turnedOff)).as("알림함에는 쌓인다").isOne();
+        assertThat(jdbc.queryForObject("""
+                        SELECT count(*) FROM notification.deliveries d
+                        JOIN notification.notifications n ON n.id = d.notification_id
+                        WHERE n.member_id = ?""", Long.class, turnedOff))
+                .as("휴대폰에는 보내지 않는다").isZero();
+    }
+
+    @Test
+    void skipsWhenWithdrawnOrTooLate() {
         UUID withdrawn = UUID.randomUUID();
         jdbc.update("INSERT INTO notification.withdrawn_members VALUES (?, now(), now(), now())", withdrawn);
         UUID late = UUID.randomUUID();
 
-        publish(expiringSoon(turnedOff, 7, Instant.now().plus(Duration.ofDays(7))));
         publish(expiringSoon(withdrawn, 7, Instant.now().plus(Duration.ofDays(7))));
         // 오전 9시 이벤트가 하루 늦게 처리됐다(서버가 꺼져 있다 켜짐). 보낼 기한(12시간)이 지났다
         publish(new CourseExpiringSoonEvent(UUID.randomUUID(), Instant.now().minus(Duration.ofDays(1)), UUID.randomUUID(),
                 late, "한강 야경", Instant.now().plus(Duration.ofDays(6)), 7));
 
-        for (UUID member : new UUID[]{turnedOff, withdrawn, late}) {
+        for (UUID member : new UUID[]{withdrawn, late}) {
             assertThat(notifications(member)).isZero();
         }
     }

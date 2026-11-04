@@ -313,7 +313,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               ),
             ),
           ]),
-          const SettingsHeading('알림'),
+          // 이 스위치는 휴대폰에 띄울지만 정한다. 꺼도 알림함에는 쌓인다(Figma AD7 메모)
+          const SettingsHeading('푸시 알림'),
           SettingsCard([
             SettingsRow(
               '내 코스 만료 임박',

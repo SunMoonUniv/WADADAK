@@ -36,19 +36,22 @@ class NotificationEventHandler {
     private final Clock clock;
 
     /**
-     * 내 코스 만료 임박(삽입형). 등록자가 탈퇴했거나 `내 코스 만료 임박`을 껐거나 보낼 기한이 지났으면 만들지 않는다.
+     * 내 코스 만료 임박(삽입형). 등록자가 탈퇴했거나 보낼 기한이 지났으면 만들지 않는다.
+     * `내 코스 만료 임박`(F4 푸시 알림)을 껐으면 알림함에만 남기고 휴대폰에는 보내지 않는다
+     * (Figma AD7 "사용자가 F4에서 끈 유형은 알림센터에만 저장").
      * 같은 (코스, 만료 시각, 남은 날)은 알림 유니크로 한 번만 만든다.
      */
     @ApplicationModuleListener
     public void on(CourseExpiringSoonEvent event) {
         Instant now = clock.instant();
         NotificationDraft draft = CourseExpiryNotice.draft(event);
-        if (!now.isBefore(draft.sendUntil()) || withdrawnMembers.isWithdrawn(event.creatorId())
-                || !settings.find(event.creatorId()).courseExpiringSoon()) {
+        // 기한이 지난 "7일 뒤 만료돼요"는 날짜가 틀린 말이라 알림함에도 남기지 않는다
+        if (!now.isBefore(draft.sendUntil()) || withdrawnMembers.isWithdrawn(event.creatorId())) {
             return;
         }
-        if (notifications.enqueue(draft, now)) {
-            log.info("만료 임박 알림 · 코스 {} D-{} · event {}", event.courseId(), event.daysLeft(), event.eventId());
+        boolean push = settings.find(event.creatorId()).courseExpiringSoon();
+        if (notifications.enqueue(draft, now, push)) {
+            log.info("만료 임박 알림 · 코스 {} D-{} · 푸시 {} · event {}", event.courseId(), event.daysLeft(), push, event.eventId());
         }
     }
 

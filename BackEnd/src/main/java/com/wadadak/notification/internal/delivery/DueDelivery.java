@@ -3,6 +3,7 @@ package com.wadadak.notification.internal.delivery;
 import com.wadadak.notification.internal.push.PushMessage;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -14,7 +15,13 @@ import java.util.UUID;
 record DueDelivery(UUID notificationId, UUID deviceTokenId, String token, boolean sameMember, int attempts,
                    String title, String body, Map<String, String> data, Instant sendUntil) {
 
+    /**
+     * 보낼 메시지. data에 알림 ID({@code notificationId})를 붙인다. 앱이 푸시를 눌러 열면 이 ID로 알림함의 그 알림을 읽음으로 바꾼다.
+     * 저장한 data에는 넣지 않는다(알림함 목록은 id를 따로 준다).
+     */
     PushMessage message() {
-        return new PushMessage(title, body, data);
+        Map<String, String> withId = new HashMap<>(data);
+        withId.put("notificationId", notificationId.toString());
+        return new PushMessage(title, body, Map.copyOf(withId));
     }
 }
