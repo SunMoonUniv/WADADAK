@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -57,8 +58,14 @@ void main() {
         : {'courseId': courseId, 'courseName': courseName, 'completed': true},
   };
 
-  Future<void> open(WidgetTester tester, {FakeCourseApi? courses}) async {
-    tester.view.physicalSize = const Size(402, 995);
+  Future<void> open(
+    WidgetTester tester, {
+    FakeCourseApi? courses,
+    FakeMyLocation? location,
+    Size size = const Size(402, 995),
+    double textScale = 1,
+  }) async {
+    tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
     capture = GlobalKey();
@@ -87,7 +94,7 @@ void main() {
           courseApiClientProvider.overrideWithValue(courses ?? FakeCourseApi()),
           rankingApiClientProvider.overrideWithValue(FakeCourseRankingApi()),
           reviewApiClientProvider.overrideWithValue(FakeCourseReviewApi()),
-          myLocationProvider.overrideWithValue(FakeMyLocation()),
+          myLocationProvider.overrideWithValue(location ?? FakeMyLocation()),
         ],
         child: RepaintBoundary(
           key: capture,
@@ -95,6 +102,11 @@ void main() {
             debugShowCheckedModeBanner: false,
             theme: WdTheme.light(),
             routerConfig: router,
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context)
+                  .copyWith(textScaler: TextScaler.linear(textScale)),
+              child: child!,
+            ),
           ),
         ),
       ),
@@ -179,9 +191,7 @@ void main() {
     await open(
       tester,
       courses: FakeCourseApi()
-        ..searchable = [
-          for (var i = 1; i <= 4; i++) testCourse('한강 코스 $i'),
-        ],
+        ..searchable = [for (var i = 1; i <= 4; i++) testCourse('한강 코스 $i')],
     );
     // 고른 카드가 내린 목록 아래에 있게 화면을 줄인다
     tester.view.physicalSize = const Size(402, 640);
@@ -334,8 +344,10 @@ void main() {
       expect(find.text('5.2km · 난이도 중 · ★ 4.4'), findsOneWidget);
       expect(find.text('지금 2명 달리는 중'), findsOneWidget);
       expect(find.text('정릉 오르막 4K'), findsOneWidget);
-      // 칩 · 머리글 · 러너가 없는 정릉 카드 아래 줄
-      expect(find.text('저장한 코스'), findsNWidgets(3));
+      // 칩 · 머리글 · 각 카드 오른쪽 위 배지
+      expect(find.text('저장한 코스'), findsNWidgets(4));
+      expect(find.widgetWithText(WdTag, '저장한 코스'), findsNWidgets(2));
+      expect(find.text('달리는 러너 없음'), findsOneWidget);
       expect(find.text('안암 골목길 2K'), findsNothing, reason: '삭제 예정 코스는 달릴 수 없다');
       expect(api.detailRequests, isEmpty, reason: '저장 목록의 카드 값을 그대로 쓴다');
 
@@ -377,10 +389,163 @@ void main() {
     runs.notifyListeners();
     await tester.pumpAndSettle();
 
-    // 러너가 없으면 저장한 코스는 `저장한 코스`, 아니면 `달리는 러너 없음`
+    // 저장한 카드도 다른 카드와 동일하게 러너 상태를 표시한다.
     expect(find.text('저장한 코스'), findsNWidgets(2));
-    expect(find.text('달리는 러너 없음'), findsOneWidget);
+    expect(find.text('달리는 러너 없음'), findsNWidgets(2));
+    expect(find.widgetWithText(WdTag, '저장한 코스'), findsOneWidget);
   });
+
+  Future<void> screenshot(WidgetTester tester, String name) async {
+    await tester.runAsync(() async {
+      final bitmap =
+          await (capture.currentContext!.findRenderObject()
+                  as RenderRepaintBoundary)
+              .toImage();
+      final data = await bitmap.toByteData(format: ui.ImageByteFormat.png);
+      final file = File('build/course-select-ui/$name.png');
+      file.parent.createSync(recursive: true);
+      file.writeAsBytesSync(data!.buffer.asUint8List());
+      bitmap.dispose();
+    });
+  }
+
+  const loadingMessage = '코스를 불러오고 있어요. 잠시 기다려주세요.';
+  const nearbyEmpty = '가까운 코스가 없거나 위치를 확인할 수 없어요.';
+
+  for (final label in ['내 주변', '저장한 코스', '내가 만든']) {
+    testWidgets('$label waits for the course response before showing empty', (
+      tester,
+    ) async {
+      final api = _DelayedCourseApi();
+      await open(
+        tester,
+        courses: api,
+        location: FakeMyLocation(
+          allowed: true,
+          location: const GeoPoint(37, 127),
+        ),
+      );
+      await tester.tap(find.widgetWithText(WdFilterChip, label));
+      await tester.pumpAndSettle();
+      expect(find.text(loadingMessage), findsOneWidget);
+      expect(find.text(nearbyEmpty), findsNothing);
+      expect(find.text('저장한 코스가 없어요. 코스 상세에서 북마크로 저장해 보세요.'), findsNothing);
+      expect(find.text('공개 중인 내 코스가 없어요.'), findsNothing);
+      if (label == '내 주변') await screenshot(tester, 'loading-402');
+
+      api.gate.complete();
+      await tester.pumpAndSettle();
+      expect(find.text(loadingMessage), findsNothing);
+      expect(
+        find.text(switch (label) {
+          '내 주변' => nearbyEmpty,
+          '저장한 코스' => '저장한 코스가 없어요. 코스 상세에서 북마크로 저장해 보세요.',
+          _ => '공개 중인 내 코스가 없어요.',
+        }),
+        findsOneWidget,
+      );
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final allowed in [true, false]) {
+    testWidgets('nearby waits for location before showing courses ($allowed)', (
+      tester,
+    ) async {
+      final fix = Completer<void>();
+      final location = FakeMyLocation(
+        allowed: allowed,
+        location: const GeoPoint(37, 127),
+      )..fix = fix;
+      await open(
+        tester,
+        location: location,
+        courses: FakeCourseApi()..listed = [testCourse('코스 테스트')],
+      );
+      await tester.tap(find.text('내 주변'));
+      await tester.pumpAndSettle();
+      expect(find.text(loadingMessage), findsOneWidget);
+      expect(find.text(nearbyEmpty), findsNothing);
+
+      fix.complete();
+      await tester.pumpAndSettle();
+      expect(find.text(loadingMessage), findsNothing);
+      expect(find.text(allowed ? '코스 테스트' : nearbyEmpty), findsOneWidget);
+    });
+  }
+
+  testWidgets('search and recent history show loading while pending', (
+    tester,
+  ) async {
+    final gate = Completer<void>();
+    await open(tester, courses: FakeCourseApi()..searchGate = gate);
+    runs.loadingHistory = true;
+    runs.notifyListeners();
+    await tester.pumpAndSettle();
+    expect(find.text(loadingMessage), findsOneWidget);
+    expect(find.text('아직 달린 코스가 없어요. 내 주변이나 검색으로 골라 보세요.'), findsNothing);
+    runs.loadingHistory = false;
+    runs.notifyListeners();
+    await tester.pumpAndSettle();
+    expect(find.text(loadingMessage), findsNothing);
+
+    await tester.enterText(find.byType(TextField), '한강');
+    await tester.pumpAndSettle();
+    expect(find.text(loadingMessage), findsOneWidget);
+    expect(find.text('찾는 코스가 없어요.'), findsNothing);
+    gate.complete();
+    await tester.pumpAndSettle();
+    expect(find.text(loadingMessage), findsNothing);
+    expect(find.text('찾는 코스가 없어요.'), findsOneWidget);
+  });
+
+  for (final width in [402.0, 320.0]) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('saved badge stays above runner status at $width / $scale', (
+        tester,
+      ) async {
+        final api = FakeCourseApi()
+          ..listed = [testCourse('코스 테스트', activeRunners: 3)]
+          ..savedIds = {'id-코스 테스트'};
+        await open(
+          tester,
+          courses: api,
+          location: FakeMyLocation(
+            allowed: true,
+            location: const GeoPoint(37, 127),
+          ),
+          size: Size(width, 995),
+          textScale: scale,
+        );
+        await tester.tap(find.text('내 주변'));
+        await tester.pumpAndSettle();
+        final badge = find.widgetWithText(WdTag, '저장한 코스');
+        final title = find.text('코스 테스트');
+        final runners = find.text('지금 3명 달리는 중');
+        expect(badge, findsOneWidget);
+        expect(runners, findsOneWidget);
+        expect(
+          tester.getTopLeft(badge).dx,
+          greaterThan(tester.getTopLeft(title).dx),
+        );
+        expect(tester.getSize(title).width, greaterThan(40));
+        if (scale == 1) {
+          expect(tester.getTopLeft(badge).dy, tester.getTopLeft(title).dy);
+        } else {
+          expect(
+            tester.getBottomRight(badge).dy,
+            lessThan(tester.getTopLeft(title).dy),
+          );
+        }
+        expect(
+          tester.getBottomRight(badge).dy,
+          lessThan(tester.getTopLeft(runners).dy),
+        );
+        expect(tester.takeException(), isNull);
+        await screenshot(tester, 'saved-${width.toInt()}-${scale.toInt()}x');
+      });
+    }
+  }
 
   testWidgets('running without a course clears the chosen course', (
     tester,
@@ -393,4 +558,49 @@ void main() {
     expect(find.text('C6'), findsOneWidget);
     expect(runs.selectedCourse, isNull);
   });
+}
+
+/// Keep list responses pending to verify the screen's loading state.
+class _DelayedCourseApi extends FakeCourseApi {
+  final gate = Completer<void>();
+
+  @override
+  Future<CourseListPage> listCourses({
+    required GeoPoint southWest,
+    required GeoPoint northEast,
+    CourseFilter filter = CourseFilter.none,
+    CourseSearchPick? pick,
+    CourseListSort sort = CourseListSort.initial,
+    CoursePeriod? period,
+    GeoPoint? origin,
+    String? cursor,
+  }) async {
+    await gate.future;
+    return super.listCourses(
+      southWest: southWest,
+      northEast: northEast,
+      filter: filter,
+      pick: pick,
+      sort: sort,
+      period: period,
+      origin: origin,
+      cursor: cursor,
+    );
+  }
+
+  @override
+  Future<BookmarkPage> bookmarks({
+    BookmarkSort sort = BookmarkSort.recent,
+    GeoPoint? origin,
+    String? cursor,
+  }) async {
+    await gate.future;
+    return super.bookmarks(sort: sort, origin: origin, cursor: cursor);
+  }
+
+  @override
+  Future<MyCoursePage> myCourses({String? cursor, int? size}) async {
+    await gate.future;
+    return super.myCourses(cursor: cursor, size: size);
+  }
 }
