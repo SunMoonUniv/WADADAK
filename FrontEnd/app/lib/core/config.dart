@@ -34,3 +34,15 @@ const realMap = bool.fromEnvironment('REAL_MAP', defaultValue: true);
 /// 네이버 지도(NCP Maps · Dynamic Map) Client ID. 앱 안에 들어가는 공개 값이다. Client Secret은 쓰지 않으며 앱·저장소 어디에도 두지 않는다.
 /// NCP 콘솔 Application에 앱 ID `com.wadadak.app`(Android 패키지 이름 · iOS Bundle ID)으로 등록했다.
 const naverMapClientId = '4jno8yckyz';
+
+/// 푸시 알림(F14)용 Firebase 앱 값(Firebase 프로젝트 `wadadak-511404`, Android 앱 `com.wadadak.app`).
+/// `google-services.json`에 든 값과 같다. 앱 안에 들어가는 공개 값이라 지도 Client ID처럼 그대로 둔다.
+/// 비밀은 서버의 서비스 계정 키뿐이다(deploy README 6번). 이 값만으로는 푸시를 보낼 수 없다.
+///
+/// - 파일 대신 여기 두어 Google 서비스 Gradle 플러그인 없이 연결한다(`FirebaseOptions`, push_service.dart).
+/// - API 키는 구글 클라우드 콘솔에서 Firebase API만 쓰도록 제한해 두었다(애플리케이션 제한은 없음: 팀원마다 디버그 서명이 달라서).
+/// - 지금은 Android만 연결한다. iOS는 APNs 키 등록과 함께 Apple 출시 때 붙인다.
+const firebaseApiKey = 'AIzaSyCh_YMiN-7dwLq4f4_hx8yooTz9R_tujNM';
+const firebaseAppId = '1:245489471522:android:f561560b7b827f4bd33a7b';
+const firebaseSenderId = '245489471522'; // 프로젝트 번호
+const firebaseProjectId = 'wadadak-511404';

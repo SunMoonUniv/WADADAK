@@ -3,6 +3,7 @@ import 'package:image_picker/image_picker.dart';
 
 import '../api/api_client.dart';
 import '../api/member_api_client.dart';
+import '../push/push_service.dart';
 import '../upload/photo_uploader.dart';
 import 'social_login.dart';
 import 'account_data_cleanup.dart';
@@ -110,9 +111,11 @@ class AuthController extends AsyncNotifier<AuthState> {
   }
 
   /// 기기의 토큰을 먼저 지운다. 서버의 리프레시 토큰 폐기가 실패해도 로그아웃은 끝난다.
+  /// 푸시 기기 토큰은 그보다 먼저 지운다. 로그인 토큰이 있어야 서버에서 지울 수 있다(실패해도 넘어간다).
   Future<void> logout() async {
     final storage = ref.read(tokenStorageProvider);
     final tokens = await storage.read();
+    if (tokens != null) await ref.read(pushServiceProvider).unregister();
     await storage.clear();
     state = const AsyncData(SignedOut());
     if (tokens == null) return;
@@ -143,6 +146,8 @@ class AuthController extends AsyncNotifier<AuthState> {
     } on Object {
       // 체중 캐시는 탈퇴 표시가 메모리에 남아 이번 실행에서는 다시 쓰이지 않는다
     }
+    // 서버는 탈퇴 회원에게 보내지 않는다. 기기 토큰도 버려 다음 계정이 새 토큰으로 시작한다
+    await ref.read(pushServiceProvider).unregister();
     await ref.read(tokenStorageProvider).clear();
     state = const AsyncData(SignedOut());
   }

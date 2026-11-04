@@ -80,6 +80,7 @@ FrontEnd/
 │     │  ├─ api/                        #   Dio · ApiResult 해석 · 서버 모듈별 클라이언트
 │     │  ├─ auth/                       #   로그인 상태 · 토큰 보안 저장 · 401 자동 갱신 · 소셜 로그인
 │     │  ├─ map/                        #   MapView · MapController (화면은 이것만 쓴다)
+│     │  ├─ push/                       #   푸시(F14) 기기 토큰 · 알림 받기 (Firebase 값이 없으면 꺼짐)
 │     │  ├─ location/ · permissions/     #   위치 조회/추적 · 권한/설정 안내
 │     │  └─ time/                       #   러닝용 OS 단조 시계
 │     └─ features/                      # Figma 디자인 페이지 섹션 단위
@@ -147,6 +148,17 @@ flutter test
   - Android 빌드: `app/android/gradle.properties`의 `android.overridePathCheck=true`로 이미 막아 두었다.
   - `flutter analyze`가 분석 서버 오류로 멈춘다. 대신 `dart analyze`를 쓴다.
 - 앱 ID `com.wadadak.app`으로 확정했고 카카오 콘솔에 등록했다(스토어 출시 후에는 바꿀 수 없다).
+
+## 푸시 알림
+
+F14 `내 코스 만료 임박`(D-7 · D-1 오전 9시)을 받는다. `core/push`가 Firebase를 감싸고, 앱 전체를 감싼 `PushBinding`(`lib/push_binding.dart`)이 화면에 잇는다.
+
+- 로그인하면(앱을 열 때 포함) FCM 토큰을 서버에 등록한다(`PUT /api/v1/notifications/tokens`). 알림 권한을 아직 묻지 않았으면 이때 한 번 묻는다(Android 13 이상). 로그아웃 · 탈퇴 때 서버에서 지우고 기기 토큰도 버린다.
+- 알림을 누르면 B1 코스 상세를 지금 화면 위에 연다(꺼진 앱 · 뒤에 있던 앱 모두). 앱을 보고 있을 때 온 알림은 아래 안내로 보이고 `보기`로 B1을 연다.
+- F4 `내 코스 만료 임박` 스위치는 서버 설정이다(`/api/v1/notifications/settings`). 바꾸는 즉시 저장하고, 실패하면 되돌린다.
+- Firebase 앱 값(프로젝트 `wadadak-511404`)은 `core/config.dart`에 들어 있어 따로 넘길 것이 없다. 앱 안에 들어가는 공개 값이다. `google-services.json`과 Google 서비스 Gradle 플러그인은 쓰지 않는다(`FirebaseOptions`로 직접 연결). Firebase 연결이 실패하면 푸시만 꺼지고 나머지 앱은 그대로다.
+- 서버가 실제로 보내려면 공용 서버에 같은 Firebase 프로젝트의 서비스 계정 키가 있어야 한다([deploy README 6번](../deploy/README.md#6-푸시-알림fcm)).
+- 지금은 Android만 켠다. iOS는 APNs 키 등록과 함께 Apple 출시 때 붙인다.
 
 ## 남은 단계
 

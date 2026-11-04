@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:wadadak/core/api/api_client.dart';
 import 'package:wadadak/core/api/course_api_client.dart';
 import 'package:wadadak/core/api/member_api_client.dart';
+import 'package:wadadak/core/api/notification_api_client.dart';
 import 'package:wadadak/core/api/ranking_api_client.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
@@ -1355,4 +1356,29 @@ class FakeDevicePermissions extends DevicePermissions {
 
   @override
   Future<void> openSettings() async => settingsOpened++;
+}
+
+/// 알림 서버. 설정은 메모리에 두고, 등록 · 삭제한 토큰을 적어 둔다.
+class FakeNotificationApi extends Fake implements NotificationApiClient {
+  bool expiringSoon = true;
+
+  /// 설정 저장이 실패한다.
+  bool failSave = false;
+  final registered = <(String, PushPlatform)>[];
+  final removed = <String>[];
+
+  @override
+  Future<bool> courseExpiringSoon() async => expiringSoon;
+
+  @override
+  Future<bool> changeCourseExpiringSoon(bool on) async {
+    if (failSave) throw const ApiException(ApiException.network, '연결 실패');
+    return expiringSoon = on;
+  }
+
+  @override
+  Future<void> registerToken(String token, PushPlatform platform) async => registered.add((token, platform));
+
+  @override
+  Future<void> removeToken(String token) async => removed.add(token);
 }
