@@ -83,6 +83,8 @@ class CourseDetailControllerTest {
         assertThat(markers.get(0).get("point").get("lat").asDouble()).isBetween(33.705, 33.71);
         assertThat(Instant.parse(detail.get("expiresAt").asString())).isEqualTo(EXPIRES_AT);
         assertThat(detail.get("creatorNickname").asString()).isEqualTo("러닝왕김");
+        // 고도 프로필은 등록 때 원본으로 만든다(B1-03). 원본이 없는 코스(사용자 지정 코스처럼)에는 없다
+        assertThat(detail.get("elevationProfile").isNull()).isTrue();
     }
 
     @Test

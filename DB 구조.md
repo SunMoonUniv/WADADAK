@@ -527,10 +527,11 @@ erDiagram
 | `run_record_id` | `UUID` | | 코스로 만든 러닝 기록 ID(run 모듈, FK 없음) |
 | `member_id` | `UUID` | | 등록한 회원 ID(member 모듈, FK 없음) |
 | `source_segments_json` | `TEXT` | | 앱이 보낸 원본 경로 조각(course-source `segments`) JSON. 점마다 위도·경도·정확도·고도·고도 정확도 |
+| `elevation_profile_json` | `TEXT` | O | 고도 프로필(B1-03) JSON. 누적 상승 `gainMeters`와 코스를 거리로 18칸 나눈 칸마다의 평균 고도 `samplesMeters`. 등록 때 `source_segments_json`으로 한 번 만들고, 고도가 부족하면 JSON `null`이다. 이 열을 넣기 전(2026-11-04)에 등록한 코스는 NULL이고 서버가 켜질 때 채운다 |
 
 - `gps_course_sources_run_record_uk`: `UNIQUE (run_record_id)`. 같은 러닝 기록은 한 번만 코스로 만든다(`COURSE-010`). 코스 행은 지워져도 `DELETED`로 남으므로 이 행도 지우지 않아, 코스가 지워지거나 만료돼도 그 기록은 다시 쓰지 않는다.
 - `gps_course_sources_member_id_idx`: `(member_id)`. 등록 한도 API의 `usedRunRecordIds`(B6·결과 화면 `이미 등록됨`)
-- `courses.route`는 점을 줄인 경로라 고도를 다시 만들 수 없다. 원본은 보류한 고도 프로필을 나중에 만들 때 쓰고 화면에는 쓰지 않는다. 크기가 커서 `courses`와 따로 둔다.
+- `courses.route`는 점을 줄인 경로라 고도를 다시 만들 수 없다. 원본은 고도 프로필을 만들 때 쓰고 화면에는 쓰지 않는다. 크기가 커서 `courses`와 따로 둔다. 기준은 정책 문서 제4부 4.1 `B1-03 고도 프로필`이다.
 
 #### `course.course_stats` — 코스 누적 통계
 

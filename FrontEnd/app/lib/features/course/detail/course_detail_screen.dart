@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -27,7 +29,7 @@ import 'course_run_bar.dart';
 /// 랭킹 · 고스트는 랭킹 API에서 받는다(B1-01).
 ///
 /// - 이 코스로 달리기는 코스 러닝(C6)으로, 고스트 대결은 선택 기간의 공개 상대 검증 후 기존 대결 준비로 간다.
-/// - 평균 페이스 · 현재 러너는 코스 API(코스 통계 F11)에서 받는다. 고도 프로필은 보류해서 GPS 코스에도 아직 없다(정책 문서 4.1 B1 범위).
+/// - 평균 페이스 · 현재 러너 · 고도 프로필(GPS 코스만, B1-03)은 코스 API에서 받는다.
 /// - 공유(B1-08)는 공유 링크를 정할 때까지 두지 않는다. 앱 바 오른쪽은 저장 북마크(B1-09)다.
 /// - 비공개 · 삭제된 코스는 열지 않는다(B1-04).
 class CourseDetailScreen extends ConsumerStatefulWidget {
@@ -259,9 +261,11 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
                     onTap: _onTab,
                     tabs: ['정보', reviewCount == null ? '리뷰' : '리뷰 ${formatCount(reviewCount)}', '랭킹'],
                   ),
-                  if (_tab == 0)
-                    _info(course, summary)
-                  else if (_tab == 1)
+                  if (_tab == 0) ...[
+                    // Figma B1처럼 러너 평가 위. 리뷰를 받지 못해도 보인다
+                    if (course.elevationProfile case final profile?) _ElevationProfileView(profile),
+                    _info(course, summary),
+                  ] else if (_tab == 1)
                     CourseReviewsTab(
                       summary: summary,
                       preview: preview,
@@ -343,7 +347,6 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
 
   /// 정보 탭. 리뷰가 있으면 러너 평가(항목 평균)다. 없으면 아무도 완주하지 않았을 때 아직 달린 사람이 없다는 안내(Figma B1-1),
   /// 완주가 있으면 리뷰 탭과 같은 안내다(B1-1의 `처음 완주하면`이 맞지 않는다, 4.1 B1-03 · Figma B1-1).
-  /// 고도 프로필은 GPS 코스만 보이는데(B1-03) 보류해서 아직 없다(정책 문서 4.1 B1 범위).
   /// 받아 둔 요약이 있으면 다시 받다 실패해도 그대로 보이고, 그 아래에 다시 시도를 준다(B8-02와 같다).
   Widget _info(CourseDetail course, AsyncValue<ReviewSummary> summary) {
     final value = summary.value;
@@ -433,6 +436,59 @@ String publicPeriodText(DateTime expiresAt, DateTime now) {
 
 /// 유지 기간 한 구간(등록일 포함 30일, 정책 공통 4).
 const retentionDays = 30;
+
+/// 고도 프로필(B1-03 · Figma B1). 코스를 거리로 18칸 나눈 칸마다의 평균 고도 막대와 누적 상승이다.
+/// Figma의 `최저 12m`은 두지 않는다. GPS 고도는 휴대폰마다 기준이 달라 해수면 높이와 수십 m 다를 수 있다(정책 문서 4.1 `B1-03 고도 프로필`).
+class _ElevationProfileView extends StatelessWidget {
+  const _ElevationProfileView(this.profile);
+
+  final ElevationProfile profile;
+
+  /// Figma B1 막대 영역 높이와 Figma에서 가장 낮은 막대 높이.
+  static const _height = 54.0, _lowest = 16.0;
+
+  /// 높낮이 차이가 이보다 작으면 이 차이로 보고 그린다. GPS 고도는 몇 m씩 흔들려, 평지가 언덕처럼 보이지 않게 한다(누적 상승 기준과 같은 10m).
+  static const _minSpanM = 10.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final samples = profile.samplesMeters;
+    final low = samples.reduce(math.min);
+    final span = math.max(samples.reduce(math.max) - low, _minSpanM);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      spacing: WdSpace.s16,
+      children: [
+        const WdSectionHeading('고도 프로필'),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          spacing: WdSpace.s4,
+          children: [
+            SizedBox(
+              height: _height,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                spacing: WdSpace.s3,
+                children: [
+                  for (final meters in samples)
+                    Expanded(
+                      child: Container(
+                        height: _lowest + (_height - _lowest) * (meters - low) / span,
+                        decoration: BoxDecoration(color: WdColors.chartBar, borderRadius: BorderRadius.circular(2)),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            // Figma B1처럼 오른쪽 끝
+            Text('누적 상승 +${profile.gainMeters}m',
+                textAlign: TextAlign.end, style: WdText.label12.copyWith(color: WdColors.muted)),
+          ],
+        ),
+      ],
+    );
+  }
+}
 
 /// 지도 위 현재 러너(Figma B1 `Live runners`). 흰 바탕 · 점 · `지금 3명 달리는 중`. 1명 이상이면 초록, 0명이면 회색 `달리는 러너 없음`.
 class _LiveRunners extends StatelessWidget {

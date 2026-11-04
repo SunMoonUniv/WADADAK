@@ -40,10 +40,13 @@ void main() {
 
   const route =[GeoPoint(37.5666, 126.9784), GeoPoint(37.5700, 126.9800), GeoPoint(37.5750, 126.9850)];
 
-  CourseDetail detail({String? nickname = '러닝왕김', DateTime? expiresAt, int? pace, int activeRunners = 0}) => CourseDetail(
+  /// [elevation]을 주면 GPS 코스다(고도 프로필은 GPS 코스만 있다, B1-03).
+  CourseDetail detail(
+          {String? nickname = '러닝왕김', DateTime? expiresAt, int? pace, int activeRunners = 0, ElevationProfile? elevation}) =>
+      CourseDetail(
         courseId: 'c1',
         name: '한강 야경 5K',
-        courseType: CourseType.custom,
+        courseType: elevation == null ? CourseType.custom : CourseType.gps,
         difficulty: Difficulty.medium,
         tags: const [CourseTag.flat, CourseTag.riverside, CourseTag.nightLight],
         distanceMeters: 5200,
@@ -53,6 +56,7 @@ void main() {
         averagePaceSecondsPerKm: pace,
         creatorNickname: nickname,
         activeRunners: activeRunners,
+        elevationProfile: elevation,
       );
 
   /// Figma B9: 312명 중 나 24위(27:14 · 5′14″/km · 09.08 · 상위 8%), 1위 24:12, 평균 28:40. 공개 고스트는 1위.
@@ -178,6 +182,7 @@ void main() {
     expect(text('1 km마다 지점 표시 · 총 5.2km'), findsOneWidget);
     expect(map.padding.top, greaterThan(0), reason: '경로를 위쪽 안내 문구 아래에 맞춘다');
 
+    expect(text('고도 프로필'), findsNothing, reason: '그려서 만든 코스에는 고도 프로필이 없다(B1-03)');
     expect(text('러너 평가'), findsOneWidget);
     for (final (label, value) in [('안전성', '4.7'), ('도로 상태', '4.4'), ('야간 조명', '4.8'), ('편의시설', '4.1')]) {
       expect(find.descendant(of: find.ancestor(of: text(label), matching: find.byType(Row)), matching: text(value)),
@@ -188,6 +193,44 @@ void main() {
     expect(rankings.summaryRequests, [RankingPeriod.all], reason: 'B1 고스트는 전체 기간(B1-07)');
     expect(find.byWidgetPredicate((widget) => widget is WdIcon && widget.icon == WdIcons.share), findsNothing,
         reason: '공유 링크를 정할 때까지 공유는 두지 않는다');
+  });
+
+  /// 고도 막대(Figma B1 `#C7D1BF` 막대).
+  List<double> barHeights(WidgetTester tester) => [
+        for (final bar in find
+            .byWidgetPredicate((widget) =>
+                widget is Container && widget.decoration is BoxDecoration &&
+                (widget.decoration! as BoxDecoration).color == WdColors.chartBar)
+            .evaluate())
+          bar.size!.height,
+      ];
+
+  testWidgets('shows the elevation bars and the climb of a GPS course above the runner ratings (B1-03 · Figma B1)',
+      (tester) async {
+    courses.details = {
+      'c1': detail(elevation: const ElevationProfile(86, [12, 20, 18, 34, 42, 28, 23, 15, 26, 37, 45, 31, 18, 12, 20, 28, 23, 15])),
+    };
+    await openDetail(tester);
+
+    expect(text('고도 프로필'), findsOneWidget);
+    expect(text('누적 상승 +86m'), findsOneWidget);
+    expect(find.textContaining('최저'), findsNothing, reason: 'GPS 고도 기준이 휴대폰마다 달라 최저 고도는 두지 않는다');
+    expect(tester.getTopLeft(text('고도 프로필')).dy, lessThan(tester.getTopLeft(text('러너 평가')).dy));
+    final heights = barHeights(tester);
+    expect(heights, hasLength(18));
+    // 가장 낮은 칸(12m)은 Figma의 가장 낮은 막대 16, 가장 높은 칸(45m)은 막대 영역 높이 54
+    expect(heights.first, moreOrLessEquals(16));
+    expect(heights[10], moreOrLessEquals(54));
+  });
+
+  testWidgets('does not make a nearly flat GPS course look hilly (B1-03)', (tester) async {
+    // GPS 고도가 3m 안에서 흔들리는 평지
+    courses.details = {'c1': detail(elevation: ElevationProfile(0, [30, 33, ...List.filled(16, 30.0)]))};
+    await openDetail(tester);
+
+    expect(text('누적 상승 +0m'), findsOneWidget);
+    // 10m 차이로 보고 그린다: 16 + 38 × 3 / 10
+    expect(barHeights(tester)[1], moreOrLessEquals(16 + 38 * 0.3));
   });
 
   testWidgets('shows the runners on the course now at the bottom right of the map (Figma B1 Live runners)', (tester) async {

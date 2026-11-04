@@ -59,6 +59,9 @@ class GpsRegistrationControllerTest {
     @Autowired
     JsonMapper jsonMapper;
 
+    @Autowired
+    ElevationProfileBackfill backfill;
+
     /** 2026-10-01 10:00 Asia/Seoul */
     @TestBean
     Clock clock;
@@ -160,6 +163,10 @@ class GpsRegistrationControllerTest {
         assertThat(stored.size()).isEqualTo(2);
         assertThat(stored.get(0).size()).isEqualTo(201);
         assertThat(stored.get(0).get(0).get("altitudeM").asDouble()).isEqualTo(31.5);
+        // 고도 프로필은 등록 때 한 번 만든다(B1-03). 평지라 누적 상승 0m, 막대 18개가 모두 같다
+        JsonNode elevation = data(detail(courseId)).get("elevationProfile");
+        assertThat(elevation.get("gainMeters").asInt()).isZero();
+        assertThat(elevation.get("samplesMeters")).hasSize(18).allSatisfy(m -> assertThat(m.asDouble()).isEqualTo(31.5));
         assertThat(events).contains(CourseCreatedEvent.class)
                 .matching(e -> e.courseId().equals(courseId) && e.creatorId().equals(memberId) && recordId.equals(e.sourceRunRecordId()));
 
@@ -167,6 +174,27 @@ class GpsRegistrationControllerTest {
         assertThat(quota).bodyJson().extractingPath("$.data.gps.remaining").isEqualTo(2);
         assertThat(quota).bodyJson().extractingPath("$.data.custom.remaining").isEqualTo(1);
         assertThat(quota).bodyJson().extractingPath("$.data.usedRunRecordIds[0]").isEqualTo(recordId.toString());
+    }
+
+    /** 고도 프로필 열을 넣기 전에 등록한 코스(열이 NULL)는 서버가 켜질 때 원본으로 채운다. 고도가 부족하면 JSON null을 써서 다시 보지 않는다 */
+    @Test
+    void fillsTheElevationProfileOfCoursesRegisteredBeforeIt() throws Exception {
+        UUID flat = UUID.fromString(data(register(UUID.randomUUID(), UUID.randomUUID(),
+                body(UUID.randomUUID(), "고도 채울 코스", gapped(126.9500)))).get("courseId").asString());
+        UUID noAltitude = UUID.fromString(data(register(UUID.randomUUID(), UUID.randomUUID(),
+                body(UUID.randomUUID(), "고도 없는 코스", gapped(126.9550)))).get("courseId").asString());
+        String registered = elevationJson(flat);
+        jdbcTemplate.update("UPDATE course.gps_course_sources SET elevation_profile_json = NULL WHERE course_id = ?", flat);
+        jdbcTemplate.update("UPDATE course.gps_course_sources SET elevation_profile_json = NULL, "
+                + "source_segments_json = replace(source_segments_json, '\"altitudeM\":31.5', '\"altitudeM\":null') WHERE course_id = ?", noAltitude);
+        assertThat(data(detail(flat)).get("elevationProfile").isNull()).as("아직 만들지 않았다").isTrue();
+
+        backfill.fill();
+
+        assertThat(elevationJson(flat)).isEqualTo(registered);
+        assertThat(data(detail(flat)).get("elevationProfile").get("samplesMeters")).hasSize(18);
+        assertThat(elevationJson(noAltitude)).isEqualTo("null");
+        assertThat(data(detail(noAltitude)).get("elevationProfile").isNull()).isTrue();
     }
 
     @Test
@@ -294,6 +322,15 @@ class GpsRegistrationControllerTest {
         return mvc.post().uri("/api/v1/courses/gps").with(jwt().jwt(j -> j.subject(memberId.toString())))
                 .header("Idempotency-Key", key.toString())
                 .contentType(MediaType.APPLICATION_JSON).content(body).exchange();
+    }
+
+    private MvcTestResult detail(UUID courseId) {
+        return mvc.get().uri("/api/v1/courses/" + courseId).with(jwt()).exchange();
+    }
+
+    private String elevationJson(UUID courseId) {
+        return jdbcTemplate.queryForObject("SELECT elevation_profile_json FROM course.gps_course_sources WHERE course_id = ?",
+                String.class, courseId);
     }
 
     private MvcTestResult quota(UUID memberId) {
