@@ -206,21 +206,28 @@ void main() {
     expect(list.request.queryParameters, {...area, ...filterQuery, 'sort': 'POPULAR'});
   });
 
-  test('sends the popular period only with the list, moving days before the stats began to that day', () async {
+  test('sends the popular period with the map, the region counts and the list, moving days before the stats began to that day',
+      () async {
     const southWest = GeoPoint(37.58, 127.01), northEast = GeoPoint(37.60, 127.03);
     const area = {'swLat': 37.58, 'swLng': 127.01, 'neLat': 37.60, 'neLng': 127.03};
+    final period = CoursePeriod(start: DateTime.utc(2026, 11, 2), end: DateTime.utc(2026, 12, 1));
+    const dates = {'startDate': '2026-11-02', 'endDate': '2026-12-01'};
     final list = _FakeServer({'content': <Object>[], 'nextCursor': null});
 
-    await client(list).listCourses(
-      southWest: southWest,
-      northEast: northEast,
-      period: CoursePeriod(start: DateTime.utc(2026, 11, 2), end: DateTime.utc(2026, 12, 1)),
-    );
-    expect(list.request.queryParameters, {...area, 'sort': 'POPULAR', 'startDate': '2026-11-02', 'endDate': '2026-12-01'});
+    await client(list).listCourses(southWest: southWest, northEast: northEast, period: period);
+    expect(list.request.queryParameters, {...area, 'sort': 'POPULAR', ...dates});
 
     // `전체`(시작일 없음) ~ 1개월 전. 통계를 쌓기 전 날짜는 그 시작일(2026-10-19)로 보낸다.
     await client(list).listCourses(southWest: southWest, northEast: northEast, period: CoursePeriod(end: DateTime.utc(2026, 9, 19)));
     expect(list.request.queryParameters, {...area, 'sort': 'POPULAR', 'endDate': '2026-10-19'});
+
+    // 기간마다 지도 · 지역별 코스 수에서도 빠지는 코스가 달라 같이 보낸다(FIL-09 · MAP-07).
+    final map = _FakeServer({'totalCount': 0, 'courses': <Object>[]});
+    await client(map).mapCourses(southWest: southWest, northEast: northEast, period: period);
+    expect(map.request.queryParameters, {...area, ...dates});
+    final regions = _FakeServer({'totalCount': 0, 'regions': <Object>[]});
+    await client(regions).regionCounts(southWest: southWest, northEast: northEast, level: RegionLevel.district, period: period);
+    expect(regions.request.queryParameters, {...area, ...dates, 'level': 'DISTRICT'});
   });
 
   test('sends no filter conditions when nothing is chosen', () async {

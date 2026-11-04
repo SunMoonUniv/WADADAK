@@ -328,7 +328,8 @@ class CourseSearchPick {
 /// 코스 목록 정렬(FIL-01). 칩 · 메뉴는 이 순서다(Figma A3). 처음은 [popular]다.
 enum CourseListSort {
   /// 도전 수(코스 러닝을 실제로 시작한 세션 수)가 많은 코스부터. 같으면 조회 수, 리뷰 수가 많은 코스, 그다음 최신순.
-  /// 기간([CoursePeriod], FIL-09)이 있으면 그 기간의 수로 정하고, 기간에 값이 없는 코스도 빠지지 않고 뒤에 온다.
+  /// 기간([CoursePeriod], FIL-09)이 있으면 그 기간의 수로 정하고, 그 기간에 도전 · 조회 · 리뷰가 없는 코스는 빠진다.
+  /// 그 기간에 등록한 코스는 남는다.
   popular('POPULAR', '인기순'),
 
   /// 전체 기간 평점(카드에 보이는 값)이 높은 코스부터. 같으면 리뷰 수가 많은 코스, 그다음 최신순. 리뷰가 없으면 맨 뒤.
@@ -421,7 +422,8 @@ class CourseFilter {
 }
 
 /// 인기순 기간(FIL-09, A3 기간 슬라이더). Asia/Seoul 날짜이고 두 날짜를 모두 포함한다. 날짜만 쓰고 시각은 보지 않는다.
-/// 목록 순서만 바꾸고 코스를 빼지 않아, 지도 · 지역별 코스 수 · 예상 코스 수와는 상관없다. 카드 값도 늘 전체 기간이다.
+/// 목록은 그 기간의 수로 정렬하고, 그 기간에 도전 · 조회 · 리뷰가 없는 코스는 지도 · 지역별 코스 수 · 목록 · 예상 코스 수에서
+/// 모두 빠진다(MAP-07). 그 기간에 등록한 코스는 값이 없어도 남고 뒤에 온다. 카드 값은 늘 전체 기간이다.
 @immutable
 class CoursePeriod {
   const CoursePeriod({this.start, required this.end});
@@ -776,39 +778,44 @@ class CourseApiClient {
       [for (final segment in segments) [for (final point in segment) point.toJson()]];
 
   /// 지도 범위(남서쪽·북동쪽 끝) 안 [filter]에 맞는 코스(A2·A5). A3의 예상 코스 수도 이것으로 센다.
-  /// [pick]이 있으면 G6에서 고른 검색어 · 지역의 코스만이다.
+  /// [pick]이 있으면 G6에서 고른 검색어 · 지역의 코스만이다. [period](인기순 기간)가 있으면 그 기간에 값이 없는 코스는 빠진다
+  /// (그 기간에 등록한 코스는 남는다).
   Future<CourseMap> mapCourses({
     required GeoPoint southWest,
     required GeoPoint northEast,
     CourseFilter filter = CourseFilter.none,
     CourseSearchPick? pick,
+    CoursePeriod? period,
   }) async {
     final data = await callApi(() => _dio.get('$_courses/map', queryParameters: {
           ..._area(southWest, northEast),
           ...filter._query(),
           ...?pick?._query(),
+          ...?period?._query(),
         }));
     return CourseMap.fromJson(data! as Map);
   }
 
-  /// 지도 범위 안 [filter] · [pick]에 맞는 코스를 출발점 지역별로 센다(A4 지도 축소).
+  /// 지도 범위 안 [filter] · [pick] · [period]에 맞는 코스를 출발점 지역별로 센다(A4 지도 축소).
   Future<RegionCounts> regionCounts({
     required GeoPoint southWest,
     required GeoPoint northEast,
     required RegionLevel level,
     CourseFilter filter = CourseFilter.none,
     CourseSearchPick? pick,
+    CoursePeriod? period,
   }) async {
     final data = await callApi(() => _dio.get('$_courses/map/regions', queryParameters: {
           ..._area(southWest, northEast),
           ...filter._query(),
           ...?pick?._query(),
+          ...?period?._query(),
           'level': level.apiName,
         }));
     return RegionCounts.fromJson(data! as Map);
   }
 
-  /// 지도 범위 안 코스 목록 한 쪽(A2 · A6). 범위 · 필터 · [pick]은 [mapCourses]와 같다(MAP-07).
+  /// 지도 범위 안 코스 목록 한 쪽(A2 · A6). 범위 · 필터 · [pick] · [period]는 [mapCourses]와 같다(MAP-07).
   /// 가까운순은 현재 위치 [origin]이 필요하다. [period]는 인기순에만 보낸다(FIL-09, 다른 정렬이면 COMMON-001).
   /// 다음 쪽은 앞 쪽의 [CourseListPage.nextCursor]를 [cursor]로 보내고, 범위 · 필터 · 정렬 · 기간 · 현재 위치는 첫 쪽과 같게 보낸다.
   Future<CourseListPage> listCourses({

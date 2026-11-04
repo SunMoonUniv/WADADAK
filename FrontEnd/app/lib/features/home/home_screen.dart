@@ -79,7 +79,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
   var _filter = CourseFilter.none;
   var _sort = CourseListSort.initial;
 
-  /// 인기순 기간(A3 기간 슬라이더, FIL-09). 인기순일 때만 있고 목록 순서만 바꾼다. 다른 정렬로 바꾸면 전체로 되돌린다.
+  /// 인기순 기간(A3 기간 슬라이더, FIL-09). 인기순일 때만 있다. 그 기간에 값이 없는 코스는 지도 · 지역별 코스 수 · 목록에서
+  /// 빠진다(그 기간에 등록한 코스는 남는다). 다른 정렬로 바꾸면 전체로 되돌린다.
   CoursePeriod? _period;
 
   /// G6에서 고른 검색어 · 지역(SEA-04 · SEA-07). 지도 · 지역별 코스 수 · 목록에 필터와 함께 건다.
@@ -402,10 +403,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (sort == _sort) return;
     if (sort == CourseListSort.nearest && await _locate() == null) return;
     if (!mounted) return;
-    setState(() {
-      _sort = sort;
-      _period = null;
-    });
+    setState(() => _sort = sort);
+    _setPeriod(null);
+  }
+
+  /// 인기순 기간을 바꾼다. 기간마다 빠지는 코스가 달라 지도 · 지역별 코스 수도 다시 받는다(FIL-09).
+  void _setPeriod(CoursePeriod? period) {
+    if (period == _period) return;
+    setState(() => _period = period);
+    final camera = _camera;
+    if (camera != null) _load(camera);
   }
 
   /// A3를 연다(A2-04 · A6-02). `코스 N개 보기`로 돌아오면 지도 · 목록에 적용한다.
@@ -420,7 +427,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _applyFilter(choice.filter);
     await _sortBy(choice.sort);
     // 가까운순을 고르다 위치를 못 받아 정렬이 그대로면 기간도 그대로 둔다.
-    if (mounted && _sort == choice.sort && _period != choice.period) setState(() => _period = choice.period);
+    if (mounted && _sort == choice.sort) _setPeriod(choice.period);
   }
 
   /// [filter]를 지도 · 지역별 코스 수 · 목록에 적용한다.
@@ -431,10 +438,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     if (camera != null) _load(camera);
   }
 
-  /// 필터 결과 0건의 `필터 초기화`(STA-04). A3 필터와 G6 조건을 함께 푼다.
+  /// 필터 결과 0건의 `필터 초기화`(STA-04). A3 필터 · 인기순 기간과 G6 조건을 함께 푼다. 정렬은 그대로다.
   void _resetFilter() {
     setState(() {
       _filter = CourseFilter.none;
+      _period = null;
       _pick = null;
     });
     final camera = _camera;
@@ -571,8 +579,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       final regionLevel = _pick == null && _coursesSpot == null ? _regionLevel(camera) : null;
       switch (regionLevel) {
         case null:
-          final map =
-              await api.mapCourses(southWest: area.southWest, northEast: area.northEast, filter: _filter, pick: _pick);
+          final map = await api.mapCourses(
+            southWest: area.southWest,
+            northEast: area.northEast,
+            filter: _filter,
+            pick: _pick,
+            period: _period,
+          );
           (courses, total) = (map.courses, map.totalCount);
         case final level:
           final counts = await api.regionCounts(
@@ -581,6 +594,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
             level: level,
             filter: _filter,
             pick: _pick,
+            period: _period,
           );
           (regions, total) = (counts.regions, counts.totalCount);
       }

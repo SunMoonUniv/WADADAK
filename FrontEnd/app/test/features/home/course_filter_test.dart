@@ -324,61 +324,99 @@ void main() {
     expect(selected(tester, filterChip()), isTrue, reason: '조건이 걸려 있다');
   });
 
-  /// FIL-09: 기간 슬라이더는 인기순일 때만 보이고 목록 순서만 바꾼다. 코스를 빼지 않아 예상 코스 수 · 지도는 그대로다.
-  testWidgets('the popular period changes only the list order and goes back to 전체 with another sort', (tester) async {
+  /// FIL-09: 기간 슬라이더는 인기순일 때만 보인다. 기간마다 빠지는 코스가 달라 기간이 바뀌면 예상 코스 수를 다시 세고,
+  /// 적용하면 지도 · 지역별 코스 수도 그 기간으로 다시 받는다. 다른 정렬로 바꾸면 전체로 돌아간다.
+  testWidgets('the popular period counts again, reloads the map and goes back to 전체 with another sort', (tester) async {
     await openHome(tester);
     await openFilter(tester);
     final scale = CoursePeriodScale.at(DateTime.now());
-    final counted = courses.mapRequests.length;
+    final period = scale.period(scale.oneMonth, scale.last);
     expect(find.text(scale.format(0, scale.last)), findsOneWidget, reason: '처음은 전체 ~ 오늘');
+    expect(courses.mapRequests.last.period, isNull);
 
-    // `1개월`을 누르면 그 눈금부터 오늘까지. 수는 다시 세지 않는다.
+    // `1개월`을 누르면 그 눈금부터 오늘까지. 그 기간으로 다시 센다.
     await tester.tap(find.text('1개월'));
+    await tester.pump();
+    expect(applyLabel(tester), CourseFilterScreen.countingLabel);
     await waitForCount(tester);
     expect(find.text(scale.format(scale.oneMonth, scale.last)), findsOneWidget);
-    expect(courses.mapRequests, hasLength(counted), reason: '기간은 코스를 빼지 않는다');
+    expect(courses.mapRequests.last.period, period);
     expect(applyLabel(tester), '코스 3개 보기');
 
     await apply(tester);
-    final period = scale.period(scale.oneMonth, scale.last);
     expect(courses.listRequests.last.sort, CourseListSort.popular);
     expect(courses.listRequests.last.period, period);
-    expect(courses.mapRequests, hasLength(counted), reason: '지도 · 코스 수는 다시 받지 않는다');
+    expect(courses.mapRequests.last.period, period, reason: '지도 · 코스 수도 그 기간으로 다시 받는다');
     expect(selected(tester, filterChip()), isTrue, reason: '전체 ~ 오늘이 아니면 검정');
 
-    // 다시 열면 고른 기간 그대로. 다른 정렬을 고르면 슬라이더가 숨고, 인기순으로 돌아오면 다시 보인다.
+    // 다시 열면 고른 기간 그대로. 다른 정렬을 고르면 슬라이더가 숨고 기간 없이 다시 센다. 인기순으로 돌아오면 다시 걸린다.
     await openFilter(tester);
     expect(find.text(scale.format(scale.oneMonth, scale.last)), findsOneWidget);
     await tester.tap(chip('평점순'));
-    await tester.pump();
+    await waitForCount(tester);
     expect(find.text('1개월'), findsNothing);
     expect(find.byType(RangeSlider), findsOneWidget, reason: '거리 슬라이더만');
+    expect(courses.mapRequests.last.period, isNull);
     await tester.tap(chip('인기순'));
-    await tester.pump();
+    await waitForCount(tester);
     expect(find.text(scale.format(scale.oneMonth, scale.last)), findsOneWidget);
+    expect(courses.mapRequests.last.period, period);
 
-    // 평점순으로 적용하면 기간은 전체로.
+    // 기간이 없는 정렬끼리는 수가 같아 다시 세지 않는다. 평점순으로 적용하면 기간은 전체로.
     await tester.tap(chip('평점순'));
-    await tester.pump();
+    await waitForCount(tester);
+    final counted = courses.mapRequests.length;
+    await tester.tap(chip('최신순'));
+    await tester.tap(chip('평점순'));
+    await waitForCount(tester);
+    expect(courses.mapRequests, hasLength(counted));
     await apply(tester);
     expect(courses.listRequests.last.sort, CourseListSort.rating);
     expect(courses.listRequests.last.period, isNull);
+    expect(courses.mapRequests.last.period, isNull, reason: '기간이 빠져 지도도 다시 받는다');
     expect(selected(tester, filterChip()), isFalse);
 
-    // 인기순으로 기간을 다시 걸고, 목록 칩으로 정렬을 바꾸면 기간은 전체로 돌아간다.
+    // 인기순으로 기간을 다시 걸고, 목록 칩으로 정렬을 바꾸면 기간은 전체로 돌아가고 지도도 다시 받는다.
     await openFilter(tester);
     await tester.tap(chip('인기순'));
     await tester.pump();
     await tester.tap(find.text('오늘'));
-    await tester.pump();
+    await waitForCount(tester);
     await apply(tester);
-    expect(courses.listRequests.last.period, scale.period(scale.last, scale.last), reason: '오늘 하루');
+    final today = scale.period(scale.last, scale.last);
+    expect(courses.listRequests.last.period, today, reason: '오늘 하루');
+    expect(courses.mapRequests.last.period, today);
     await tester.tap(chip('최신순'));
     await tester.pumpAndSettle();
+    expect(courses.mapRequests.last.period, isNull);
     await tester.tap(chip('인기순'));
     await tester.pumpAndSettle();
     expect(courses.listRequests.last.sort, CourseListSort.popular);
     expect(courses.listRequests.last.period, isNull);
+    expect(selected(tester, filterChip()), isFalse);
+  });
+
+  /// FIL-09 · STA-04: 그 기간에 남는 코스가 없으면 `조건에 맞는 코스가 없어요`이고, `필터 초기화`는 기간도 전체로 되돌린다.
+  testWidgets('a popular period with no course in it shows the filtered empty state, and 필터 초기화 brings back 전체',
+      (tester) async {
+    await openHome(tester);
+    // 서버가 그 기간에 값이 있는 코스가 없다고 답한다(가짜 API는 기간을 보지 않아 비워 둔다).
+    courses
+      ..onMap = []
+      ..listed = [];
+    await openFilter(tester);
+    await tester.tap(find.text('1개월'));
+    await waitForCount(tester);
+    expect(applyLabel(tester), '코스 0개 보기');
+    await apply(tester);
+
+    expect(find.text(CourseListSheet.filteredEmptyMessage), findsOneWidget);
+    expect(find.text(CourseListSheet.emptyMessage), findsNothing);
+    await tester.tap(find.text('필터 초기화'));
+    await tester.pumpAndSettle();
+    expect(courses.listRequests.last.sort, CourseListSort.popular, reason: '정렬은 그대로');
+    expect(courses.listRequests.last.period, isNull);
+    expect(courses.mapRequests.last.period, isNull);
     expect(selected(tester, filterChip()), isFalse);
   });
 

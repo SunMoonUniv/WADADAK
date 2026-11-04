@@ -355,6 +355,7 @@ class FakeCourseApi implements CourseApiClient {
   ApiException? mapError;
 
   /// 있으면 끝날 때까지 지도 범위 코스 응답을 미룬다. 끝난 뒤의 [mapError] · [onMap]으로 답한다.
+  /// 인기순 기간은 받아 두기만 하고 코스를 거르지 않는다.
   Completer<void>? mapGate;
   final mapRequests =
       <
@@ -363,6 +364,7 @@ class FakeCourseApi implements CourseApiClient {
           GeoPoint northEast,
           CourseFilter filter,
           CourseSearchPick? pick,
+          CoursePeriod? period,
         })
       >[];
 
@@ -377,6 +379,7 @@ class FakeCourseApi implements CourseApiClient {
           RegionLevel level,
           CourseFilter filter,
           CourseSearchPick? pick,
+          CoursePeriod? period,
         })
       >[];
 
@@ -606,12 +609,14 @@ class FakeCourseApi implements CourseApiClient {
     required GeoPoint northEast,
     CourseFilter filter = CourseFilter.none,
     CourseSearchPick? pick,
+    CoursePeriod? period,
   }) async {
     mapRequests.add((
       southWest: southWest,
       northEast: northEast,
       filter: filter,
       pick: pick,
+      period: period,
     ));
     if (mapGate case final gate?) await gate.future;
     if (mapError != null) throw mapError!;
@@ -644,6 +649,7 @@ class FakeCourseApi implements CourseApiClient {
     required RegionLevel level,
     CourseFilter filter = CourseFilter.none,
     CourseSearchPick? pick,
+    CoursePeriod? period,
   }) async {
     regionRequests.add((
       southWest: southWest,
@@ -651,6 +657,7 @@ class FakeCourseApi implements CourseApiClient {
       level: level,
       filter: filter,
       pick: pick,
+      period: period,
     ));
     if (regionsError != null) throw regionsError!;
     return RegionCounts(

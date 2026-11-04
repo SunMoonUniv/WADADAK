@@ -254,36 +254,48 @@ class CourseListControllerTest {
     }
 
     /**
-     * 인기순 기간(FIL-09)은 그 기간(두 날짜 포함)의 도전 수 · 조회 수 · 리뷰 수로 정렬한다.
-     * 기간에 값이 없는 코스도 빠지지 않고 뒤에 오고, 지도 코스 수는 그대로다.
+     * 인기순 기간(FIL-09)은 그 기간(두 날짜 포함)의 도전 수 · 조회 수 · 리뷰 수로 정렬하고, 그 기간에 셋 다 없는 코스는 뺀다.
+     * 그 기간에 등록한 코스(등록일, Asia/Seoul)는 셋 다 없어도 남고 뒤에 온다. 지도 · 지역별 코스 수(예상 코스 수)도 같은 코스만
+     * 센다(MAP-07). 기간이 없으면(전체) 빼지 않는다.
      */
     @Test
-    void popularInAPeriodSortsByThatPeriodWithoutDroppingCourses() throws Exception {
+    void popularInAPeriodSortsByThatPeriodAndKeepsOnlyCoursesUsedOrRegisteredInIt() throws Exception {
         UUID popularBefore = insert(33.721, 126.301, NOW.plusSeconds(30));
         UUID twoInPeriod = insert(33.722, 126.302, NOW);
         UUID oneWithViews = insert(33.723, 126.303, NOW);
         UUID oneOnEndDay = insert(33.724, 126.304, NOW);
         UUID nothing = insert(33.725, 126.305, NOW.minusSeconds(30));
+        UUID canceledOut = insert(33.726, 126.306, NOW);
+        // 아무도 쓰지 않은 새 코스. UTC 날짜로는 하루 앞이라 등록일을 Asia/Seoul로 보는지도 가른다
+        UUID newOnStartDay = insert(33.727, 126.307, Instant.parse("2026-10-13T15:30:00Z"));  // 10/14 00:30
+        UUID newAfterEndDay = insert(33.728, 126.308, Instant.parse("2026-10-16T15:30:00Z")); // 10/17 00:30
         stats(popularBefore, 100, 0, 0);
         daily(popularBefore, "2026-10-13", 100, 0, 0);       // 시작일 전날
         daily(twoInPeriod, "2026-10-14", 2, 0, 0);           // 시작일 당일
         daily(oneWithViews, "2026-10-15", 1, 5, 0);
         daily(oneWithViews, "2026-10-17", 50, 0, 0);         // 종료일 다음 날
         daily(oneOnEndDay, "2026-10-16", 1, 1, 0);           // 종료일 당일
+        daily(canceledOut, "2026-10-15", 0, 0, 0);           // 리뷰를 쓰고 지워 0이 된 날
         String area = "swLat=33.720&swLng=126.300&neLat=33.730&neLng=126.310";
+        String period = "&startDate=2026-10-14&endDate=2026-10-16";
 
-        assertThat(allPages(area + "&sort=POPULAR&size=2&startDate=2026-10-14&endDate=2026-10-16"))
-                .containsExactly(twoInPeriod, oneWithViews, oneOnEndDay, popularBefore, nothing);
-        // 시작일만: 10/16부터 oneWithViews는 50, oneOnEndDay는 1
+        assertThat(allPages(area + "&sort=POPULAR&size=2" + period))
+                .containsExactly(twoInPeriod, oneWithViews, oneOnEndDay, newOnStartDay);
+        // 시작일만: 10/16부터 oneWithViews는 50, oneOnEndDay는 1, newAfterEndDay는 그 뒤에 등록
         assertThat(ids(data(list(area + "&sort=POPULAR&startDate=2026-10-16"))))
-                .containsExactly(oneWithViews, oneOnEndDay, popularBefore, twoInPeriod, nothing);
-        // 종료일만: 10/13까지는 popularBefore만
-        assertThat(ids(data(list(area + "&sort=POPULAR&endDate=2026-10-13"))).getFirst()).isEqualTo(popularBefore);
-        // 기간이 없으면 누적 통계다
-        assertThat(ids(data(list(area + "&sort=POPULAR"))).getFirst()).isEqualTo(popularBefore);
-        // 기간은 순서만 바꾼다. 지도 코스 수(예상 코스 수)는 그대로다
+                .containsExactly(oneWithViews, oneOnEndDay, newAfterEndDay);
+        // 종료일만: 10/13까지는 popularBefore가 먼저고, 그때까지 등록한 나머지 코스는 값이 없어도 남는다
+        assertThat(ids(data(list(area + "&sort=POPULAR&endDate=2026-10-13"))))
+                .hasSize(6).doesNotContain(newOnStartDay, newAfterEndDay).first().isEqualTo(popularBefore);
+        // 기간이 없으면 누적 통계이고 코스를 빼지 않는다
+        assertThat(ids(data(list(area + "&sort=POPULAR")))).hasSize(8).first().isEqualTo(popularBefore);
+        // 지도 · 지역별 코스 수도 같은 코스만 센다
+        assertThat(data(mvc.get().uri("/api/v1/courses/map?" + area + period).with(jwt()).exchange()).get("totalCount").asInt())
+                .isEqualTo(4);
         assertThat(data(mvc.get().uri("/api/v1/courses/map?" + area).with(jwt()).exchange()).get("totalCount").asInt())
-                .isEqualTo(5);
+                .isEqualTo(8);
+        assertThat(data(mvc.get().uri("/api/v1/courses/map/regions?level=DISTRICT&" + area + period).with(jwt()).exchange())
+                .get("totalCount").asInt()).isEqualTo(4);
     }
 
     @Test

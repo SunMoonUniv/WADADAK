@@ -152,6 +152,9 @@ class CourseMapControllerTest {
         assertBadRequest(find(area + "&minDistanceMeters=5000&maxDistanceMeters=3000"));
         assertBadRequest(find(area + "&minDistanceMeters=-1"));
         assertBadRequest(find(area + "&difficulties=VERY_HARD"));
+        // 인기순 기간은 시작일 ≤ 종료일
+        assertBadRequest(find(area + "&startDate=2026-10-02&endDate=2026-10-01"));
+        assertBadRequest(regions(area + "&level=CITY&startDate=2026-10-02&endDate=2026-10-01"));
     }
 
     @Test

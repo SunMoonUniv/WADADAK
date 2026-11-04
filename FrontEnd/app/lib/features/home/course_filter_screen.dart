@@ -27,8 +27,9 @@ typedef CourseFilterRequest = ({
 typedef CourseFilterChoice = ({CourseFilter filter, CourseListSort sort, CoursePeriod? period});
 
 /// A3 코스 필터. 정렬(인기순이면 기간 슬라이더도) · 거리 · 난이도 · 최소 평점 · 코스 태그 · 코스 유형을 고른다.
-/// 필터를 바꿀 때마다 약 300ms 뒤 지금 지도 범위의 예상 코스 수를 다시 센다(FIL-07).
-/// 정렬 · 기간은 순서만 바꿔 수가 같아 다시 세지 않는다.
+/// 필터 · 인기순 기간을 바꿀 때마다 약 300ms 뒤 지금 지도 범위의 예상 코스 수를 다시 센다(FIL-07). 기간에 값이 없는 코스는
+/// 빠진다(그 기간에 등록한 코스는 남는다, FIL-09). 정렬은 순서만 바꿔 다시 세지 않지만, 인기순과 다른 정렬 사이를 오가 기간이 걸리거나
+/// 빠지면 다시 센다.
 /// 고르는 동안은 홈에 적용하지 않고 `코스 N개 보기`를 누르면 확정해 돌려준다. 뒤로 가면 버린다.
 class CourseFilterScreen extends ConsumerStatefulWidget {
   const CourseFilterScreen({super.key, required this.request, this.now = DateTime.now});
@@ -118,7 +119,7 @@ class _CourseFilterScreenState extends ConsumerState<CourseFilterScreen> {
   /// 인기순 기간. 인기순이 아니거나 전체 ~ 오늘이면 null.
   CoursePeriod? get _period => _sort == CourseListSort.popular ? _periods.period(_periodStart, _periodEnd) : null;
 
-  /// 조건을 바꾸고 예상 코스 수를 다시 센다. 정렬 · 기간은 수가 같아 [setState]만 한다.
+  /// 조건을 바꾸고 예상 코스 수를 다시 센다.
   void _edit(VoidCallback change) {
     setState(() {
       change();
@@ -133,9 +134,13 @@ class _CourseFilterScreenState extends ConsumerState<CourseFilterScreen> {
     final area = widget.request.area;
     if (!_counting) setState(() => _counting = true);
     try {
-      final map = await ref
-          .read(courseApiClientProvider)
-          .mapCourses(southWest: area.southWest, northEast: area.northEast, filter: _filter, pick: widget.request.pick);
+      final map = await ref.read(courseApiClientProvider).mapCourses(
+            southWest: area.southWest,
+            northEast: area.northEast,
+            filter: _filter,
+            pick: widget.request.pick,
+            period: _period,
+          );
       if (!mounted || request != _countRequest) return;
       setState(() {
         _count = map.totalCount;
@@ -171,7 +176,16 @@ class _CourseFilterScreenState extends ConsumerState<CourseFilterScreen> {
     _periodEnd = range.$2;
   }
 
-  void _pickPeriod((int, int) range) => setState(() => _setPeriod(range));
+  void _pickPeriod((int, int) range) {
+    if (range != (_periodStart, _periodEnd)) _edit(() => _setPeriod(range));
+  }
+
+  /// 정렬은 수를 바꾸지 않는다. 인기순과 다른 정렬 사이를 오가 기간이 걸리거나 빠질 때만 다시 센다(FIL-09).
+  void _sortBy(CourseListSort sort) {
+    final period = _period;
+    setState(() => _sort = sort);
+    if (_period != period) _edit(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -189,7 +203,7 @@ class _CourseFilterScreenState extends ConsumerState<CourseFilterScreen> {
           _section('정렬', [
             _chips([
               for (final sort in CourseListSort.values)
-                _chip(sort.label, selected: _sort == sort, onTap: () => setState(() => _sort = sort)),
+                _chip(sort.label, selected: _sort == sort, onTap: () => _sortBy(sort)),
             ]),
             // 기간 슬라이더(FIL-09)는 인기순일 때만. Figma A3: 눈금 글자 · 슬라이더 · 고른 날짜.
             if (_sort == CourseListSort.popular) ...[
