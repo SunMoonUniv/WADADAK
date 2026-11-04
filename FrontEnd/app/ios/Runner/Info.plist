@@ -13,9 +13,9 @@
 	<key>NSMotionUsageDescription</key>
 	<string>걸음 센서로 케이던스(분당 걸음 수)를 측정해요.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>리뷰와 프로필에 올릴 사진을 골라요.</string>
+	<string>리뷰와 프로필, 러닝 기록 공유에 쓸 사진을 골라요.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>리뷰와 프로필에 올릴 사진을 찍어요.</string>
+	<string>리뷰와 프로필, 러닝 기록 공유에 쓸 사진을 찍어요.</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

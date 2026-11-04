@@ -8,6 +8,7 @@ import 'free_run_live_view.dart';
 import 'ghost_result_entry_screen.dart';
 import 'run_pace_bars.dart';
 import 'run_segment_analysis_screen.dart';
+import 'run_share_screen.dart';
 
 /// Figma D1 / D1-1 / D1-2. Measured values and the server verdict remain authoritative.
 class FreeRunResultView extends StatelessWidget {
@@ -70,9 +71,7 @@ class FreeRunResultView extends StatelessWidget {
         action: WdAppBarAction.icon(
           WdIcons.share,
           semanticLabel: '러닝 결과 공유',
-          onTap: () => ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('결과 공유 기능은 준비 중이에요.'))),
+          onTap: () => showRunShare(context, run),
         ),
       ),
       body: SingleChildScrollView(
