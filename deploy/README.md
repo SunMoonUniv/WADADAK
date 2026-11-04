@@ -16,7 +16,7 @@ main push ─► backend.yml
 ```
 
 - 주소: `https://api.leedohyunn8n.shop` · 상태 [`/actuator/health`](https://api.leedohyunn8n.shop/actuator/health) · Swagger [`/swagger-ui.html`](https://api.leedohyunn8n.shop/swagger-ui.html)
-- 비밀값(DB 비밀번호 · JWT 키 · 사진 저장소 비밀번호 · 터널 토큰)은 GitHub Secrets에만 둔다. 서버 PC에는 비밀값 파일이 없다.
+- 비밀값(DB 비밀번호 · JWT 키 · 사진 저장소 비밀번호 · 터널 토큰 · FCM 키)은 GitHub Secrets에만 둔다. 서버 PC에는 비밀값 파일이 없다.
 - `prod` 프로필로 뜬다(`compose.yaml`의 `SPRING_PROFILES_ACTIVE`). 스텁(`app.stub.*: true`)이나 가짜 소셜 검증이 켜져 있으면 `StubGuard`가 기동을 막는다. 소셜 로그인은 실제 검증이다.
 - 사진 저장소는 S3 호환 RustFS다(개발 정책 7장 사진 업로드). 앱이 업로드 폼으로 직접 올리고, 사진은 로그인 없이 받는다(객체 받기만 허용, 목록은 막음). 버킷 `wadadak`과 공개 읽기 설정은 첫 업로드 때 서버가 만든다.
 - 서버 DB는 개발용 DB(`BackEnd/compose.yaml`, 5433)와 따로다. 서버 PC에서 개발해도 서로 겹치지 않는다.
@@ -79,6 +79,7 @@ mkdir C:\actions-runner-wadadak; cd C:\actions-runner-wadadak
 | `JWT_PUBLIC_KEY` | 공개키 PEM을 base64 한 줄로(아래 명령) |
 | `STORAGE_SECRET_KEY` | 사진 저장소 비밀번호. 무작위 문자열(`openssl rand -hex 24`). 저장소와 서버가 같이 받는다. 바꾸면 저장소 계정도 바뀐다 |
 | `TUNNEL_TOKEN` | Cloudflare 터널 토큰(5번). 없으면 터널 없이 뜬다 |
+| `FCM_SERVICE_ACCOUNT` | 푸시(FCM) 서비스 계정 키 JSON을 base64 한 줄로(6번). 없으면 서버는 뜨고 푸시만 로그로 남긴다 |
 
 JWT 키 만들기(Git Bash). 출력한 두 줄을 Secrets에 넣고 파일은 지운다:
 
@@ -111,6 +112,21 @@ Actions → Backend CI → Run workflow(main). deploy 작업이 통과하면 서
    - 한 단계 하위 도메인으로 둔다. Cloudflare 기본 인증서는 `a.b.leedohyunn8n.shop`을 덮지 않는다.
    - 사진도 같은 방법으로 하나 더 추가한다: Subdomain `files`, Service URL `http://storage:9000`
 6. `https://api.leedohyunn8n.shop/actuator/health`가 `{"status":"UP"}`, `https://files.leedohyunn8n.shop/health`가 `"status":"ok"`이면 끝. 오류 1033은 터널이 연결되지 않은 것(cloudflared가 꺼짐), 502는 Service URL이 틀렸거나 backend가 꺼진 것이다.
+
+### 6. 푸시 알림(FCM)
+서버가 알림(F14, 코스 만료 임박)을 휴대폰에 보내려면 Firebase 서비스 계정 키가 있어야 한다. 키가 없으면 알림은 만들어지고 발송 기록도 남지만 기기에는 가지 않는다(서버 로그에 `FCM 서비스 계정 키가 없어` 경고).
+
+1. Firebase 프로젝트는 `wadadak-511404`다(기존 Google Cloud 프로젝트에 Firebase를 붙였다). 새로 만들 때는 [Firebase 콘솔](https://console.firebase.google.com) → 프로젝트 만들기 → `Google Cloud 프로젝트에 Firebase 추가`.
+2. Android 앱 `com.wadadak.app`을 등록해 두었고, 그 값은 앱 `core/config.dart`에 있다([FrontEnd README](../FrontEnd/README.md#푸시-알림)). 앱 등록 화면의 Gradle 플러그인 · SDK 추가 단계는 건너뛴다(Flutter 패키지가 대신한다). 다시 만들면 `google-services.json`의 값으로 config.dart를 바꾼다.
+3. 프로젝트 설정 → 서비스 계정 → **새 비공개 키 생성**으로 JSON 파일을 받는다.
+4. Git Bash에서 한 줄로 바꿔 Secrets의 `FCM_SERVICE_ACCOUNT`에 넣고 파일은 지운다:
+   ```sh
+   base64 -w0 key.json; echo   # → FCM_SERVICE_ACCOUNT
+   rm key.json
+   ```
+5. 수동 배포를 돌린다. 서버 로그에 `푸시를 FCM으로 보낸다`가 보이면 끝. 키가 잘못됐으면 서버가 뜨지 않아 배포가 실패한다(조용히 못 보내는 것보다 낫다).
+
+- 키는 저장소에 커밋하지 않는다. 키가 새면 서비스 계정 화면에서 그 키를 지우고 새로 만든다.
 
 ## 운영
 

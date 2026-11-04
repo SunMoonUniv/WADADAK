@@ -14,6 +14,7 @@ import 'package:go_router/go_router.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:wadadak/core/api/api_client.dart';
 import 'package:wadadak/core/api/member_api_client.dart';
+import 'package:wadadak/core/api/notification_api_client.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/features/my/settings_screen.dart';
 import 'package:wadadak/features/run/application/audio_guide.dart';
@@ -109,6 +110,7 @@ void main() {
   late MemoryTokenStorage tokens;
   late _LocalStore store;
   late FakeDevicePermissions permissions;
+  late FakeNotificationApi notifications;
   final capture = GlobalKey();
 
   /// E3(글자만) 위에 F4를 연다. 닉네임을 누르면 F6(글자만)으로 간다.
@@ -164,6 +166,7 @@ void main() {
           memberApiClientProvider.overrideWithValue(members),
           tokenStorageProvider.overrideWithValue(tokens),
           devicePermissionsProvider.overrideWithValue(permissions),
+          notificationApiClientProvider.overrideWithValue(notifications),
         ],
         child: RepaintBoundary(
           key: capture,
@@ -191,6 +194,7 @@ void main() {
     );
     store = _LocalStore();
     permissions = FakeDevicePermissions();
+    notifications = FakeNotificationApi();
     PackageInfo.setMockInitialValues(
       appName: '와다닥',
       packageName: 'com.wadadak.app',
@@ -335,8 +339,33 @@ void main() {
           .removeCurrentSnackBar();
       await tester.pumpAndSettle();
     }
-    // 알림 기능이 없어 만료 임박 스위치는 잠겨 있다
-    expect(toggle(tester, '내 코스 만료 임박').onChanged, isNull);
+  });
+
+  testWidgets('course expiring soon shows the server value and saves on toggle', (tester) async {
+    notifications.expiringSoon = false;
+    await openSettings(tester);
+
+    expect(toggle(tester, '내 코스 만료 임박').value, isFalse);
+    // 알림 권한이 꺼져 있으면 받을 수 없다고 알린다(FakeDevicePermissions는 위치만 허용)
+    expect(find.textContaining('휴대폰 알림 권한이 꺼져 있어'), findsOneWidget);
+
+    toggle(tester, '내 코스 만료 임박').onChanged!(true);
+    await tester.pumpAndSettle();
+
+    expect(notifications.expiringSoon, isTrue);
+    expect(toggle(tester, '내 코스 만료 임박').value, isTrue);
+  });
+
+  testWidgets('course expiring soon goes back when saving fails', (tester) async {
+    permissions.allowed = {...permissions.allowed, AppPermission.notification};
+    notifications.failSave = true;
+    await openSettings(tester);
+
+    expect(find.text('등록한 코스가 만료되기 7일 전 · 1일 전에 알려 드려요.'), findsOneWidget);
+    toggle(tester, '내 코스 만료 임박').onChanged!(false);
+    await tester.pumpAndSettle();
+
+    expect(toggle(tester, '내 코스 만료 임박').value, isTrue);
   });
 
   testWidgets('the terms row opens F7', (tester) async {

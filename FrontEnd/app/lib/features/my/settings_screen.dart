@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../../core/api/member_api_client.dart';
+import '../../core/api/notification_api_client.dart';
 import '../../core/auth/auth_controller.dart';
 import '../../core/error_message.dart';
 import '../../routes.dart';
@@ -44,6 +45,12 @@ class DevicePermissions {
 
 final devicePermissionsProvider = Provider<DevicePermissions>((_) => const DevicePermissions());
 
+/// F4 `내 코스 만료 임박`(서버 저장). 못 받으면 스위치를 잠근다.
+final courseExpiringSoonProvider = FutureProvider.autoDispose<bool>(
+  (ref) => ref.watch(notificationApiClientProvider).courseExpiringSoon(),
+  retry: (_, _) => null,
+);
+
 /// 앱 버전(F4 · F7). 못 읽으면 화면에 `—`로 둔다.
 final appVersionProvider = FutureProvider<String>(
   (_) async => (await PackageInfo.fromPlatform()).version,
@@ -62,8 +69,9 @@ final appVersionProvider = FutureProvider<String>(
 ///   보이기만 하고 누르면 준비 중 안내. 거리 단위는 km 고정이라 뺐다.
 /// - 약관 및 개인정보 처리방침은 F7 약관 및 정책을 연다.
 /// - 회원 탈퇴는 확인 창 하나로 묻고 바로 탈퇴한다(`DELETE /members/me`). 끝나면 로그인 화면으로 간다(2026-11-02 사용자 결정).
-/// - 내 코스 만료 임박은 알림 기능(F14)이 없어 꺼진 채 잠근다.
 /// (2026-10-30 사용자 결정)
+/// - 내 코스 만료 임박(F14)은 바꾸는 즉시 서버에 저장한다(`PUT /notifications/settings`). 실패하면 되돌린다.
+///   휴대폰 알림 권한이 꺼져 있으면 켜 두어도 받지 못한다고 줄 아래에 알린다.
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
@@ -79,6 +87,10 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool? _infoPublic, _searchable;
   bool _savingSettings = false;
   bool _savingRunSettings = false;
+
+  /// 서버에 저장한(또는 저장 중인) 만료 임박 알림. 없으면 서버에서 받은 값을 쓴다.
+  bool? _expiringSoon;
+  bool _savingNotification = false;
 
   /// 탈퇴 요청 중. 두 번 누르지 못하게 줄을 잠근다.
   bool _withdrawing = false;
@@ -164,6 +176,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
   }
 
+  Future<void> _setExpiringSoon(bool on) async {
+    final before = _expiringSoon;
+    setState(() {
+      _expiringSoon = on;
+      _savingNotification = true;
+    });
+    try {
+      final saved = await ref.read(notificationApiClientProvider).changeCourseExpiringSoon(on);
+      if (mounted) setState(() => _expiringSoon = saved);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _expiringSoon = before);
+      showError(context, e);
+    } finally {
+      if (mounted) setState(() => _savingNotification = false);
+    }
+  }
+
   Future<void> _editVoice(RunController runs) async {
     final member = runs.currentOwner;
     if (_savingRunSettings || member == null) return;
@@ -221,6 +251,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final searchable = _searchable ?? me?.profileSearchable;
     // 내 정보를 받기 전이나 저장하는 동안은 공개 여부를 바꾸지 못한다
     final canSave = me != null && !_savingSettings;
+    final expiringSoon = _expiringSoon ?? ref.watch(courseExpiringSoonProvider).value;
     String? granted(AppPermission p) => switch (_permissions?[p]) {
       true => '허용됨',
       false => '허용 안 함',
@@ -283,7 +314,16 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             ),
           ]),
           const SettingsHeading('알림'),
-          const SettingsCard([SettingsRow('내 코스 만료 임박', toggle: false, help: '알림 기능이 준비되면 켤 수 있어요.')]),
+          SettingsCard([
+            SettingsRow(
+              '내 코스 만료 임박',
+              toggle: expiringSoon ?? false,
+              onToggle: expiringSoon != null && !_savingNotification ? _setExpiringSoon : null,
+              help: _permissions?[AppPermission.notification] == false
+                  ? '휴대폰 알림 권한이 꺼져 있어 받을 수 없어요.\n위 권한의 알림을 눌러 켜 주세요.'
+                  : '등록한 코스가 만료되기 7일 전 · 1일 전에 알려 드려요.',
+            ),
+          ]),
           const SettingsHeading('공개 여부'),
           SettingsCard([
             SettingsRow(
