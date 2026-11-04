@@ -101,7 +101,8 @@ class RegistrationService {
         Course course = courseRepository.save(Course.registerGps(memberId, name, request.difficulty(), request.tagsOrEmpty(),
                 placement.route(), generated.distanceMeters(), placement.emdCode(), Retention.initialExpiresAt(today)));
         gpsSourceRepository.save(new GpsCourseSource(course.getId(), request.sourceRunRecordId(), memberId,
-                jsonMapper.writeValueAsString(request.segments())));
+                jsonMapper.writeValueAsString(request.segments()),
+                jsonMapper.writeValueAsString(ElevationProfile.of(request.segments()))));
         requestRepository.save(new RegistrationRequest(memberId, idempotencyKey, course.getId()));
         events.publishEvent(new CourseCreatedEvent(UuidV7.create(), clock.instant(), course.getId(), memberId,
                 request.sourceRunRecordId()));

@@ -107,6 +107,34 @@ void main() {
     expect(course.activeRunners, 3);
   });
 
+  test('reads the elevation profile of a GPS course detail, and none for a drawn one (B1-03)', () async {
+    Map<String, Object?> detail(Object? elevationProfile) => {
+          'courseId': 'c1',
+          'name': '성북천 벚꽃길 3K',
+          'courseType': 'GPS',
+          'difficulty': 'EASY',
+          'tags': ['RIVERSIDE'],
+          'distanceMeters': 3412,
+          'route': [start.toJson(), end.toJson()],
+          'distanceMarkers': <Object?>[],
+          'expiresAt': '2026-11-13T14:59:59Z',
+          'activeRunners': 0,
+          'elevationProfile': elevationProfile,
+        };
+    final server = _FakeServer(detail({
+      'gainMeters': 86,
+      'samplesMeters': [12, 18.5, ...List.filled(16, 20.0)],
+    }));
+
+    final profile = (await client(server).courseDetail('c1')).elevationProfile!;
+
+    expect(server.request.path, '/api/v1/courses/c1');
+    expect(profile.gainMeters, 86);
+    expect(profile.samplesMeters, hasLength(18));
+    expect(profile.samplesMeters.take(2), [12.0, 18.5]);
+    expect((await client(_FakeServer(detail(null))).courseDetail('c1')).elevationProfile, isNull);
+  });
+
   test('asks only for the current runners of the shown courses (home one-minute refresh)', () async {
     final server = _FakeServer([
       {'courseId': 'c1', 'activeRunners': 3},

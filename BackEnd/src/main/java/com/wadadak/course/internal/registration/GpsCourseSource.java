@@ -28,14 +28,21 @@ class GpsCourseSource extends BaseEntity<UUID> {
 
     private UUID memberId;
 
-    /** 앱이 보낸 원본 경로 조각 그대로(점마다 고도 포함). 고도 프로필(보류)을 나중에 만들 때 쓰고 화면에는 쓰지 않는다. */
+    /** 앱이 보낸 원본 경로 조각 그대로(점마다 고도 포함). 고도 프로필을 만들 때 쓰고 화면에는 쓰지 않는다. */
     private String sourceSegmentsJson;
 
-    GpsCourseSource(UUID courseId, UUID runRecordId, UUID memberId, String sourceSegmentsJson) {
+    /**
+     * {@link ElevationProfile} JSON. 고도가 부족하면 JSON {@code null}이다.
+     * 이 열을 넣기 전에 등록한 코스는 NULL이고, 서버가 켜질 때 {@link ElevationProfileBackfill}이 채운다.
+     */
+    private String elevationProfileJson;
+
+    GpsCourseSource(UUID courseId, UUID runRecordId, UUID memberId, String sourceSegmentsJson, String elevationProfileJson) {
         this.courseId = courseId;
         this.runRecordId = runRecordId;
         this.memberId = memberId;
         this.sourceSegmentsJson = sourceSegmentsJson;
+        this.elevationProfileJson = elevationProfileJson;
     }
 
     @Override

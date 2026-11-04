@@ -580,6 +580,7 @@ class CourseDetail {
     this.averagePaceSecondsPerKm,
     this.creatorNickname,
     this.activeRunners = 0,
+    this.elevationProfile,
   });
 
   factory CourseDetail.fromJson(Map<Object?, Object?> json) => CourseDetail(
@@ -598,6 +599,10 @@ class CourseDetail {
         averagePaceSecondsPerKm: json['averagePaceSecondsPerKm'] as int?,
         creatorNickname: json['creatorNickname'] as String?,
         activeRunners: json['activeRunners'] as int? ?? 0,
+        elevationProfile: switch (json['elevationProfile']) {
+          final Map<Object?, Object?> profile => ElevationProfile.fromJson(profile),
+          _ => null,
+        },
       );
 
   final String courseId;
@@ -626,6 +631,26 @@ class CourseDetail {
 
   /// 지금 그 코스를 달리는 러너 수(B1-01 현재 러너). 서버가 받은 마지막 값이다.
   final int activeRunners;
+
+  /// 고도 프로필(B1-03). GPS 코스만 있고, 고도를 잰 곳이 코스의 90%보다 적으면 null이다.
+  final ElevationProfile? elevationProfile;
+}
+
+/// GPS 코스의 고도 프로필(B1-03). 서버가 등록에 쓴 기록의 GPS 고도로 등록 때 만든다(정책 문서 4.1 `B1-03 고도 프로필`).
+@immutable
+class ElevationProfile {
+  const ElevationProfile(this.gainMeters, this.samplesMeters);
+
+  factory ElevationProfile.fromJson(Map<Object?, Object?> json) => ElevationProfile(
+        json['gainMeters']! as int,
+        [for (final meters in json['samplesMeters']! as List) (meters! as num).toDouble()],
+      );
+
+  /// 누적 상승(m). 골짜기에서 10m 이상 오른 것만 센다.
+  final int gainMeters;
+
+  /// 출발점부터 코스를 거리로 18칸 나눈 칸마다의 평균 고도(m). GPS 고도라 해수면 높이와 다를 수 있어 막대 높이를 견주는 데만 쓴다.
+  final List<double> samplesMeters;
 }
 
 /// 오늘(Asia/Seoul) 남은 등록 수. 유형마다 따로 센다.

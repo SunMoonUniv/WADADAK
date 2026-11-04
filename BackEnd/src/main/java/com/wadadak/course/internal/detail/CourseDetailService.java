@@ -6,13 +6,16 @@ import com.wadadak.course.CourseErrorCode;
 import com.wadadak.course.internal.course.Course;
 import com.wadadak.course.internal.course.CourseGeometry;
 import com.wadadak.course.internal.course.CourseRepository;
+import com.wadadak.course.internal.registration.ElevationProfile;
 import com.wadadak.course.internal.route.RouteService;
 import com.wadadak.course.internal.stats.CourseStatsService;
 import com.wadadak.member.MemberApi;
 import com.wadadak.member.MemberProfile;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.util.List;
 import java.util.Set;
@@ -34,6 +37,8 @@ class CourseDetailService {
     private final RouteService routeService;
     private final CourseStatsService courseStats;
     private final MemberApi memberApi;
+    private final JdbcClient jdbc;
+    private final JsonMapper json;
 
     /**
      * @throws AppException {@link CourseErrorCode#COURSE_NOT_FOUND} — 없는 코스,
@@ -51,7 +56,17 @@ class CourseDetailService {
                 course.getTags().stream().sorted().toList(), course.getDistanceMeters(), route,
                 routeService.distanceMarkers(route), course.getExpiresAt(),
                 courseStats.averagePaceSecondsPerKm(courseId, course.getDistanceMeters()), nickname(course.getCreatorId()),
-                courseStats.activeRunners(courseId));
+                courseStats.activeRunners(courseId), elevationProfile(courseId));
+    }
+
+    /** 고도 프로필(B1-03). GPS 코스가 아니거나 고도가 부족하거나 아직 만들지 않았으면 null */
+    private ElevationProfile elevationProfile(UUID courseId) {
+        return jdbc.sql("SELECT elevation_profile_json FROM course.gps_course_sources WHERE course_id = ?")
+                .param(courseId)
+                .query(String.class)
+                .optional()
+                .map(profile -> json.readValue(profile, ElevationProfile.class))
+                .orElse(null);
     }
 
     /** 조회 수는 정렬 보조 값이라, 세지 못해도 상세는 그대로 돌려준다. */
