@@ -34,8 +34,10 @@ public class NotificationStore {
     /**
      * 알림을 만들고 그 회원의 기기마다 보낼 줄을 만든다. 같은 {@code (kind, dedupeKey)} 알림이 이미 있으면 아무것도 하지 않고
      * false를 돌려준다(이벤트가 다시 와도 한 번만 보낸다, 개발 정책 5.4 삽입형). 기기가 없으면 알림만 남는다.
+     *
+     * @param push false면 알림함에만 남기고 보낼 줄은 만들지 않는다(F4 푸시 알림을 끔)
      */
-    public boolean enqueue(NotificationDraft draft, Instant now) {
+    public boolean enqueue(NotificationDraft draft, Instant now, boolean push) {
         UUID id = UuidV7.create();
         int inserted = jdbc.sql("""
                         INSERT INTO notification.notifications
@@ -54,6 +56,9 @@ public class NotificationStore {
                 .update();
         if (inserted == 0) {
             return false;
+        }
+        if (!push) {
+            return true;
         }
         jdbc.sql("""
                         INSERT INTO notification.deliveries

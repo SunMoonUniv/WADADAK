@@ -354,6 +354,7 @@ erDiagram
         varchar(300) body
         jsonb data "FCM data"
         timestamptz send_until
+        timestamptz read_at "알림함 읽음"
     }
     deliveries {
         uuid notification_id PK,FK
@@ -1055,7 +1056,7 @@ stats의 구조와 테이블은 유지하고 새 계산의 `version`을 `RESULT_
 
 ### 3.7 notification
 
-푸시 알림(F14)과 알림 설정(F4 `알림`). 다른 모듈을 호출하지 않고 이벤트만 받는다(`CourseExpiringSoonEvent`, `MemberWithdrawnEvent`). 알림을 만드는 일(이벤트 처리)과 보내는 일(발송 작업 `PushDispatcher`, 10초마다 · ShedLock)을 나눴다. 보내기는 네트워크라서, FCM이 느리거나 멈춰도 다른 모듈의 이벤트 처리가 밀리지 않는다. FCM 연동은 `PushSender`로 감싸고, 서비스 계정 키(`app.notification.fcm.credentials-location`)가 없으면 로그만 남기는 구현을 쓴다(개발 정책 2장).
+푸시 알림(F14) · 알림함(Figma F3 알림 센터, A2 종 아이콘)과 알림 설정(F4 `푸시 알림`). 다른 모듈을 호출하지 않고 이벤트만 받는다(`CourseExpiringSoonEvent`, `MemberWithdrawnEvent`). 알림을 만드는 일(이벤트 처리)과 보내는 일(발송 작업 `PushDispatcher`, 10초마다 · ShedLock)을 나눴다. 보내기는 네트워크라서, FCM이 느리거나 멈춰도 다른 모듈의 이벤트 처리가 밀리지 않는다. FCM 연동은 `PushSender`로 감싸고, 서비스 계정 키(`app.notification.fcm.credentials-location`)가 없으면 로그만 남기는 구현을 쓴다(개발 정책 2장).
 
 #### `notification.device_tokens` — 기기 푸시 토큰
 
@@ -1080,11 +1081,11 @@ FCM 등록 토큰 하나가 기기 하나다. 앱이 로그인 · 실행할 때 
 | 컬럼 | 타입 | NULL | 설명 |
 | --- | --- | --- | --- |
 | `member_id` | `UUID` | | PK. 회원 ID(member 모듈) |
-| `course_expiring_soon` | `BOOLEAN` | | `내 코스 만료 임박`(정책 공통 4). 끄면 그 뒤로 만드는 만료 임박 알림부터 만들지 않는다 |
+| `course_expiring_soon` | `BOOLEAN` | | `내 코스 만료 임박`(정책 공통 4). 끄면 그 뒤로 만드는 만료 임박 알림부터 휴대폰에 보내지 않는다. 알림은 알림함에 그대로 쌓인다(Figma AD7 "사용자가 F4에서 끈 유형은 알림센터에만 저장") |
 
-#### `notification.notifications` — 알림(발송 기록)
+#### `notification.notifications` — 알림(알림함 · 발송 기록)
 
-회원에게 보낼 알림 한 건. 문구는 만들 때 정해 저장한다.
+회원에게 보낼 알림 한 건. 문구는 만들 때 정해 저장한다. 알림함(`GET /api/v1/notifications`)은 최근 30일 알림을 최신순으로 보인다.
 
 | 컬럼 | 타입 | NULL | 설명 |
 | --- | --- | --- | --- |
@@ -1095,10 +1096,14 @@ FCM 등록 토큰 하나가 기기 하나다. 앱이 로그인 · 실행할 때 
 | `title` · `body` | `VARCHAR(100)` · `VARCHAR(300)` | | 제목 · 본문. 예: `내 코스 만료 임박` · `‘한강 야경’ 코스가 7일 뒤 만료돼요.`(D-1은 `내일`, 구현 값) |
 | `data` | `JSONB` | | 앱이 알림을 누를 때 쓰는 값(FCM data, 값은 모두 문자열). 만료 임박은 `{"type": "COURSE_EXPIRING_SOON", "courseId": "..."}` → B1 |
 | `send_until` | `TIMESTAMPTZ` | | 이 시각까지 못 보내면 보내지 않는다. 만료 임박은 이벤트 발행 + 12시간(만료 시각을 넘지 않음) |
+| `read_at` | `TIMESTAMPTZ` | ✓ | 알림함에서 읽은 시각. 비어 있으면 안 읽음(파란 점 · 종 아이콘 빨간 점). 알림을 누르거나 푸시를 눌러 열거나 `모두 읽음` |
+| `created_at` | `TIMESTAMPTZ` | | 만든 시각. 알림함의 `12분 전` |
 
 - `notifications_kind_dedupe_key_uk`: `UNIQUE (kind, dedupe_key)`. 같은 이벤트가 다시 와도 한 번만 만든다(개발 정책 5.4 삽입형). 완주로 만료가 연장되면 만료 시각이 바뀌어 다음 D-7 · D-1에 다시 알린다.
-- `notifications_member_id_idx`: `(member_id)`. 탈퇴 때 지우기
-- 등록자가 탈퇴했거나 설정을 껐거나 `send_until`이 지난 이벤트는 알림을 만들지 않는다.
+- `notifications_member_id_created_at_idx`: `(member_id, created_at DESC, id DESC)`. 알림함 목록(최신순) · 안 읽은 수 · 탈퇴 때 지우기
+- 등록자가 탈퇴했거나 `send_until`이 지난 이벤트는 알림을 만들지 않는다. 설정을 껐으면 알림은 만들고 `deliveries`만 만들지 않는다.
+- 30일 지난 알림은 매일 04:00(Asia/Seoul, ShedLock) 지운다(`deliveries`도 함께). 하루 한 번 하루치라 `created_at` 인덱스는 두지 않았다.
+- 푸시의 data에는 저장한 `data`에 `notificationId`를 붙여 보낸다. 앱이 푸시를 눌러 열면 그 알림을 읽음으로 바꾼다.
 
 #### `notification.deliveries` — 기기별 발송
 

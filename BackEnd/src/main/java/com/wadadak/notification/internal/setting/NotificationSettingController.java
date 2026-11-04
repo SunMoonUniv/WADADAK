@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
-/** 알림 설정 REST API(F4 `알림`). 토큰의 sub가 회원 ID다 */
+/** 알림 설정 REST API(F4 `푸시 알림`). 토큰의 sub가 회원 ID다 */
 @RestController
 @RequestMapping("/api/v1/notifications/settings")
 @RequiredArgsConstructor
@@ -30,7 +30,8 @@ class NotificationSettingController {
     }
 
     @Operation(summary = "알림 설정 변경 (F4)",
-            description = "바꾸는 즉시 저장하고 바꾼 설정을 돌려준다. 끄면 그 뒤에 만드는 알림부터 보내지 않는다. "
+            description = "바꾸는 즉시 저장하고 바꾼 설정을 돌려준다. 끄면 그 뒤에 만드는 알림부터 휴대폰에 보내지 않는다"
+                    + "(알림함에는 쌓인다). "
                     + "courseExpiringSoon이 없으면 COMMON-001, 탈퇴한 회원 COMMON-002.")
     @PutMapping
     ApiResult<NotificationSettings> change(@AuthenticationPrincipal Jwt jwt,
