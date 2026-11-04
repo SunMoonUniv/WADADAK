@@ -67,15 +67,18 @@ class CourseMapRepository {
             LEFT JOIN course.course_active_runners r ON r.course_id = c.id""";
 
     /**
-     * 인기순 기간(FIL-09)의 도전 수 · 조회 수 · 리뷰 수. 코스마다 일별 통계를 기간만큼 더한다. 기간에 행이 없으면 모두 NULL(0)이다.
-     * 기간 조건은 [periodCondition]이 채운다. 코스마다 (course_id, stat_date) 유니크 인덱스로 찾는다.
+     * 인기순 기간(FIL-09)의 도전 수 · 조회 수 · 리뷰 수. 코스마다 일별 통계를 기간만큼 더한다. 그 기간에 등록해 남은 코스는 값이 없으면
+     * 합이 NULL이고 0으로 센다([count]). 기간 조건은 [periodCondition]이 채운다. 코스마다 (course_id, stat_date) 유니크 인덱스로 찾는다.
      */
     private static final String PERIOD_JOIN = """
 
             LEFT JOIN LATERAL (SELECT sum(d.challenge_count) AS challenge_count, sum(d.view_count) AS view_count,
                                       sum(d.review_count) AS review_count
                                FROM course.course_daily_stats d
-                               WHERE d.course_id = c.id%s) p ON true""";
+                               WHERE d.course_id = c.id AND %s) p ON true""";
+
+    /** 코스 등록일(Asia/Seoul). 인기순 기간에 등록한 코스는 그 기간에 값이 없어도 남긴다(FIL-09) */
+    private static final String REGISTERED_ON = "(c.created_at AT TIME ZONE 'Asia/Seoul')::date";
 
     /** 전체 기간 평점. 리뷰 API처럼 소수 첫째 자리로 반올림한다. 리뷰가 없으면 NULL. I3 카드({@link RunnerCourseRepository})도 쓴다 */
     static final String RATING = "CASE WHEN s.review_count > 0 THEN round(s.rating_sum::numeric / s.review_count, 1) END";
@@ -192,13 +195,12 @@ class CourseMapRepository {
      * 인기순은 도전 수 · 조회 수 · 리뷰 수가 많은 코스부터, 평점순은 평점이 높은 코스부터(같으면 리뷰 수가 많은 코스, 리뷰가 없으면 맨 뒤),
      * 가까운순은 [origin]에서 출발점까지 가까운 코스부터, 최신순은 등록 시각이 늦은 코스부터, 실시간순은 러너가 많은 코스부터(같으면 인기순)다.
      * 인기순 · 평점순 · 실시간순은 앞 기준이 모두 같으면 최신순이고, 정렬 값이 모두 같으면 ID순.
+     * 인기순 기간(FIL-09)이 있으면 그 기간의 수로 정렬한다(그 기간에 값이 없는 코스는 지도처럼 빠지고, 그 기간에 등록한 코스는 남는다).
      *
-     * @param period 인기순 기간(FIL-09). 있으면 그 기간의 수로 정렬하고 코스는 빼지 않는다. null이면 전체 기간
      * @param origin 현재 위치. 가까운순이면 있어야 한다
      */
-    CursorSlice<CourseListItem> list(CourseMapRequest request, CourseListSort sort, CourseListPeriod period, GeoPoint origin,
-                                     Cursorable page) {
-        return slice(Filter.of(request), sort, period, origin, page);
+    CursorSlice<CourseListItem> list(CourseMapRequest request, CourseListSort sort, GeoPoint origin, Cursorable page) {
+        return slice(Filter.of(request), sort, request.period(), origin, page);
     }
 
     /**
@@ -320,7 +322,7 @@ class CourseMapRepository {
             }
             case POPULAR, LIVE -> {
                 // 기간(인기순만)이 있으면 일별 통계를 기간만큼 더한 수(p), 없으면 누적 통계(s)다.
-                String from = period == null ? FROM : FROM + PERIOD_JOIN.formatted(periodCondition(period, params));
+                String from = period == null ? FROM : FROM + PERIOD_JOIN.formatted(periodCondition("d.stat_date", period, params));
                 List<String> keys = countKeys(sort, period == null ? "s" : "p");
                 if (after != null) {
                     CourseListCursor.Counts counts = after.counts(keys.size());
@@ -418,18 +420,18 @@ class CourseMapRepository {
         return IntStream.range(0, size).mapToObj(part).collect(Collectors.joining(", "));
     }
 
-    /** 일별 통계(별칭 d)의 기간 조건. 두 날짜 모두 포함한다(FIL-09). */
-    private static String periodCondition(CourseListPeriod period, Map<String, Object> params) {
-        StringBuilder condition = new StringBuilder();
+    /** 날짜 [date]가 기간 안이다. 두 날짜 모두 포함한다(FIL-09). 기간에는 날짜가 하나 이상 있다([CourseMapRequest#period]). */
+    private static String periodCondition(String date, CourseListPeriod period, Map<String, Object> params) {
+        List<String> conditions = new ArrayList<>();
         if (period.startDate() != null) {
-            condition.append(" AND d.stat_date >= :periodStart");
+            conditions.add(date + " >= :periodStart");
             params.put("periodStart", period.startDate());
         }
         if (period.endDate() != null) {
-            condition.append(" AND d.stat_date <= :periodEnd");
+            conditions.add(date + " <= :periodEnd");
             params.put("periodEnd", period.endDate());
         }
-        return condition.toString();
+        return String.join(" AND ", conditions);
     }
 
     /**
@@ -458,7 +460,7 @@ class CourseMapRepository {
                 new GeoPoint(rs.getDouble("ne_lat"), rs.getDouble("ne_lng")));
     }
 
-    /** 코스를 고르는 조건. 지도 범위와 필터(FIL-02~05, 값이 없는 필터는 걸지 않는다)나 검색어로 만든다. */
+    /** 코스를 고르는 조건. 지도 범위와 필터(FIL-02~05 · FIL-09 기간, 값이 없는 필터는 걸지 않는다)나 검색어로 만든다. */
     private record Filter(String where, Map<String, Object> params) {
 
         /**
@@ -520,6 +522,18 @@ class CourseMapRepository {
             if (request.regionCode() != null) {
                 conditions.add("c.sigungu_code = :regionCode");
                 params.put("regionCode", request.regionCode());
+            }
+            // 인기순 기간(FIL-09): 그 기간에 도전 · 조회 · 리뷰가 하나도 없는 코스는 뺀다. 더하고 빼서 0이 된 것(쓰고 지운 리뷰)도 없는 것이다.
+            // 그 기간에 등록한 코스는 아무도 쓰지 않았어도 남긴다
+            CourseListPeriod period = request.period();
+            if (period != null) {
+                conditions.add("""
+                        (EXISTS (SELECT 1
+                                 FROM course.course_daily_stats d
+                                 WHERE d.course_id = c.id AND %s
+                                 HAVING sum(d.challenge_count) > 0 OR sum(d.view_count) > 0 OR sum(d.review_count) > 0)
+                         OR %s)""".formatted(periodCondition("d.stat_date", period, params),
+                        periodCondition(REGISTERED_ON, period, params)));
             }
             return new Filter(String.join("\n  AND ", conditions), params);
         }

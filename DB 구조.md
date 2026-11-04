@@ -566,7 +566,7 @@ erDiagram
 | `review_count` | `INTEGER` | | 그날 작성된 리뷰 수. 기본 0 |
 
 - `course_daily_stats_uk`: `UNIQUE (course_id, stat_date)`.
-- 기간 인기순(FIL-09)이 고른 기간(두 날짜 포함)의 `challenge_count` · `view_count` · `review_count` 합으로 정렬한다. 코스마다 `course_daily_stats_uk`로 그 기간 행만 더한다. 기간에 행이 없는 코스도 0으로 뒤에 온다. 리뷰 수정 · 삭제도 작성일(`createdAt`) 행을 바꾼다(개발 정책 5.6).
+- 기간 인기순(FIL-09)이 고른 기간(두 날짜 포함)의 `challenge_count` · `view_count` · `review_count` 합으로 정렬한다. 코스마다 `course_daily_stats_uk`로 그 기간 행만 더한다. 그 기간에 세 수가 모두 0인 코스(행이 없거나 더하고 빼서 0)는 지도 · 지역별 코스 수 · 목록에서 뺀다(2026-11-03). 다만 그 기간에 등록한 코스(`courses.created_at`의 Asia/Seoul 날짜)는 0이어도 남는다(2026-11-04). 리뷰 수정 · 삭제도 작성일(`createdAt`) 행을 바꾼다(개발 정책 5.6).
 - 평점순에는 기간을 쓰지 않아(정책 문서 4.1) `rating_sum`은 지금 읽는 곳이 없지만 계속 쌓는다.
 - 증감 · 삭제 규칙은 `course_stats`와 같다.
 

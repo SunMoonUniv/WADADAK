@@ -94,7 +94,8 @@ class CourseListSheet extends ConsumerStatefulWidget {
   final CourseSearchPick? pick;
   final CourseListSort sort;
 
-  /// 인기순 기간(FIL-09, A3). 인기순일 때만 있고 목록 순서만 바꾼다. null이면 전체 기간.
+  /// 인기순 기간(FIL-09, A3). 인기순일 때만 있다. 그 기간에 값이 없는 코스는 지도처럼 빠진다(그 기간에 등록한 코스는 남는다).
+  /// null이면 전체 기간.
   final CoursePeriod? period;
 
   /// 현재 위치. 가까운순의 기준점이고, 있으면 카드에 출발점까지 거리를 보인다. 가까운순이면 꼭 있다.
@@ -427,8 +428,8 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
                       )
                     else if (courses == null)
                       const SliverToBoxAdapter(child: _Loading())
-                    else if (courses.isEmpty && (!widget.filter.isNone || widget.pick != null))
-                      // 조건은 그대로 두고 초기화를 준다(STA-04). G6 조건도 필터처럼 함께 푼다.
+                    else if (courses.isEmpty && (!widget.filter.isNone || widget.period != null || widget.pick != null))
+                      // 조건은 그대로 두고 초기화를 준다(STA-04). 인기순 기간 · G6 조건도 필터처럼 함께 푼다.
                       SliverToBoxAdapter(
                         child: _message(CourseListSheet.filteredEmptyMessage, [
                           WdButton('필터 초기화', variant: WdButtonVariant.secondary, onPressed: widget.onResetFilter),
