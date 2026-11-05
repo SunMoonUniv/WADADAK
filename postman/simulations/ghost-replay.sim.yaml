@@ -1,0 +1,8 @@
+simulation: course-ghost-replay-regression
+routing: path
+mocks:
+  - name: ghost-backend
+    routeKey: ghost
+    origin:
+      - ghost-regression.invalid
+    path: postman/mocks/ghost-replay

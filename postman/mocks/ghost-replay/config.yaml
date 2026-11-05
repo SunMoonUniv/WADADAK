@@ -1,0 +1,9 @@
+version: 1
+name: Course ghost replay transport regression
+slug: course-ghost-replay-regression
+protocol: http
+interceptRequests: true
+scenarios:
+  - name: default
+    path: ./default.js
+    default: true
