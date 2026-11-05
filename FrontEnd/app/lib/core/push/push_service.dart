@@ -16,10 +16,16 @@ class PushNotice {
   final String? body;
   final Map<String, String> data;
 
-  /// 누르면 열 B1 코스 ID. 서버 `NotificationKind`가 `type`, 코스 ID가 `courseId`다.
-  /// 모르는 종류(나중에 늘어난 알림)면 없다. 그때는 앱만 연다.
-  String? get courseId => data['type'] == 'COURSE_EXPIRING_SOON' ? data['courseId'] : null;
+  /// 누르면 열 B1 코스 ID([courseIdOf]).
+  String? get courseId => courseIdOf(data);
+
+  /// 알림함의 그 알림 ID. 눌러 열면 읽음으로 바꾼다. 알림함 전에 보낸 푸시에는 없다.
+  String? get notificationId => data['notificationId'];
 }
+
+/// 알림(푸시 · 알림함)을 누르면 열 B1 코스 ID. 서버 `NotificationKind`가 `type`, 코스 ID가 `courseId`다.
+/// 모르는 종류(나중에 늘어난 알림)면 없다. 그때는 아무 화면도 열지 않는다.
+String? courseIdOf(Map<String, String> data) => data['type'] == 'COURSE_EXPIRING_SOON' ? data['courseId'] : null;
 
 /// 푸시 받기 · 토큰. Firebase를 감싸 테스트에서 가짜로 바꿔 끼운다.
 abstract interface class PushMessaging {

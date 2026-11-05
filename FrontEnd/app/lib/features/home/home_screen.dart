@@ -11,6 +11,7 @@ import '../../core/auth/auth_controller.dart';
 import '../../core/map/map_view.dart';
 import '../../routes.dart';
 import '../course/course_format.dart';
+import '../notification/notification_bell.dart';
 import 'course_filter_screen.dart';
 import 'course_list_sheet.dart';
 import 'home_tab_exits.dart';
@@ -792,7 +793,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
 }
 
 /// 상단 배너(A2-01 · A2-02). A2(반)는 인사말, 피크(A4 · A5) · 전체 보기(A6)는 고정 제목 `코스`, 아래는 검색창.
-/// 높이가 같아 바뀌어도 지도 크기가 그대로다.
+/// 높이가 같아 바뀌어도 지도 크기가 그대로다. 제목 줄 오른쪽에 알림 종 아이콘(F3 알림함)이 늘 있다.
 ///
 /// 검색창을 누르면 검색(G1)을 빈 입력으로 연다(SEA-01). Figma A2의 위치 핀 버튼은 정책에 동작이 없어 두지 않는다.
 /// G6에서 고른 검색어 · 지역이 있으면 검색창이 G6 위쪽 줄 모양 `← ⌕ 한강 · 영등포구 ✕`로 바뀐다(A6-01).
@@ -827,17 +828,26 @@ class _HomeHeader extends StatelessWidget {
               SizedBox(
                 height: _titleHeight,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: WdSpace.s24),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    spacing: 2,
-                    children: greeting
-                        ? [
-                            Text('오늘, 어디까지 달려볼까요?', style: WdText.ko12.copyWith(color: WdColors.muted)),
-                            Text('나의 다음 코스', style: WdText.ko23Bold.copyWith(color: WdColors.ink)),
-                          ]
-                        : [Text('코스', style: WdText.ko20Bold.copyWith(color: WdColors.ink))],
+                  // 종 아이콘은 누르는 자리 44 가운데에 22로 그려 오른쪽 끝이 제목 왼쪽 여백 24와 맞는다
+                  padding: const EdgeInsets.only(left: WdSpace.s24, right: WdSpace.s12),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          spacing: 2,
+                          children: greeting
+                              ? [
+                                  Text('오늘, 어디까지 달려볼까요?', style: WdText.ko12.copyWith(color: WdColors.muted)),
+                                  Text('나의 다음 코스', style: WdText.ko23Bold.copyWith(color: WdColors.ink)),
+                                ]
+                              : [Text('코스', style: WdText.ko20Bold.copyWith(color: WdColors.ink))],
+                        ),
+                      ),
+                      // F3 알림함(F14). Figma A2에 없어 2026-11-04 사용자 결정으로 붙였다
+                      const NotificationBell(),
+                    ],
                   ),
                 ),
               ),

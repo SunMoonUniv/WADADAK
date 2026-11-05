@@ -219,5 +219,26 @@ void main() {
 
       expect(find.text('B1 c-1'), findsOneWidget);
     });
+
+    testWidgets('tapping a notification marks it read in the inbox', (tester) async {
+      await pumpApp(tester);
+
+      messaging.taps.add(const PushNotice(
+        title: '내 코스 만료 임박',
+        data: {'type': 'COURSE_EXPIRING_SOON', 'courseId': 'c-1', 'notificationId': 'n-1'},
+      ));
+      await tester.pumpAndSettle();
+
+      expect(api.markedRead, ['n-1']);
+      expect(find.text('B1 c-1'), findsOneWidget);
+    });
+
+    testWidgets('an unknown notification is marked read but opens nothing', (tester) async {
+      messaging.launch = const PushNotice(data: {'type': 'SOMETHING_NEW', 'notificationId': 'n-2'});
+      await pumpApp(tester);
+
+      expect(api.markedRead, ['n-2'], reason: '모르는 종류라도 읽음으로 바꾼다');
+      expect(find.text('A2'), findsOneWidget, reason: '모르는 종류는 화면을 열지 않는다');
+    });
   });
 }
