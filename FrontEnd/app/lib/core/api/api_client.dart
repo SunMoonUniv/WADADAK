@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth/auth_controller.dart';
@@ -28,12 +29,22 @@ BaseOptions _options() => BaseOptions(
       receiveTimeout: const Duration(seconds: 15),
     );
 
+Dio _newDio() {
+  final dio = Dio(_options());
+  // A debugger's pause-on-start setting also pauses Dio's JSON worker for
+  // responses >= 50 KiB. If that debugger disconnects, a downloaded replay
+  // waits forever. Decode in the active isolate for debug builds; release
+  // builds retain Dio's default background decoding for large responses.
+  if (kDebugMode) dio.transformer = FusedTransformer.sync();
+  return dio;
+}
+
 /// 토큰 없이 보내는 요청용: 로그인 · 가입 · 갱신 · 로그아웃, 그리고 갱신 후 재시도.
-final publicDioProvider = Provider<Dio>((ref) => Dio(_options()));
+final publicDioProvider = Provider<Dio>((ref) => _newDio());
 
 /// 인증이 필요한 API용. 액세스 토큰을 붙이고, 401이면 갱신한 뒤 다시 보낸다.
 final dioProvider = Provider<Dio>(
-  (ref) => Dio(_options())
+  (ref) => _newDio()
     ..interceptors.add(AuthInterceptor(
       storage: ref.watch(tokenStorageProvider),
       retryDio: ref.watch(publicDioProvider),

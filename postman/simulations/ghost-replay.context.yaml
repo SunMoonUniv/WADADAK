@@ -1,0 +1,16 @@
+purpose:
+  stands_in_for: Read-only own and public ghost playback response transport.
+  unblocks: Validate real Dio transport and replay parsing for JSON above the 50KiB background-worker threshold.
+assumptions:
+  - id: immutable-large-replay
+    status: supported
+    claim: The local stand-in provides the own/public replay envelopes used by the application, including continuous millisecond spans.
+    reason: Shapes were derived from the production API classes and existing replay fixtures. This stand-in does not establish live server latency or authentication behavior.
+    verification: On 2026-11-05 actual Dio and OwnGhostApi/PublicGhostApi consumed 3600- and 7200-sample streamed JSON responses (618KiB and 1.24MB), produced eligible usable replays, and retained 404 rejection for deleted records. Six request events were confirmed in the local simulation log. Live public playback also reached preparation on Galaxy S21; the user's own live record was rejected for GPS gaps, so normal live-own preparation remains unverified for that record.
+    source: FrontEnd/app/lib/features/run/data/own_ghost_api.dart; FrontEnd/app/lib/features/run/data/public_ghost_api.dart; FrontEnd/app/lib/features/run/domain/public_ghost.dart
+    updated_at: '2026-11-05'
+fingerprints:
+  - id: local-contract
+    date: '2026-11-05'
+    commit: null
+    cli: '1.83.1'
