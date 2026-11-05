@@ -24,6 +24,7 @@ enum WdIcons {
   run('run'), // Icon / run · 21
   trophy('trophy'), // Icon / trophy · 21
   search('search'), // Icon / search · 19
+  bell('bell'), // (Figma에 없음) A2 알림 · 22. settings와 같은 선 두께
   routePoint('route_point'), // Route point · 14
   brandGhost('brand_ghost'), // Logo / Symbol / Speed ghost (lime) · 24
   ghostInfo('ghost_info'), // Information / Speed ghost · Neutral

@@ -22,6 +22,7 @@ import 'features/my/run_history_screen.dart';
 import 'features/my/run_record_screen.dart';
 import 'features/my/settings_screen.dart';
 import 'features/my/terms_screen.dart';
+import 'features/notification/notification_inbox_screen.dart';
 import 'features/onboarding/consent_screen.dart';
 import 'features/onboarding/login_screen.dart';
 import 'features/onboarding/permission_screen.dart';
@@ -101,6 +102,7 @@ final routerProvider = Provider<GoRouter>((ref) {
                   path: 'search',
                   builder: (_, state) => CourseSearchScreen(initialQuery: state.extra as String?),
                 ),
+                GoRoute(path: 'notifications', builder: (_, _) => const NotificationInboxScreen()),
               ],
             ),
           ]),

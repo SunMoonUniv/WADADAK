@@ -12,6 +12,9 @@ abstract final class Routes {
   /// G6에서 지역을 고르면 `CourseSearchPick`을 돌려주며 닫힌다. 다른 하단 탭에 갔다가 홈으로 돌아오면 닫힌다(FIL-08).
   static const courseSearch = '/home/search';
 
+  /// F3 알림함. A2 오른쪽 위 종 아이콘에서 연다. 홈 탭 안에 쌓아 하단 탭이 보인다(Figma F3).
+  static const notifications = '/home/notifications';
+
   /// B3 코스 만들기(경로 그리기). 하단 탭 위에 쌓는다. extra: 홈 지도 위치(`MapCamera`).
   static const courseCreate = '/course/new';
 

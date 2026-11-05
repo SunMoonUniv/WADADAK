@@ -1381,4 +1381,47 @@ class FakeNotificationApi extends Fake implements NotificationApiClient {
 
   @override
   Future<void> removeToken(String token) async => removed.add(token);
+
+  /// 알림함(최신순). 한 쪽에 [pageSize]개씩 준다.
+  final inboxItems = <NotificationItem>[];
+  int pageSize = 20;
+  final inboxCursors = <String?>[];
+
+  /// 알림함 · 안 읽은 수 · 읽음 요청이 실패한다.
+  bool failInbox = false;
+  bool failRead = false;
+  final markedRead = <String>[];
+  int markedAllRead = 0;
+
+  @override
+  Future<NotificationPage> inbox({String? cursor, int size = 20}) async {
+    inboxCursors.add(cursor);
+    if (failInbox) throw const ApiException(ApiException.network, '네트워크에 연결할 수 없어요.');
+    final from = int.parse(cursor ?? '0');
+    final to = (from + pageSize).clamp(0, inboxItems.length);
+    return (items: inboxItems.sublist(from, to), nextCursor: to < inboxItems.length ? '$to' : null);
+  }
+
+  @override
+  Future<int> unreadCount() async {
+    if (failInbox) throw const ApiException(ApiException.network, '네트워크에 연결할 수 없어요.');
+    return inboxItems.where((item) => !item.read).length;
+  }
+
+  @override
+  Future<void> markRead(String notificationId) async {
+    if (failRead) throw const ApiException(ApiException.network, '연결 실패');
+    markedRead.add(notificationId);
+    final index = inboxItems.indexWhere((item) => item.id == notificationId);
+    if (index >= 0) inboxItems[index] = inboxItems[index].asRead();
+  }
+
+  @override
+  Future<void> markAllRead() async {
+    if (failRead) throw const ApiException(ApiException.network, '연결 실패');
+    markedAllRead++;
+    for (var i = 0; i < inboxItems.length; i++) {
+      inboxItems[i] = inboxItems[i].asRead();
+    }
+  }
 }
