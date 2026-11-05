@@ -56,7 +56,7 @@ final _mineProvider =
       return courses;
     }, retry: (_, _) => null);
 
-/// 보이는 카드 중 저장한 코스(카드 아래 `저장한 코스`). 키는 쉼표로 이은 코스 ID.
+/// 보이는 카드 중 저장한 코스(카드 오른쪽 위 `저장한 코스`). 키는 쉼표로 이은 코스 ID.
 /// 표시만 하는 값이라 받지 못하면 저장 표시 없이 보인다
 final _bookmarkedProvider = FutureProvider.autoDispose
     .family<Set<String>, String>((ref, ids) async {
@@ -142,32 +142,45 @@ class _CourseSelectScreenState extends ConsumerState<CourseSelectScreen> {
     return ListenableBuilder(
       listenable: runs,
       builder: (context, _) {
+        final search = searching
+            ? ref.watch(_searchProvider(_query.trim()))
+            : null;
+        final saved = !searching && _source == _Source.saved
+            ? ref.watch(_savedProvider)
+            : null;
+        final nearby = !searching && _source == _Source.nearby
+            ? ref.watch(_nearbyProvider)
+            : null;
+        final mine = !searching && _source == _Source.mine
+            ? ref.watch(_mineProvider)
+            : null;
+        final loading = searching
+            ? search!.isLoading
+            : switch (_source) {
+                _Source.recent => runs.loadingHistory,
+                _Source.saved => saved!.isLoading,
+                _Source.nearby => nearby!.isLoading,
+                _Source.mine => mine!.isLoading,
+              };
         final List<({String id, String name, CourseListItem? item})> courses =
             searching
             ? [
-                for (final c
-                    in ref.watch(_searchProvider(_query.trim())).value ??
-                        const <CourseListItem>[])
+                for (final c in search!.value ?? const <CourseListItem>[])
                   (id: c.courseId, name: c.name, item: c),
               ]
             : switch (_source) {
                 _Source.recent => recentCourses(runs.remoteRecords),
                 _Source.saved => [
-                  for (final c
-                      in ref.watch(_savedProvider).value ??
-                          const <CourseListItem>[])
+                  for (final c in saved!.value ?? const <CourseListItem>[])
                     (id: c.courseId, name: c.name, item: c),
                 ],
                 _Source.nearby => [
-                  for (final c
-                      in ref.watch(_nearbyProvider).value ??
-                          const <CourseListItem>[])
+                  for (final c in nearby!.value ?? const <CourseListItem>[])
                     (id: c.courseId, name: c.name, item: c),
                 ],
                 _Source.mine => [
                   for (final c
-                      in ref.watch(_mineProvider).value ??
-                          const <({String id, String name})>[])
+                      in mine!.value ?? const <({String id, String name})>[])
                     (id: c.id, name: c.name, item: null),
                 ],
               };
@@ -273,7 +286,9 @@ class _CourseSelectScreenState extends ConsumerState<CourseSelectScreen> {
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: WdSpace.s24),
                   child: Text(
-                    searching
+                    loading
+                        ? '코스를 불러오고 있어요. 잠시 기다려주세요.'
+                        : searching
                         ? '찾는 코스가 없어요.'
                         : switch (_source) {
                             _Source.recent =>
@@ -351,7 +366,7 @@ List<({String id, String name, CourseListItem? item})> recentCourses(
 }
 
 /// Figma C8 코스 카드: 선택 원 · 경로 썸네일 · 이름 · 거리·난이도·평점 · 내 최고 기록·순위 · 아래 줄 하나.
-/// 아래 줄은 만료 임박 → 현재 러너(1명 이상) → `저장한 코스` → `달리는 러너 없음` 중 먼저인 것이다(2026-11-02 사용자 결정)
+/// 저장 여부는 이름 오른쪽 위에 표시하고, 아래 줄에는 만료 임박 또는 러너 상태를 표시한다.
 class _PickCard extends ConsumerWidget {
   const _PickCard({
     required this.courseId,
@@ -432,11 +447,41 @@ class _PickCard extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     spacing: WdSpace.s3,
                     children: [
-                      Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: WdText.ko16Bold,
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          final title = Text(
+                            name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: WdText.ko16Bold,
+                          );
+                          // 큰 글씨에서도 저장 배지가 코스 이름을 가리지 않게 한다.
+                          if (saved &&
+                              constraints.maxWidth <
+                                  150 *
+                                      MediaQuery.textScalerOf(context)
+                                          .scale(1)) {
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              spacing: WdSpace.s3,
+                              children: [
+                                const Align(
+                                  alignment: Alignment.topRight,
+                                  child: WdTag('저장한 코스'),
+                                ),
+                                title,
+                              ],
+                            );
+                          }
+                          return Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            spacing: WdSpace.s6,
+                            children: [
+                              Expanded(child: title),
+                              if (saved) const WdTag('저장한 코스'),
+                            ],
+                          );
+                        },
                       ),
                       Text(
                         [
@@ -466,15 +511,10 @@ class _PickCard extends ConsumerWidget {
                 formatExpiry(daysLeft),
                 style: WdText.ko12.copyWith(color: WdColors.warning),
               )
-            else if (runners > 0 || !saved)
+            else
               Text(
                 formatActiveRunners(runners),
                 style: WdText.ko12.copyWith(color: WdColors.green),
-              )
-            else
-              Text(
-                '저장한 코스',
-                style: WdText.ko12.copyWith(color: WdColors.muted),
               ),
           ],
         ),
