@@ -1,0 +1,6 @@
+simulation: delayed-course-start
+routing: path
+mocks:
+  - name: course-backend
+    routeKey: run
+    path: postman/mocks/course-start

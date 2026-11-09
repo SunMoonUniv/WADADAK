@@ -69,6 +69,7 @@ class RunRecorder {
     DateTime utc, {
     int? originMs,
     double? weightKg,
+    List<RunInput> Function()? takeStartInputs,
   }) => _serial(() async {
     if (active) {
       throw StateError('진행 중인 러닝이 있어요.');
@@ -97,7 +98,11 @@ class RunRecorder {
     elapsedMs = 0;
     _autoResume.reset();
     _autoPause.reset();
-    if (originMs != null && now > origin) {
+    final startInputs = takeStartInputs?.call() ?? const <RunInput>[];
+    if (startInputs.isNotEmpty) {
+      await _commit(startInputs, RunPhase.running, startInputs.last.elapsedMs);
+      elapsedMs = await _elapsed();
+    } else if (originMs != null && now > origin) {
       // The request wait counts as elapsed time, with an explicit unmeasured gap.
       await _commit(
         _recoveryGap(run, now - origin),
@@ -119,6 +124,51 @@ class RunRecorder {
   });
   Future<int> _elapsed() async =>
       (await nowMs() - _originMs).clamp(elapsedMs, 1 << 52);
+
+  static RunInput locationInput({
+    required int seq,
+    required int elapsedMs,
+    required DateTime measuredAt,
+    required double lat,
+    required double lng,
+    required double accuracyM,
+    double? speedMps,
+    double? speedAccuracyMps,
+    double? altitudeM,
+    double? altitudeAccuracyM,
+  }) {
+    if (!lat.isFinite ||
+        !lng.isFinite ||
+        lat.abs() > 90 ||
+        lng.abs() > 180 ||
+        !accuracyM.isFinite ||
+        accuracyM < 0) {
+      return RunInput(
+        seq: seq,
+        kind: RunKind.gap,
+        elapsedMs: elapsedMs,
+        measuredAt: measuredAt,
+        reason: 'INVALID_FIX',
+      );
+    }
+    double? nonNegative(double? value) =>
+        value != null && value.isFinite && value >= 0 ? value : null;
+    final height = altitudeM != null && altitudeM.isFinite ? altitudeM : null;
+    return RunInput(
+      seq: seq,
+      kind: RunKind.gps,
+      elapsedMs: elapsedMs,
+      measuredAt: measuredAt,
+      lat: lat,
+      lng: lng,
+      accuracyM: accuracyM,
+      speedMps: nonNegative(speedMps),
+      speedAccuracyMps: nonNegative(speedAccuracyMps),
+      altitudeM: height,
+      altitudeAccuracyM: height == null ? null : nonNegative(altitudeAccuracyM),
+    );
+  }
+
   Future<void> gps(
     double lat,
     double lng,
@@ -130,52 +180,27 @@ class RunRecorder {
     double? altitudeAccuracyM,
   }) => _serial(() async {
     if (!active) return;
-    if (!lat.isFinite ||
-        !lng.isFinite ||
-        lat.abs() > 90 ||
-        lng.abs() > 180 ||
-        !accuracyM.isFinite ||
-        accuracyM < 0) {
-      final ms = await _elapsed();
-      await _commit(
-        [_input(RunKind.gap, ms, reason: 'INVALID_FIX')],
-        current!.phase,
-        ms,
-      );
+    final run = current!;
+    final ms = await _elapsed();
+    var point = locationInput(
+      seq: run.inputs.length,
+      elapsedMs: ms,
+      measuredAt:
+          measuredAt?.toUtc() ?? run.startedAt.add(Duration(milliseconds: ms)),
+      lat: lat,
+      lng: lng,
+      accuracyM: accuracyM,
+      speedMps: speedMps,
+      speedAccuracyMps: speedAccuracyMps,
+      altitudeM: altitudeM,
+      altitudeAccuracyM: altitudeAccuracyM,
+    );
+    if (point.kind == RunKind.gap) {
+      await _commit([point], run.phase, ms);
       _autoResume.reset();
       _autoPause.reset();
       return;
     }
-    // An absent or invalid vertical measurement must not discard usable GPS.
-    final height = altitudeM != null && altitudeM.isFinite ? altitudeM : null;
-    final heightAccuracy =
-        height != null &&
-            altitudeAccuracyM != null &&
-            altitudeAccuracyM.isFinite &&
-            altitudeAccuracyM >= 0
-        ? altitudeAccuracyM
-        : null;
-    final ms = await _elapsed();
-    var point = _input(
-      RunKind.gps,
-      ms,
-      lat: lat,
-      lng: lng,
-      accuracyM: accuracyM,
-      measuredAt: measuredAt,
-      altitudeM: height,
-      altitudeAccuracyM: heightAccuracy,
-      speedMps: speedMps != null && speedMps.isFinite && speedMps >= 0
-          ? speedMps
-          : null,
-      speedAccuracyMps:
-          speedAccuracyMps != null &&
-              speedAccuracyMps.isFinite &&
-              speedAccuracyMps >= 0
-          ? speedAccuracyMps
-          : null,
-    );
-    final run = current!;
     final batch = <RunInput>[];
     var phase = run.phase;
     if (phase == RunPhase.paused && !confirmingEnd && _autoResume.add(point)) {

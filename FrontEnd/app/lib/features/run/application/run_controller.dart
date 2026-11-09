@@ -230,6 +230,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   /// 코스 러닝 준비를 마치고 측정 전(RCR-01). 지도에 출발점까지 안내하고 반경 안에서만 시작한다
   CourseStart? courseStart;
   CourseStartIntent? _liveCourseIntent;
+  _CourseStartCapture? _courseStartCapture;
   StreamSubscription<Position>? _approach;
 
   /// 마지막으로 시작한 코스 러닝의 코스와 세션 ID. 결과 화면의 "서버 판정 대기"에 쓴다
@@ -577,6 +578,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     setupAction = null;
     gpsNotice = null;
     int? locationToken;
+    _CourseStartCapture? startCapture;
     final preparationDone = _preparationDone = Completer<void>();
     _notify();
     try {
@@ -707,6 +709,11 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         if (intent == null) {
           final clock = await _recoveryClock();
           startedAt = _utcNow();
+          startCapture = _courseStartCapture = _CourseStartCapture(startedAt);
+          final latest = _latest;
+          if (latest != null && RunLocationPolicy.usable(latest, startedAt)) {
+            startCapture.add(latest, 0);
+          }
           intent = CourseStartIntent(
             member,
             runId,
@@ -748,6 +755,13 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
           startedAt,
           originMs: courseOriginMs,
           weightKg: start?.intent == null ? weight : start!.intent!.weightKg,
+          takeStartInputs: startCapture == null
+              ? null
+              : () {
+                  final inputs = startCapture!.inputs;
+                  _courseStartCapture = null;
+                  return inputs;
+                },
         );
         _liveCourseIntent = null;
       }
@@ -786,6 +800,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         await _markGap('START_WAIT');
         return;
       }
+      if (startCapture?.inputs.isNotEmpty ?? false) return;
       await recorder.gps(
         latest.latitude,
         latest.longitude,
@@ -801,6 +816,9 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     } on Object catch (e) {
       if (generation == _generation) await _operationError(e);
     } finally {
+      if (identical(_courseStartCapture, startCapture)) {
+        _courseStartCapture = null;
+      }
       if (generation == _generation) {
         preparing = false;
         countdown = null;
@@ -1278,11 +1296,21 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> _markGap(String reason) async {
-    if (_gapOpen || !recorder.active || storageFault || _disposed) return;
+    final capture = _courseStartCapture;
+    if (_gapOpen ||
+        (!recorder.active && capture == null) ||
+        storageFault ||
+        _disposed) {
+      return;
+    }
     _gapOpen = true;
     gpsNotice = 'GPS 신호를 기다리고 있어요. 시간은 계속 측정해요.';
     try {
-      await recorder.gap(reason);
+      if (capture == null) {
+        await recorder.gap(reason);
+      } else {
+        capture.gap(reason, _utcNow());
+      }
     } on Object catch (e) {
       await _operationError(e);
     }
@@ -1299,7 +1327,10 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     _lastFixAt = _utcNow();
     _gapOpen = false;
     gpsNotice = p.accuracy > 15 ? '위치 정확도가 낮아요. 이동을 확인할 수 있는 신호를 기다려요.' : null;
-    if (recorder.active) {
+    final capture = _courseStartCapture;
+    if (capture != null) {
+      capture.receive(p, _lastFixAt!);
+    } else if (recorder.active) {
       unawaited(
         recorder
             .gps(
@@ -1817,6 +1848,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _stopLocation({int? expectedToken}) async {
     if (expectedToken != null && expectedToken != _locationGeneration) return;
     ++_locationGeneration;
+    _courseStartCapture = null;
     final subscription = _gps;
     _gps = null;
     await subscription?.cancel();
@@ -1893,5 +1925,56 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   void dispose() {
     unawaited(shutdown());
     super.dispose();
+  }
+}
+
+/// GPS is already running while the course-start request is in flight.
+/// Only a new start has a fix that can anchor the original time at zero.
+class _CourseStartCapture {
+  _CourseStartCapture(this.startedAt);
+
+  final DateTime startedAt;
+  final inputs = <RunInput>[];
+
+  void receive(Position position, DateTime receivedAt) {
+    final sinceStart = receivedAt.difference(startedAt).inMilliseconds;
+    final measured = position.timestamp.difference(startedAt).inMilliseconds;
+    if (sinceStart < 0 || measured < 0) return;
+    final elapsedMs = measured.clamp(0, sinceStart);
+    if (inputs.isNotEmpty && elapsedMs <= inputs.last.elapsedMs) return;
+    add(position, elapsedMs);
+  }
+
+  void add(Position position, int elapsedMs) {
+    inputs.add(
+      RunRecorder.locationInput(
+        seq: inputs.length + 1,
+        elapsedMs: elapsedMs,
+        measuredAt: position.timestamp.toUtc(),
+        lat: position.latitude,
+        lng: position.longitude,
+        accuracyM: position.accuracy,
+        speedMps: position.speed,
+        speedAccuracyMps: position.speedAccuracy,
+        altitudeM: position.hasAltitude ? position.altitude : null,
+        altitudeAccuracyM: position.hasAltitudeAccuracy
+            ? position.altitudeAccuracy
+            : null,
+      ),
+    );
+  }
+
+  void gap(String reason, DateTime receivedAt) {
+    final elapsedMs = receivedAt.difference(startedAt).inMilliseconds;
+    if (elapsedMs < (inputs.lastOrNull?.elapsedMs ?? 0)) return;
+    inputs.add(
+      RunInput(
+        seq: inputs.length + 1,
+        kind: RunKind.gap,
+        elapsedMs: elapsedMs,
+        measuredAt: receivedAt.toUtc(),
+        reason: reason,
+      ),
+    );
   }
 }

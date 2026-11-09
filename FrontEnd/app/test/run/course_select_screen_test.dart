@@ -505,7 +505,14 @@ void main() {
         tester,
       ) async {
         final api = FakeCourseApi()
-          ..listed = [testCourse('코스 테스트', activeRunners: 3)]
+          ..listed = [
+            testCourse(
+              '코스 테스트',
+              activeRunners: 3,
+              // 만료 임박 안내가 러너 상태를 가리지 않게 날짜를 고정하지 않는다.
+              expiresAt: DateTime.now().toUtc().add(const Duration(days: 30)),
+            ),
+          ]
           ..savedIds = {'id-코스 테스트'};
         await open(
           tester,

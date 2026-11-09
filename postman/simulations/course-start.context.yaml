@@ -1,0 +1,11 @@
+purpose:
+  stands_in_for: The course start acknowledgement from the running backend.
+  unblocks: Testing local GPS storage while the real HTTP client waits for a response.
+assumptions:
+  - id: course-start-acknowledgement
+    status: supported
+    claim: A successful acknowledgement can arrive after several seconds of GPS fixes.
+    reason: The simulation deliberately delays the HTTP response for six seconds.
+    verification: The local simulation logged a 200 acknowledgement after roughly 6 seconds. The Flutter test used RunApiClient and read back SQLite GPS inputs at offsets 0 through 7000 ms in sequence. The original app failed the matching recorder test. No live backend or phone GPS was used. The published mock search was skipped because the CLI was not signed in.
+    source: FrontEnd/app/lib/core/api/run_api_client.dart
+    updated_at: '2026-11-06'

@@ -1,0 +1,9 @@
+version: 1
+name: Delayed course start acknowledgement
+slug: delayed-course-start
+protocol: http
+interceptRequests: true
+scenarios:
+  - name: default
+    path: ./default.js
+    default: true
