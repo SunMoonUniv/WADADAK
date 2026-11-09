@@ -664,7 +664,8 @@ void main() {
 
       expect(chips(tester), ['전체 기간*', '이번 달', '이번 주']);
       final me = myRank(tester);
-      expect([me.rank, me.name, me.meta, me.value], ['24', '나 (러닝왕김)', '5′14″/km · 09.08 · 상위 8%', '27:14']);
+      expect([me.rank, me.name, me.meta, me.value], ['24', '나 (러닝왕김)', '5′14″/km · 09.08', '27:14'],
+          reason: '서버가 상위 비율을 줘도 보이지 않는다(B9-02)');
       expect(tester.widget<WdMyRankCard>(find.byType(WdMyRankCard)).onTap, isNull, reason: '내 순위는 누를 수 없다(B9-02)');
       expect(stats(tester), [('참여 러너', '312명'), ('1위 기록', '24:12'), ('평균 기록', '28:40')]);
       expect([for (final rank in ranks(tester)) '${rank.rank} ${rank.name} ${rank.meta} ${rank.value}'], [
@@ -697,7 +698,7 @@ void main() {
       rankings.gate!.complete();
       rankings.gate = null;
       await tester.pumpAndSettle();
-      expect(myRank(tester).meta, '4′48″/km · 10.14 · 상위 67%');
+      expect(myRank(tester).meta, '4′48″/km · 10.14');
       expect(myRank(tester).name, '나', reason: '닉네임을 못 받으면 `나`만');
       expect([for (final rank in ranks(tester)) rank.name], ['새벽러닝', '나 (러닝왕김)', '야경러너'],
           reason: '내 줄은 B8 리뷰처럼 `나 (닉네임)`');

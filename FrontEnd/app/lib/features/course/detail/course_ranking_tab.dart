@@ -147,7 +147,7 @@ WdRank courseRank(CourseRankingEntry entry, {bool withDate = false}) {
   );
 }
 
-/// 내 순위(B9-02). 순위 · 페이스 · 날짜 · 상위 비율이고 누를 수 없다.
+/// 내 순위(B9-02). 순위 · 페이스 · 날짜이고 누를 수 없다.
 /// 이름은 순위 줄처럼 `나 (닉네임)`이고 닉네임이 없으면 `나`. 내 정보 비공개면 순위 자리에 `비공개 중`.
 class CourseMyRankCard extends StatelessWidget {
   const CourseMyRankCard(this.me, {super.key, required this.period});
@@ -163,7 +163,6 @@ class CourseMyRankCard extends StatelessWidget {
       MyCourseRanking(:final paceSecondsPerKm?, :final completedAt?) => [
           formatCoursePace(paceSecondsPerKm),
           formatMonthDay(completedAt),
-          if (me.topPercent case final percent?) '상위 $percent%',
         ].join(' · '),
       _ => null,
     };
