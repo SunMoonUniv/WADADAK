@@ -124,8 +124,10 @@ void main() {
     await startApp(tester);
     await reachProfile(tester);
 
-    await tap(tester, find.bySemanticsLabel('프로필 사진 고르기'));
-    expect(find.text('사진 빼기'), findsOneWidget);
+    await tap(tester, find.text('프로필 사진 추가'));
+    expect(find.text('사진 삭제'), findsNothing); // 아직 사진이 없다
+    await tap(tester, find.text('앨범에서 고르기'));
+    expect(find.text('사진 변경'), findsOneWidget);
     await fillProfile(tester, '사진러너');
     await tap(tester, find.text('시작하기'));
 
@@ -140,8 +142,11 @@ void main() {
     await startApp(tester);
     await reachProfile(tester);
 
-    await tap(tester, find.bySemanticsLabel('프로필 사진 고르기'));
-    await tap(tester, find.text('사진 빼기'));
+    await tap(tester, find.text('프로필 사진 추가'));
+    await tap(tester, find.text('앨범에서 고르기'));
+    await tap(tester, find.text('사진 변경'));
+    await tap(tester, find.text('사진 삭제'));
+    expect(find.text('프로필 사진 추가'), findsOneWidget);
     await fillProfile(tester, '사진없음');
     await tap(tester, find.text('시작하기'));
 

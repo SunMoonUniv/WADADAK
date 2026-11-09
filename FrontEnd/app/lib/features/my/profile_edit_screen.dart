@@ -53,8 +53,6 @@ class ProfileEditScreen extends ConsumerWidget {
   }
 }
 
-enum _PhotoAction { pick, remove }
-
 class _ProfileEditForm extends ConsumerStatefulWidget {
   const _ProfileEditForm({required this.me});
 
@@ -209,31 +207,11 @@ class _ProfileEditFormState extends ConsumerState<_ProfileEditForm> {
   bool get _hasPhoto => _photoBytes != null || (!_photoRemoved && _me.profileImageUrl != null);
 
   Future<void> _changePhoto() async {
-    final action = await showModalBottomSheet<_PhotoAction>(
-      context: context,
-      backgroundColor: WdColors.paper,
-      showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              title: Text('앨범에서 고르기', style: WdText.ko16Bold.copyWith(color: WdColors.ink)),
-              onTap: () => Navigator.pop(context, _PhotoAction.pick),
-            ),
-            if (_hasPhoto)
-              ListTile(
-                title: Text('사진 삭제', style: WdText.ko16Bold.copyWith(color: WdColors.warningText)),
-                onTap: () => Navigator.pop(context, _PhotoAction.remove),
-              ),
-          ],
-        ),
-      ),
-    );
+    final action = await showPhotoActionSheet(context, hasPhoto: _hasPhoto);
     switch (action) {
-      case _PhotoAction.pick:
+      case PhotoAction.pick:
         await _pickPhoto();
-      case _PhotoAction.remove:
+      case PhotoAction.remove:
         setState(() {
           _photo = _photoBytes = _uploadedKey = null;
           _photoRemoved = true;
