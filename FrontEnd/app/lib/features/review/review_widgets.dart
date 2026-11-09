@@ -148,8 +148,12 @@ class ReviewPhotoOnlyCheck extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Semantics(
+    // 제 노드를 만든다. 없으면 체크 상태가 위쪽 노드에 붙어 화면 읽기가 리뷰 탭 전체를 체크박스 하나로 읽는다.
+    container: true,
     checked: checked,
     label: '사진 리뷰만',
+    // 아래 누르기는 excludeSemantics로 빠지므로 화면 읽기의 누르기는 여기서 받는다
+    onTap: () => onChanged(!checked),
     excludeSemantics: true,
     child: GestureDetector(
       behavior: HitTestBehavior.opaque,

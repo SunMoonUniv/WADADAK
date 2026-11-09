@@ -230,6 +230,8 @@ Widget _link(String label, VoidCallback? onTap) => GestureDetector(
 /// - Search: `showChevron: true`, 썸네일 58.
 /// - List: `lines: [메타, '★ 4.6 (128)']`, `showChevron: true`, 썸네일 64×58.
 /// - Saved 편집(G5-1): [leading]에 선택 체크, [actionLabel] 없이.
+///
+/// [onTap]이 있으면 화면 읽기는 카드 하나를 버튼 하나로 읽는다.
 class WdCourseCard extends StatelessWidget {
   const WdCourseCard({
     super.key,
@@ -262,8 +264,9 @@ class WdCourseCard extends StatelessWidget {
   final VoidCallback? onAction;
   final VoidCallback? onTap;
 
+  // 카드마다 제 노드를 만든다. 없으면 버튼 표시가 목록 같은 위쪽 노드에 붙는다.
   @override
-  Widget build(BuildContext context) => _MediaCard(
+  Widget build(BuildContext context) => Semantics(container: true, button: onTap != null, child: _MediaCard(
         leading: leading,
         thumbnail: WdRouteThumbnail(width: thumbnailSize.width, height: thumbnailSize.height, child: thumbnail),
         title: title,
@@ -281,7 +284,7 @@ class WdCourseCard extends StatelessWidget {
                     children: [...tags, const Spacer(), _link(actionLabel!, onAction)],
                   ),
         onTap: onTap,
-      );
+      ));
 }
 
 /// Run record card — 러닝 기록 목록 · `.selectable` 코스 등록용 기록 선택.

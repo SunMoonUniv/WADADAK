@@ -408,6 +408,12 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     _setPeriod(null);
   }
 
+  /// 목록이 정렬을 바꾸다 실패해 보이는 목록의 정렬 · 기간으로 되돌린다(QST-02). 가까운순이어도 위치는 다시 받지 않는다.
+  void _revertSort(CourseListSort sort, CoursePeriod? period) {
+    setState(() => _sort = sort);
+    _setPeriod(period);
+  }
+
   /// 인기순 기간을 바꾼다. 기간마다 빠지는 코스가 달라 지도 · 지역별 코스 수도 다시 받는다(FIL-09).
   void _setPeriod(CoursePeriod? period) {
     if (period == _period) return;
@@ -777,6 +783,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     onExpand: () => _moveSheet(_halfSize),
                     onShowAll: () => _moveSheet(1),
                     onSort: _sortBy,
+                    onRevertSort: _revertSort,
                     onOpenFilter: _openFilter,
                     onResetFilter: _resetFilter,
                     onWidenMap: _widenMap,

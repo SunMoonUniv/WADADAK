@@ -7,6 +7,8 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../../core/api/api_client.dart';
 import '../../core/api/course_api_client.dart';
+import '../../core/auth/auth_controller.dart';
+import '../../core/error_message.dart';
 import '../../core/map/geo_point.dart';
 import '../course/course_format.dart';
 import '../course/course_list_card.dart';
@@ -54,6 +56,7 @@ class CourseListSheet extends ConsumerStatefulWidget {
     this.onExpand,
     this.onShowAll,
     this.onSort,
+    this.onRevertSort,
     this.onOpenFilter,
     this.onResetFilter,
     this.onWidenMap,
@@ -119,6 +122,9 @@ class CourseListSheet extends ConsumerStatefulWidget {
 
   /// 정렬 칩을 눌렀다. 가까운순은 현재 위치를 받은 뒤에 바뀐다.
   final ValueChanged<CourseListSort>? onSort;
+
+  /// 정렬을 바꾸다 목록을 못 받았다. 칩을 보이는 목록의 정렬 · 기간으로 되돌린다(QST-02, G1 검색과 같다).
+  final void Function(CourseListSort sort, CoursePeriod? period)? onRevertSort;
 
   /// 슬라이더 아이콘 칩을 눌렀다(A3 열기, A2-04 · A6-02).
   final VoidCallback? onOpenFilter;
@@ -310,9 +316,19 @@ class _CourseListSheetState extends ConsumerState<CourseListSheet> {
         _moreFailed = false;
         _forgetRunnersOf(page.courses);
       });
-    } on ApiException {
+    } on ApiException catch (e) {
       if (!mounted || request != _request) return;
-      setState(() => _failed = _courses == null);
+      final listed = _listed;
+      if (listed == null) {
+        setState(() => _failed = true);
+        return;
+      }
+      // 갱신 실패는 전에 받은 목록을 둔다(QST-02). 정렬을 바꾸다 실패했으면 칩을 그 목록의 정렬로 되돌리고 알린다.
+      // 칩과 목록이 맞고, 같은 칩을 다시 눌러 받을 수 있다. 로그인 화면으로 가는 중이면 알리지 않는다(홈 첫 조회 실패 알림과 같다).
+      if (query.sort == listed.sort || ref.read(authControllerProvider).value is SignedOut) return;
+      _requested = listed;
+      widget.onRevertSort?.call(listed.sort, listed.period);
+      showError(context, e);
     }
   }
 
