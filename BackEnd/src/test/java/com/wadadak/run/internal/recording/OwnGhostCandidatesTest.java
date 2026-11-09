@@ -90,6 +90,14 @@ class OwnGhostCandidatesTest {
         return candidates.list(owner,courseId,3,sort,period,new Cursorable(cursor,size));
     }
 
+    @Test void courseIsReadOutsideTheTransaction() {
+        when(courseApi.getRouteForRun(any())).thenAnswer(call -> {
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive()).isFalse();
+            return new CourseRouteSnapshot(call.getArgument(0),"합성 코스",route(),5200,3);
+        });
+        assertThat(page(OwnGhostSort.BEST, OwnGhostPeriod.ALL, null, 20).summary().count()).isEqualTo(6);
+    }
+
     @Test void pagePastTheLastCandidateStillReturnsTheWholeListSummary() {
         var first = page(OwnGhostSort.BEST, OwnGhostPeriod.ALL, null, 1);
         String[] cursor = first.nextCursor().split("\\|", -1);
