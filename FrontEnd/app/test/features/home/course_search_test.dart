@@ -176,6 +176,23 @@ void main() {
     expect(find.byType(CourseListSheet), findsOneWidget);
   });
 
+  /// A2-02: 돋보기 · 여백도 검색창이다. 입력란 위를 눌러도 G1은 한 번만 열린다(위 테스트).
+  testWidgets('the magnifier and the edge of the home search bar open G1 too, only once', (tester) async {
+    await openHome(tester);
+    final bar = find.byType(WdSearchBar);
+
+    await tap(tester, find.descendant(of: bar, matching: find.text('⌕')));
+    expect(find.byType(CourseSearchScreen), findsOneWidget);
+    await tap(tester, find.bySemanticsLabel('뒤로 가기'));
+    expect(find.byType(CourseSearchScreen), findsNothing, reason: '한 번만 열린다');
+
+    await tester.tapAt(tester.getRect(bar).centerLeft + const Offset(4, 0));
+    await tester.pumpAndSettle();
+    expect(find.byType(CourseSearchScreen), findsOneWidget);
+    await tap(tester, find.bySemanticsLabel('뒤로 가기'));
+    expect(find.byType(CourseSearchScreen), findsNothing);
+  });
+
   testWidgets('searches with two or more letters and shows the Figma G1 cards', (tester) async {
     await openSearch(tester);
 

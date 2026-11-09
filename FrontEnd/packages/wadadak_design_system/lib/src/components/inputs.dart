@@ -86,7 +86,7 @@ class WdTextField extends StatelessWidget {
 
 /// Search / Bar — soft 바탕 검색 입력.
 ///
-/// 검색 화면으로 이동만 하는 자리라면 [onTap]을 주면 입력 없이 탭만 받는다.
+/// 검색 화면으로 이동만 하는 자리라면 [onTap]을 주면 입력 없이 탭만 받는다. 돋보기 · 여백을 눌러도 받는다.
 class WdSearchBar extends StatelessWidget {
   const WdSearchBar({
     super.key,
@@ -108,6 +108,8 @@ class WdSearchBar extends StatelessWidget {
     final text = WdText.raw(12, FontWeight.w400, 18);
     return WdSurface(
       padding: const EdgeInsets.symmetric(horizontal: WdSpace.s12, vertical: 11),
+      // 입력란 위를 누르면 입력란이 먼저 받아 [onTap]은 한 번만 불린다.
+      onTap: onTap,
       child: Row(
         spacing: WdSpace.s8,
         children: [

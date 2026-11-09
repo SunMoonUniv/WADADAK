@@ -277,7 +277,7 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
     });
   }
 
-  /// 점이 있으면 버릴지 묻고 홈으로 돌아간다(B3-08).
+  /// 점이 있으면 버릴지 묻고 B3를 연 화면(홈 · G4)으로 돌아간다(B3-08, 정책 문서 4.1).
   Future<void> _leave() async {
     if (!_draft.isEmpty) {
       final confirmed = await _confirm(

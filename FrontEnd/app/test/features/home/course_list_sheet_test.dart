@@ -123,6 +123,18 @@ void main() {
     expect(list.cursor, isNull);
   });
 
+  /// 화면 읽기는 카드 하나를 버튼 하나로 읽는다.
+  testWidgets('a screen reader reads each course card as its own button', (tester) async {
+    final semantics = tester.ensureSemantics();
+    courses.listed = [course('성북천 벚꽃길 3K'), course('한강 야경 5K')];
+    await openHome(tester);
+
+    final card = tester.getSemantics(find.byType(CourseListCard).first);
+    expect(card, isSemantics(isButton: true, hasTapAction: true));
+    expect(card.label, allOf(contains('성북천 벚꽃길 3K'), isNot(contains('한강 야경 5K'))));
+    semantics.dispose();
+  });
+
   testWidgets('looks only at the part of the map above the sheet', (tester) async {
     await openHome(tester);
     // 반(A2): 지도 영역(874 - 배너 122.5)의 위쪽 절반만 보인다.
@@ -219,6 +231,32 @@ void main() {
 
     expect(courses.listRequests, hasLength(2));
     expect(find.text('성북천 벚꽃길 3K'), findsOneWidget, reason: '갱신 실패는 전에 받은 목록을 둔다(QST-02)');
+  });
+
+  /// QST-02 · G1 검색처럼: 정렬을 바꾸다 못 받으면 전 목록을 두고 칩을 그 목록의 정렬로 되돌리고 알린다.
+  /// 칩과 목록이 맞고, 같은 칩을 다시 눌러 받을 수 있다.
+  testWidgets('puts the sort chip back and tells when a new sort cannot be loaded', (tester) async {
+    courses.listed = [course('성북천 벚꽃길 3K')];
+    await openHome(tester);
+    Finder chip(String label) => find.widgetWithText(WdFilterChip, label);
+    bool selected(String label) => tester.widget<WdFilterChip>(chip(label)).selected;
+    final loaded = courses.listRequests.length;
+
+    courses.listError = const ApiException(ApiException.network, '네트워크에 연결할 수 없어요.');
+    await tester.tap(chip('평점순'));
+    await tester.pumpAndSettle();
+    expect(courses.listRequests.last.sort, CourseListSort.rating);
+    expect(courses.listRequests, hasLength(loaded + 1), reason: '되돌린 정렬은 보이는 목록이라 다시 받지 않는다');
+    expect([selected('인기순'), selected('평점순')], [true, false]);
+    expect(find.text('네트워크에 연결할 수 없어요.'), findsOneWidget);
+    expect(find.text('성북천 벚꽃길 3K'), findsOneWidget);
+
+    courses.listError = null;
+    await tester.tap(chip('평점순'));
+    await tester.pumpAndSettle();
+    expect(courses.listRequests, hasLength(loaded + 2));
+    expect(courses.listRequests.last.sort, CourseListSort.rating);
+    expect(selected('평점순'), isTrue);
   });
 
   /// 카드 순서대로 이름.

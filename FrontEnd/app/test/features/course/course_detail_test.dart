@@ -524,6 +524,20 @@ void main() {
       expect(reviews.listRequests, hasLength(3), reason: '탭을 오가도 다시 받지 않는다');
     });
 
+    /// 화면 읽기는 `사진 리뷰만`을 리뷰 탭 다른 글과 섞지 않고 체크박스 하나로 읽고, 두 번 눌러 켜고 끈다.
+    testWidgets('a screen reader reads 사진 리뷰만 as its own checkbox and can tick it', (tester) async {
+      final semantics = tester.ensureSemantics();
+      await openReviews(tester);
+
+      expect(tester.getSemantics(find.byType(ReviewPhotoOnlyCheck)),
+          isSemantics(label: '사진 리뷰만', hasCheckedState: true, isChecked: false, hasTapAction: true));
+      tester.semantics.tap(find.semantics.byLabel('사진 리뷰만'));
+      await tester.pumpAndSettle();
+      expect(photoOnly(tester), isTrue);
+      expect(reviews.listRequests.last, (sort: ReviewSort.latest, photoOnly: true, excludeMine: false));
+      semantics.dispose();
+    });
+
     testWidgets('keeps the shown reviews while another sort is loading, so the page does not jump', (tester) async {
       await openReviews(tester);
       reviews.listGate = Completer<void>();
