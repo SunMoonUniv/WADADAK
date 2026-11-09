@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../icons.dart';
 import '../tokens.dart';
 import 'surface.dart';
 
@@ -17,10 +18,13 @@ class WdRank {
   final ImageProvider? avatar;
 }
 
+/// 사진이 없으면 `WdAvatar`처럼 사람 아이콘을 그린다(시상대와 같게).
 Widget _avatar(ImageProvider? image, Color color) => ClipOval(
       child: SizedBox.square(
         dimension: 30,
-        child: image != null ? Image(image: image, fit: BoxFit.cover) : ColoredBox(color: color),
+        child: image != null
+            ? Image(image: image, fit: BoxFit.cover)
+            : ColoredBox(color: color, child: const Center(child: WdIcon(WdIcons.user, size: 15))),
       ),
     );
 
