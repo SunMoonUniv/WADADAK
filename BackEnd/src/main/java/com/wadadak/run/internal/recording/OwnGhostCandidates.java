@@ -13,7 +13,10 @@ import java.time.temporal.TemporalAdjusters;
 import java.util.*;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
 
 /** F9 projection over existing records. Never loads GPS inputs or builds replay for a page. */
@@ -25,8 +28,11 @@ class OwnGhostCandidates {
     private final Clock clock;
     private final CourseApi courses;
     private final JsonMapper json;
+    private final TransactionTemplate readOnly;
     OwnGhostCandidates(NamedParameterJdbcTemplate db, RunLocks locks, WithdrawnRunMemberRepository withdrawals, Clock clock,
-                       CourseApi courses, JsonMapper json) {
+                       CourseApi courses, JsonMapper json, PlatformTransactionManager transactionManager) {
+        this.readOnly = new TransactionTemplate(transactionManager);
+        this.readOnly.setReadOnly(true);
         this.db = db; this.locks = locks; this.withdrawals = withdrawals; this.clock = clock;
         this.courses=courses; this.json=json;
     }
@@ -55,7 +61,8 @@ class OwnGhostCandidates {
             rs.getObject(prefix + "cadence", Double.class));
     }
 
-    @Transactional(readOnly = true)
+    /** Course read happens before the read-only transaction: no DB connection or member lock is held while waiting on it. */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public OwnGhostCandidatePage list(UUID owner, UUID courseId, long version, OwnGhostSort sort,
             OwnGhostPeriod period, Cursorable page) {
         if (version < 0 || sort == null || period == null || page.size() < 1 || page.size() > Cursorable.MAX_SIZE)
@@ -73,8 +80,6 @@ class OwnGhostCandidates {
         Instant from = first == null ? null : first.atStartOfDay(ZoneId.of("Asia/Seoul")).toInstant();
         String scope = courseId + "|" + version + "|" + sort + "|" + period + "|" + (from == null ? "-" : from);
         Position after = position(page.cursor(), scope);
-        locks.member(owner);
-        if (withdrawals.existsById(owner)) throw new AppException(RunErrorCode.NOT_FOUND);
         Map<String, Object> args = new HashMap<>();
         args.put("owner", owner); args.put("courseId", courseId.toString()); args.put("version", Long.toString(version));
         args.put("courseUuid", courseId); args.put("numericVersion", version);
@@ -150,22 +155,26 @@ class OwnGhostCandidates {
                 """ + (sort == OwnGhostSort.BEST
                         ? "page.seconds ASC, page.started_at DESC, page.id DESC"
                         : "page.started_at DESC, page.id DESC");
-        var selection = db.query(query, args, rs -> {
-            OwnGhostSummary summary = new OwnGhostSummary(0, null, null);
-            List<OwnGhostCandidate> rows = new ArrayList<>();
-            boolean summaryRead = false;
-            while (rs.next()) {
-                if (!summaryRead) {
-                    double average = rs.getDouble("average_seconds");
-                    Double averageSeconds = rs.wasNull() ? null : average;
-                    summary = new OwnGhostSummary(rs.getLong("total_count"),
-                            averageSeconds,
-                            rs.getObject("best_id") == null ? null : candidate(rs, courseId, version, "best_"));
-                    summaryRead = true;
+        var selection = readOnly.execute(status -> {
+            locks.member(owner);
+            if (withdrawals.existsById(owner)) throw new AppException(RunErrorCode.NOT_FOUND);
+            return db.query(query, args, rs -> {
+                OwnGhostSummary summary = new OwnGhostSummary(0, null, null);
+                List<OwnGhostCandidate> rows = new ArrayList<>();
+                boolean summaryRead = false;
+                while (rs.next()) {
+                    if (!summaryRead) {
+                        double average = rs.getDouble("average_seconds");
+                        Double averageSeconds = rs.wasNull() ? null : average;
+                        summary = new OwnGhostSummary(rs.getLong("total_count"),
+                                averageSeconds,
+                                rs.getObject("best_id") == null ? null : candidate(rs, courseId, version, "best_"));
+                        summaryRead = true;
+                    }
+                    if (rs.getObject("page_id") != null) rows.add(candidate(rs, courseId, version, "page_"));
                 }
-                if (rs.getObject("page_id") != null) rows.add(candidate(rs, courseId, version, "page_"));
-            }
-            return new SelectionRows(rows, summary);
+                return new SelectionRows(rows, summary);
+            });
         });
         var rows = selection.rows();
         boolean more = rows.size() > page.size();

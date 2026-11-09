@@ -15,7 +15,10 @@ import com.wadadak.run.internal.judging.CourseJudge;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.time.Clock;
@@ -52,11 +55,14 @@ class CourseRunService {
     private final JsonMapper json;
     private final ApplicationEventPublisher events;
     private final Clock clock;
+    private final TransactionTemplate transactions;
     private final CourseJudge judge = new CourseJudge();
 
     CourseRunService(CourseAttemptRepository attempts, CourseRunnerCounts counts, RunSessionRepository sessions,
                      DeletedRunRecordRepository deletedRecords, WithdrawnRunMemberRepository withdrawnMembers,
-                     RunLocks locks, CourseApi courseApi, JsonMapper json, ApplicationEventPublisher events, Clock clock) {
+                     RunLocks locks, CourseApi courseApi, JsonMapper json, ApplicationEventPublisher events, Clock clock,
+                     PlatformTransactionManager transactionManager) {
+        this.transactions = new TransactionTemplate(transactionManager);
         this.attempts = attempts;
         this.counts = counts;
         this.sessions = sessions;
@@ -69,10 +75,36 @@ class CourseRunService {
         this.clock = clock;
     }
 
-    /** 준비. 같은 세션·같은 코스 재시도는 처음 저장한 스냅샷을 그대로 돌려준다 */
-    @Transactional
+    /**
+     * 준비. 같은 세션·같은 코스 재시도는 처음 저장한 스냅샷을 그대로 돌려준다(그사이 코스가 비활성이어도).
+     * 코스 조회는 트랜잭션·잠금 밖에서 한다(개발 정책 v3 · 동기 호출은 쓰기 트랜잭션을 열기 전에). 분리 후 core가 느려도
+     * run의 DB 커넥션과 회원·세션 잠금을 쥐고 기다리지 않는다
+     */
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
     public CourseSnapshot prepare(UUID owner, UUID id, UUID courseId) {
-        lockActive(owner, id);
+        if (withdrawnMembers.existsById(owner) || deletedRecords.existsById(id)) {
+            throw new AppException(RunErrorCode.NOT_FOUND);
+        }
+        Optional<CourseSnapshot> saved = prepared(owner, id, courseId);
+        if (saved.isPresent()) {
+            return saved.get();
+        }
+        CourseRouteSnapshot course;
+        try {
+            course = courseApi.getRouteForRun(courseId); // 없거나 비활성이면 COURSE-001·002
+        } catch (RuntimeException failure) {
+            return prepared(owner, id, courseId).orElseThrow(() -> failure); // 같은 요청이 그사이 저장했을 수 있다
+        }
+        return transactions.execute(status -> {
+            lockActive(owner, id);
+            return prepared(owner, id, courseId).orElseGet(() -> snapshot(attempts.save(new CourseAttempt(id, owner,
+                    course.courseId(), course.name(), course.version(), json.writeValueAsString(course.route()),
+                    course.totalDistanceMeters()))));
+        });
+    }
+
+    /** 이미 준비한 시도의 스냅샷. 남의 시도·다른 코스·자유 러닝으로 준비된 세션이면 거부한다 */
+    private Optional<CourseSnapshot> prepared(UUID owner, UUID id, UUID courseId) {
         Optional<CourseAttempt> existing = attempts.findById(id);
         if (existing.isPresent()) {
             CourseAttempt attempt = existing.get();
@@ -80,15 +112,12 @@ class CourseRunService {
             if (!attempt.getCourseId().equals(courseId)) {
                 throw new AppException(RunErrorCode.CONFLICT);
             }
-            return snapshot(attempt);
+            return Optional.of(snapshot(attempt));
         }
         if (sessions.existsById(id)) { // 이미 자유 러닝으로 준비된 세션
             throw new AppException(RunErrorCode.CONFLICT);
         }
-        CourseRouteSnapshot course = courseApi.getRouteForRun(courseId); // 없거나 비활성이면 COURSE-001·002
-        CourseAttempt attempt = attempts.save(new CourseAttempt(id, owner, course.courseId(), course.name(),
-                course.version(), json.writeValueAsString(course.route()), course.totalDistanceMeters()));
-        return snapshot(attempt);
+        return Optional.empty();
     }
 
     /** 시작 신호. 같은 startedAt 재시도는 이벤트를 다시 내지 않는다 */

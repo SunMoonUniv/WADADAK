@@ -146,6 +146,21 @@ class CourseRunTest {
     }
 
     @Test
+    void prepareReadsCourseOutsideTheTransactionAndRetryNeedsNoCourse() {
+        List<GeoPoint> route = List.of(new GeoPoint(LAT0, LNG0), new GeoPoint(LAT0 + 1000 * LAT_PER_M, LNG0));
+        when(courseApi.getRouteForRun(any())).thenAnswer(call -> {
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
+                    .isFalse(); // core를 기다리는 동안 run DB 커넥션 · 잠금을 쥐지 않는다
+            return new CourseRouteSnapshot(call.getArgument(0), "테스트 코스", route, 1000, 3);
+        });
+        CourseSnapshot first = courseRuns.prepare(owner, id, courseId);
+
+        // 준비 뒤 코스가 비활성이 돼도 같은 요청 재시도는 저장한 스냅샷을 돌려준다
+        when(courseApi.getRouteForRun(any())).thenThrow(new AppException(CourseErrorCode.COURSE_NOT_AVAILABLE));
+        assertThat(courseRuns.prepare(owner, id, courseId)).isEqualTo(first);
+    }
+
+    @Test
     void inactiveCourseCannotBePrepared() {
         when(courseApi.getRouteForRun(any())).thenThrow(new AppException(CourseErrorCode.COURSE_NOT_AVAILABLE));
 
