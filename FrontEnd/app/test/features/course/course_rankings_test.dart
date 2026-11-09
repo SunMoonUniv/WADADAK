@@ -77,7 +77,7 @@ void main() {
         [('참여 러너', '25명'), ('1위 기록', '24:20'), ('평균 기록', '26:20')]);
     final me = tester.widget<WdMyRankCard>(find.byType(WdMyRankCard));
     expect([me.data.rank, me.data.name, me.data.meta, me.data.value],
-        ['24', '나 (러닝왕김)', '5′04″/km · 09.08 · 상위 96%', '28:10']);
+        ['24', '나 (러닝왕김)', '5′04″/km · 09.08', '28:10'], reason: '서버가 상위 비율을 줘도 보이지 않는다');
     expect(me.onTap, isNull, reason: '내 순위는 누를 수 없다');
     expect(find.text('전체 순위 25명'), findsOneWidget);
     expect(find.text('러너를 탭하면 프로필 ›'), findsOneWidget, reason: '러너를 누르면 I3로 간다');

@@ -168,7 +168,7 @@ class CourseRankingEntry {
   final bool mine;
 }
 
-/// 내 순위(B9-02). [status]가 [MyRankStatus.ranked]가 아니면 [rank] · [topPercent]는 null이다.
+/// 내 순위(B9-02). [status]가 [MyRankStatus.ranked]가 아니면 [rank]는 null이다.
 class MyCourseRanking {
   MyCourseRanking.fromJson(Map json)
       : status = MyRankStatus.values.firstWhere((s) => s.apiName == json['status']),
@@ -180,8 +180,7 @@ class MyCourseRanking {
         completedAt = switch (json['completedAt']) {
           final String at => DateTime.parse(at),
           _ => null,
-        },
-        topPercent = json['topPercent'] as int?;
+        };
 
   /// 순위 있음 · 그 기간 완주 기록 없음 · 내 정보 비공개(순위 대신 `비공개 중`).
   final MyRankStatus status;
@@ -195,9 +194,6 @@ class MyCourseRanking {
   final int? courseElapsedSeconds;
   final int? paceSecondsPerKm;
   final DateTime? completedAt;
-
-  /// 상위 비율(%). 순위 ÷ 참여 러너 수 × 100을 올림한다.
-  final int? topPercent;
 }
 
 /// 고스트 대결 준비(C1)에 넘길 공개 고스트. 요청자 본인 기록은 빠진다.
