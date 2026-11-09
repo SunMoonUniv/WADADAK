@@ -146,28 +146,35 @@ void main() {
       expect(await store.pendingCourseStarts('alice'), isEmpty);
     },
   );
-  test('12 second acknowledgement delay is preserved and stale initial GPS is not recorded', () async {
-    await ready();
-    api.onAck = () async {
-      gps.clock = 12000;
-    };
-    await c.prepareStart();
-    expect(c.recorder.active, true);
-    expect(c.metrics.elapsedMs, 12000);
-    expect(c.run!.inputs.where((p) => p.kind == RunKind.gps), isEmpty);
-    expect(c.run!.inputs.where((p) => p.kind == RunKind.gap), isNotEmpty);
-    gps.clock = 13000;
-    gps.streams.last.add(gps.point(36.00001));
-    await until(() => c.run!.inputs.any((p) => p.kind == RunKind.gps));
-    final point = c.run!.inputs.last;
-    expect(
-      point.measuredAt,
-      c.run!.startedAt.add(Duration(milliseconds: point.elapsedMs)),
-    );
-    await c.pause();
-    await c.end();
-    expect(c.run!.checkpointMs, 13000);
-  });
+  test(
+    '12 second acknowledgement preserves the start fix and the actual GPS gap',
+    () async {
+      await ready();
+      api.onAck = () async {
+        gps.clock = 12000;
+      };
+      await c.prepareStart();
+      expect(c.recorder.active, true);
+      expect(c.metrics.elapsedMs, 12000);
+      final initial = c.run!.inputs.where((p) => p.kind == RunKind.gps).single;
+      expect(initial.elapsedMs, 0);
+      expect(initial.measuredAt, c.run!.startedAt);
+      final gap = c.run!.inputs.where((p) => p.kind == RunKind.gap).single;
+      expect(gap.elapsedMs, 12000);
+      expect(gap.reason, 'START_WAIT');
+      gps.clock = 13000;
+      gps.streams.last.add(gps.point(36.00001));
+      await until(() => c.run!.inputs.last.elapsedMs == 13000);
+      final point = c.run!.inputs.last;
+      expect(
+        point.measuredAt,
+        c.run!.startedAt.add(Duration(milliseconds: point.elapsedMs)),
+      );
+      await c.pause();
+      await c.end();
+      expect(c.run!.checkpointMs, 13000);
+    },
+  );
   test(
     'a fresh outside fix prevents a course start and creates no request',
     () async {

@@ -1,11 +1,14 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:wadadak/core/api/api_client.dart';
+import 'package:wadadak/core/api/run_api_client.dart';
 import 'package:wadadak/core/map/map_view.dart';
 import 'package:wadadak/features/run/application/run_controller.dart';
 import 'package:wadadak/features/run/domain/course_run.dart';
@@ -22,6 +25,7 @@ class CourseApi extends TestApi {
   final prepared = <(String owner, String id, String courseId)>[];
   final started = <(String owner, String id, DateTime startedAt)>[];
   Object? prepareError, startError;
+  Future<void> Function(String, String, DateTime)? confirmStart;
 
   /// 출발점 위도. 테스트 위치는 (36, 127)에서 시작한다
   double startLat = 36;
@@ -51,6 +55,7 @@ class CourseApi extends TestApi {
   Future<void> startCourse(String owner, String id, DateTime startedAt) async {
     if (startError != null) throw startError!;
     started.add((owner, id, startedAt));
+    await confirmStart?.call(owner, id, startedAt);
   }
 
   final segmentEnds = <String>[];
@@ -63,13 +68,15 @@ void main() {
   late RunController controller;
   late TestLocation location;
   late CourseApi api;
+  late FailingStore store;
 
   setUp(() {
     sqfliteFfiInit();
     location = TestLocation();
     api = CourseApi();
+    store = FailingStore();
     controller = RunController(
-      FailingStore(),
+      store,
       location,
       api,
       () async => 'alice',
@@ -93,6 +100,76 @@ void main() {
     controller.selectCourse(const CourseSelection('course-1', '테스트 코스'));
     await controller.prepareStart();
   }
+
+  Future<void> checkGpsDuringStart(Future<void> Function() confirm) async {
+    await openCourse();
+    final runId = controller.courseStart!.runId;
+    final response = Completer<void>();
+    api.confirmStart = (_, _, _) async {
+      await confirm();
+      await response.future;
+    };
+    final start = controller.prepareStart();
+    await until(() => api.started.isNotEmpty);
+    try {
+      for (var second = 1; second <= 6; second++) {
+        location.clock = second * 1000;
+        location.streams.last.add(location.point(36 + second * .00002));
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(await store.list('alice', id: runId), isEmpty);
+    } finally {
+      response.complete();
+      await start;
+    }
+
+    location.clock = 7000;
+    location.streams.last.add(location.point(36.00014));
+    await until(() => controller.run?.inputs.last.elapsedMs == 7000);
+    final saved = (await store.list('alice', id: runId)).single;
+    expect(saved.startedAt, api.started.single.$3);
+    expect(saved.inputs.map((input) => input.seq), List.generate(9, (i) => i));
+    expect(saved.inputs.first.kind, RunKind.start);
+    expect(
+      saved.inputs.skip(1).map((input) => input.kind),
+      everyElement(RunKind.gps),
+    );
+    expect(
+      saved.inputs.skip(1).map((input) => input.elapsedMs),
+      List.generate(8, (i) => i * 1000),
+    );
+    expect(
+      saved.inputs.skip(1).map((input) => input.measuredAt),
+      List.generate(8, (i) => saved.startedAt.add(Duration(seconds: i))),
+    );
+    expect(saved.inputs[3].lat, closeTo(36.00004, 1e-9));
+  }
+
+  test(
+    'course GPS is saved from zero across a delayed start acknowledgement',
+    () async {
+      await checkGpsDuringStart(() async {});
+    },
+  );
+
+  const simulationUrl = String.fromEnvironment('COURSE_START_SIM_URL');
+  test(
+    'six-second HTTP acknowledgement preserves startup GPS on disk',
+    () async {
+      final oldOverrides = HttpOverrides.current;
+      HttpOverrides.global = null;
+      final dio = Dio(BaseOptions(baseUrl: simulationUrl));
+      addTearDown(() {
+        dio.close(force: true);
+        HttpOverrides.global = oldOverrides;
+      });
+      await checkGpsDuringStart(() async {
+        final (owner, id, startedAt) = api.started.single;
+        await RunApiClient(dio).startCourse(owner, id, startedAt);
+      });
+    },
+    skip: simulationUrl.isEmpty,
+  );
 
   test('preparing a course stops before measuring and shows the way to the start point', () async {
     await openCourse();
