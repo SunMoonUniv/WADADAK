@@ -90,6 +90,14 @@ class _MyCoursesScreenState extends ConsumerState<MyCoursesScreen> {
     if (changed != null && mounted) _replace(changed);
   }
 
+  /// `+ 만들기`로 코스를 등록하고 돌아오면 첫 쪽부터 다시 받는다. 새 코스가 목록에 보여야 해서다.
+  /// 등록 화면은 만든 코스를 들고 돌아오고, 그냥 뒤로 나오면 null이라 다시 받지 않는다.
+  /// (위 칸 숫자는 등록 화면이 이미 다시 받게 한다.)
+  Future<void> _create() async {
+    final created = await context.push<Object?>(Routes.courseCreate);
+    if (created != null && mounted) _load();
+  }
+
   Future<void> _delete(MyCourseItem course) async {
     if (!await confirmCourseDelete(context, course.name) || !mounted) return;
     try {
@@ -116,7 +124,7 @@ class _MyCoursesScreenState extends ConsumerState<MyCoursesScreen> {
         appBar: WdAppBar(
           title: '내 코스',
           onBack: () => context.pop(),
-          action: WdAppBarAction.button('+ 만들기', onTap: () => context.push(Routes.courseCreate)),
+          action: WdAppBarAction.button('+ 만들기', onTap: _create),
         ),
         body: Column(
           children: [
