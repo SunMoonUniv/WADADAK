@@ -6,6 +6,8 @@ import com.wadadak.common.paging.Cursorable;
 import com.wadadak.common.paging.CursorSlice;
 import com.wadadak.event.run.RunSessionEndedEvent;
 import com.wadadak.event.run.RunRecordDeletedEvent;
+import com.wadadak.event.run.CourseRunTrackEvent;
+import com.wadadak.event.run.CourseRunTrackEvent.TrackPoint;
 import org.springframework.context.ApplicationEventPublisher;
 import java.time.Clock;
 import com.wadadak.run.internal.RunContracts.*;
@@ -251,6 +253,14 @@ class RunService {
             .toList();
         return new CourseSource(id,stored.metrics().distanceM(),segments);
     }
+    /** course-source와 같은 조각을 완주 시각까지 자른다(완주 뒤에 더 달린 부분 제외). 빈 조각은 뺀다 */
+    static List<List<TrackPoint>> courseTrack(Instant startedAt, List<Input> raw, Instant completedAt) {
+        return FreeRunCalculator.calculate(startedAt,raw).samples().stream()
+            .map(segment->segment.stream().filter(p->!p.measuredAt().isAfter(completedAt))
+                .map(p->new TrackPoint(p.location().lat(),p.location().lng(),p.accuracyM(),p.altitudeM(),p.altitudeAccuracyM())).toList())
+            .filter(segment->!segment.isEmpty())
+            .toList();
+    }
     /** 구간 분석(D3·D5·D6). 저장된 랩 경계로 원본에서 요청 때 계산한다(결과에 저장하지 않는다) */
     @Transactional(readOnly=true)
     public Splits splits(UUID owner, UUID id) {
@@ -296,6 +306,9 @@ class RunService {
             c==null?0:Math.toIntExact(c.courseElapsedSeconds()),c==null?0:c.courseDistanceMeters(),
             c==null?0:c.recognizedDistanceMeters(),c==null?0:c.progressPercent(),c!=null&&c.reviewEligible(),
             c==null?null:c.completedAt(),result.startedAt(),result.endedAt(),result.registeredAt(),result.policyVersion()));
+        if(c!=null&&c.completed()&&c.completedAt()!=null&&courseRuns.needsTrack(result.id())) // 고도 프로필 없는 코스만(course가 첫 완주로 채운다)
+            events.publishEvent(new CourseRunTrackEvent(UuidV7.create(),result.registeredAt(),result.id(),c.courseId(),
+                courseTrack(result.startedAt(),inputs.findAll(result.id()),c.completedAt())));
         record.markRegistrationPublished();
     }
     private static void invalid() { throw new AppException(RunErrorCode.INVALID); }

@@ -99,7 +99,7 @@ class CourseRunService {
             lockActive(owner, id);
             return prepared(owner, id, courseId).orElseGet(() -> snapshot(attempts.save(new CourseAttempt(id, owner,
                     course.courseId(), course.name(), course.version(), json.writeValueAsString(course.route()),
-                    course.totalDistanceMeters()))));
+                    course.totalDistanceMeters(), course.hasElevationProfile()))));
         });
     }
 
@@ -212,6 +212,11 @@ class CourseRunService {
     }
 
     /** 기록 삭제 때 도전 수를 같은 날짜에서 빼도록 시작 이벤트 시각을 돌려준다 */
+    /** 완주 경로를 course에 보낼지. 준비 때 코스에 고도 프로필이 없었으면 보낸다 */
+    public boolean needsTrack(UUID id) {
+        return attempts.findById(id).map(attempt -> !attempt.isHasElevationProfile()).orElse(true);
+    }
+
     public Optional<Instant> startedEventAt(UUID id) {
         return attempts.findById(id).map(CourseAttempt::getStartedEventAt);
     }

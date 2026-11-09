@@ -33,6 +33,8 @@ class CourseAttempt extends BaseEntity<UUID> {
     @Column(columnDefinition = "text")
     private String routeJson;
     private int totalDistanceMeters;
+    /** 준비 때 코스에 고도 프로필이 이미 있었다. 있으면 완주 경로(CourseRunTrackEvent)를 보내지 않는다 */
+    private boolean hasElevationProfile;
     /** 측정 시작. null이면 준비만 했다 */
     private Instant startedAt;
     /** CourseRunStartedEvent.occurredAt */
@@ -42,8 +44,9 @@ class CourseAttempt extends BaseEntity<UUID> {
     private String releaseReason;
 
     CourseAttempt(UUID id, UUID memberId, UUID courseId, String courseName, long courseVersion, String routeJson,
-                  int totalDistanceMeters) {
+                  int totalDistanceMeters, boolean hasElevationProfile) {
         this.id = id;
+        this.hasElevationProfile = hasElevationProfile;
         this.memberId = memberId;
         this.courseId = courseId;
         this.courseName = courseName;

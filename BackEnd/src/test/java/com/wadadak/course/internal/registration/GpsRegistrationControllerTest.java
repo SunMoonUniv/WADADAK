@@ -1,5 +1,6 @@
 package com.wadadak.course.internal.registration;
 
+import com.wadadak.course.CourseApi;
 import com.wadadak.TestcontainersConfiguration;
 import com.wadadak.common.geo.GeoPoint;
 import com.wadadak.event.course.CourseCreatedEvent;
@@ -61,6 +62,9 @@ class GpsRegistrationControllerTest {
 
     @Autowired
     ElevationProfileBackfill backfill;
+
+    @Autowired
+    CourseApi courseApi;
 
     /** 2026-10-01 10:00 Asia/Seoul */
     @TestBean
@@ -188,6 +192,7 @@ class GpsRegistrationControllerTest {
         jdbcTemplate.update("UPDATE course.gps_course_sources SET elevation_profile_json = NULL, "
                 + "source_segments_json = replace(source_segments_json, '\"altitudeM\":31.5', '\"altitudeM\":null') WHERE course_id = ?", noAltitude);
         assertThat(data(detail(flat)).get("elevationProfile").isNull()).as("아직 만들지 않았다").isTrue();
+        assertThat(courseApi.getRouteForRun(flat).hasElevationProfile()).isFalse();
 
         backfill.fill();
 
@@ -195,6 +200,9 @@ class GpsRegistrationControllerTest {
         assertThat(data(detail(flat)).get("elevationProfile").get("samplesMeters")).hasSize(18);
         assertThat(elevationJson(noAltitude)).isEqualTo("null");
         assertThat(data(detail(noAltitude)).get("elevationProfile").isNull()).isTrue();
+        // run은 프로필 있는 코스엔 완주 경로(CourseRunTrackEvent)를 보내지 않는다. 고도 부족(JSON null)은 없음
+        assertThat(courseApi.getRouteForRun(flat).hasElevationProfile()).isTrue();
+        assertThat(courseApi.getRouteForRun(noAltitude).hasElevationProfile()).isFalse();
     }
 
     @Test
