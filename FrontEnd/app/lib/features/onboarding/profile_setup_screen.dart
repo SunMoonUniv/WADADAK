@@ -23,6 +23,32 @@ String? nicknameProblem(String value) {
   return null;
 }
 
+enum PhotoAction { pick, remove }
+
+/// 사진 변경 시트. 앨범에서 고르기, 지금 사진이 있으면 사진 삭제도 고른다. F2 · F6가 같이 쓴다.
+Future<PhotoAction?> showPhotoActionSheet(BuildContext context, {required bool hasPhoto}) =>
+    showModalBottomSheet<PhotoAction>(
+      context: context,
+      backgroundColor: WdColors.paper,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              title: Text('앨범에서 고르기', style: WdText.ko16Bold.copyWith(color: WdColors.ink)),
+              onTap: () => Navigator.pop(context, PhotoAction.pick),
+            ),
+            if (hasPhoto)
+              ListTile(
+                title: Text('사진 삭제', style: WdText.ko16Bold.copyWith(color: WdColors.warningText)),
+                onTap: () => Navigator.pop(context, PhotoAction.remove),
+              ),
+          ],
+        ),
+      ),
+    );
+
 /// F2 · 프로필 초기 설정. "시작하기"를 누르면 동의 내용과 함께 가입한다.
 /// 프로필 사진은 선택이다. 고른 사진은 가입할 때 올린다.
 /// 신체 정보도 선택이다. 동의해야 입력할 수 있고, 동의하면 네 값을 모두 넣어야 시작할 수 있다(정책 공통 9).
@@ -128,6 +154,17 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
     }
   }
 
+  Future<void> _changePhoto() async {
+    final action = await showPhotoActionSheet(context, hasPhoto: _photo != null);
+    switch (action) {
+      case PhotoAction.pick:
+        await _pickPhoto();
+      case PhotoAction.remove:
+        setState(() => _photo = _photoBytes = null);
+      case null:
+    }
+  }
+
   Future<void> _pickPhoto() async {
     try {
       final picked = await ref.read(photoUploaderProvider).pick();
@@ -188,6 +225,7 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
     final bodyMessage = _bodyAgreed ? _bodyProblem : null;
     final label = WdText.ko16Bold.copyWith(color: WdColors.muted);
     final helper = WdText.raw(12, FontWeight.w400, 18);
+    final photoLabel = _photo == null ? '프로필 사진 추가' : '사진 변경';
 
     return Scaffold(
       appBar: const WdAppBar(title: '프로필 설정'),
@@ -198,35 +236,33 @@ class _ProfileSetupScreenState extends ConsumerState<ProfileSetupScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             spacing: WdSpace.s16,
             children: [
-              // 원을 누르면 고르고(다시 누르면 바꾸고), 고른 뒤에는 아래 글자로 뺀다.
-              Center(
-                child: Semantics(
-                  button: true,
-                  label: '프로필 사진 고르기',
-                  excludeSemantics: true,
-                  child: GestureDetector(
-                    onTap: _submitting ? null : _pickPhoto,
-                    child: ClipOval(
-                      child: SizedBox.square(
-                        dimension: 84,
-                        child: _photoBytes != null
-                            ? Image.memory(_photoBytes!, fit: BoxFit.cover)
-                            : ColoredBox(
-                                color: WdColors.soft,
-                                child: Center(child: Text('＋', style: WdText.raw(28, FontWeight.w300).copyWith(color: WdColors.ink))),
-                              ),
+              // 원이나 아래 글자를 누르면 앨범에서 고르기 · 사진 삭제를 고른다(F6와 같다).
+              Semantics(
+                button: true,
+                label: photoLabel,
+                excludeSemantics: true,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: _submitting ? null : _changePhoto,
+                  child: Column(
+                    spacing: WdSpace.s16,
+                    children: [
+                      ClipOval(
+                        child: SizedBox.square(
+                          dimension: 84,
+                          child: _photoBytes != null
+                              ? Image.memory(_photoBytes!, fit: BoxFit.cover)
+                              : ColoredBox(
+                                  color: WdColors.soft,
+                                  child: Center(
+                                      child: Text('＋', style: WdText.raw(28, FontWeight.w300).copyWith(color: WdColors.ink))),
+                                ),
+                        ),
                       ),
-                    ),
+                      Text(photoLabel, style: helper.copyWith(color: WdColors.green)),
+                    ],
                   ),
                 ),
-              ),
-              Center(
-                child: _photo == null
-                    ? Text('프로필 사진 추가', style: helper.copyWith(color: WdColors.green))
-                    : GestureDetector(
-                        onTap: _submitting ? null : () => setState(() => _photo = _photoBytes = null),
-                        child: Text('사진 빼기', style: helper.copyWith(color: WdColors.green)),
-                      ),
               ),
               Text('닉네임', style: label),
               WdTextField(
