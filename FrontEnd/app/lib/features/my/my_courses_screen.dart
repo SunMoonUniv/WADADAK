@@ -54,6 +54,9 @@ class _MyCoursesScreenState extends ConsumerState<MyCoursesScreen> {
   @override
   void initState() {
     super.initState();
+    // 위 칸 숫자(누적 주행 · 만료 임박 · 등록 코스)는 E3에서 받아 둔 값이 남아 있다. 그 사이 남이 완주했거나
+    // 코스가 만료됐을 수 있으니, 열 때마다 아래 카드와 함께 다시 받는다. 처음 받는 거면 어차피 새로 받는다.
+    if (ref.exists(myCourseSummaryProvider)) ref.invalidate(myCourseSummaryProvider);
     _load();
   }
 
