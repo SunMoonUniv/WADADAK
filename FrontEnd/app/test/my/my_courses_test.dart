@@ -51,7 +51,8 @@ void main() {
   );
 
   /// G4를 띄운다. B3 · B1은 이름만 보이는 화면으로 바꿔 어디로 갔는지만 본다.
-  Future<void> openG4(WidgetTester tester) async {
+  /// E3를 띄운 뒤 G4를 연다. [beforeOpen]은 E3가 위 칸 숫자를 받은 뒤 · G4를 열기 전에 부른다.
+  Future<void> openG4(WidgetTester tester, {void Function()? beforeOpen}) async {
     tester.view
       ..physicalSize = const Size(402, 1400)
       ..devicePixelRatio = 1;
@@ -61,7 +62,13 @@ void main() {
       routes: [
         GoRoute(
           path: '/start',
-          builder: (context, _) => TextButton(onPressed: () => context.push(Routes.myCourses), child: const Text('E3')),
+          // E3처럼 위 칸 숫자를 먼저 받아 둔다
+          builder: (context, _) => Consumer(
+            builder: (context, ref, _) {
+              ref.watch(myCourseSummaryProvider);
+              return TextButton(onPressed: () => context.push(Routes.myCourses), child: const Text('E3'));
+            },
+          ),
         ),
         GoRoute(path: Routes.myCourses, builder: (_, _) => MyCoursesScreen(now: () => now)),
         GoRoute(
@@ -84,6 +91,8 @@ void main() {
         child: MaterialApp.router(theme: WdTheme.light(), routerConfig: router),
       ),
     );
+    await tester.pumpAndSettle();
+    beforeOpen?.call();
     await tester.tap(find.text('E3'));
     await tester.pumpAndSettle();
   }
@@ -154,8 +163,21 @@ void main() {
       expect(courses.deletes, ['c1']);
       expect(inCard('성북천 벚꽃길 3K', '삭제 예정'), findsOneWidget);
       expect(inCard('성북천 벚꽃길 3K', '내가 삭제함 · 24시간 뒤 삭제'), findsOneWidget);
-      // 위 칸 · E3 합계를 다시 받는다
-      expect(courses.summaryRequests, 2);
+      // 위 칸 · E3 합계를 다시 받는다(E3에서 1번 · G4 열 때 1번 · 삭제 뒤 1번)
+      expect(courses.summaryRequests, 3);
+    });
+
+    testWidgets('opening G4 takes the totals again, not the ones E3 kept', (tester) async {
+      courses.mySummary = const MyCourseSummary(courseCount: 2, completionCount: 1479, expiringSoonCount: 1);
+      // E3에서 받아 둔 뒤 누가 완주해서 서버 숫자가 바뀌었다
+      await openG4(
+        tester,
+        beforeOpen: () => courses.mySummary =
+            const MyCourseSummary(courseCount: 2, completionCount: 1480, expiringSoonCount: 1),
+      );
+
+      expect(find.text('1,480회'), findsOneWidget);
+      expect(find.text('1,479회'), findsNothing);
     });
 
     testWidgets('scrolling to the end loads the next page', (tester) async {
@@ -242,7 +264,8 @@ void main() {
       expect(courses.edits.single.tags, {CourseTag.flat, CourseTag.restroom});
       expect(find.text('코스 수정'), findsNothing);
       expect(find.text('성북천 야경길 3K'), findsOneWidget);
-      expect(courses.summaryRequests, 2);
+      // E3에서 1번 · G4 열 때 1번 · 수정 뒤 1번
+      expect(courses.summaryRequests, 3);
     });
 
     testWidgets('a name another course already has is shown under the name', (tester) async {
