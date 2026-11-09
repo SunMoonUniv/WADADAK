@@ -12,6 +12,7 @@ import com.wadadak.course.internal.course.CourseRepository;
 import com.wadadak.course.internal.registration.GpsGapRule;
 import lombok.RequiredArgsConstructor;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +28,7 @@ import java.util.UUID;
 class CourseService implements CourseApi {
 
     private final CourseRepository courseRepository;
+    private final JdbcClient jdbc;
 
     @Override
     @Transactional(readOnly = true)
@@ -37,7 +39,19 @@ class CourseService implements CourseApi {
             throw new AppException(CourseErrorCode.COURSE_NOT_AVAILABLE);
         }
         return new CourseRouteSnapshot(course.getId(), course.getName(), CourseGeometry.points(course.getRoute()),
-                course.getDistanceMeters(), course.getVersion());
+                course.getDistanceMeters(), course.getVersion(), hasElevationProfile(courseId));
+    }
+
+    /**
+     * 고도 프로필이 이미 있나(코스 상세 B1-03과 같은 열). 고도 부족은 JSON {@code null}, 아직 안 만들었으면 SQL NULL — 둘 다 없음.
+     * ponytail: GPS 코스 원본 열만 본다. 그린 코스 프로필을 다른 곳에 저장하면 여기도 같이 본다(그 전엔 없음 → run이 완주마다 경로를 보낸다)
+     */
+    private boolean hasElevationProfile(UUID courseId) {
+        return jdbc.sql("SELECT EXISTS (SELECT 1 FROM course.gps_course_sources WHERE course_id = ? "
+                        + "AND elevation_profile_json IS NOT NULL AND elevation_profile_json <> 'null')")
+                .param(courseId)
+                .query(Boolean.class)
+                .single();
     }
 
     @Override

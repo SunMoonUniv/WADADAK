@@ -12,6 +12,7 @@ import com.wadadak.event.run.CourseActiveRunnersChangedEvent;
 import com.wadadak.event.run.CourseRunStartedEvent;
 import com.wadadak.event.run.RunRecordDeletedEvent;
 import com.wadadak.event.run.RunSessionEndedEvent;
+import com.wadadak.event.run.CourseRunTrackEvent;
 import com.wadadak.run.RunErrorCode;
 import com.wadadak.run.internal.RunContracts.CourseOutcome;
 import com.wadadak.run.internal.RunContracts.CourseSource;
@@ -228,9 +229,47 @@ class CourseRunTest {
     }
 
     @Test
+    void completedCourseRunSendsTrackUntilCompletionOnly(AssertablePublishedEvents events) {
+        startCourse();
+        List<Input> inputs = runTo(1300); // 완주 뒤 300m 더 달림
+        uploadAndProcess(inputs);
+        UUID free = UUID.randomUUID(); // 자유 러닝은 보내지 않는다
+        List<Input> freeInputs = runTo(300);
+        runs.prepare(owner, free, new Prepare(startedAt, "FREE"));
+        runs.upload(owner, free, new Upload(freeInputs.size() - 1, freeInputs));
+        runs.process(free);
+
+        Instant completedAt = runs.result(owner, id).course().completedAt();
+        long untilCompletion = inputs.stream()
+                .filter(i -> i.kind() == Kind.GPS && !i.measuredAt().isAfter(completedAt)).count();
+        assertThat(all(events, CourseRunTrackEvent.class)).singleElement().satisfies(e -> {
+            assertThat(e.runRecordId()).isEqualTo(id);
+            assertThat(e.courseId()).isEqualTo(courseId);
+            var points = e.segments().stream().flatMap(List::stream).toList();
+            assertThat(points).hasSize((int) untilCompletion).hasSizeLessThan(inputs.size() - 2);
+            assertThat(points.getFirst().lat()).isCloseTo(LAT0, within(1e-9));
+            assertThat(points.getLast().lat()).isLessThan(LAT0 + 1050 * LAT_PER_M); // 1300m까지 가지 않는다
+            assertThat(points.getFirst().accuracyM()).isEqualTo(5.0);
+        });
+    }
+
+    @Test
+    void courseWithElevationProfileGetsNoTrack(AssertablePublishedEvents events) {
+        List<GeoPoint> route = List.of(new GeoPoint(LAT0, LNG0), new GeoPoint(LAT0 + 1000 * LAT_PER_M, LNG0));
+        when(courseApi.getRouteForRun(any())).thenAnswer(call ->
+                new CourseRouteSnapshot(call.getArgument(0), "테스트 코스", route, 1000, 3, true));
+        startCourse();
+        uploadAndProcess(runTo(1000));
+
+        assertThat(runs.result(owner, id).course().completed()).isTrue();
+        assertThat(all(events, CourseRunTrackEvent.class)).isEmpty();
+    }
+
+    @Test
     void unfinishedCourseRunIsRegisteredAsNotCompleted(AssertablePublishedEvents events) {
         startCourse();
         uploadAndProcess(runTo(500));
+        assertThat(all(events, CourseRunTrackEvent.class)).isEmpty();
 
         assertThat(all(events, RunSessionEndedEvent.class)).singleElement().satisfies(e -> {
             assertThat(e.courseId()).isEqualTo(courseId);
