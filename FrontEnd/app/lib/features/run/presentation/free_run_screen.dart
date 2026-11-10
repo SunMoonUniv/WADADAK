@@ -561,9 +561,12 @@ class _Preparation extends StatelessWidget {
                             style: WdText.ko12.copyWith(color: WdColors.muted),
                           ),
                         ),
-                        if (!courseMode &&
-                            !ghostMode &&
-                            onPrepareWear != null) ...[
+                        if (onPrepareWear != null &&
+                            !pendingGhost &&
+                            (ghostMode
+                                ? ghostKind == GhostRecordKind.course &&
+                                      course != null && ghost != null
+                                : !courseMode || course != null)) ...[
                           const SizedBox(height: WdSpace.s8),
                           WdButton(
                             '워치로 시작 준비',
@@ -629,7 +632,11 @@ class _Countdown extends StatelessWidget {
                       spacing: WdSpace.s28,
                       children: [
                         if (waitingForWear)
-                          const WdInfoBanner('폰 화면을 잠그고 2분 안에 워치에서 시작하세요.'),
+                          WdInfoBanner(
+                            course == null
+                                ? '폰 화면을 잠그고 2분 안에 워치에서 시작하세요.'
+                                : '폰 화면을 잠근 뒤 워치에서 출발점을 확인하세요.\n15분 안에 출발점에 도착하면 시작할 수 있어요.',
+                          ),
                         WdSurface(
                           color: WdColors.runSurface,
                           radius: WdRadius.full,
@@ -649,7 +656,11 @@ class _Countdown extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          value == null ? 'GPS 신호를 확인하고 있어요' : '곧 출발해요',
+                          waitingForWear
+                              ? '워치에서 시작을 기다리고 있어요'
+                              : value == null
+                              ? 'GPS 신호를 확인하고 있어요'
+                              : '곧 출발해요',
                           style: WdText.ko22Bold.copyWith(
                             color: WdColors.white,
                           ),
