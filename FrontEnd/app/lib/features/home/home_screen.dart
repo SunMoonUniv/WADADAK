@@ -662,8 +662,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     return SheetStage.full;
   }
 
+  /// 시트가 피크(목록을 내린 상태)인지. 목록이 올라와 있으면 뒤로가기로 먼저 맨 아래(피크)까지 내린다.
+  bool get _sheetLowered => _mapHeight <= 0 || _sheetSize <= CourseListSheet.peekHeight / _mapHeight + 0.01;
+
+  void _lowerSheet() {
+    if (_sheet.isAttached && _mapHeight > 0) _moveSheet(CourseListSheet.peekHeight / _mapHeight);
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
+  Widget build(BuildContext context) => PopScope(
+      // 피크면 하단 탭(MainShell)이 받는다: 홈에서 두 번 눌러 종료
+      canPop: _sheetLowered,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _lowerSheet();
+      },
+      child: Scaffold(
         body: LayoutBuilder(builder: (context, constraints) {
           // 상단 배너 아래 영역 높이. 시트 크기는 이 높이에 대한 비율이다.
           final height = constraints.maxHeight - MediaQuery.paddingOf(context).top - _HomeHeader.height;
@@ -682,6 +695,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                 initialZoom: _startZoom,
                 minZoom: _minZoom,
                 padding: _mapPadding,
+                // 하단 탭을 밀어 넘기는 끌기보다 지도 끌기가 먼저다(지도 밖에서 밀면 탭이 넘어간다)
+                grabGestures: true,
                 // 고른 코스가 있으면 그 코스만 보인다. 축척이 500m보다 넓어져도 지역별 배지로 바꾸지 않는다(MAP-03).
                 // 앞 코스(인기순 위)일수록 priority가 커서 경로가 위에 그려진다.
                 lines: [
@@ -796,7 +811,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           )),
           ]);
         }),
-      );
+      ));
 }
 
 /// 상단 배너(A2-01 · A2-02). A2(반)는 인사말, 피크(A4 · A5) · 전체 보기(A6)는 고정 제목 `코스`, 아래는 검색창.

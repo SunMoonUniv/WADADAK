@@ -21,6 +21,10 @@ class CameraRecorder implements MapController {
   void showMyLocation({bool follow = true}) {}
   @override
   void hideMyLocation() {}
+  @override
+  Future<void> rotateTo(double bearing) async {}
+  @override
+  void followHeading(MapHeading heading) {}
 }
 
 void main() {

@@ -36,6 +36,11 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
   bool _following = false;
   bool _showingAppLocation = false;
 
+  // 돌린 각도. 개발용 지도는 바탕을 돌려 그리지 않고 카메라 값으로만 알린다.
+  double _bearing = 0;
+  MapHeading _heading = MapHeading.north;
+  GeoPoint? _travelFrom;
+
   bool get _usesAppLocation => widget.map.myLocationSource == MyLocationSource.app;
 
   @override
@@ -55,6 +60,15 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
     if (_following && _showingAppLocation && location != null && location != oldWidget.map.myLocation) {
       // 다시 그리는 중이라 카메라 보고는 그린 뒤에 한다(받는 화면이 setState할 수 있다).
       _center = location;
+      if (_heading == MapHeading.travel) {
+        final from = _travelFrom;
+        if (from == null) {
+          _travelFrom = location;
+        } else if (from.distanceTo(location) >= 15) {
+          _bearing = from.bearingTo(location);
+          _travelFrom = location;
+        }
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _idle();
       });
@@ -101,7 +115,23 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
         southWest: _toGeo(Offset(0, _size.height)),
         northEast: _toGeo(Offset(_size.width, 0)),
         scaleMeters: _naverScaleMeters(_center, _zoom),
+        bearing: _bearing,
       ));
+
+  @override
+  Future<void> rotateTo(double bearing) async {
+    _bearing = bearing;
+    _idle();
+  }
+
+  /// 센서가 없어 [MapHeading.compass]는 돌리지 않는다.
+  @override
+  void followHeading(MapHeading heading) {
+    if (heading == _heading) return;
+    _heading = heading;
+    _travelFrom = null;
+    if (heading == MapHeading.north && _following) rotateTo(0);
+  }
 
   /// 네이버 지도가 같은 위도·줌에서 축척 막대에 보일 값. 축척으로 표시를 바꾸는 화면(홈 MAP-02)이 두 지도에서 같은 줌에 바뀐다.
   /// 네이버 지도의 1dp = 지구 반지름 × π ÷ 256 ÷ 2^줌 × cos(위도)다(flutter_naver_map `getMeterPerDpAtLatitude`).
