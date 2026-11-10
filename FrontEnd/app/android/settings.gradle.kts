@@ -24,3 +24,10 @@ plugins {
 }
 
 include(":app", ":wear")
+
+// Flutter invokes assembleDebug from the root. Add the watch only through the phone build hook.
+if (providers.environmentVariable("WADADAK_UPDATE_WEAR").orNull == "1") {
+    gradle.startParameter.setTaskNames(
+        gradle.startParameter.taskNames.map { if (it == "assembleDebug") ":app:assembleDebug" else it },
+    )
+}
