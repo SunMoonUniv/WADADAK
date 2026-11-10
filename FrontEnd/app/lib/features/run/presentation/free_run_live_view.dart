@@ -3,8 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
-import '../../../core/config.dart';
-
 import '../domain/course_run.dart';
 import '../domain/ghost_live_comparison.dart';
 import 'ghost_run_live_view.dart';
@@ -453,13 +451,12 @@ class _RunRouteViewState extends State<RunRouteView> {
   /// 내 위치 버튼. 지도를 끌거나 확대해 따라가기가 꺼지면 이 버튼으로만 다시 켠다(확대·축소·방향 고정은 그대로)
   void _locate() => _map?.showMyLocation();
 
-  /// 나침반. 누를 때마다 지도 위쪽을 바꾼다. 시험 기능([headingTest])이면 북쪽 위 → 내 방향(나침반 센서) →
-  /// 내 방향(이동 방향), 아니면 북쪽 위로 되돌리기만 한다. 내 방향으로 바꾸면 따라가기도 켠다
+  /// 나침반. 누를 때마다 북쪽 위 ↔ 내 방향(폰 나침반 센서)을 바꾼다. 내 방향으로 바꾸면 따라가기도 켠다
   void _turn() {
     final map = _map;
     if (map == null) return;
-    final next = headingTest
-        ? MapHeading.values[(_heading.index + 1) % MapHeading.values.length]
+    final next = _heading == MapHeading.north
+        ? MapHeading.compass
         : MapHeading.north;
     map.followHeading(next);
     if (next == MapHeading.north) {
@@ -503,54 +500,28 @@ class _RunRouteViewState extends State<RunRouteView> {
     Positioned(
       right: 12,
       bottom: 12,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        spacing: WdSpace.s8,
-        children: [
-          if (headingTest)
-            WdSurface(
-              color: WdColors.runBackground.withValues(alpha: 0.7),
-              radius: WdRadius.full,
-              padding: const EdgeInsets.symmetric(
-                horizontal: WdSpace.s8,
-                vertical: WdSpace.s4,
-              ),
-              child: Text(
-                '시험 · ${switch (_heading) {
-                  MapHeading.north => '북쪽 위',
-                  MapHeading.compass => '내 방향(나침반)',
-                  MapHeading.travel => '내 방향(이동)',
-                }}',
-                style: WdText.ko11.copyWith(color: WdColors.lime),
-              ),
-            ),
-          Semantics(
-            button: true,
-            label: _heading == MapHeading.north ? '나침반, 북쪽 위' : '나침반, 내 방향',
-            child: WdSurface(
-              key: const ValueKey('run-map-compass'),
-              // 내 방향이면 라임으로 켜진 것을 보인다
-              color: _heading == MapHeading.north
-                  ? WdColors.paper
-                  : WdColors.lime,
-              radius: WdRadius.full,
-              width: WdMapLocateButton.size,
-              height: WdMapLocateButton.size,
-              onTap: _turn,
-              child: Center(
-                child: Transform.rotate(
-                  angle: -_bearing * math.pi / 180,
-                  child: const Icon(
-                    Icons.navigation,
-                    size: 20,
-                    color: WdColors.ink,
-                  ),
-                ),
+      child: Semantics(
+        button: true,
+        label: _heading == MapHeading.north ? '나침반, 북쪽 위' : '나침반, 내 방향',
+        child: WdSurface(
+          key: const ValueKey('run-map-compass'),
+          // 내 방향이면 라임으로 켜진 것을 보인다
+          color: _heading == MapHeading.north ? WdColors.paper : WdColors.lime,
+          radius: WdRadius.full,
+          width: WdMapLocateButton.size,
+          height: WdMapLocateButton.size,
+          onTap: _turn,
+          child: Center(
+            child: Transform.rotate(
+              angle: -_bearing * math.pi / 180,
+              child: const Icon(
+                Icons.navigation,
+                size: 20,
+                color: WdColors.ink,
               ),
             ),
           ),
-        ],
+        ),
       ),
     ),
   ];

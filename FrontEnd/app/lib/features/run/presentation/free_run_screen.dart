@@ -132,29 +132,39 @@ class FreeRunScreen extends ConsumerWidget {
                       pendingCourse: controller.courseOf(run)?.name,
                       onRetryGhost: controller.retrySync,
                     ),
-                    _ => CourseDeviationAlert(
-                      open: controller.deviationAlert,
-                      onConfirm: controller.acknowledgeDeviation,
-                      onMute: controller.muteDeviation,
-                      child: FreeRunLiveView(
-                        run: run,
-                        course: controller.courseLive,
-                        courseNotice: controller.courseNotice,
-                        ghostOpponent: controller.ghostOpponent,
-                        ghostPosition: comparison?.position,
-                        ghostComparison: comparison,
-                        ghostGap: comparison == null
-                            ? null
-                            : '거리 ${comparison.distance} · 시간 ${comparison.time}',
-                        onPause: controller.storageFault
-                            ? null
-                            : controller.pause,
-                        onResume: controller.storageFault
-                            ? null
-                            : controller.resume,
-                        onStop: controller.storageFault
-                            ? null
-                            : () => _confirmStop(context, controller),
+                    // 측정 중 뒤로가기는 홈으로 가지 않고 [러닝 종료]와 같은 확인 창을 띄운다.
+                    // 이 탭 화면이 먼저 받아서 하단 탭의 뒤로가기(홈 탭으로)까지 가지 않는다
+                    _ => PopScope(
+                      canPop: false,
+                      onPopInvokedWithResult: (didPop, _) {
+                        if (!didPop && !controller.storageFault) {
+                          _confirmStop(context, controller, fromBack: true);
+                        }
+                      },
+                      child: CourseDeviationAlert(
+                        open: controller.deviationAlert,
+                        onConfirm: controller.acknowledgeDeviation,
+                        onMute: controller.muteDeviation,
+                        child: FreeRunLiveView(
+                          run: run,
+                          course: controller.courseLive,
+                          courseNotice: controller.courseNotice,
+                          ghostOpponent: controller.ghostOpponent,
+                          ghostPosition: comparison?.position,
+                          ghostComparison: comparison,
+                          ghostGap: comparison == null
+                              ? null
+                              : '거리 ${comparison.distance} · 시간 ${comparison.time}',
+                          onPause: controller.storageFault
+                              ? null
+                              : controller.pause,
+                          onResume: controller.storageFault
+                              ? null
+                              : controller.resume,
+                          onStop: controller.storageFault
+                              ? null
+                              : () => _confirmStop(context, controller),
+                        ),
                       ),
                     ),
                   },
@@ -164,15 +174,21 @@ class FreeRunScreen extends ConsumerWidget {
     );
   }
 
+  /// [fromBack]: 뒤로가기는 달리는 중에도 온다. 기록기는 일시정지한 뒤에만 종료를 받으므로(그냥 두면 [종료]가
+  /// 조용히 실패한다) 먼저 멈추고, 종료하지 않으면([취소] · [코스만 종료] · 창 닫기) 다시 달리기로 돌린다
   Future<void> _confirmStop(
     BuildContext context,
-    FreeRunController controller,
-  ) async {
+    FreeRunController controller, {
+    bool fromBack = false,
+  }) async {
+    final resume = fromBack && controller.snapshot.state == RunState.running;
+    if (resume) controller.pause();
     controller.setEndConfirmation(true);
     // 코스 구간 중이면 [코스만 종료] [러닝 종료] [취소](RUN-07). Figma 시안이 없어 종료 확인 창에 더했다
     final onCourse = controller.onCourse;
+    _EndChoice? choice;
     try {
-      final choice = await showDialog<_EndChoice>(
+      choice = await showDialog<_EndChoice>(
         context: context,
         builder: (context) => Dialog(
           backgroundColor: WdColors.paper,
@@ -232,6 +248,7 @@ class FreeRunScreen extends ConsumerWidget {
       if (choice == _EndChoice.run) await controller.finish();
     } finally {
       controller.setEndConfirmation(false);
+      if (resume && choice != _EndChoice.run) controller.resume();
     }
   }
 }
@@ -732,7 +749,13 @@ class RunHoldToStart extends StatefulWidget {
   State<RunHoldToStart> createState() => _RunHoldToStartState();
 }
 
-class _RunHoldToStartState extends State<RunHoldToStart> {
+class _RunHoldToStartState extends State<RunHoldToStart>
+    with SingleTickerProviderStateMixin {
+  // 누르는 동안 왼쪽부터 차는 게이지(보이기만). 시작은 [_hold] 1초로 정한다
+  late final _gauge = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 1),
+  );
   Timer? _hold;
   int? _pointer;
   Offset? _downPosition;
@@ -743,6 +766,7 @@ class _RunHoldToStartState extends State<RunHoldToStart> {
     // 누르는 중에 비활성이 되면(출발점 반경을 벗어남) 시작하지 않는다
     if (widget.onStart == null && _pointer != null) {
       _hold?.cancel();
+      _gauge.reset();
       _pointer = null;
     }
   }
@@ -750,12 +774,14 @@ class _RunHoldToStartState extends State<RunHoldToStart> {
   void _release(PointerEvent event) {
     if (!mounted || _pointer != event.pointer) return;
     _hold?.cancel();
+    _gauge.reset();
     setState(() => _pointer = null);
   }
 
   @override
   void dispose() {
     _hold?.cancel();
+    _gauge.dispose();
     super.dispose();
   }
 
@@ -772,6 +798,7 @@ class _RunHoldToStartState extends State<RunHoldToStart> {
         if (_pointer != null || onStart == null) return;
         setState(() => _pointer = event.pointer);
         _downPosition = event.position;
+        _gauge.forward(from: 0);
         _hold = Timer(const Duration(seconds: 1), () {
           if (mounted && _pointer == event.pointer) widget.onStart?.call();
         });
@@ -790,9 +817,38 @@ class _RunHoldToStartState extends State<RunHoldToStart> {
       },
       onPointerUp: _release,
       onPointerCancel: _release,
-      child: WdButton(
-        _pointer == null ? widget.label : '누르고 있어 주세요',
-        onPressed: widget.onStart == null ? null : () {},
+      child: Stack(
+        children: [
+          // 누름 표시(점점 어두워지는 물결)는 끄고 게이지로만 보인다
+          Theme(
+            data: Theme.of(context).copyWith(
+              splashFactory: NoSplash.splashFactory,
+              highlightColor: Colors.transparent,
+            ),
+            child: WdButton(
+              _pointer == null ? widget.label : '누르고 있어 주세요',
+              onPressed: widget.onStart == null ? null : () {},
+            ),
+          ),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(WdRadius.r16),
+                child: AnimatedBuilder(
+                  animation: _gauge,
+                  // 처음엔 빠르게 차고 끝으로 갈수록 느려진다
+                  builder: (context, _) => FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: Curves.easeOutCubic.transform(_gauge.value),
+                    child: ColoredBox(
+                      color: WdColors.green.withValues(alpha: 0.35),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     ),
   );

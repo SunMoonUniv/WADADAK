@@ -53,10 +53,6 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
   StreamSubscription<double>? _compass;
   // 나침반 값은 1초에 수십 번 온다. 현재 위치 점 방향처럼 덜 보낸다([MapLocationTracker]).
   final _compassGate = MapLocationTracker(isOff: () => true);
-  // 이동 방향을 잰 기준점. 이만큼 움직일 때마다 방향을 다시 잰다.
-  GeoPoint? _travelFrom;
-  // ponytail: GPS 오차(5~10m)보다 크게 잡아 제자리 흔들림으로 돌지 않게 한다. 실기기로 보고 조정
-  static const _travelMinMeters = 15.0;
 
   @override
   void dispose() {
@@ -318,22 +314,9 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
       overlay.setIsVisible(visible);
     }
     if (location != null && _following) {
-      controller.updateCamera(NCameraUpdate.withParams(target: _latLng(location), bearing: _travelBearing(location))
+      controller.updateCamera(NCameraUpdate.withParams(target: _latLng(location))
         ..setReason(NCameraUpdateReason.location));
     }
-  }
-
-  /// [MapHeading.travel]이고 기준점에서 [_travelMinMeters] 넘게 움직였으면 그 방향. 아니면 null(돌리지 않는다).
-  double? _travelBearing(GeoPoint location) {
-    if (_heading != MapHeading.travel) return null;
-    final from = _travelFrom;
-    if (from == null) {
-      _travelFrom = location;
-      return null;
-    }
-    if (from.distanceTo(location) < _travelMinMeters) return null;
-    _travelFrom = location;
-    return from.bearingTo(location);
   }
 
   @override
@@ -346,7 +329,6 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
   void followHeading(MapHeading heading) {
     if (heading == _heading) return;
     _heading = heading;
-    _travelFrom = null;
     _compass?.cancel();
     _compass = null;
     switch (heading) {
@@ -356,8 +338,6 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
         _compass = NDefaultMyLocationTracker().headingStream.listen((bearing) {
           if (_following && _compassGate.shouldSend(bearing)) rotateTo(bearing);
         });
-      case MapHeading.travel:
-        break;
     }
   }
 

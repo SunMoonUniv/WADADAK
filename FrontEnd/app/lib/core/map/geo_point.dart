@@ -15,16 +15,6 @@ class GeoPoint {
 
   Map<String, Object?> toJson() => {'lat': lat, 'lng': lng};
 
-  /// 이 점에서 [other]로 가는 방향(°, 북쪽 0 · 동쪽 90, 0 ~ 360). 지도를 이동 방향으로 돌릴 때 쓴다.
-  double bearingTo(GeoPoint other) {
-    const rad = math.pi / 180;
-    final dLng = (other.lng - lng) * rad;
-    final y = math.sin(dLng) * math.cos(other.lat * rad);
-    final x = math.cos(lat * rad) * math.sin(other.lat * rad) -
-        math.sin(lat * rad) * math.cos(other.lat * rad) * math.cos(dLng);
-    return (math.atan2(y, x) / rad + 360) % 360;
-  }
-
   /// 이 점까지 WGS84 타원체 위의 거리(m). 서버가 경로 거리를 재는 기준(PostGIS `ST_Length(geography)`)과 같다.
   ///
   /// Vincenty 역해법. 거의 정반대편인 두 점이 아니면 1mm 안쪽으로 맞는다.

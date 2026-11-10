@@ -89,14 +89,6 @@ void main() {
     },
   );
 
-  test('bearing is clockwise from north', () {
-    const here = GeoPoint(37, 127);
-    expect(here.bearingTo(const GeoPoint(37.001, 127)), closeTo(0, 1e-6));
-    expect(here.bearingTo(const GeoPoint(37, 127.001)), closeTo(90, 0.01));
-    expect(here.bearingTo(const GeoPoint(36.999, 127)), closeTo(180, 1e-6));
-    expect(here.bearingTo(const GeoPoint(37, 126.999)), closeTo(270, 0.01));
-  });
-
   testWidgets(
     'dragged running map follows me again only with the my-location button',
     (tester) async {
