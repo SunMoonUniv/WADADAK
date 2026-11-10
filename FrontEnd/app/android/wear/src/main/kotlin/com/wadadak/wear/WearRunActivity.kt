@@ -422,10 +422,10 @@ class WearRunActivity : Activity() {
                 label("status", status, 35, if (hasCourse) 139 else 147, 146, 14, 10,
                     if (verdictFailed || !available) PALE_AMBER else MUTED)
                 if (hasCourse) {
-                    resultLink("코스 결과 ›", 1, 153)
-                    arrow("result-next", "›", 180, 89, 32, 44) { showResult(1) }
+                    resultLink("코스 결과 ⌄", 1, 153)
+                    resultNav()
                 }
-                button("done", "완료", 52, if (hasCourse) 175 else 166, 112, if (hasCourse) 30 else 35, true, true) {
+                button("done", "완료", 52, if (hasCourse) 173 else 166, 112, if (hasCourse) 25 else 35, true, true) {
                     dismissed = id
                     resumeState.edit().putString("dismissed", id).apply()
                     rememberSession(null, null)
@@ -480,31 +480,34 @@ class WearRunActivity : Activity() {
             MotionEvent.ACTION_UP -> {
                 val dx = event.x - touchX
                 val dy = event.y - touchY
-                if (screen.startsWith("home:") && abs(dy) > px(32) && abs(dy) > abs(dx)) {
+                if (abs(dy) <= abs(dx)) return super.dispatchTouchEvent(event)
+                val delta = if (dy < 0) 1 else -1
+                val current = screen.substringBefore(':')
+                if (current in listOf("courses", "ghosts") && abs(dy) > px(24)) {
                     cancelTouch(event)
-                    shiftMode(if (dy < 0) 1 else -1)
+                    shiftItem(delta)
                     return true
                 }
-                if (abs(dx) > px(32) && abs(dx) > abs(dy)) {
-                    val phase = state.optString("phase")
-                    val delta = if (dx < 0) 1 else -1
-                    if (phase == "running" && state.optBoolean("onCourse") && !state.optBoolean("deviation")) {
-                        cancelTouch(event)
-                        shiftLive(delta)
-                        return true
+                if (abs(dy) > px(32)) {
+                    when {
+                        current == "home" -> {
+                            cancelTouch(event)
+                            shiftMode(delta)
+                            return true
+                        }
+                        current in listOf("running", "liveMap", "ghostGap") &&
+                            available && state.optBoolean("onCourse") -> {
+                            cancelTouch(event)
+                            shiftLive(delta)
+                            return true
+                        }
+                        current in listOf("ended", "courseResult", "ghostResult") &&
+                            state.optString("mode", "free") != "free" -> {
+                            cancelTouch(event)
+                            showResult(resultIndex + delta)
+                            return true
+                        }
                     }
-                    if (phase == "ended" && state.optString("mode", "free") != "free" &&
-                        state.optString("sessionId") != dismissed) {
-                        cancelTouch(event)
-                        showResult(resultIndex + delta)
-                        return true
-                    }
-                }
-                if ((screen.startsWith("courses:") || screen.startsWith("ghosts:")) &&
-                    abs(dy) > px(24) && abs(dy) > abs(dx)) {
-                    cancelTouch(event)
-                    shiftItem(if (dy < 0) 1 else -1)
-                    return true
                 }
             }
         }
@@ -526,17 +529,25 @@ class WearRunActivity : Activity() {
 
     private fun liveNav() {
         val count = if (state.optString("mode") == "ghost") 3 else 2
-        if (liveIndex > 0) arrow("live-left", "‹", 4, 81, 32, 44) { shiftLive(-1) }
-        if (liveIndex < count - 1) arrow("live-right", "›", 180, 81, 32, 44) { shiftLive(1) }
-        var x = if (count == 3) 92 else 96
+        verticalPageArrows("live", liveIndex, count, ::shiftLive)
+        var y = if (count == 3) 92 else 96
         for (i in 0 until count) {
             val key = "live-dot-$i"
-            val width = if (i == liveIndex) 14 else 5
+            val height = if (i == liveIndex) 14 else 5
             if (key !in slots) {
                 val dot = View(this).apply { background = pill(if (i == liveIndex) LIME else DOT, 3) }
-                place(key, dot, x, 200, width, 5)
+                place(key, dot, 193, y, 5, height)
             }
-            x += width + 4
+            y += height + 4
+        }
+    }
+
+    private fun verticalPageArrows(key: String, index: Int, count: Int, shift: (Int) -> Unit) {
+        if (index > 0) {
+            arrow("$key-up", "⌃", 67, 0, 82, 17, 18, description = "이전 페이지") { shift(-1) }
+        }
+        if (index < count - 1) {
+            arrow("$key-down", "⌄", 67, 198, 82, 18, 18, description = "다음 페이지") { shift(1) }
         }
     }
 
@@ -631,8 +642,13 @@ class WearRunActivity : Activity() {
         render()
     }
 
-    private fun resultLink(text: String, index: Int, y: Int) {
-        label("result-link-$index", text, 36, y, 144, 19, 11, LIME)
+    private fun resultNav() {
+        val count = if (state.optString("mode") == "ghost") 3 else 2
+        verticalPageArrows("result", resultIndex, count) { showResult(resultIndex + it) }
+    }
+
+    private fun resultLink(text: String, index: Int, y: Int, height: Int = 19) {
+        label("result-link-$index", text, 36, y, 144, height, 11, LIME)
         slots["result-link-$index"]?.setOnClickListener { showResult(index) }
     }
 
@@ -678,9 +694,8 @@ class WearRunActivity : Activity() {
                 118, 128, 64, 15)
             label("detail", if (completed) "코스 구간 기록" else "코스 도착 전 종료", 44, 169, 128, 15, 10, MUTED)
         }
-        resultLink("‹ 전체 기록", 0, 187)
-        arrow("left", "‹", 4, 88, 32, 43) { showResult(0) }
-        if (state.optString("mode") == "ghost") arrow("right", "›", 180, 88, 32, 43) { showResult(2) }
+        resultLink("⌃ 전체 기록", 0, 184, 14)
+        resultNav()
     }
 
     private fun renderGhostResult() {
@@ -728,8 +743,8 @@ class WearRunActivity : Activity() {
             }
             label("detail", detail, 39, 126, 138, 38, 12, MUTED)
         }
-        resultLink("‹ 코스 결과", 1, 187)
-        arrow("left", "‹", 4, 88, 32, 43) { showResult(1) }
+        resultLink("⌃ 코스 결과", 1, 184, 14)
+        resultNav()
     }
 
     private fun surface(key: String, x: Int, y: Int, width: Int, height: Int, radius: Int,
