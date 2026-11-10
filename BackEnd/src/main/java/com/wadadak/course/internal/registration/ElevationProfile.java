@@ -7,7 +7,8 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * GPS 코스의 고도 프로필(B1-03). 등록에 쓴 러닝 기록의 GPS 고도로 등록 때 한 번 만들어 저장한다(정책 공통 3).
+ * 코스의 고도 프로필(B1-03). GPS 코스는 등록에 쓴 러닝 기록의 GPS 고도로 등록 때 한 번 만들어 저장한다(정책 공통 3).
+ * 그린 코스와 등록 기록에 고도가 부족했던 GPS 코스는 고도가 충분한 첫 완주 경로로 한 번 만든다({@link ElevationProfileEventHandler}).
  * 기준은 정책 문서 제4부 4.1 `B1-03 고도 프로필`이다. 최저 고도는 휴대폰마다 GPS 고도의 기준이 달라 두지 않는다.
  *
  * @param gainMeters    누적 상승(m). 골짜기에서 10m 이상 오른 것만 센다
@@ -34,8 +35,8 @@ public record ElevationProfile(int gainMeters, List<Double> samplesMeters) {
     private static final double MIN_COVERAGE = 0.9;
 
     /**
-     * @param segments 앱이 보낸 경로 조각(course-source). 조각 사이 빈칸은 코스 경로처럼 직선으로 이어 거리를 센다
-     * @return 고도를 잰 거리가 코스의 90%보다 적으면 null
+     * @param segments 앱이 보낸 경로 조각(course-source)이나 run이 보낸 완주 경로 조각. 조각 사이 빈칸은 코스 경로처럼 직선으로 이어 거리를 센다
+     * @return 고도를 잰 거리가 이 경로 길이의 90%보다 적으면 null
      */
     static ElevationProfile of(List<List<GpsSourcePoint>> segments) {
         // 높이를 이어 잰 구간들. 조각이 끊긴 곳 · 고도가 없거나 튄 곳에서 나눈다

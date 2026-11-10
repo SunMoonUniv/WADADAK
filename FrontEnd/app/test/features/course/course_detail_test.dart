@@ -40,7 +40,7 @@ void main() {
 
   const route =[GeoPoint(37.5666, 126.9784), GeoPoint(37.5700, 126.9800), GeoPoint(37.5750, 126.9850)];
 
-  /// [elevation]을 주면 GPS 코스다(고도 프로필은 GPS 코스만 있다, B1-03).
+  /// [elevation]을 주면 등록 때 고도 프로필을 만든 GPS 코스다(B1-03).
   CourseDetail detail(
           {String? nickname = '러닝왕김', DateTime? expiresAt, int? pace, int activeRunners = 0, ElevationProfile? elevation}) =>
       CourseDetail(
@@ -182,7 +182,7 @@ void main() {
     expect(text('1 km마다 지점 표시 · 총 5.2km'), findsOneWidget);
     expect(map.padding.top, greaterThan(0), reason: '경로를 위쪽 안내 문구 아래에 맞춘다');
 
-    expect(text('고도 프로필'), findsNothing, reason: '그려서 만든 코스에는 고도 프로필이 없다(B1-03)');
+    expect(text('고도 프로필'), findsNothing, reason: '아직 완주가 없는 그린 코스에는 고도 프로필이 없다(B1-03)');
     expect(text('러너 평가'), findsOneWidget);
     for (final (label, value) in [('안전성', '4.7'), ('도로 상태', '4.4'), ('야간 조명', '4.8'), ('편의시설', '4.1')]) {
       expect(find.descendant(of: find.ancestor(of: text(label), matching: find.byType(Row)), matching: text(value)),
@@ -260,7 +260,20 @@ void main() {
     expect(text('리뷰 0'), findsOneWidget);
     expect(text(CourseDetailScreen.noRunnerTitle), findsOneWidget);
     expect(text(CourseDetailScreen.noRunnerMessage), findsOneWidget);
+    expect(CourseDetailScreen.noRunnerMessage, startsWith('처음 완주하면 고도 프로필 · 평균 페이스 · 평점 · 랭킹이 만들어져요.'),
+        reason: 'Figma B1-1 문구. 그린 코스도 첫 완주로 고도 프로필이 생긴다');
     expect(text('러너 평가'), findsNothing);
+  });
+
+  testWidgets('does not promise an elevation profile the GPS course already shows (B1-03 · Figma B1-1)', (tester) async {
+    courses.details = {'c1': detail(elevation: ElevationProfile(0, List.filled(18, 30.0)))};
+    reviews.result = reviewSummary();
+    await openDetail(tester);
+
+    expect(text('고도 프로필'), findsOneWidget);
+    expect(text(CourseDetailScreen.noRunnerTitle), findsOneWidget);
+    expect(text(CourseDetailScreen.noRunnerMessageWithProfile), findsOneWidget);
+    expect(text(CourseDetailScreen.noRunnerMessage), findsNothing);
   });
 
   testWidgets('says there is no review yet once someone has finished it (B1-03)', (tester) async {

@@ -632,11 +632,11 @@ class CourseDetail {
   /// 지금 그 코스를 달리는 러너 수(B1-01 현재 러너). 서버가 받은 마지막 값이다.
   final int activeRunners;
 
-  /// 고도 프로필(B1-03). GPS 코스만 있고, 고도를 잰 곳이 코스의 90%보다 적으면 null이다.
+  /// 고도 프로필(B1-03). GPS 코스는 등록 기록으로, 그린 코스는 고도가 충분한 첫 완주로 서버가 만든다. 아직 없으면 null이다.
   final ElevationProfile? elevationProfile;
 }
 
-/// GPS 코스의 고도 프로필(B1-03). 서버가 등록에 쓴 기록의 GPS 고도로 등록 때 만든다(정책 문서 4.1 `B1-03 고도 프로필`).
+/// 코스의 고도 프로필(B1-03). 서버가 GPS 고도로 한 번 만든다(정책 문서 4.1 `B1-03 고도 프로필`).
 @immutable
 class ElevationProfile {
   const ElevationProfile(this.gainMeters, this.samplesMeters);

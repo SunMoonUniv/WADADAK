@@ -21,7 +21,7 @@ import java.util.UUID;
  * @param averagePaceSecondsPerKm 코스 평균 페이스(초/km). 모든 완주의 코스 완주 페이스 평균. 완주가 없으면 {@code null}
  * @param creatorNickname 등록자 닉네임. 탈퇴했으면 `탈퇴한 사용자`(정책 공통 4). 회원 정보를 받지 못하면 {@code null}
  * @param activeRunners   지금 그 코스를 달리는 러너 수(B1-01 현재 러너). run이 보낸 마지막 값이고, 받은 적이 없으면 0
- * @param elevationProfile 고도 프로필(B1-03). GPS 코스만 있고, 고도를 잰 곳이 코스의 90%보다 적으면 {@code null}
+ * @param elevationProfile 고도 프로필(B1-03). GPS 코스는 등록 기록으로, 그린 코스는 고도가 충분한 첫 완주로 만든다. 아직 없으면 {@code null}
  */
 record CourseDetail(
         UUID courseId,

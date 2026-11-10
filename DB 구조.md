@@ -15,7 +15,7 @@
 | 스키마 | 모듈 | 테이블 |
 | --- | --- | --- |
 | `member` | member | `members`, `agreements`, `refresh_tokens`, `region_event_backfill` |
-| `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `gps_course_sources`, `gps_source_completion_receipts`, `course_stats`, `course_daily_stats`, `course_completions`, `course_active_runners`, `course_bookmarks`, `processed_events` |
+| `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `gps_course_sources`, `completion_elevation_profiles`, `gps_source_completion_receipts`, `course_stats`, `course_daily_stats`, `course_completions`, `course_active_runners`, `course_bookmarks`, `processed_events` |
 | `ranking` | ranking | `course_ranking_entries`, `distance_run_records`, `course_status_copies`, `member_visibility_copies`, `member_region_history`, `withdrawn_members` |
 | `review` | review | `reviews`, `review_photos`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
 | `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members`, `course_attempts`, `course_runner_counts`, `ghost_starts`, `ghost_start_playbacks`, `ghost_results`, `free_ghost_starts`, `free_ghost_results`, `ghost_comparisons`, `gps_source_links`, `gps_course_status_copies` |
@@ -47,6 +47,7 @@ erDiagram
     members ||--o| region_event_backfill : "member_id"
     courses ||--o{ registration_requests : "course_id"
     courses ||--o| gps_course_sources : "course_id"
+    courses ||--o| completion_elevation_profiles : "course_id"
     courses ||--o| course_stats : "course_id"
     courses ||--o{ course_daily_stats : "course_id"
     courses ||--o{ course_completions : "course_id"
@@ -155,6 +156,10 @@ erDiagram
         uuid run_record_id UK "run 기록 ID"
         uuid member_id "member ID"
         text source_segments_json "원본 경로 조각"
+    }
+    completion_elevation_profiles {
+        uuid course_id PK "FK"
+        text profile_json "완주로 만든 고도 프로필"
     }
     course_stats {
         uuid course_id PK "FK"
@@ -528,11 +533,23 @@ erDiagram
 | `run_record_id` | `UUID` | | 코스로 만든 러닝 기록 ID(run 모듈, FK 없음) |
 | `member_id` | `UUID` | | 등록한 회원 ID(member 모듈, FK 없음) |
 | `source_segments_json` | `TEXT` | | 앱이 보낸 원본 경로 조각(course-source `segments`) JSON. 점마다 위도·경도·정확도·고도·고도 정확도 |
-| `elevation_profile_json` | `TEXT` | O | 고도 프로필(B1-03) JSON. 누적 상승 `gainMeters`와 코스를 거리로 18칸 나눈 칸마다의 평균 고도 `samplesMeters`. 등록 때 `source_segments_json`으로 한 번 만들고, 고도가 부족하면 JSON `null`이다. 이 열을 넣기 전(2026-11-04)에 등록한 코스는 NULL이고 서버가 켜질 때 채운다 |
+| `elevation_profile_json` | `TEXT` | O | 고도 프로필(B1-03) JSON. 누적 상승 `gainMeters`와 코스를 거리로 18칸 나눈 칸마다의 평균 고도 `samplesMeters`. 등록 때 `source_segments_json`으로 한 번 만들고, 고도가 부족하면 JSON `null`이다. 이 열을 넣기 전(2026-11-04)에 등록한 코스는 NULL이고 서버가 켜질 때 채운다. JSON `null`인 코스는 완주로 만든 프로필을 `completion_elevation_profiles`에 둔다 |
 
 - `gps_course_sources_run_record_uk`: `UNIQUE (run_record_id)`. 같은 러닝 기록은 한 번만 코스로 만든다(`COURSE-010`). 코스 행은 지워져도 `DELETED`로 남으므로 이 행도 지우지 않아, 코스가 지워지거나 만료돼도 그 기록은 다시 쓰지 않는다.
 - `gps_course_sources_member_id_idx`: `(member_id)`. 등록 한도 API의 `usedRunRecordIds`(B6·결과 화면 `이미 등록됨`)
 - `courses.route`는 점을 줄인 경로라 고도를 다시 만들 수 없다. 원본은 고도 프로필을 만들 때 쓰고 화면에는 쓰지 않는다. 크기가 커서 `courses`와 따로 둔다. 기준은 정책 문서 제4부 4.1 `B1-03 고도 프로필`이다.
+
+#### `course.completion_elevation_profiles` — 완주로 만든 고도 프로필
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `course_id` | `UUID` | | PK, FK → `courses.id` |
+| `profile_json` | `TEXT` | | 고도 프로필(B1-03) JSON. `gps_course_sources.elevation_profile_json`과 같은 모양(`gainMeters`, `samplesMeters` 18개) |
+| `created_at` | `TIMESTAMPTZ` | | 만든 시각 |
+
+- 사용자 지정 코스와 등록 기록에 고도가 부족했던 GPS 코스(`elevation_profile_json`이 JSON `null`)는 run이 보낸 완주 경로(`CourseRunTrackEvent`) 중 고도가 충분한 첫 완주로 한 번 만든다(2026-11-10). 공개 중인 코스만 만들고, 코스 하나에 한 줄이라 늦게 온 완주는 버린다(`ON CONFLICT DO NOTHING`). 행을 고치지 않아 `updated_at`이 없다.
+- 경로는 저장하지 않는다. 코스 상세(B1)는 `gps_course_sources`의 프로필을 먼저 보고, 없으면 이 표를 본다. 둘 중 하나라도 있으면 `CourseApi.getRouteForRun`의 `hasElevationProfile`이 true라 run이 완주 경로를 더 보내지 않는다.
+- 코스가 `DELETED`가 돼도 `gps_course_sources`처럼 지우지 않는다. 기준은 정책 문서 제4부 4.1 `B1-03 고도 프로필`이다.
 
 #### `course.course_stats` — 코스 누적 통계
 

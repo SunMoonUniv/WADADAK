@@ -59,10 +59,17 @@ class CourseDetailService {
                 courseStats.activeRunners(courseId), elevationProfile(courseId));
     }
 
-    /** 고도 프로필(B1-03). GPS 코스가 아니거나 고도가 부족하거나 아직 만들지 않았으면 null */
+    /**
+     * 고도 프로필(B1-03). 등록 기록으로 만든 GPS 코스 프로필이 먼저고, 없으면 완주로 만든 프로필이다.
+     * 둘 다 없으면(고도 부족 · 아직 완주 없음) null
+     */
     private ElevationProfile elevationProfile(UUID courseId) {
-        return jdbc.sql("SELECT elevation_profile_json FROM course.gps_course_sources WHERE course_id = ?")
-                .param(courseId)
+        return jdbc.sql("""
+                        SELECT coalesce(
+                            (SELECT elevation_profile_json FROM course.gps_course_sources
+                             WHERE course_id = :courseId AND elevation_profile_json <> 'null'),
+                            (SELECT profile_json FROM course.completion_elevation_profiles WHERE course_id = :courseId))""")
+                .param("courseId", courseId)
                 .query(String.class)
                 .optional()
                 .map(profile -> json.readValue(profile, ElevationProfile.class))

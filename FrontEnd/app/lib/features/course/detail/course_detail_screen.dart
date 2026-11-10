@@ -29,7 +29,7 @@ import 'course_run_bar.dart';
 /// 랭킹 · 고스트는 랭킹 API에서 받는다(B1-01).
 ///
 /// - 이 코스로 달리기는 코스 러닝(C6)으로, 고스트 대결은 선택 기간의 공개 상대 검증 후 기존 대결 준비로 간다.
-/// - 평균 페이스 · 현재 러너 · 고도 프로필(GPS 코스만, B1-03)은 코스 API에서 받는다.
+/// - 평균 페이스 · 현재 러너 · 고도 프로필(있으면, B1-03)은 코스 API에서 받는다.
 /// - 공유(B1-08)는 공유 링크를 정할 때까지 두지 않는다. 앱 바 오른쪽은 저장 북마크(B1-09)다.
 /// - 비공개 · 삭제된 코스는 열지 않는다(B1-04).
 class CourseDetailScreen extends ConsumerStatefulWidget {
@@ -45,7 +45,10 @@ class CourseDetailScreen extends ConsumerStatefulWidget {
   static const loadFailedTitle = '코스를 불러오지 못했어요';
   static const loadFailedMessage = '네트워크를 확인하고 다시 시도해 주세요.';
   static const noRunnerTitle = '아직 이 코스를 달린 사람이 없어요';
-  static const noRunnerMessage = '처음 완주하면 평균 페이스 · 평점 · 랭킹이 만들어져요.\n첫 번째 기록의 주인공이 되어 보세요.';
+  static const noRunnerMessage = '처음 완주하면 고도 프로필 · 평균 페이스 · 평점 · 랭킹이 만들어져요.\n첫 번째 기록의 주인공이 되어 보세요.';
+
+  /// 고도 프로필이 이미 보이는 코스(등록 때 만든 GPS 코스)는 처음 완주하면 만든다고 하지 않는다(4.1 B1-03 · Figma B1-1).
+  static const noRunnerMessageWithProfile = '처음 완주하면 평균 페이스 · 평점 · 랭킹이 만들어져요.\n첫 번째 기록의 주인공이 되어 보세요.';
 
   /// 값이 아직 없을 때(Figma B1-1 `—`).
   static const noValue = '—';
@@ -378,9 +381,11 @@ class _CourseDetailScreenState extends ConsumerState<CourseDetailScreen> with Si
           if (course.averagePaceSecondsPerKm != null)
             const CourseEmptyCard(title: CourseReviewsTab.emptyTitle, message: CourseReviewsTab.emptyMessage)
           else
-            const CourseEmptyCard(
+            CourseEmptyCard(
               title: CourseDetailScreen.noRunnerTitle,
-              message: CourseDetailScreen.noRunnerMessage,
+              message: course.elevationProfile == null
+                  ? CourseDetailScreen.noRunnerMessage
+                  : CourseDetailScreen.noRunnerMessageWithProfile,
             ),
           ?stale,
         ],
