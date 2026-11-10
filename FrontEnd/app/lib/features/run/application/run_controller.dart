@@ -322,16 +322,45 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   Completer<bool>? _wearStart;
   String? _wearReadyId;
   bool _wearCountdown = false;
+  bool _wearPreparingCourse = false;
   String? get wearReadyId => _wearReadyId;
   bool get wearStarting =>
-      _wearFix != null || _wearStart != null || _wearCountdown;
+      _wearFix != null || _wearStart != null || _wearCountdown ||
+      _wearPreparingCourse;
 
-  Future<void> prepareWearStart() =>
-      prepareStart(freeOnly: true, waitForWear: true);
+  static const wearCourseWait = Duration(minutes: 15);
 
-  void startFromWear(String id) {
+  Future<void> prepareWearStart() async {
+    if (courseStart != null || selectedFreeGhost != null || hasPendingGhostStart) {
+      return;
+    }
+    final selection = selectedCourse;
+    final ghost = selectedGhost;
+    await prepareStart(
+      freeOnly: selection == null,
+      waitForWear: true,
+      selectionIsCurrent: () =>
+          identical(selectedCourse, selection) &&
+          identical(selectedGhost, ghost) &&
+          courseStart == null &&
+          selectedFreeGhost == null &&
+          !hasPendingGhostStart,
+    );
+  }
+
+  bool get wearCourseHasFix =>
+      _gps != null &&
+      _latest != null &&
+      RunLocationPolicy.usable(_latest!, _utcNow());
+
+  void startFromWear(String id, {bool course = false}) {
     final start = _wearStart;
     if (start == null || id != _wearReadyId) return;
+    final approach = courseStart;
+    if (course != (approach?.runId == id) ||
+        course && (!wearCourseHasFix || !approach!.nearStart)) {
+      return;
+    }
     _wearStart = null;
     _wearReadyId = null;
     _wearCountdown = true;
@@ -346,6 +375,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     _wearStart = null;
     _wearReadyId = null;
     _wearCountdown = false;
+    _wearPreparingCourse = false;
   }
 
   RunMetrics get metrics => recorder.metrics;
@@ -583,6 +613,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     bool freeOnly = false,
     bool waitForWear = false,
     bool wearCourse = false,
+    bool Function()? selectionIsCurrent,
   }) async {
     if (preparing || recorder.active || storageFault || _disposed) return;
     // The result can be confirmed before optional hardware has stopped.
@@ -598,6 +629,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
     await bindOwner();
+    if (selectionIsCurrent?.call() == false) return;
     if (freeOnly && hasOtherRunPreparation) return;
     if (hasPendingGhostStart) {
       await retryGhostStart();
@@ -611,8 +643,10 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
     if (preparing || recorder.active || storageFault || _disposed) return;
-    if ((freeOnly || waitForWear) && hasOtherRunPreparation) return;
-    final start = courseStart;
+    if (freeOnly && hasOtherRunPreparation) return;
+    // The watch selection can change while the phone waits for cleanup or auth.
+    if (selectionIsCurrent?.call() == false) return;
+    var start = courseStart;
     if (start != null && start.intent == null && !start.nearStart) return;
     final generation = ++_generation;
     // 코스 러닝은 세션 ID를 먼저 만들어 서버 준비·시작 신호와 기록에 같은 ID를 쓴다
@@ -625,6 +659,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     final runId =
         start?.runId ?? ghostPreparation?.sessionId ?? const Uuid().v7();
     preparing = true;
+    _wearPreparingCourse = waitForWear && selection != null;
     error = null;
     setupAction = null;
     gpsNotice = null;
@@ -665,14 +700,16 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
           throw StateError('코스가 바뀌었어요. 고스트를 다시 선택해 주세요.');
         }
         if (generation != _generation || _disposed) return;
-        courseStart = CourseStart(
+        start = courseStart = CourseStart(
           runId,
           selection,
           snapshot,
           GeoPoint(position.latitude, position.longitude),
         );
-        _watchStart();
-        return;
+        if (!waitForWear) {
+          _watchStart();
+          return;
+        }
       }
       double? weight;
       try {
@@ -684,6 +721,10 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         return;
       }
       await _stopWatchingStart();
+      if (generation != _generation || _disposed) return;
+      if (waitForWear && _lifecycleState() != AppLifecycleState.resumed) {
+        throw const DeviceSetupException('폰에서 와다닥을 열고 워치 시작을 다시 준비해 주세요.');
+      }
       _latest = position;
       _lastFixAt = _utcNow();
       _gapOpen = false;
@@ -699,10 +740,10 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
         );
         if (!fixed || generation != _generation || _disposed) return;
         final watch = _wearStart = Completer<bool>();
-        _wearReadyId = const Uuid().v4();
+        _wearReadyId = start?.runId ?? const Uuid().v4();
         _notify();
         final requested = await watch.future.timeout(
-          const Duration(minutes: 2),
+          start == null ? const Duration(minutes: 2) : wearCourseWait,
           onTimeout: () => false,
         );
         if (generation != _generation || _disposed) return;
@@ -821,7 +862,9 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
           return;
         }
         await _checkCourseIntent(intent);
-        if (_lifecycleState() != AppLifecycleState.resumed) {
+        if (waitForWear
+            ? _gps == null
+            : _lifecycleState() != AppLifecycleState.resumed) {
           throw const DeviceSetupException('앱으로 돌아온 뒤 코스 시작을 다시 확인해 주세요.');
         }
         courseOriginMs = intent.clock.elapsedMs;
@@ -848,7 +891,8 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       }
       course = start?.course;
       courseRunId = start == null ? null : runId;
-      _wearCourseRunId = wearCourse && start != null ? runId : null;
+      _wearCourseRunId =
+          (wearCourse || waitForWear) && start != null ? runId : null;
       final geometry = start == null
           ? null
           : RouteGeometry(start.snapshot.route, breaks: start.snapshot.breaks);
@@ -901,6 +945,14 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       if (identical(_courseStartCapture, startCapture)) {
         _courseStartCapture = null;
       }
+      if (waitForWear &&
+          start != null &&
+          !recorder.active &&
+          start.intent == null &&
+          !hasPendingGhostStart &&
+          identical(courseStart, start)) {
+        courseStart = null;
+      }
       if (generation == _generation) {
         preparing = false;
         countdown = null;
@@ -928,6 +980,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     ++_generation;
     countdown = null;
     preparing = false;
+    if (wearStarting && courseStart?.intent == null) courseStart = null;
     _clearWearPreparation();
     unawaited(
       _stopLocation().then((_) {
@@ -1380,7 +1433,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
           onDone: () {
             if (token != _locationGeneration || _disposed) return;
             _gps = null;
-            if (_wearFix != null || _wearStart != null) {
+            if (wearStarting && !recorder.active && !_committing) {
               error = '위치 측정이 중단됐어요. 폰에서 다시 준비해 주세요.';
               cancelStart();
               return;
@@ -1421,10 +1474,13 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     }
     _latest = p;
     _lastFixAt = _utcNow();
-    final wearFix = _wearFix;
-    if (wearFix != null && RunLocationPolicy.usable(p, _lastFixAt!)) {
-      _wearFix = null;
-      wearFix.complete(true);
+    if (wearStarting && RunLocationPolicy.usable(p, _lastFixAt!)) {
+      courseStart?.position = GeoPoint(p.latitude, p.longitude);
+      final wearFix = _wearFix;
+      if (wearFix != null) {
+        _wearFix = null;
+        wearFix.complete(true);
+      }
     }
     _gapOpen = false;
     gpsNotice = p.accuracy > 15 ? '위치 정확도가 낮아요. 이동을 확인할 수 있는 신호를 기다려요.' : null;

@@ -23,6 +23,7 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
+import android.widget.Toast
 import com.google.android.gms.tasks.Tasks
 import com.google.android.gms.wearable.CapabilityClient
 import com.google.android.gms.wearable.Wearable
@@ -192,7 +193,7 @@ class WearRunActivity : Activity() {
             commandNotice = null
             commandIssue = null
             countdown.clear()
-        } else if (completedCommand != "status") {
+        } else if (completedCommand != "status" || snapshot?.optBoolean("reselectCourse") == true) {
             commandNotice = replyNotice
             commandIssue = reply?.opt("setupIssue") as? String
         }
@@ -206,7 +207,16 @@ class WearRunActivity : Activity() {
                 snapshot.isNull("courseName") && previousCourseName != null) {
                 snapshot.put("courseName", previousCourseName)
             }
+            val reselect = snapshot.optBoolean("reselectCourse") &&
+                (!state.optBoolean("reselectCourse") || completedCommand == "start" ||
+                    completedCommand == "prepareCourse")
             state = snapshot
+            if (reselect) {
+                show("home")
+                if (phase == "ended" && id != dismissed && replyNotice != null) {
+                    Toast.makeText(this, replyNotice, Toast.LENGTH_LONG).show()
+                }
+            }
             val runMode = state.optString("mode", "free")
             if (phase in RECORD_PHASES && id != null && id != dismissed) {
                 rememberSession(id, runMode)
@@ -222,6 +232,11 @@ class WearRunActivity : Activity() {
                 countdown.clear()
             }
             if (id != previousSession) {
+                if (phase == "approach" && replyNotice == null) {
+                    commandNotice = null
+                    commandIssue = null
+                    notice = null
+                }
                 previousSession = id
                 shownTransition = null
                 transitionUntil = 0L
@@ -293,9 +308,11 @@ class WearRunActivity : Activity() {
                 current != "transition" -> "free"
             else -> state.optString("mode", "free")
         }
+        val verdictStatus = state.optString("verdictStatus")
         val variant = when (current) {
-            "courseResult" -> state.optJSONObject("courseResult")?.optBoolean("completed")?.toString() ?: "pending"
-            "ghostResult" -> state.optJSONObject("ghostResult")?.optString("outcome") ?: "pending"
+            "courseResult" -> state.optJSONObject("courseResult")?.optBoolean("completed")?.toString() ?: verdictStatus
+            "ghostResult" -> state.optJSONObject("ghostResult")?.optString("outcome") ?: verdictStatus
+            "ended" -> verdictStatus
             "approach" -> state.optBoolean("nearStart").toString()
             "running" -> state.optBoolean("gpsWeak").toString()
             else -> ""
@@ -391,13 +408,19 @@ class WearRunActivity : Activity() {
                 metric("time", "달린 시간", duration, 43, 107, 57, 17)
                 divider(107, 112, 24)
                 metric("pace", "평균 페이스", pace, 117, 107, 60, 17)
+                val verdict = if (shownMode == "ghost") "ghostResult" else "courseResult"
+                val waitingForVerdict = hasCourse && state.optJSONObject(verdict) == null
+                val verdictFailed = waitingForVerdict && verdictStatus == "failed"
                 val status = when {
+                    verdictFailed -> "판정 실패 · 폰에서 확인"
                     !available -> "폰 연결 끊김"
+                    waitingForVerdict && verdictStatus == "pending" ->
+                        if (state.optBoolean("saved")) "기기 저장 · 판정 대기" else "판정 대기"
                     state.optBoolean("saved") -> "기록 저장 완료"
                     else -> "저장된 기록 없음"
                 }
                 label("status", status, 35, if (hasCourse) 139 else 147, 146, 14, 10,
-                    if (available) MUTED else PALE_AMBER)
+                    if (verdictFailed || !available) PALE_AMBER else MUTED)
                 if (hasCourse) {
                     resultLink("코스 결과 ›", 1, 153)
                     arrow("result-next", "›", 180, 89, 32, 44) { showResult(1) }
@@ -459,9 +482,9 @@ class WearRunActivity : Activity() {
                 val dy = event.y - touchY
                 val ready = state.optString("phase") == "ready" ||
                     state.optString("sessionId") == dismissed
-                if (ready && page == "home" && abs(dx) > px(32) && abs(dx) > abs(dy)) {
+                if (screen.startsWith("home:") && abs(dy) > px(32) && abs(dy) > abs(dx)) {
                     cancelTouch(event)
-                    shiftMode(if (dx < 0) 1 else -1)
+                    shiftMode(if (dy < 0) 1 else -1)
                     return true
                 }
                 if (abs(dx) > px(32) && abs(dx) > abs(dy)) {
@@ -617,19 +640,27 @@ class WearRunActivity : Activity() {
         slots["result-link-$index"]?.setOnClickListener { showResult(index) }
     }
 
+    private fun verdictWarningBadge() {
+        surface("verdict-fill", 93, 37, 30, 30, 15, OCHRE, OCHRE)
+        label("verdict", "!", 93, 38, 30, 27, 17, AMBER)
+    }
+
     private fun renderCourseResult() {
         val result = state.optJSONObject("courseResult")
         val completed = result?.optBoolean("completed") == true
+        val failed = result == null && state.optString("verdictStatus") == "failed"
         label("mode", "코스 결과", 53, 17, 110, 14, 11, MUTED)
         when {
-            result == null -> badge("verdict", 93, 37, 30, OCHRE, R.drawable.wear_clock)
+            result == null && !failed -> badge("verdict", 93, 37, 30, OCHRE, R.drawable.wear_clock)
             completed -> badge("verdict", 93, 37, 30, LIME, R.drawable.wear_check)
-            else -> {
-                surface("verdict-fill", 93, 37, 30, 30, 15, OCHRE, OCHRE)
-                label("verdict", "!", 93, 38, 30, 27, 17, AMBER)
-            }
+            else -> verdictWarningBadge()
         }
-        val title = if (result == null) "판정 대기" else if (completed) "완주" else "미완주"
+        val title = when {
+            failed -> "판정 실패"
+            result == null -> "판정 대기"
+            completed -> "완주"
+            else -> "미완주"
+        }
         if (result == null) {
             label("title", title, 41, 70, 134, 28, 23, PALE_AMBER)
         } else {
@@ -638,8 +669,11 @@ class WearRunActivity : Activity() {
         label("course", result?.opt("name") as? String ?: state.optString("courseName", "선택한 코스"),
             42, 103, 132, 18, 13)
         if (result == null) {
-            val detail = if (available) "코스 완주 결과를\n확인하고 있어요"
-                else "폰 연결을 기다려요\n다시 연결되면 확인해요"
+            val detail = when {
+                failed -> VERDICT_CHECK_PHONE
+                available -> "코스 완주 결과를\n확인하고 있어요"
+                else -> "폰 연결을 기다려요\n다시 연결되면 확인해요"
+            }
             label("detail", detail, 39, 125, 138, 32, 13, MUTED)
         } else {
             metric("distance", "코스 인정 거리", formatDistance(result.optDouble("recognizedDistanceM")), 38, 128, 69, 15)
@@ -656,21 +690,23 @@ class WearRunActivity : Activity() {
     private fun renderGhostResult() {
         val result = state.optJSONObject("ghostResult")
         val outcome = result?.optString("outcome")
+        val failed = result == null && state.optString("verdictStatus") == "failed"
         val title = when (outcome) {
             "WIN" -> "승리"
             "LOSE" -> "패배"
             "DRAW" -> "무승부"
             "INVALID" -> "무효"
-            else -> "판정 대기"
+            else -> if (failed) "판정 실패" else "판정 대기"
         }
         val color = when (outcome) {
             "WIN" -> LIME
             "LOSE" -> AMBER
             "DRAW" -> VIOLET
-            else -> WHITE
+            else -> if (failed) PALE_AMBER else WHITE
         }
         label("mode", "고스트 대결 결과", 50, 17, 116, 15, 11, MUTED)
-        badge("ghost-icon", 93, 37, 30, VIOLET, R.drawable.wear_ghost)
+        if (failed) verdictWarningBadge()
+        else badge("ghost-icon", 93, 37, 30, VIOLET, R.drawable.wear_ghost)
         label("title", title, 39, 69, 138, 34, 25, color)
         label("course", "선택한 고스트와 비교", 44, 104, 128, 17, 11)
         if (outcome in listOf("WIN", "LOSE", "DRAW") && result != null) {
@@ -688,9 +724,13 @@ class WearRunActivity : Activity() {
             }
             label("detail", note, 31, 166, 154, 18, 10, MUTED)
         } else {
-            label("detail", if (outcome == "INVALID") "대결이 정상 완주로\n판정되지 않았어요"
-                else if (available) "서버에서 대결 결과를\n확인하고 있어요"
-                else "폰 연결을 기다려요\n다시 연결되면 확인해요", 39, 126, 138, 38, 12, MUTED)
+            val detail = when {
+                failed -> VERDICT_CHECK_PHONE
+                outcome == "INVALID" -> "대결이 정상 완주로\n판정되지 않았어요"
+                available -> "서버에서 대결 결과를\n확인하고 있어요"
+                else -> "폰 연결을 기다려요\n다시 연결되면 확인해요"
+            }
+            label("detail", detail, 39, 126, 138, 38, 12, MUTED)
         }
         resultLink("‹ 코스 결과", 1, 187)
         arrow("left", "‹", 4, 88, 32, 43) { showResult(1) }
@@ -755,17 +795,21 @@ class WearRunActivity : Activity() {
             if (free) request("start", state.opt("readyId") as? String) else request("courses")
         }
         if (free) label("hint", "길게 눌러 시작", 43, 181, 130, 15, 10, MUTED)
-        if (index > 0) arrow("left", "‹", 4, 72, 32, 46) { shiftMode(-1) }
-        if (index < MODES.lastIndex) arrow("right", "›", 180, 72, 32, 46) { shiftMode(1) }
-        var x = 92
+        if (index > 0) {
+            arrow("mode-up", "⌃", 67, 1, 82, 22, description = "이전 러닝 모드") { shiftMode(-1) }
+        }
+        if (index < MODES.lastIndex) {
+            arrow("mode-down", "⌄", 67, 194, 82, 22, description = "다음 러닝 모드") { shiftMode(1) }
+        }
+        var y = 92
         for (i in MODES.indices) {
             val key = "dot-$i"
-            val width = if (i == index) 14 else 5
+            val height = if (i == index) 14 else 5
             if (key !in slots) {
                 val dot = View(this).apply { background = pill(if (i == index) LIME else DOT, 3) }
-                place(key, dot, x, if (free) 196 else 191, width, 5)
+                place(key, dot, 193, y, 5, height)
             }
-            x += width + 4
+            y += height + 4
         }
     }
 
@@ -826,7 +870,7 @@ class WearRunActivity : Activity() {
         label("title", state.optString("courseName", "출발점"), 53, 29, 110, 20, 14)
         arrow("back", "‹", 30, 17, 30, 32) {
             show("courseReady")
-            request("cancelCourse")
+            request("cancelCourse", id)
         }
         val map = slots["route"] as? RouteMap ?: RouteMap().apply {
             background = pill(BUTTON, 14, BUTTON_LINE)
@@ -844,10 +888,15 @@ class WearRunActivity : Activity() {
         label("hint", if (near) "길게 눌러 시작" else "출발점으로 이동", 42, 193, 132, 14, 10, MUTED)
     }
 
-    private fun arrow(key: String, value: String, x: Int, y: Int, width: Int, height: Int,
-                      size: Int = 20, action: () -> Unit) {
+    private fun arrow(
+        key: String, value: String, x: Int, y: Int, width: Int, height: Int,
+        size: Int = 20, description: String? = null, action: () -> Unit,
+    ) {
         label(key, value, x, y, width, height, size, MUTED)
-        slots[key]?.setOnClickListener { action() }
+        slots[key]?.apply {
+            if (description != null) contentDescription = description
+            setOnClickListener { action() }
+        }
     }
 
     private fun formatDistance(meters: Double) =
@@ -1035,6 +1084,7 @@ class WearRunActivity : Activity() {
         val CATALOG_COMMANDS = setOf("courses", "selectCourse", "selectGhost")
         val BROWSE = setOf("home", "courses", "ghosts", "courseReady")
         val RECORD_PHASES = setOf("running", "paused", "ending", "ended")
+        const val VERDICT_CHECK_PHONE = "폰에서 와다닥을 열고\n기록을 확인해 주세요"
         const val PALE_AMBER = 0xffffe0a8.toInt()
         const val AMBER = 0xffffc47d.toInt()
         const val OCHRE = 0xff473829.toInt()

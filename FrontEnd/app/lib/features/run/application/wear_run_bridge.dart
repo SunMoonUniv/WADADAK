@@ -56,6 +56,7 @@ class WearRunBridge {
   final RunController Function() _controller;
   String? _operation;
   String? _startFailure;
+  bool _reselectCourse = false;
   final Future<List<CourseListItem>> Function()? loadCourses;
   String? _catalogOwner;
   List<CourseListItem> _courses = const [];
@@ -72,6 +73,7 @@ class WearRunBridge {
     if (_catalogOwner == owner) return;
     dispose();
     _catalogOwner = owner;
+    _clearStartFailure();
     _courses = const [];
     _courseCard = null;
     _watchCourse = null;
@@ -98,6 +100,13 @@ class WearRunBridge {
 
     final mode = args['mode'] as String?;
     final selectionId = args['sessionId'] as String?;
+    if (command == 'cancelCourse' &&
+        selectionId != null &&
+        selectionId == controller.wearReadyId &&
+        selectionId == controller.courseStart?.runId) {
+      controller.cancelStart();
+      return _snapshot(controller);
+    }
     if (const {
       'courses',
       'selectCourse',
@@ -110,20 +119,46 @@ class WearRunBridge {
 
     final run = controller.run;
     if (command == 'start') {
+      final ghost = mode == 'ghost';
+      final courseStart = mode == 'course' || ghost;
+      if (!courseStart &&
+          (selectionId != null || mode != null && mode != 'free')) {
+        return _snapshot(controller, '워치에서 러닝 모드를 다시 선택해 주세요.');
+      }
       final readyId = args['readyId'];
-      if (readyId is String) {
+      if (!courseStart && readyId is String) {
+        _clearStartFailure();
         controller.startFromWear(readyId);
         return _snapshot(controller);
       }
-      if (_operation != null || controller.preparing) {
+      final approach = controller.courseStart;
+      bool matchesApproach() =>
+          approach != null &&
+          approach.course != null &&
+          approach.runId == selectionId &&
+          identical(controller.courseStart, approach) &&
+          (controller.selectedGhost != null) == ghost &&
+          !controller.hasPendingGhostStart;
+      final armedCourse = courseStart &&
+          controller.wearReadyId != null &&
+          controller.wearReadyId == approach?.runId;
+      if (!armedCourse && (_operation != null || controller.preparing)) {
         return _snapshot(controller);
       }
-      final approach = controller.courseStart;
-      final courseStart =
-          approach != null &&
-          approach.runId == selectionId &&
-          approach.nearStart &&
-          (mode == 'course' || mode == 'ghost');
+      if (courseStart) {
+        if (!matchesApproach()) return _rejectCourseStart(controller, ghost);
+        if (armedCourse && !controller.wearCourseHasFix) {
+          return _snapshot(controller, 'GPS 신호를 기다리고 있어요.');
+        }
+        if (!approach!.nearStart) {
+          return _snapshot(controller, '출발점 20m 안으로 이동한 뒤 다시 시작해 주세요.');
+        }
+      }
+      if (armedCourse) {
+        _clearStartFailure();
+        controller.startFromWear(approach!.runId, course: true);
+        return _snapshot(controller);
+      }
       if (controller.recorder.active ||
           (controller.hasOtherRunPreparation && !courseStart)) {
         return _snapshot(controller, '폰에서 진행 중인 러닝이나 준비를 확인해 주세요.');
@@ -135,9 +170,15 @@ class WearRunBridge {
         );
       }
       _operation = 'start';
-      _startFailure = null;
+      _clearStartFailure();
       unawaited(
-        _start(controller, freeOnly: !courseStart, wearCourse: courseStart),
+        _start(
+          controller,
+          freeOnly: !courseStart,
+          wearCourse: courseStart,
+          selectionIsCurrent: courseStart ? matchesApproach : null,
+          ghost: ghost,
+        ),
       );
       return _snapshot(controller);
     }
@@ -205,6 +246,7 @@ class WearRunBridge {
       return _snapshot(controller, '진행 중인 러닝을 먼저 확인해 주세요.');
     }
     _operation = command;
+    _clearStartFailure();
     String? notice;
     try {
       switch (command) {
@@ -272,18 +314,30 @@ class WearRunBridge {
           }
           _watchCourse = controller.selectedCourse;
         case 'prepareCourse':
-          if (_watchCourse == null ||
-              !identical(controller.selectedCourse, _watchCourse) ||
-              (mode == 'ghost' && controller.selectedGhost == null)) {
-            throw StateError('코스와 고스트를 확인해 주세요.');
-          }
+          final selection = _watchCourse;
+          final ghost = mode == 'ghost';
+          final selectedGhost = controller.selectedGhost;
+          bool matchesSelection() =>
+              selection != null &&
+              identical(controller.selectedCourse, selection) &&
+              identical(controller.selectedGhost, selectedGhost) &&
+              (selectedGhost != null) == ghost &&
+              controller.courseStart == null &&
+              !controller.hasPendingGhostStart;
+          if (!matchesSelection()) return _rejectCourseStart(controller, ghost);
           if (WidgetsBinding.instance.lifecycleState !=
               AppLifecycleState.resumed) {
             throw StateError('폰에서 와다닥을 연 뒤 출발점 지도를 열어 주세요.');
           }
           _operation = 'start';
-          _startFailure = null;
-          unawaited(_start(controller, freeOnly: false));
+          unawaited(
+            _start(
+              controller,
+              freeOnly: false,
+              selectionIsCurrent: matchesSelection,
+              ghost: ghost,
+            ),
+          );
           return _snapshot(controller);
         case 'cancelCourse':
           if (controller.courseStart != null &&
@@ -314,13 +368,42 @@ class WearRunBridge {
     return _snapshot(controller, notice);
   }
 
+  void _clearStartFailure() {
+    _startFailure = null;
+    _reselectCourse = false;
+  }
+
+  void _expireCourseSelection(bool ghost) {
+    _reselectCourse = true;
+    _startFailure = ghost
+        ? '코스와 고스트를 다시 선택해 주세요.'
+        : '코스를 다시 선택해 주세요.';
+  }
+
+  Map<String, Object?> _rejectCourseStart(RunController controller, bool ghost) {
+    _expireCourseSelection(ghost);
+    return _snapshot(controller);
+  }
+
   Future<void> _start(
     RunController controller, {
     required bool freeOnly,
     bool wearCourse = false,
+    bool Function()? selectionIsCurrent,
+    bool ghost = false,
   }) async {
     try {
-      await controller.prepareStart(freeOnly: freeOnly, wearCourse: wearCourse);
+      await controller.prepareStart(
+        freeOnly: freeOnly,
+        wearCourse: wearCourse,
+        selectionIsCurrent: selectionIsCurrent == null
+            ? null
+            : () {
+                if (selectionIsCurrent()) return true;
+                _expireCourseSelection(ghost);
+                return false;
+              },
+      );
     } on Object {
       _startFailure = '폰에서 러닝 시작 상태를 확인해 주세요.';
     } finally {
@@ -333,6 +416,7 @@ class WearRunBridge {
     String owner,
     Map<dynamic, dynamic> args,
   ) async {
+    if (controller.wearReadyId != null) _clearStartFailure();
     final snapshot = _snapshot(controller);
     final sessionId = args['sessionId'];
     if (snapshot['phase'] != 'ready' ||
@@ -372,11 +456,14 @@ class WearRunBridge {
     final selected = controller.selectedCourse;
     final ghost = controller.selectedGhost;
     final readyForWatch = controller.wearReadyId != null;
+    final armedCourse = readyForWatch && approach != null;
     final active =
         run != null &&
         (recovered != null || run.phase != RunPhase.ended || selected == null);
     final phase = controller.storageFault
         ? 'unavailable'
+        : armedCourse
+        ? 'approach'
         : readyForWatch
         ? 'ready'
         : _operation == 'start' || controller.preparing
@@ -409,6 +496,13 @@ class WearRunBridge {
       _ when selected != null => 'course',
       _ => 'free',
     };
+    final verdictStatus = phase == 'ended' && mode != 'free'
+        ? switch ((run?.syncState, run?.pending)) {
+            ('blocked', _) => 'failed',
+            (_, true) => 'pending',
+            _ => null,
+          }
+        : null;
     final card = selected?.courseId == _courseCard?.courseId
         ? _courseCard
         : null;
@@ -457,7 +551,9 @@ class WearRunBridge {
       'onCourse': controller.onCourse,
       'continuing': continuing,
       'courseEndReason': continuing ? controller.courseEndReason : null,
-      'setupIssue': controller.setupAction != null && phase == 'ready'
+      'setupIssue': _reselectCourse
+          ? null
+          : controller.setupAction != null && phase == 'ready'
           ? 'permissions'
           : error?.contains('인터넷에 연결되지') == true
           ? 'offline'
@@ -473,6 +569,7 @@ class WearRunBridge {
       'ghostTimeDeltaMs': comparison?.timeDeltaMs,
       if (comparison?.position case final ghostPosition?)
         'ghostPosition': [ghostPosition.lat, ghostPosition.lng],
+      if (verdictStatus != null) 'verdictStatus': verdictStatus,
       if (courseResult != null)
         'courseResult': {
           'completed': courseResult['completed'] == true,
@@ -507,7 +604,8 @@ class WearRunBridge {
           },
       ],
       if (approach != null) ...{
-        'nearStart': approach.nearStart,
+        'nearStart':
+            approach.nearStart && (!armedCourse || controller.wearCourseHasFix),
         'startDistanceM': approach.distanceToStartM,
       },
       if (position != null) 'position': [position.lat, position.lng],
@@ -524,6 +622,7 @@ class WearRunBridge {
               if (segment.length > 1) [segment.last.lat, segment.last.lng],
             ],
         ],
+      if (_reselectCourse) 'reselectCourse': true,
       'countdown': controller.countdown,
       'countdownStepRemainingMs': controller.countdownStepRemainingMs,
       'canCancel':
@@ -539,8 +638,11 @@ class WearRunBridge {
           : null,
       'message':
           message ??
+          (_reselectCourse ? _startFailure : null) ??
           (phase == 'running'
               ? controller.gpsNotice
+              : armedCourse && !controller.wearCourseHasFix
+              ? 'GPS 신호를 기다리고 있어요.'
               : controller.error ?? _startFailure),
       'saved':
           phase == 'ended' &&

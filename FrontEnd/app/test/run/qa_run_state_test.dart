@@ -2,25 +2,45 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:wadadak/core/api/api_client.dart';
+import 'package:wadadak/core/api/ranking_api_client.dart';
+import 'package:wadadak/features/course/detail/course_ranking_state.dart';
+import 'package:wadadak/features/review/review_state.dart';
 import 'package:wadadak/core/map/geo_point.dart';
 import 'package:wadadak/core/time/monotonic_clock.dart';
+import 'package:wadadak/features/run/application/free_run_controller.dart';
 import 'package:wadadak/features/run/application/run_controller.dart';
 import 'package:wadadak/features/run/application/wear_run_bridge.dart';
 import 'package:wadadak/features/run/domain/course_run.dart';
 import 'package:wadadak/features/run/domain/course_tracker.dart';
 import 'package:wadadak/features/run/domain/ghost_live_comparison.dart';
 import 'package:wadadak/features/run/domain/ghost_run.dart';
+import 'package:wadadak/features/run/domain/own_ghost.dart';
 import 'package:wadadak/features/run/domain/recording_models.dart';
 import 'package:wadadak/features/run/domain/route_guidance.dart';
+import 'package:wadadak/features/run/presentation/course_prep_view.dart';
+import 'package:wadadak/features/run/presentation/free_run_screen.dart';
+import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import 'recording/run_controller_test.dart'
     show TestLocation, FailingStore, until;
 import 'recording/course_run_start_test.dart' show CourseApi;
 import 'run_device_controller_test.dart' show Device;
 import 'ghost_recovery_support.dart';
+
+class TrackingLocation extends TestLocation {
+  final settingsUsed = <LocationSettings>[];
+
+  @override
+  Stream<Position> positions({required LocationSettings settings}) {
+    settingsUsed.add(settings);
+    return super.positions(settings: settings);
+  }
+}
 
 class SlowStopDevice extends Device {
   Completer<void>? stopGate;
@@ -39,27 +59,32 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(sqfliteFfiInit);
   late RunController runs;
-  late TestLocation location;
+  late TrackingLocation location;
   late CourseApi api;
+  late RecoveryApi ghostApi;
   late FailingStore store;
   late SlowStopDevice device;
   var lifecycle = AppLifecycleState.resumed;
   String? member;
+  Future<String?> Function()? readOwner;
   Future<double?> Function(String)? readWeight;
   setUp(() {
     member = 'alice';
+    readOwner = null;
     lifecycle = AppLifecycleState.resumed;
     readWeight = null;
     store = FailingStore();
-    location = TestLocation();
+    location = TrackingLocation();
     api = CourseApi();
+    ghostApi = RecoveryApi();
     device = SlowStopDevice();
     runs = RunController(
       store,
       location,
       api,
-      () async => member,
+      () async => readOwner == null ? member : await readOwner!(),
       device: device,
+      ghostApi: ghostApi,
       automaticTicks: false,
       wait: (_) async {},
       nowMs: location.nowMs,
@@ -242,6 +267,274 @@ void main() {
     },
   );
 
+  void selectCourseForWatch(String mode) {
+    if (mode == 'ghost') {
+      runs.selectGhost(
+        PreparedOwnGhost(
+          'alice',
+          const GhostCourseContext(courseId, 0),
+          OwnGhostCandidate.fromJson({
+            'id': sourceId,
+            'courseId': courseId,
+            'courseVersion': 0,
+            'startedAt': ghostEpoch.toIso8601String(),
+            'registeredAt': ghostEpoch.toIso8601String(),
+            'courseElapsedSeconds': 230,
+            'courseDistanceMeters': 1112,
+          }),
+          OwnGhostReplay.fromJson(
+            (ghostApproval(ghostIntent())['playback'] as Map)
+                .cast<String, dynamic>(),
+          ),
+        ),
+      );
+    } else {
+      runs.selectCourse(const CourseSelection(courseId, 'QA'));
+    }
+  }
+
+  testWidgets('phone offers watch preparation for a selected course and ghost', (
+    tester,
+  ) async {
+    await tester.runAsync(ready);
+    selectCourseForWatch('course');
+    final screenController = FreeRunController.recording(runs);
+    addTearDown(screenController.dispose);
+    tester.view.physicalSize = const Size(402, 874);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          freeRunControllerProvider.overrideWithValue(screenController),
+          runCourseDetailProvider(courseId).overrideWith(
+            (_) => throw StateError('Course metadata is outside this test'),
+          ),
+          reviewSummaryProvider(courseId).overrideWith(
+            (_) => throw StateError('Reviews are outside this test'),
+          ),
+          courseRankingProvider((courseId: courseId, period: RankingPeriod.all))
+              .overrideWith(
+                (_) => throw StateError('Rankings are outside this test'),
+              ),
+        ],
+        child: MaterialApp(theme: WdTheme.light(), home: const FreeRunScreen()),
+      ),
+    );
+    final prepareButton = find.widgetWithText(WdButton, '워치로 시작 준비');
+    expect(tester.widget<WdButton>(prepareButton).onPressed, isNotNull);
+
+    selectCourseForWatch('ghost');
+    await tester.pump();
+    expect(find.text('고스트와 달리기'), findsOneWidget);
+    expect(tester.widget<WdButton>(prepareButton).onPressed, isNotNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  for (final mode in ['course', 'ghost']) {
+    test('locked phone starts armed watch $mode with one GPS stream', () async {
+      await ready();
+      final binding = TestWidgetsFlutterBinding.ensureInitialized();
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      addTearDown(() {
+        binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      });
+      final bridge = WearRunBridge(() => runs);
+      Future<Map<String, Object?>> request(String command, [String? id]) =>
+          bridge.handle(MethodCall('request', {
+            'command': command,
+            'mode': mode,
+            'sessionId': id,
+          }));
+
+      selectCourseForWatch(mode);
+      final preparation = runs.prepareWearStart();
+      await until(() => location.streams.isNotEmpty);
+      final settings = location.settingsUsed.single as AndroidSettings;
+      expect(settings.foregroundNotificationConfig, isNotNull);
+      expect(runs.wearReadyId, isNull);
+
+      location.streams.single.add(location.point(35.9995));
+      await until(() => runs.wearReadyId != null);
+      lifecycle = AppLifecycleState.paused;
+      binding.handleAppLifecycleStateChanged(lifecycle);
+      final approach = await request('status');
+      final id = approach['sessionId'] as String;
+      expect(approach['phase'], 'approach');
+      expect(approach['mode'], mode);
+      expect(approach['nearStart'], isFalse);
+      expect(approach['startDistanceM'] as num, greaterThan(20));
+      expect((await request('start', id))['phase'], 'approach');
+      expect(await store.list('alice'), isEmpty);
+
+      location.clock = 2000;
+      location.streams.single.add(location.point(36));
+      await until(() => runs.courseStart!.nearStart);
+      expect((await request('status'))['nearStart'], isTrue);
+      location.clock += 11000;
+      final stale = await request('status');
+      expect(stale['nearStart'], isFalse);
+      expect(stale['message'], contains('GPS'));
+      expect((await request('start', id))['phase'], 'approach');
+      expect((await request('start', 'previous-selection'))['reselectCourse'], isTrue);
+      expect(await store.list('alice'), isEmpty);
+
+      location.streams.single.add(location.point(36));
+      await until(() => runs.wearCourseHasFix);
+      expect((await request('start', id))['phase'], 'preparing');
+      await preparation;
+      expect((await request('status'))['phase'], 'running');
+      expect(runs.run!.id, id);
+      expect(runs.onCourse, isTrue);
+      expect(location.streams.single.hasListener, isTrue);
+      expect(runs.run!.inputs.first.elapsedMs, 0);
+      expect(await store.list('alice'), hasLength(1));
+      if (mode == 'ghost') {
+        expect(ghostApi.posts.single.id, id);
+        expect(runs.run!.ghost, isNotNull);
+        expect(api.started, isEmpty);
+      } else {
+        expect(api.started.single.$2, id);
+        expect(ghostApi.posts, isEmpty);
+      }
+    });
+  }
+
+  test('cancelling a watch course approach releases GPS without a record', () async {
+    await ready();
+    final bridge = WearRunBridge(() => runs);
+    selectCourseForWatch('course');
+    final preparation = runs.prepareWearStart();
+    await until(() => location.streams.isNotEmpty);
+    location.streams.single.add(location.point(35.9995));
+    await until(() => runs.wearReadyId != null);
+    final id = runs.wearReadyId;
+    await bridge.handle(MethodCall('request', {
+      'command': 'cancelCourse',
+      'mode': 'course',
+      'sessionId': id,
+    }));
+    await preparation;
+    expect(runs.courseStart, isNull);
+    expect(runs.wearReadyId, isNull);
+    expect(runs.selectedCourse?.courseId, courseId);
+    expect(location.streams.single.hasListener, isFalse);
+    expect(api.started, isEmpty);
+    expect(await store.list('alice'), isEmpty);
+  });
+
+  for (final mode in ['course', 'ghost']) {
+    test('cancelled watch $mode selection cannot start a free run', () async {
+      await ready();
+      final binding = TestWidgetsFlutterBinding.ensureInitialized();
+      binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      final bridge = WearRunBridge(() => runs);
+
+      await runs.prepareStart();
+      final existingId = runs.run!.id;
+      location.clock = 2000;
+      await runs.pause();
+      await runs.end();
+      runs.clearResult();
+      final original = (await store.list('alice')).single;
+
+      selectCourseForWatch(mode);
+      await runs.prepareStart();
+      final staleId = runs.courseStart!.runId;
+      expect(runs.courseStart!.nearStart, isTrue);
+
+      Future<Map<String, Object?>> requestStaleStart() =>
+          bridge.handle(MethodCall('request', {
+            'command': 'start',
+            'mode': mode,
+            'sessionId': staleId,
+          }));
+
+      runs.cancelCourseStart();
+      if (mode == 'ghost') {
+        runs.clearGhost();
+        expect(runs.selectedCourse, isNotNull);
+        final ghostReply = await requestStaleStart();
+        expect(ghostReply['reselectCourse'], isTrue);
+        expect(ghostReply['message'], '코스와 고스트를 다시 선택해 주세요.');
+      }
+      runs.clearCourse();
+      final reply = await requestStaleStart();
+
+      expect(reply['phase'], 'ready');
+      expect(reply['reselectCourse'], isTrue);
+      expect(reply['message'], contains('다시 선택'));
+      expect(runs.recorder.active, isFalse);
+      expect(api.started, isEmpty);
+      final remaining = (await store.list('alice')).single;
+      expect(remaining.id, existingId);
+      expect(remaining.inputs.map((input) => input.toJson()),
+          original.inputs.map((input) => input.toJson()));
+    });
+  }
+
+  test('watch course start rechecks selection after async preparation', () async {
+    await ready();
+    TestWidgetsFlutterBinding.ensureInitialized()
+        .handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    final bridge = WearRunBridge(() => runs);
+    runs.selectCourse(const CourseSelection(courseId, 'QA'));
+    await runs.prepareStart();
+    final staleId = runs.courseStart!.runId;
+
+    final checkingOwner = Completer<void>();
+    final release = Completer<void>();
+    var reads = 0;
+    readOwner = () async {
+      if (++reads == 3) {
+        checkingOwner.complete();
+        await release.future;
+      }
+      return member;
+    };
+    final start = await bridge.handle(MethodCall('request', {
+      'command': 'start',
+      'mode': 'course',
+      'sessionId': staleId,
+    }));
+    expect(start['phase'], 'preparing');
+    try {
+      await checkingOwner.future.timeout(const Duration(seconds: 2));
+      runs.cancelCourseStart();
+      runs.clearCourse();
+    } finally {
+      release.complete();
+    }
+
+    Map<String, Object?> result = {};
+    for (var attempt = 0; attempt < 40; attempt++) {
+      result = await bridge.handle(const MethodCall('request', {'command': 'status'}));
+      if (result['phase'] != 'preparing') break;
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+    }
+    expect(result['phase'], 'ready');
+    expect(result['reselectCourse'], isTrue);
+    expect(result['message'], contains('다시 선택'));
+    expect(runs.recorder.active, isFalse);
+    expect(api.started, isEmpty);
+    expect(await store.list('alice'), isEmpty);
+
+    readOwner = null;
+    runs.selectCourse(const CourseSelection(courseId, 'QA'));
+    await runs.prepareStart();
+    final newId = runs.courseStart!.runId;
+    expect(newId, isNot(staleId));
+    await bridge.handle(MethodCall('request', {
+      'command': 'start',
+      'mode': 'course',
+      'sessionId': newId,
+    }));
+    await until(() => runs.recorder.active && !runs.preparing);
+    expect(runs.run!.id, newId);
+    expect(runs.onCourse, isTrue);
+    expect(api.started.single.$2, newId);
+  });
+
   test('watch recovers the same session after missing live updates', () async {
     await ready();
     final bridge = WearRunBridge(() => runs);
@@ -342,6 +635,86 @@ void main() {
       expect(await store.list('alice'), hasLength(1));
     },
   );
+
+  for (final mode in ['course', 'ghost']) {
+    test('watch distinguishes waiting and failed $mode verdicts', () async {
+      await ready();
+      final bridge = WearRunBridge(() => runs);
+      Future<Map<String, Object?>> status(String id) => bridge.handle(
+        MethodCall('request', {
+          'command': 'status',
+          'sessionId': id,
+          'mode': mode,
+        }),
+      );
+
+      selectCourseForWatch(mode);
+      await runs.prepareStart();
+      await runs.prepareStart();
+      final id = runs.run!.id;
+      location.clock = 1000;
+      location.streams.last.add(location.point(36.00008));
+      await until(() => runs.run!.checkpointMs == 1000);
+      location.clock = 3000;
+      location.streams.last.add(location.point(36.00018));
+      await until(() => runs.metrics.distanceM > 0);
+      await runs.pause();
+      await runs.end();
+      await until(() => !runs.syncing);
+
+      final waiting = await status(id);
+      expect(waiting['verdictStatus'], 'pending');
+      expect(waiting['saved'], isTrue);
+      final original = (await store.list('alice', id: id)).single;
+      expect(original.syncState, 'processing');
+
+      await store.syncStatus(original, 'blocked', failure: 'TEST_REJECTION');
+      await runs.sync();
+      final failed = await status(id);
+      expect(failed['verdictStatus'], 'failed');
+      expect(failed['saved'], isTrue);
+      expect(failed, isNot(contains('courseResult')));
+      expect(failed, isNot(contains('ghostResult')));
+
+      runs.clearResult();
+      final restored = await status(id);
+      expect(restored['sessionId'], id);
+      expect(restored['verdictStatus'], 'failed');
+      expect(restored['saved'], isTrue);
+
+      await store.syncStatus(original, 'processing');
+      await runs.sync();
+      expect((await status(id))['verdictStatus'], 'pending');
+
+      await store.synced(original, {
+        'id': id,
+        'metrics': original.summary!['metrics'],
+        'course': {
+          'courseName': '테스트 코스',
+          'completed': false,
+          'recognizedDistanceMeters': 10,
+          'courseElapsedSeconds': 0,
+        },
+        if (mode == 'ghost')
+          'ghost': {
+            'outcome': 'INVALID',
+            'courseElapsedSeconds': 0,
+            'sourceElapsedSeconds': 230,
+          },
+      });
+      await runs.sync();
+      final finalized = await status(id);
+      expect(finalized, isNot(contains('verdictStatus')));
+      expect(finalized['courseResult'], containsPair('completed', false));
+      if (mode == 'ghost') {
+        expect(finalized['ghostResult'], containsPair('outcome', 'INVALID'));
+      }
+      final after = (await store.list('alice')).single;
+      expect(after.id, id);
+      expect(after.inputs.map((input) => input.toJson()),
+          original.inputs.map((input) => input.toJson()));
+    });
+  }
 
   test('QA double end persists one END and retains sequence order', () async {
     await runs.prepareStart();
