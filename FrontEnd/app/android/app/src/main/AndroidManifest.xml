@@ -47,6 +47,17 @@
                 <data android:scheme="kakao57b43e47368fd814ab5a8ae64dd726d3" android:host="oauth" />
             </intent-filter>
         </activity>
+        <service
+            android:name=".PhoneRunWearService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.REQUEST_RECEIVED" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:path="/wadadak/free-run/v1" />
+            </intent-filter>
+        </service>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

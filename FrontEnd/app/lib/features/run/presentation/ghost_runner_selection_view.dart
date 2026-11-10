@@ -7,6 +7,7 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../../../core/api/ranking_api_client.dart';
 import '../../../routes.dart';
+import '../../course/detail/course_rankings_screen.dart';
 import '../application/own_ghost_controller.dart';
 import '../application/public_ghost_candidates_controller.dart';
 import '../domain/own_ghost.dart';
@@ -180,13 +181,14 @@ class _GhostRunnerSelectionViewState
               WdButton(
                 '코스 전체 순위 보기',
                 variant: WdButtonVariant.secondary,
-                onPressed: () => context.push(
-                  Routes.courseRankings(c.course.id),
-                  extra: (
+                onPressed: () {
+                  final CourseRankingsArgs args = (
                     courseName: widget.courseName,
+                    route: const [],
                     period: RankingPeriod.all,
-                  ),
-                ),
+                  );
+                  context.push(Routes.courseRankings(c.course.id), extra: args);
+                },
               ),
               const SizedBox(height: WdSpace.s16),
               const WdSectionHeading('AI 추천 고스트', actionLabel: '준비 중'),

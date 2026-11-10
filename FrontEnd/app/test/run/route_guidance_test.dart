@@ -59,6 +59,23 @@ void main() {
     expect(g.kinds, [GuidanceCue.candidate, GuidanceCue.alert]);
   });
 
+  test('continuous departure only counts reliable off-course fixes', () {
+    final g = Guided().run(
+      (w) => w.at(0, 0).walk(0, 100).walk(35, 100).stay(30),
+    );
+    expect(g.guidance.state, GuidanceState.off);
+    expect(g.guidance.continuousOffMs, greaterThanOrEqualTo(30000));
+    g.run((w) {
+      w.ms += 2000;
+      w.gps(50);
+    });
+    expect(g.guidance.continuousOffMs, 0);
+    g.run((w) => w.stay(10));
+    expect(g.guidance.continuousOffMs, lessThan(30000));
+    g.run((w) => w.walk(0, 100).stay(6));
+    expect(g.guidance.continuousOffMs, 0);
+  });
+
   test('a GPS jump off the route is not trusted and does not even become a candidate', () {
     final g = Guided().run(
       (w) => w.at(0, 0).walk(0, 100).at(40, 100).at(0, 100).walk(0, 200),

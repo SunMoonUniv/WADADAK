@@ -1,0 +1,6 @@
+<resources>
+    <string-array name="android_wear_capabilities">
+        <item>wadadak_phone_ping_v1</item>
+        <item>wadadak_phone_free_run_v1</item>
+    </string-array>
+</resources>

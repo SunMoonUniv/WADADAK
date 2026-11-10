@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../../routes.dart';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
@@ -66,6 +67,7 @@ class FreeRunScreen extends ConsumerWidget {
             child: controller.preparing
                 ? _Countdown(
                     value: controller.countdown,
+                    waitingForWear: controller.wearReady,
                     gpsStatus: controller.gpsStatus,
                     course: (courseStart?.course ?? controller.selectedCourse)
                         ?.name,
@@ -86,6 +88,12 @@ class FreeRunScreen extends ConsumerWidget {
                     ),
                     RunState.ready => _Preparation(
                       onStart: controller.prepareStart,
+                      onPrepareWear:
+                          !kIsWeb &&
+                              defaultTargetPlatform == TargetPlatform.android &&
+                              controller.canPrepareWear
+                          ? controller.prepareWearStart
+                          : null,
                       error: controller.error,
                       onSettings: controller.hasSettingsAction
                           ? controller.openSettings
@@ -233,6 +241,7 @@ enum _EndChoice { course, run }
 class _Preparation extends StatelessWidget {
   const _Preparation({
     required this.onStart,
+    this.onPrepareWear,
     this.error,
     this.onSettings,
     this.recent,
@@ -250,6 +259,7 @@ class _Preparation extends StatelessWidget {
     this.onGhostKind,
   });
   final VoidCallback onStart;
+  final VoidCallback? onPrepareWear;
   final String? error;
   final VoidCallback? onSettings;
   final RunSnapshot? recent;
@@ -550,6 +560,16 @@ class _Preparation extends StatelessWidget {
                             style: WdText.ko12.copyWith(color: WdColors.muted),
                           ),
                         ),
+                        if (!courseMode &&
+                            !ghostMode &&
+                            onPrepareWear != null) ...[
+                          const SizedBox(height: WdSpace.s8),
+                          WdButton(
+                            '워치로 시작 준비',
+                            onPressed: onPrepareWear,
+                            variant: WdButtonVariant.secondary,
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -567,11 +587,13 @@ class _Preparation extends StatelessWidget {
 class _Countdown extends StatelessWidget {
   const _Countdown({
     required this.value,
+    required this.waitingForWear,
     required this.onCancel,
     required this.gpsStatus,
     this.course,
   });
   final int? value;
+  final bool waitingForWear;
   final VoidCallback? onCancel;
   final String gpsStatus;
 
@@ -587,7 +609,7 @@ class _Countdown extends StatelessWidget {
           WdRunHeader(
             title: course ?? '자유 러닝',
             subtitle: course == null ? '자유 러닝' : '코스 러닝',
-            badge: '준비',
+            badge: waitingForWear ? '워치 대기' : '준비',
           ),
           Expanded(
             child: LayoutBuilder(
@@ -603,6 +625,8 @@ class _Countdown extends StatelessWidget {
                       mainAxisAlignment: MainAxisAlignment.center,
                       spacing: WdSpace.s28,
                       children: [
+                        if (waitingForWear)
+                          const WdInfoBanner('폰 화면을 잠그고 2분 안에 워치에서 시작하세요.'),
                         WdSurface(
                           color: WdColors.runSurface,
                           radius: WdRadius.full,

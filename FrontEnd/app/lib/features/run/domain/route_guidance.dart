@@ -73,6 +73,12 @@ class RouteGuidance {
   bool _paused = false, _done = false;
   RunInput? _last;
   int? _offSince, _backSince, _graceUntil, _alertAt;
+  int? _continuousOffSince;
+  int get continuousOffMs {
+    final since = _continuousOffSince;
+    return since == null || uncertain ? 0 : (_last?.elapsedMs ?? since) - since;
+  }
+
   int _offFixes = 0, _backFixes = 0;
 
   /// 같은 기록의 입력 목록을 계속 넘긴다. 새 입력만 보고 할 일을 돌려준다. `SEGMENT_END`·`END` 뒤는 안내하지 않는다
@@ -180,6 +186,11 @@ class RouteGuidance {
     distanceM = distance;
     nearestPoint = point;
     final ms = input.elapsedMs;
+    if (distance > offRouteM) {
+      _continuousOffSince ??= ms;
+    } else {
+      _continuousOffSince = null;
+    }
 
     switch (state) {
       case GuidanceState.onRoute:
@@ -245,6 +256,7 @@ class RouteGuidance {
   }
 
   void _unreliable() {
+    _continuousOffSince = null;
     uncertain = true;
     if (state == GuidanceState.candidate) {
       _offSince = null;
@@ -255,6 +267,7 @@ class RouteGuidance {
   }
 
   void _reset(List<GuidanceCue> cues) {
+    _continuousOffSince = null;
     if (alertOpen) cues.add(GuidanceCue.dismiss);
     alertOpen = false;
     state = GuidanceState.onRoute;
