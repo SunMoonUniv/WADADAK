@@ -79,6 +79,13 @@ app:
           client-id: ${NAVER_GEOCODE_CLIENT_ID:}
           client-secret: ${NAVER_GEOCODE_CLIENT_SECRET:}
         timeout: 3s
+      # 문장 → 폼 보충에 쓰는 판단 모델 Jev(TypeSafe). 키가 비어 있으면 규칙만 쓴다.
+      # 보내는 것은 문장뿐이다(위치 없음). 버전을 고정할 수 있으면 model을 시험한 jev-1.14.0으로 둔다.
+      jev:
+        base-url: https://api.typesafe.ai
+        api-key: ${TYPESAFE_API_KEY:}
+        model: jev-latest
+        timeout: 2s
   member:
     jwt:
       # public-key-location과 같은 키 쌍의 개인키(PKCS#8 PEM).

@@ -88,6 +88,8 @@ jobs:
           NAVER_SEARCH_CLIENT_SECRET: ${{ secrets.NAVER_SEARCH_CLIENT_SECRET }}
           NAVER_GEOCODE_CLIENT_ID: ${{ secrets.NAVER_GEOCODE_CLIENT_ID }}
           NAVER_GEOCODE_CLIENT_SECRET: ${{ secrets.NAVER_GEOCODE_CLIENT_SECRET }}
+          # 문장 → 폼 보충용 Jev 키. 없으면 서버는 규칙만 쓴다.
+          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
           # 터널 토큰을 넣기 전(도메인 준비 전)에는 cloudflared 없이 띄운다.
           COMPOSE_PROFILES: ${{ secrets.TUNNEL_TOKEN != '' && 'tunnel' || '' }}
         run: docker compose -f deploy/compose.yaml up -d --wait --wait-timeout 300 --remove-orphans
