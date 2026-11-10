@@ -1331,7 +1331,8 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     _approach = location
         .positions(
           settings: AndroidSettings(
-            forceLocationManager: true,
+            forceLocationManager:
+                false, // Play 서비스 있으면 Fused(GPS·센서·와이파이를 구글이 다듬음), 없으면 기본 GPS
             accuracy: LocationAccuracy.high,
             distanceFilter: 0,
             intervalDuration: const Duration(seconds: 1),
@@ -1360,7 +1361,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     _gps = location
         .positions(
           settings: AndroidSettings(
-            forceLocationManager: true,
+            forceLocationManager: false,
             accuracy: LocationAccuracy.high,
             distanceFilter: 0,
             intervalDuration: const Duration(seconds: 1),
