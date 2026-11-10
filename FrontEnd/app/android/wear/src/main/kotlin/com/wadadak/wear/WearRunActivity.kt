@@ -480,8 +480,6 @@ class WearRunActivity : Activity() {
             MotionEvent.ACTION_UP -> {
                 val dx = event.x - touchX
                 val dy = event.y - touchY
-                val ready = state.optString("phase") == "ready" ||
-                    state.optString("sessionId") == dismissed
                 if (screen.startsWith("home:") && abs(dy) > px(32) && abs(dy) > abs(dx)) {
                     cancelTouch(event)
                     shiftMode(if (dy < 0) 1 else -1)
@@ -502,12 +500,10 @@ class WearRunActivity : Activity() {
                         return true
                     }
                 }
-                if (ready && page in listOf("courses", "ghosts") &&
+                if ((screen.startsWith("courses:") || screen.startsWith("ghosts:")) &&
                     abs(dy) > px(24) && abs(dy) > abs(dx)) {
                     cancelTouch(event)
-                    val count = state.optJSONArray(page)?.length() ?: 0
-                    if (count > 0) itemIndex = (itemIndex + if (dy < 0) 1 else -1).coerceIn(0, count - 1)
-                    render()
+                    shiftItem(if (dy < 0) 1 else -1)
                     return true
                 }
             }
@@ -813,8 +809,17 @@ class WearRunActivity : Activity() {
         }
     }
 
+    private fun shiftItem(delta: Int) {
+        val count = state.optJSONArray(page)?.length() ?: 0
+        if (count < 2) return
+        itemIndex = (itemIndex + delta).coerceIn(0, count - 1)
+        render()
+    }
+
     private fun renderPicker(current: String, enabled: Boolean) {
         val items = state.optJSONArray(current) ?: JSONArray()
+        val count = items.length()
+        itemIndex = itemIndex.coerceIn(0, (count - 1).coerceAtLeast(0))
         val item = items.optJSONObject(itemIndex)
         val pickingGhost = current == "ghosts"
         val title = if (pickingGhost) "고스트 선택" else "코스 선택"
@@ -839,12 +844,19 @@ class WearRunActivity : Activity() {
             }
             slots["card"]?.visibility = View.VISIBLE
         }
-        arrow("back", "‹", 88, 166, 40, 33) {
+        arrow("back", "‹", 8, 67, 32, 46, description = "이전 화면") {
             show(if (pickingGhost) "courses" else "home")
             render()
         }
-        if (items.length() > 1) {
-            label("index", "${itemIndex + 1} / ${items.length()}", 72, 194, 72, 14, 10, MUTED)
+        if (count > 1) {
+            arrow("item-up", "⌃", 67, 1, 82, 22, description = "이전 항목",
+                enabled = itemIndex > 0) { shiftItem(-1) }
+            arrow("item-down", "⌄", 67, 194, 82, 22, description = "다음 항목",
+                enabled = itemIndex < count - 1) { shiftItem(1) }
+            label("index", "${itemIndex + 1} / $count", 72, 172, 72, 14, 10, MUTED)
+        }
+        for (key in listOf("item-up", "item-down", "index")) {
+            slots[key]?.visibility = if (count > 1) View.VISIBLE else View.GONE
         }
     }
 
@@ -890,12 +902,15 @@ class WearRunActivity : Activity() {
 
     private fun arrow(
         key: String, value: String, x: Int, y: Int, width: Int, height: Int,
-        size: Int = 20, description: String? = null, action: () -> Unit,
+        size: Int = 20, description: String? = null, enabled: Boolean = true,
+        action: () -> Unit,
     ) {
         label(key, value, x, y, width, height, size, MUTED)
         slots[key]?.apply {
             if (description != null) contentDescription = description
-            setOnClickListener { action() }
+            isEnabled = enabled
+            alpha = if (enabled) 1f else .4f
+            setOnClickListener(if (enabled) View.OnClickListener { action() } else null)
         }
     }
 
