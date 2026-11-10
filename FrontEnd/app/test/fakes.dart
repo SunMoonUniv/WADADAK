@@ -1112,6 +1112,13 @@ class FakeCourseReviewApi extends Fake implements ReviewApiClient {
     'sourceRecordDeleted': false,
     'eligibleRecord': null,
   });
+
+  /// 받은 신고(리뷰 ID · 사유).
+  final reports = <({String reviewId, ReviewReportReason reason})>[];
+
+  @override
+  Future<void> report(String reviewId, ReviewReportReason reason, String detail) async =>
+      reports.add((reviewId: reviewId, reason: reason));
 }
 
 /// 리뷰 카드 값. 2026-09-06 작성, 완주 100% · 4회 주행.

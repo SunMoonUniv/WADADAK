@@ -372,6 +372,7 @@ class WdReviewCard extends StatelessWidget {
     this.photos = const [],
     this.tags = const [],
     this.onTapPhoto,
+    this.onMore,
   });
 
   final String author;
@@ -396,6 +397,9 @@ class WdReviewCard extends StatelessWidget {
 
   /// 사진을 누르면 그 순서(0부터)를 넘긴다. 크게 보기 등.
   final ValueChanged<int>? onTapPhoto;
+
+  /// 별점 오른쪽 ⋯ 버튼(G2-1 신고 메뉴). null이면 버튼이 없다(내 리뷰 등).
+  final VoidCallback? onMore;
 
   @override
   Widget build(BuildContext context) {
@@ -437,6 +441,17 @@ class WdReviewCard extends StatelessWidget {
                 excludeSemantics: true,
                 child: Text(List.generate(5, (i) => i < rating ? '★' : '☆').join(' '), style: small),
               ),
+              if (onMore != null)
+                SizedBox.square(
+                  dimension: 28,
+                  child: IconButton(
+                    onPressed: onMore,
+                    tooltip: '더보기',
+                    padding: EdgeInsets.zero,
+                    iconSize: 20,
+                    icon: const Icon(Icons.more_vert, color: WdColors.muted),
+                  ),
+                ),
             ],
           ),
           if (body != null) Text(body!, style: small),
