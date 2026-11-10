@@ -80,6 +80,8 @@ mkdir C:\actions-runner-wadadak; cd C:\actions-runner-wadadak
 | `STORAGE_SECRET_KEY` | 사진 저장소 비밀번호. 무작위 문자열(`openssl rand -hex 24`). 저장소와 서버가 같이 받는다. 바꾸면 저장소 계정도 바뀐다 |
 | `TUNNEL_TOKEN` | Cloudflare 터널 토큰(5번). 없으면 터널 없이 뜬다 |
 | `FCM_SERVICE_ACCOUNT` | 푸시(FCM) 서비스 계정 키 JSON을 base64 한 줄로(6번). 없으면 서버는 뜨고 푸시만 로그로 남긴다 |
+| `NAVER_SEARCH_CLIENT_ID` · `NAVER_SEARCH_CLIENT_SECRET` | 코스 자동 생성의 장소 검색. NCP 콘솔 NAVER API HUB에 등록한 지역 검색 앱의 Client ID · Secret. 없으면 서버는 뜨고 장소 입력만 못 찾는다 |
+| `NAVER_GEOCODE_CLIENT_ID` · `NAVER_GEOCODE_CLIENT_SECRET` | 장소 검색이 0건일 때 쓰는 NCP Maps 지오코딩 앱의 Client ID · Secret. 없으면 지오코딩을 건너뛴다 |
 
 JWT 키 만들기(Git Bash). 출력한 두 줄을 Secrets에 넣고 파일은 지운다:
 

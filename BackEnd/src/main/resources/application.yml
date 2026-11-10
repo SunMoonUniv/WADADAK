@@ -61,10 +61,23 @@ app:
     # 만료 배치(F11): 1분마다 만료 코스 비공개 · 숨긴 지 24시간 지난 코스 삭제, 매일 09:00 만료 임박(D-7 · D-1) 알림.
     retention-batch:
       enabled: true
-    # 코스 자동 생성(B3 자동 생성). 공용 서버는 compose가 GRAPHHOPPER_URL을 넘긴다. 로컬은 BackEnd/compose.yaml --profile planner
+    # 코스 자동 생성(B3 자동 생성). 비밀값은 환경 변수로만 받는다(GitHub Secrets → backend.yml → deploy/compose.yaml).
     planner:
+      # 길찾기. 공용 서버는 compose가 GRAPHHOPPER_URL을 넘긴다. 로컬은 BackEnd/compose.yaml --profile planner
       routing:
         base-url: ${GRAPHHOPPER_URL:http://localhost:8989}
+        timeout: 3s
+      # 장소 이름 → 좌표. NAVER API HUB(NCP) 지역 검색, 0건이면 NCP 지오코딩(주소 · 동 이름). 앱(키)은 둘이 따로다.
+      # 키가 비어 있으면 그 API를 부르지 않는다. 둘 다 비면 장소 입력은 못 찾은 것(PLACE_NOT_FOUND)이 된다.
+      place:
+        search:
+          base-url: https://naverapihub.apigw.ntruss.com
+          client-id: ${NAVER_SEARCH_CLIENT_ID:}
+          client-secret: ${NAVER_SEARCH_CLIENT_SECRET:}
+        geocode:
+          base-url: https://maps.apigw.ntruss.com
+          client-id: ${NAVER_GEOCODE_CLIENT_ID:}
+          client-secret: ${NAVER_GEOCODE_CLIENT_SECRET:}
         timeout: 3s
   member:
     jwt:
