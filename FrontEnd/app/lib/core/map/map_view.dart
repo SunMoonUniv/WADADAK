@@ -127,16 +127,13 @@ abstract interface class MapController {
   void followHeading(MapHeading heading);
 }
 
-/// 따라가는 동안 지도 위쪽. 나침반 · 이동 방향은 시험 기능이다(config.dart `headingTest`).
+/// 따라가는 동안 지도 위쪽.
 enum MapHeading {
   /// 북쪽이 위(기본). 바꾸면 북쪽으로 되돌린다.
   north,
 
   /// 폰 나침반 센서 방향이 위. 개발용 지도는 센서가 없어 돌리지 않는다.
   compass,
-
-  /// GPS로 움직인 방향이 위([MapView.myLocation]이 일정 거리 이상 움직일 때마다).
-  travel,
 }
 
 /// 현재 위치를 어디서 받나.

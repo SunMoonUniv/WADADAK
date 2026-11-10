@@ -15,6 +15,8 @@ import 'package:wadadak/features/run/domain/free_run_session.dart';
 import 'package:wadadak/features/run/domain/run_models.dart';
 import 'package:wadadak/features/run/presentation/free_run_screen.dart';
 import 'package:wadadak/main.dart';
+import 'package:wadadak/router.dart';
+import 'package:wadadak/routes.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import 'fakes.dart';
@@ -128,7 +130,7 @@ void main() {
   });
 
   testWidgets(
-    'while measuring, back goes home and closing only sends the app away',
+    'while measuring, back asks to end and closing from home only sends the app away',
     (tester) async {
       await mount(tester);
       await tester.tap(find.text('달리기'));
@@ -142,10 +144,20 @@ void main() {
       expect(controller.snapshot.state, RunState.running);
       expect(find.byType(WdBottomNav), findsNothing);
 
-      await back(tester); // 측정 화면 → 홈 탭, 측정은 계속
-      expect(find.byType(HomeScreen), findsOneWidget);
-      expect(find.byType(FreeRunScreen), findsNothing);
+      // 측정 화면의 뒤로가기는 홈 탭으로 가지 않고 종료 확인 창을 띄운다
+      await back(tester);
+      expect(find.text('러닝을 종료할까요?'), findsOneWidget);
+      expect(find.byType(FreeRunScreen), findsOneWidget);
+      await tester.tap(find.text('취소'));
+      await tester.pumpAndSettle();
       expect(controller.snapshot.state, RunState.running);
+
+      // 다른 길로 홈에 와 있으면(측정은 계속) 두 번 눌러도 앱을 닫지 않는다
+      ProviderScope.containerOf(tester.element(find.byType(FreeRunScreen)))
+          .read(routerProvider)
+          .go(Routes.home);
+      await tester.pumpAndSettle();
+      expect(find.byType(HomeScreen), findsOneWidget);
 
       await back(tester); // 목록 내리기
       await tester.binding.handlePopRoute();

@@ -18,7 +18,7 @@ import 'features/run/domain/run_models.dart';
 /// 홈은 다른 탭에 갔다 오면 탐색 상태를 처음으로 되돌린다(FIL-08, [HomeTabExits]).
 ///
 /// 탭 첫 화면의 뒤로가기(탭 안에 연 화면은 그 탭이 먼저 닫는다):
-/// - 홈이 아닌 탭: 홈 탭으로 간다. 러닝 측정은 화면 밖에서 계속된다
+/// - 홈이 아닌 탭: 홈 탭으로 간다. 러닝 측정 화면은 먼저 받아 종료 확인 창을 띄운다(FreeRunScreen)
 /// - 홈 탭: [exitWindow] 안에 두 번 눌러야 앱을 닫는다. 측정 중이면 닫지 않고 기기 홈 화면으로만 보낸다(측정은 계속)
 class MainShell extends ConsumerStatefulWidget {
   const MainShell({super.key, required this.shell});

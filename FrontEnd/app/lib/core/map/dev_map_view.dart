@@ -39,7 +39,6 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
   // 돌린 각도. 개발용 지도는 바탕을 돌려 그리지 않고 카메라 값으로만 알린다.
   double _bearing = 0;
   MapHeading _heading = MapHeading.north;
-  GeoPoint? _travelFrom;
 
   bool get _usesAppLocation => widget.map.myLocationSource == MyLocationSource.app;
 
@@ -60,15 +59,6 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
     if (_following && _showingAppLocation && location != null && location != oldWidget.map.myLocation) {
       // 다시 그리는 중이라 카메라 보고는 그린 뒤에 한다(받는 화면이 setState할 수 있다).
       _center = location;
-      if (_heading == MapHeading.travel) {
-        final from = _travelFrom;
-        if (from == null) {
-          _travelFrom = location;
-        } else if (from.distanceTo(location) >= 15) {
-          _bearing = from.bearingTo(location);
-          _travelFrom = location;
-        }
-      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _idle();
       });
@@ -129,7 +119,6 @@ class _DevMapViewState extends State<DevMapView> implements MapController {
   void followHeading(MapHeading heading) {
     if (heading == _heading) return;
     _heading = heading;
-    _travelFrom = null;
     if (heading == MapHeading.north && _following) rotateTo(0);
   }
 
