@@ -1,2 +1,4 @@
 # 루트에서 연 IDE 설정. 각 프로젝트 폴더(BackEnd/·FrontEnd/)의 규칙은 그 폴더 .gitignore를 따른다.
 /.idea/
+# 공공데이터 원본 · 길찾기 파일(수 GB). 저장소에 넣지 않고 로컬과 서버 PC에 직접 둔다.
+/utilfile/

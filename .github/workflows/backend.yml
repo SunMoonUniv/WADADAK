@@ -62,7 +62,13 @@ jobs:
       run:
         shell: cmd
     steps:
+      # 기본 정리(git clean -ffdx)는 git이 무시하는 utilfile/(서버에 직접 둔 공공데이터 · 길찾기 파일)까지 지운다.
+      # 정리는 끄고, 다음 단계에서 utilfile/만 빼고 같은 정리를 한다.
       - uses: actions/checkout@v4
+        with:
+          clean: false
+      - name: 작업 폴더 정리 (utilfile 제외)
+        run: git clean -ffdx -e /utilfile/
       # BackEnd가 그대로면 캐시로 같은 이미지가 나와 서버를 다시 띄우지 않는다.
       # provenance(빌드 시각이 든 출처 정보)를 붙이면 매번 다른 이미지가 되어 꺼 둔다.
       - name: 이미지 빌드
