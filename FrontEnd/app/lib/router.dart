@@ -33,6 +33,7 @@ import 'features/ranking/region_select_screen.dart';
 import 'features/ranking/runner_profile_screen.dart';
 import 'features/review/review_form_screen.dart';
 import 'features/review/review_list_screen.dart';
+import 'features/run/application/free_run_controller.dart';
 import 'features/run/presentation/course_select_screen.dart';
 import 'features/run/presentation/free_run_screen.dart';
 import 'features/run/presentation/own_ghost_selection_screen.dart';
@@ -90,8 +91,16 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: '/course/:courseId',
         builder: (_, state) => CourseDetailScreen(courseId: state.pathParameters['courseId']!),
       ),
-      StatefulShellRoute.indexedStack(
+      StatefulShellRoute(
         builder: (_, _, shell) => MainShell(shell: shell),
+        // 하단 탭 전환을 미끄러지게(MainShell 아래)
+        navigatorContainerBuilder: (_, shell, children) => SlidingBranchContainer(
+          index: shell.currentIndex,
+          children: children,
+          // 홈은 다른 탭에서 돌아와도 처음 자리(A2)다. 탭을 누를 때와 같다
+          onSwipe: (index) => shell.goBranch(index, initialLocation: index == 0),
+          canSwipe: () => !runFullScreen(shell.currentIndex, ref.read(freeRunControllerProvider)),
+        ),
         branches: [
           StatefulShellBranch(routes: [
             GoRoute(

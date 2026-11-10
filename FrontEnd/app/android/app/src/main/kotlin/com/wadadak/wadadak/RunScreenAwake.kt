@@ -17,6 +17,15 @@ class RunScreenAwake(private val activity: Activity, messenger: BinaryMessenger)
                 requested = call.argument<Boolean>("enabled") == true
                 apply()
                 result.success(null)
+            } else if (call.method == "moveToBack") {
+                // 러닝 중 뒤로가기: 앱을 닫지 않고 홈 화면으로만 보낸다(측정은 계속)
+                activity.moveTaskToBack(true)
+                result.success(null)
+            } else if (call.method == "finish") {
+                // 홈 탭에서 뒤로가기 두 번: 시스템 뒤로가기로 앱을 닫을 때와 같다.
+                // Flutter가 뒤로가기를 가로채는 동안 SystemNavigator.pop은 뒤로가기를 다시 Flutter로 보내 앱이 닫히지 않는다
+                activity.finish()
+                result.success(null)
             } else result.notImplemented()
         }
     }
