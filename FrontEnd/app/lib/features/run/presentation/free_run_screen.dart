@@ -132,29 +132,39 @@ class FreeRunScreen extends ConsumerWidget {
                       pendingCourse: controller.courseOf(run)?.name,
                       onRetryGhost: controller.retrySync,
                     ),
-                    _ => CourseDeviationAlert(
-                      open: controller.deviationAlert,
-                      onConfirm: controller.acknowledgeDeviation,
-                      onMute: controller.muteDeviation,
-                      child: FreeRunLiveView(
-                        run: run,
-                        course: controller.courseLive,
-                        courseNotice: controller.courseNotice,
-                        ghostOpponent: controller.ghostOpponent,
-                        ghostPosition: comparison?.position,
-                        ghostComparison: comparison,
-                        ghostGap: comparison == null
-                            ? null
-                            : '거리 ${comparison.distance} · 시간 ${comparison.time}',
-                        onPause: controller.storageFault
-                            ? null
-                            : controller.pause,
-                        onResume: controller.storageFault
-                            ? null
-                            : controller.resume,
-                        onStop: controller.storageFault
-                            ? null
-                            : () => _confirmStop(context, controller),
+                    // 측정 중 뒤로가기는 홈으로 가지 않고 [러닝 종료]와 같은 확인 창을 띄운다.
+                    // 이 탭 화면이 먼저 받아서 하단 탭의 뒤로가기(홈 탭으로)까지 가지 않는다
+                    _ => PopScope(
+                      canPop: false,
+                      onPopInvokedWithResult: (didPop, _) {
+                        if (!didPop && !controller.storageFault) {
+                          _confirmStop(context, controller, fromBack: true);
+                        }
+                      },
+                      child: CourseDeviationAlert(
+                        open: controller.deviationAlert,
+                        onConfirm: controller.acknowledgeDeviation,
+                        onMute: controller.muteDeviation,
+                        child: FreeRunLiveView(
+                          run: run,
+                          course: controller.courseLive,
+                          courseNotice: controller.courseNotice,
+                          ghostOpponent: controller.ghostOpponent,
+                          ghostPosition: comparison?.position,
+                          ghostComparison: comparison,
+                          ghostGap: comparison == null
+                              ? null
+                              : '거리 ${comparison.distance} · 시간 ${comparison.time}',
+                          onPause: controller.storageFault
+                              ? null
+                              : controller.pause,
+                          onResume: controller.storageFault
+                              ? null
+                              : controller.resume,
+                          onStop: controller.storageFault
+                              ? null
+                              : () => _confirmStop(context, controller),
+                        ),
                       ),
                     ),
                   },
@@ -164,15 +174,21 @@ class FreeRunScreen extends ConsumerWidget {
     );
   }
 
+  /// [fromBack]: 뒤로가기는 달리는 중에도 온다. 기록기는 일시정지한 뒤에만 종료를 받으므로(그냥 두면 [종료]가
+  /// 조용히 실패한다) 먼저 멈추고, 종료하지 않으면([취소] · [코스만 종료] · 창 닫기) 다시 달리기로 돌린다
   Future<void> _confirmStop(
     BuildContext context,
-    FreeRunController controller,
-  ) async {
+    FreeRunController controller, {
+    bool fromBack = false,
+  }) async {
+    final resume = fromBack && controller.snapshot.state == RunState.running;
+    if (resume) controller.pause();
     controller.setEndConfirmation(true);
     // 코스 구간 중이면 [코스만 종료] [러닝 종료] [취소](RUN-07). Figma 시안이 없어 종료 확인 창에 더했다
     final onCourse = controller.onCourse;
+    _EndChoice? choice;
     try {
-      final choice = await showDialog<_EndChoice>(
+      choice = await showDialog<_EndChoice>(
         context: context,
         builder: (context) => Dialog(
           backgroundColor: WdColors.paper,
@@ -232,6 +248,7 @@ class FreeRunScreen extends ConsumerWidget {
       if (choice == _EndChoice.run) await controller.finish();
     } finally {
       controller.setEndConfirmation(false);
+      if (resume && choice != _EndChoice.run) controller.resume();
     }
   }
 }

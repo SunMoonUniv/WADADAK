@@ -175,4 +175,62 @@ void main() {
     controller.discard();
     await tester.pump();
   });
+
+  testWidgets(
+    'back while running asks to end instead of going home and ends for real',
+    (tester) async {
+      tester.view.physicalSize = const Size(402, 874);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            mapEngineProvider.overrideWithValue(MapEngine.dev),
+            courseApiClientProvider.overrideWithValue(FakeCourseApi()),
+            freeRunControllerProvider.overrideWithValue(controller),
+            tokenStorageProvider.overrideWithValue(
+              MemoryTokenStorage(testTokens),
+            ),
+            memberApiClientProvider.overrideWithValue(FakeMemberApi()),
+          ],
+          child: const WadadakApp(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('달리기'));
+      await tester.pumpAndSettle();
+      await holdStart(tester);
+      await tester.pump(const Duration(seconds: 3));
+      tick = const Duration(seconds: 30);
+      await tester.pump(const Duration(seconds: 1));
+
+      // 뒤로가기: 홈으로 가지 않고 멈춘 채 종료 확인 창. [취소]면 다시 달린다
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('러닝을 종료할까요?'), findsOneWidget);
+      expect(controller.snapshot.state, RunState.paused);
+      await tester.tap(find.text('취소'));
+      await tester.pumpAndSettle();
+      expect(controller.snapshot.state, RunState.running);
+      expect(find.byType(FreeRunScreen), findsOneWidget);
+
+      // 창이 떠 있을 때 뒤로가기는 창만 닫는다
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.text('러닝을 종료할까요?'), findsNothing);
+      expect(controller.snapshot.state, RunState.running);
+
+      // 달리는 중에 연 창에서 [종료]하면 실제로 끝난다
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('종료'));
+      await tester.pumpAndSettle();
+      expect(controller.snapshot.state, RunState.finished);
+      expect(find.text('러닝 결과'), findsOneWidget);
+      controller.discard();
+      await tester.pump();
+    },
+  );
 }
