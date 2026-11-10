@@ -46,7 +46,8 @@ public final class CourseJudge {
     }
 
     /** F9 reads the existing projection; it does not introduce a second course matcher. */
-    public record CourseSample(long seq, long elapsedMs, Double positionM, boolean connected, boolean ambiguous) {}
+    public record CourseSample(long seq, long elapsedMs, Double positionM, boolean connected,
+                               boolean ambiguous, boolean offCourse) {}
     public record Analysis(Judgement judgement, List<CourseSample> samples, long courseElapsedMs) {}
 
     private final JudgingConfig config;
@@ -115,9 +116,9 @@ public final class CourseJudge {
         var bySeq = inputs.stream().collect(java.util.stream.Collectors.toMap(Input::seq, i -> i, (a, b) -> b));
         List<CourseSample> samples = points.stream().map(p -> {
             Input input = bySeq.get(p.seq());
-            boolean ambiguous = p.s() == null && com.wadadak.run.internal.GpsQuality.good(input)
-                    && route.candidates(route.toLocal(input.location()), config.routeToleranceM()).size() > 1;
-            return new CourseSample(p.seq(), p.elapsedMs(), p.s(), p.connected(), ambiguous);
+            int candidates = p.s() == null && com.wadadak.run.internal.GpsQuality.good(input)
+                    ? route.candidates(route.toLocal(input.location()), config.routeToleranceM()).size() : -1;
+            return new CourseSample(p.seq(), p.elapsedMs(), p.s(), p.connected(), candidates > 1, candidates == 0);
         }).toList();
         return new Analysis(judgement, samples, elapsedMs);
     }

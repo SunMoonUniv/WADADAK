@@ -104,6 +104,18 @@ void main() {
     expect(playback.firstArrivalMs(25), isNull);
   });
 
+  test('a ghost returning at the finish restores its exact position', () {
+    final data = basic();
+    data['spans'] = [
+      {'fromMs': 0, 'toMs': 10000, 'state': 'UNKNOWN'},
+    ];
+    final playback = GhostPlayback.fromJson(data);
+    expect(playback.at(9999).coursePositionM, isNull);
+    expect(playback.at(10000).state, GhostPlaybackState.finished);
+    expect(playback.at(10000).coursePositionM, 50);
+    expect(playback.at(11000).coursePositionM, 50);
+  });
+
   test('malformed or discontinuous server intervals fail closed', () {
     final data = basic();
     (data['spans'] as List).first['fromMs'] = 1;

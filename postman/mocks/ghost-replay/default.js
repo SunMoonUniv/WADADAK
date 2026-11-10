@@ -12,7 +12,8 @@ http.createServer((req, res) => {
     res.writeHead(404, {'content-type': 'application/json'});
     return res.end(JSON.stringify({code:'RUN-002',message:'missing',data:null}));
   }
-  const count = Number(match[1].split('-').pop()) || 3600;
+  const detour = match[1] === 'course-detour';
+  const count = detour ? 120 : Number(match[1].split('-').pop()) || 3600;
   const playback = {
     sourceRecordId:match[1], version:'GHOST_PLAYBACK_V1', sourcePolicyVersion:'2026-10-14',
     course:{sessionId:'synthetic',courseId:'course',name:'Synthetic',version:3,
@@ -22,6 +23,14 @@ http.createServer((req, res) => {
     spans:Array.from({length:count},(_,i)=>({fromMs:i*1000,toMs:(i+1)*1000,
       fromPositionM:i*1000/count,toPositionM:(i+1)*1000/count,state:'TRACKED'})),
   };
+  if (detour) {
+    playback.quality = {activeDurationMs:120000,gapMs:0,maxGapMs:0};
+    for (let i = 20; i < 48; i++) {
+      const span = playback.spans[i];
+      Object.assign(span, {fromPositionM:null,toPositionM:null,state:'UNKNOWN'});
+      if (i > 20) playback.samples[i].coursePositionM = null;
+    }
+  }
   const data=match[2]==='ghost-playback'?playback:{publicPeriod:'ALL',
     candidate:{runRecordId:match[1],memberId:'other',rank:1,courseElapsedSeconds:count},playback};
   const body=JSON.stringify({result:'SUCCESS',data});

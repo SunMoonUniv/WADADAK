@@ -109,7 +109,11 @@ class GhostPlayback {
       return const GhostMoment(GhostPlaybackState.beforeStart, null);
     }
     if (elapsedMs >= end) {
-      return GhostMoment(GhostPlaybackState.finished, spans.last.toM);
+      final finish = samples.lastOrNull;
+      return GhostMoment(
+        GhostPlaybackState.finished,
+        finish?.ms == end ? finish?.position ?? spans.last.toM : spans.last.toM,
+      );
     }
     final span = _spanAt(elapsedMs);
     if (span == null) {

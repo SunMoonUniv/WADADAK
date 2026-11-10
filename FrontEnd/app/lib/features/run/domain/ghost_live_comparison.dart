@@ -57,11 +57,16 @@ GhostLiveComparison compareGhostLive({
   required int elapsedMs,
 }) {
   tracker.feed(current.inputs);
-  final replay = current.ghost!.replay.playback;
-  final moment = replay.at(elapsedMs);
-  final ghostS = moment.coursePositionM;
-  final position = ghostS == null ? null : tracker.route.pointAt(ghostS);
+  final ghost = current.ghost!;
+  final replay = ghost.replay.playback;
+  final ghostS = replay.at(elapsedMs).coursePositionM;
+  if (ghostS == null) return const GhostLiveComparison();
+
   final last = tracker.points.lastOrNull;
+  if (!ghost.intent.isFree && last != null && last.s == null) {
+    return const GhostLiveComparison();
+  }
+  final position = tracker.route.pointAt(ghostS);
   final boundary = current.inputs
       .where(
         (i) =>
@@ -90,7 +95,7 @@ GhostLiveComparison compareGhostLive({
   if (!fresh || s == null || !certain) {
     return GhostLiveComparison(
       position: position,
-      ghostProgress: ghostS == null ? null : ghostS / tracker.route.length,
+      ghostProgress: ghostS / tracker.route.length,
     );
   }
   double? first;
@@ -108,18 +113,25 @@ GhostLiveComparison compareGhostLive({
       break;
     }
   }
+  final previous = tracker.points.length > 1
+      ? tracker.points[tracker.points.length - 2]
+      : null;
+  // A confirmed return supplies an exact arrival without connecting the detour.
+  if (!ghost.intent.isFree &&
+      previous?.s == null &&
+      previous?.input.good == true) {
+    first ??= last.input.elapsedMs.toDouble();
+  }
   final opponent = replay.firstArrivalMs(s);
-  final reversing =
-      tracker.points.length > 1 &&
-      tracker.points[tracker.points.length - 2].s != null &&
-      s < tracker.points[tracker.points.length - 2].s!;
+  final previousS = previous?.s;
+  final reversing = previousS != null && s < previousS;
   final delta = first == null || opponent == null || reversing
       ? null
       : first - opponent;
   return GhostLiveComparison(
     position: position,
-    distanceM: ghostS == null ? null : s - ghostS,
+    distanceM: s - ghostS,
     timeDeltaMs: delta,
-    ghostProgress: ghostS == null ? null : ghostS / tracker.route.length,
+    ghostProgress: ghostS / tracker.route.length,
   );
 }

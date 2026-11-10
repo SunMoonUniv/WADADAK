@@ -168,6 +168,50 @@ class GhostPlaybackBuilderTest {
         assertThat(source.course().courseElapsedSeconds()).isEqualTo(2000);
     }
 
+    @Test void anObservedDetourIsPositionlessButOnlyActualGpsBreaksCountAsGaps() {
+        for (boolean withOutages : List.of(false, true)) {
+            List<Input> raw = new ArrayList<>();
+            for (Input p : qualityRun(List.of())) {
+                long ms = p.elapsedMs();
+                if (withOutages && ms > 140_000 && ms < 152_000) continue;
+                long detourTime = Math.max(0, Math.min(ms, 220_000) - 100_000);
+                GeoPoint location = p.kind() == Kind.GPS ? point(970 * (ms - detourTime) / 1_880_000.0) : null;
+                if (p.kind() == Kind.GPS && ms > 100_000 && ms < 220_000) {
+                    double lateral = Math.min(40, Math.min(ms - 100_000, 220_000 - ms) * .004);
+                    location = new GeoPoint(location.lat(),
+                            LNG + lateral * LAT_PER_M / Math.cos(Math.toRadians(LAT)));
+                }
+                raw.add(input(raw.size(), p.kind(), ms, location, p.reason()));
+                if (withOutages && ms == 170_000)
+                    raw.add(input(raw.size(), Kind.GAP, ms + 1, null, "NO_FIX"));
+                if (withOutages && ms == 184_000) {
+                    var poor = raw.removeLast();
+                    raw.add(new Input(poor.seq(), Kind.GPS, ms, poor.measuredAt(), location, 50.0, null));
+                }
+                if (withOutages && ms == 200_000) {
+                    var jump = raw.removeLast();
+                    raw.add(input(jump.seq(), Kind.GPS, ms, new GeoPoint(location.lat(), location.lng() + .005), null));
+                }
+            }
+
+            var replay = builder.build(source(raw), snapshot(), raw);
+            assertThat(replay.eligible()).as(replay.unavailableReasons().toString()).isTrue();
+            assertThat(replay.durationMs()).isEqualTo(2_000_000L);
+            assertThat(replay.quality().gapMs()).isEqualTo(withOutages ? 24_000 : 0);
+            assertThat(replay.quality().maxGapMs()).isEqualTo(withOutages ? 12_000 : 0);
+            assertThat(replay.spans()).anySatisfy(span -> {
+                assertThat(span.fromMs()).isEqualTo(120_000);
+                assertThat(span.state()).isEqualTo(GhostSpanState.UNKNOWN);
+                assertThat(span.fromPositionM()).isNull();
+                assertThat(span.toPositionM()).isNull();
+            });
+            assertThat(replay.samples()).anySatisfy(sample -> {
+                assertThat(sample.elapsedMs()).isEqualTo(220_000);
+                assertThat(sample.coursePositionM()).isNotNull();
+            });
+        }
+    }
+
     @Test void aProjectedSpeedJumpIsNotExposedAsAnExactTrustedPosition() {
         var raw = new ArrayList<>(qualityRun(List.of()));
         for (int i = 0; i < raw.size(); i++) {
