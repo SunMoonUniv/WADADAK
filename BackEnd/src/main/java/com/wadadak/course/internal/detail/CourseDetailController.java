@@ -22,9 +22,10 @@ class CourseDetailController {
                     + "등록자 닉네임 · 현재 러너 수(activeRunners, 지금 그 코스를 달리는 러너 수). "
                     + "등록자가 탈퇴했으면 닉네임은 `탈퇴한 사용자`, 회원 정보를 받지 못하면 null. "
                     + "평균 페이스(averagePaceSecondsPerKm)는 모든 완주의 코스 완주 페이스 평균(초/km)이고 완주가 없으면 null. "
-                    + "고도 프로필(elevationProfile, B1-03)은 GPS 코스만 있다: 누적 상승(gainMeters, m)과 "
+                    + "고도 프로필(elevationProfile, B1-03): 누적 상승(gainMeters, m)과 "
                     + "출발점부터 코스를 거리로 18칸 나눈 칸마다의 평균 GPS 고도(samplesMeters, m, 막대 높이 비교용). "
-                    + "사용자 지정 코스이거나 고도를 잰 곳이 코스의 90%보다 적으면 null. "
+                    + "GPS 코스는 등록 기록으로, 사용자 지정 코스와 등록 기록에 고도가 부족했던 GPS 코스는 고도를 잰 곳이 90% 이상인 "
+                    + "첫 완주로 한 번 만든다. 아직 없으면 null. "
                     + "열 때마다 조회 수(인기순 2차 기준)를 1 늘린다. "
                     + "평점 · 리뷰 수 · 항목 평가는 리뷰 API(/api/v1/reviews/summary)가 준다. "
                     + "없는 코스 COURSE-001(404), 비공개 · 삭제된 코스 COURSE-002(409), 잘못된 ID COMMON-001.")
