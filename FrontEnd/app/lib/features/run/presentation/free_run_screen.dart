@@ -69,6 +69,7 @@ class FreeRunScreen extends ConsumerWidget {
                     value: controller.countdown,
                     waitingForWear: controller.wearReady,
                     gpsStatus: controller.gpsStatus,
+                    courseGhost: controller.selectedGhost != null,
                     course: (courseStart?.course ?? controller.selectedCourse)
                         ?.name,
                     onCancel: controller.canCancelStart
@@ -590,12 +591,14 @@ class _Countdown extends StatelessWidget {
     required this.waitingForWear,
     required this.onCancel,
     required this.gpsStatus,
+    required this.courseGhost,
     this.course,
   });
   final int? value;
   final bool waitingForWear;
   final VoidCallback? onCancel;
   final String gpsStatus;
+  final bool courseGhost;
 
   /// 코스 러닝이면 코스 이름
   final String? course;
@@ -635,7 +638,11 @@ class _Countdown extends StatelessWidget {
                             vertical: WdSpace.s6,
                           ),
                           child: Text(
-                            course == null ? '자유 러닝' : '코스 러닝',
+                            courseGhost
+                                ? '고스트 러닝'
+                                : course == null
+                                ? '자유 러닝'
+                                : '코스 러닝',
                             style: WdText.ko12Medium.copyWith(
                               color: WdColors.lime,
                             ),
