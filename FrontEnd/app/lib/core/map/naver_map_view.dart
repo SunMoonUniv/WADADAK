@@ -48,6 +48,22 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
   final _images = <String, Future<NOverlayImage>>{};
   Future<void> _syncing = Future.value();
 
+  // 따라가는 동안 지도 위쪽(MapController.followHeading).
+  MapHeading _heading = MapHeading.north;
+  StreamSubscription<double>? _compass;
+  // 나침반 값은 1초에 수십 번 온다. 현재 위치 점 방향처럼 덜 보낸다([MapLocationTracker]).
+  final _compassGate = MapLocationTracker(isOff: () => true);
+  // 이동 방향을 잰 기준점. 이만큼 움직일 때마다 방향을 다시 잰다.
+  GeoPoint? _travelFrom;
+  // ponytail: GPS 오차(5~10m)보다 크게 잡아 제자리 흔들림으로 돌지 않게 한다. 실기기로 보고 조정
+  static const _travelMinMeters = 15.0;
+
+  @override
+  void dispose() {
+    _compass?.cancel();
+    super.dispose();
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -227,6 +243,7 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
       zoom: position.zoom,
       southWest: _geoPoint(bounds.southWest),
       northEast: _geoPoint(bounds.northEast),
+      bearing: position.bearing,
       // 화면의 축척 막대도 SDK의 이 계산으로 그린다.
       scaleMeters: ScaleBarWidget.fromMeterPerDp(
         controller.getMeterPerDpAtLatitude(latitude: position.target.latitude, zoom: position.zoom),
@@ -236,6 +253,7 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
 
   @override
   Widget build(BuildContext context) => NaverMap(
+        forceGesture: widget.map.grabGestures,
         options: NaverMapViewOptions(
           initialCameraPosition: NCameraPosition(target: _latLng(widget.map.initialCenter), zoom: widget.map.initialZoom),
           minZoom: widget.map.minZoom,
@@ -260,9 +278,10 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
           _cameraIdle();
         },
         onMapTapped: (_, latLng) => widget.map.onTap?.call(_geoPoint(latLng)),
-        // SDK의 위치 추적과 같은 규칙: 따라가기 말고 다른 이유로 카메라가 움직이면 따라가기를 끈다.
+        // 사용자가 지도를 끌거나 확대·돌리면 따라가기를 끈다. moveTo·fitPoints는 거기서 끈다(개발용 지도와 같다).
+        // 다른 이유(SDK가 스스로 맞추는 이동 등)로는 끄지 않는다. 끄면 러닝 지도가 버튼을 누를 때까지 멈춰 있다.
         onCameraChange: (reason, _) {
-          if (reason != NCameraUpdateReason.location) _setFollowing(false);
+          if (reason == NCameraUpdateReason.gesture || reason == NCameraUpdateReason.control) _setFollowing(false);
         },
         onCameraIdle: _cameraIdle,
       );
@@ -299,7 +318,46 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
       overlay.setIsVisible(visible);
     }
     if (location != null && _following) {
-      controller.updateCamera(NCameraUpdate.withParams(target: _latLng(location))..setReason(NCameraUpdateReason.location));
+      controller.updateCamera(NCameraUpdate.withParams(target: _latLng(location), bearing: _travelBearing(location))
+        ..setReason(NCameraUpdateReason.location));
+    }
+  }
+
+  /// [MapHeading.travel]이고 기준점에서 [_travelMinMeters] 넘게 움직였으면 그 방향. 아니면 null(돌리지 않는다).
+  double? _travelBearing(GeoPoint location) {
+    if (_heading != MapHeading.travel) return null;
+    final from = _travelFrom;
+    if (from == null) {
+      _travelFrom = location;
+      return null;
+    }
+    if (from.distanceTo(location) < _travelMinMeters) return null;
+    _travelFrom = location;
+    return from.bearingTo(location);
+  }
+
+  @override
+  Future<void> rotateTo(double bearing) async {
+    // 따라가기는 그대로 둔다(onCameraChange는 손가락 조작만 따라가기를 끈다).
+    await _controller?.updateCamera(NCameraUpdate.withParams(bearing: bearing));
+  }
+
+  @override
+  void followHeading(MapHeading heading) {
+    if (heading == _heading) return;
+    _heading = heading;
+    _travelFrom = null;
+    _compass?.cancel();
+    _compass = null;
+    switch (heading) {
+      case MapHeading.north:
+        if (_following) rotateTo(0);
+      case MapHeading.compass:
+        _compass = NDefaultMyLocationTracker().headingStream.listen((bearing) {
+          if (_following && _compassGate.shouldSend(bearing)) rotateTo(bearing);
+        });
+      case MapHeading.travel:
+        break;
     }
   }
 
@@ -307,6 +365,7 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
   Future<void> moveTo(GeoPoint center, {double? zoom, bool animate = true}) async {
     final update = NCameraUpdate.scrollAndZoomTo(target: _latLng(center), zoom: zoom);
     if (!animate) update.setAnimation(animation: NCameraAnimation.none, duration: Duration.zero);
+    _setFollowing(false);
     await _controller?.updateCamera(update);
   }
 
@@ -314,6 +373,7 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
   Future<void> fitPoints(List<GeoPoint> points) async {
     if (points.isEmpty) return;
     if (points.length == 1) return moveTo(points.single);
+    _setFollowing(false);
     await _controller?.updateCamera(NCameraUpdate.fitBounds(
       NLatLngBounds.from(points.map(_latLng)),
       padding: const EdgeInsets.all(WdSpace.s24),

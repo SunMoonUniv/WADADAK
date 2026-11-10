@@ -89,31 +89,63 @@ void main() {
     },
   );
 
-  testWidgets('running map follows me again after I drag it away', (tester) async {
-    Future<void> live(List<RunPoint> route) => tester.pumpWidget(
-      ProviderScope(
-        overrides: [mapEngineProvider.overrideWithValue(MapEngine.dev)],
-        child: MaterialApp(
-          theme: WdTheme.light(),
-          home: Scaffold(
-            body: SizedBox(height: 400, child: RunRouteView(run: snapshot(RunState.running, [route]), dark: true)),
+  test('bearing is clockwise from north', () {
+    const here = GeoPoint(37, 127);
+    expect(here.bearingTo(const GeoPoint(37.001, 127)), closeTo(0, 1e-6));
+    expect(here.bearingTo(const GeoPoint(37, 127.001)), closeTo(90, 0.01));
+    expect(here.bearingTo(const GeoPoint(36.999, 127)), closeTo(180, 1e-6));
+    expect(here.bearingTo(const GeoPoint(37, 126.999)), closeTo(270, 0.01));
+  });
+
+  testWidgets(
+    'dragged running map follows me again only with the my-location button',
+    (tester) async {
+      Future<void> live(List<RunPoint> route) => tester.pumpWidget(
+        ProviderScope(
+          overrides: [mapEngineProvider.overrideWithValue(MapEngine.dev)],
+          child: MaterialApp(
+            theme: WdTheme.light(),
+            home: Scaffold(
+              body: SizedBox(
+                height: 400,
+                child: RunRouteView(
+                  run: snapshot(RunState.running, [route]),
+                  dark: true,
+                ),
+              ),
+            ),
           ),
         ),
-      ),
-    );
-    Offset me() => tester.getCenter(find.byKey(DevMapView.myLocationKey));
-    final centre = tester.getCenter;
+      );
+      Offset me() => tester.getCenter(find.byKey(DevMapView.myLocationKey));
+      final centre = tester.getCenter;
 
-    await live([a, b]);
-    await tester.pumpAndSettle();
-    expect(me(), centre(find.byType(MapView))); // 처음부터 따라간다
+      await live([a, b]);
+      await tester.pumpAndSettle();
+      expect(me(), centre(find.byType(MapView))); // 처음부터 따라간다
 
-    await tester.drag(find.byType(MapView), const Offset(120, 0));
-    await tester.pumpAndSettle();
-    expect(me(), isNot(centre(find.byType(MapView)))); // 끌면 따라가기가 꺼진다
+      await tester.drag(find.byType(MapView), const Offset(120, 0));
+      await tester.pumpAndSettle();
+      expect(me(), isNot(centre(find.byType(MapView)))); // 끌면 따라가기가 꺼진다
 
-    await live([a, b, RunPoint(36.0012, 127)]); // 다음 위치
-    await tester.pumpAndSettle();
-    expect(me(), centre(find.byType(MapView)));
-  });
+      await live([a, b, RunPoint(36.0012, 127)]); // 다음 위치가 와도 둘러보던 곳에 그대로 둔다
+      await tester.pumpAndSettle();
+      expect(me(), isNot(centre(find.byType(MapView))));
+      expect(
+        find.byKey(const ValueKey('run-map-compass')),
+        findsOneWidget,
+      ); // 나침반은 늘 보인다
+      expect(find.text('내 위치'), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('run-map-locate')));
+      await tester.pumpAndSettle();
+      expect(me(), centre(find.byType(MapView)));
+
+      // 북쪽 위로 되돌려도 따라가기는 그대로다
+      await tester.tap(find.byKey(const ValueKey('run-map-compass')));
+      await live([a, b, RunPoint(36.0014, 127)]);
+      await tester.pumpAndSettle();
+      expect(me(), centre(find.byType(MapView)));
+    },
+  );
 }

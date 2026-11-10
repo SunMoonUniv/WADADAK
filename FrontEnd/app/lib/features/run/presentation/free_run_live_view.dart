@@ -1,5 +1,9 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
+
+import '../../../core/config.dart';
 
 import '../domain/course_run.dart';
 import '../domain/ghost_live_comparison.dart';
@@ -443,19 +447,113 @@ class RunRouteView extends StatefulWidget {
 
 class _RunRouteViewState extends State<RunRouteView> {
   MapController? _map;
-  bool _following = false;
+  double _bearing = 0;
+  MapHeading _heading = MapHeading.north;
 
-  @override
-  void didUpdateWidget(RunRouteView oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // 지도를 끌거나 확대해 따라가기가 꺼져도 다음 위치에서 다시 내 위치를 따라간다(확대·축소는 그대로).
-    // 지도가 새 위치를 받은 뒤에 켠다
-    if (widget.dark && !_following) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && !_following) _map?.showMyLocation();
-      });
+  /// 내 위치 버튼. 지도를 끌거나 확대해 따라가기가 꺼지면 이 버튼으로만 다시 켠다(확대·축소·방향 고정은 그대로)
+  void _locate() => _map?.showMyLocation();
+
+  /// 나침반. 누를 때마다 지도 위쪽을 바꾼다. 시험 기능([headingTest])이면 북쪽 위 → 내 방향(나침반 센서) →
+  /// 내 방향(이동 방향), 아니면 북쪽 위로 되돌리기만 한다. 내 방향으로 바꾸면 따라가기도 켠다
+  void _turn() {
+    final map = _map;
+    if (map == null) return;
+    final next = headingTest
+        ? MapHeading.values[(_heading.index + 1) % MapHeading.values.length]
+        : MapHeading.north;
+    map.followHeading(next);
+    if (next == MapHeading.north) {
+      map.rotateTo(0);
+    } else {
+      map.showMyLocation();
     }
+    setState(() => _heading = next);
   }
+
+  /// 아래 가운데 [내 위치], 오른쪽 아래 나침반(늘 보인다, 지도가 돈 만큼 바늘이 돈다)
+  List<Widget> _controls() => [
+    Positioned(
+      left: 0,
+      right: 0,
+      bottom: 12,
+      child: Center(
+        child: WdSurface(
+          key: const ValueKey('run-map-locate'),
+          color: WdColors.paper,
+          radius: WdRadius.full,
+          padding: const EdgeInsets.symmetric(
+            horizontal: WdSpace.s16,
+            vertical: WdSpace.s8,
+          ),
+          onTap: _locate,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            spacing: WdSpace.s6,
+            children: [
+              const WdIcon(WdIcons.locate),
+              Text(
+                '내 위치',
+                style: WdText.ko13Medium.copyWith(color: WdColors.ink),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+    Positioned(
+      right: 12,
+      bottom: 12,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        spacing: WdSpace.s8,
+        children: [
+          if (headingTest)
+            WdSurface(
+              color: WdColors.runBackground.withValues(alpha: 0.7),
+              radius: WdRadius.full,
+              padding: const EdgeInsets.symmetric(
+                horizontal: WdSpace.s8,
+                vertical: WdSpace.s4,
+              ),
+              child: Text(
+                '시험 · ${switch (_heading) {
+                  MapHeading.north => '북쪽 위',
+                  MapHeading.compass => '내 방향(나침반)',
+                  MapHeading.travel => '내 방향(이동)',
+                }}',
+                style: WdText.ko11.copyWith(color: WdColors.lime),
+              ),
+            ),
+          Semantics(
+            button: true,
+            label: _heading == MapHeading.north ? '나침반, 북쪽 위' : '나침반, 내 방향',
+            child: WdSurface(
+              key: const ValueKey('run-map-compass'),
+              // 내 방향이면 라임으로 켜진 것을 보인다
+              color: _heading == MapHeading.north
+                  ? WdColors.paper
+                  : WdColors.lime,
+              radius: WdRadius.full,
+              width: WdMapLocateButton.size,
+              height: WdMapLocateButton.size,
+              onTap: _turn,
+              child: Center(
+                child: Transform.rotate(
+                  angle: -_bearing * math.pi / 180,
+                  child: const Icon(
+                    Icons.navigation,
+                    size: 20,
+                    color: WdColors.ink,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -483,103 +581,114 @@ class _RunRouteViewState extends State<RunRouteView> {
         .expand((s) => s)
         .map((p) => GeoPoint(p.latitude, p.longitude))
         .toList();
+    final map = MapView(
+      initialCenter: GeoPoint(location.latitude, location.longitude),
+      initialZoom: 16,
+      dark: dark,
+      // 달리는 중 지도는 끌어서 둘러본다(페이지는 지도 밖에서 넘긴다)
+      grabGestures: dark,
+      onCameraIdle: (camera) {
+        if ((camera.bearing - _bearing).abs() > 0.5) {
+          setState(() => _bearing = camera.bearing);
+        }
+      },
+      myLocationSource: MyLocationSource.app,
+      myLocation: GeoPoint(location.latitude, location.longitude),
+      lines: [
+        if (course != null)
+          for (var i = 0; i < course.tracker.route.segments.length; i++)
+            MapLine(
+              id: i == 0 ? 'course' : 'course-$i',
+              points: course.tracker.route.segments[i],
+              style: MapLineStyle.runCourse,
+            ),
+        // C4-3: 벗어났으면 내 위치에서 가장 가까운 경로 지점까지 점선
+        if (course?.deviation case final deviation?)
+          MapLine(
+            id: 'to-route',
+            points: [
+              GeoPoint(location.latitude, location.longitude),
+              deviation.point,
+            ],
+            style: MapLineStyle.guide,
+          ),
+        for (var index = 0; index < run.segments.length; index++)
+          MapLine(
+            id: 'run-$index',
+            style: MapLineStyle.track,
+            points: run.segments[index]
+                .map((p) => GeoPoint(p.latitude, p.longitude))
+                .toList(),
+          ),
+      ],
+      // Endpoints use the accepted route only, including server-only history.
+      // No markers or lines are interpolated across GPS/pause gaps.
+      markers: [
+        if (ghostPosition != null)
+          MapMarker.icon(
+            id: 'ghost-opponent',
+            position: ghostPosition,
+            anchor: const Offset(0.5, 1),
+            icon: WdIcons.ghostMapPin,
+          ),
+        if (course != null) ...[
+          for (final (km, point) in course.tracker.route.kilometres())
+            MapMarker(
+              id: 'course-km-$km',
+              position: point,
+              imageKey: 'km:$km',
+              child: WdKmMarker('$km km'),
+            ),
+          MapMarker(
+            id: 'course-start',
+            position: course.route.first,
+            child: const WdCourseStartDot(),
+            imageKey: 'course-start',
+          ),
+        ] else if (showDistanceMarkers)
+          for (final marker in runDistanceMarkers(run))
+            MapMarker(
+              id: 'run-km-${marker.km}',
+              position: GeoPoint(marker.point.latitude, marker.point.longitude),
+              imageKey: 'km:${marker.km}',
+              child: WdKmMarker('${marker.km} km'),
+            ),
+        if (points.isNotEmpty && course == null)
+          MapMarker(
+            id: 'run-start',
+            position: points.first,
+            anchor: const Offset(1, 1),
+            imageKey: 'run-start',
+            child: _endpoint('출발'),
+          ),
+        if (points.isNotEmpty && run.state == RunState.finished)
+          MapMarker(
+            id: 'run-finish',
+            position: points.last,
+            anchor: const Offset(0, 1),
+            imageKey: 'run-finish',
+            child: _endpoint('종료'),
+          ),
+      ],
+      onCreated: (controller) async {
+        _map = controller;
+        if (dark) {
+          controller.showMyLocation();
+        } else if (points.length > 1) {
+          await controller.fitPoints(points);
+        }
+      },
+    );
     return ClipRRect(
       borderRadius: BorderRadius.circular(widget.square ? 0 : WdRadius.r12),
-      child: MapView(
-        initialCenter: GeoPoint(location.latitude, location.longitude),
-        initialZoom: 16,
-        dark: dark,
-        myLocationSource: MyLocationSource.app,
-        myLocation: GeoPoint(location.latitude, location.longitude),
-        lines: [
-          if (course != null)
-            for (var i = 0; i < course.tracker.route.segments.length; i++)
-              MapLine(
-                id: i == 0 ? 'course' : 'course-$i',
-                points: course.tracker.route.segments[i],
-                style: MapLineStyle.runCourse,
-              ),
-          // C4-3: 벗어났으면 내 위치에서 가장 가까운 경로 지점까지 점선
-          if (course?.deviation case final deviation?)
-            MapLine(
-              id: 'to-route',
-              points: [
-                GeoPoint(location.latitude, location.longitude),
-                deviation.point,
+      child: dark
+          ? Stack(
+              children: [
+                Positioned.fill(child: map),
+                ..._controls(),
               ],
-              style: MapLineStyle.guide,
-            ),
-          for (var index = 0; index < run.segments.length; index++)
-            MapLine(
-              id: 'run-$index',
-              style: MapLineStyle.track,
-              points: run.segments[index]
-                  .map((p) => GeoPoint(p.latitude, p.longitude))
-                  .toList(),
-            ),
-        ],
-        // Endpoints use the accepted route only, including server-only history.
-        // No markers or lines are interpolated across GPS/pause gaps.
-        markers: [
-          if (ghostPosition != null)
-            MapMarker.icon(
-              id: 'ghost-opponent',
-              position: ghostPosition,
-              anchor: const Offset(0.5, 1),
-              icon: WdIcons.ghostMapPin,
-            ),
-          if (course != null) ...[
-            for (final (km, point) in course.tracker.route.kilometres())
-              MapMarker(
-                id: 'course-km-$km',
-                position: point,
-                imageKey: 'km:$km',
-                child: WdKmMarker('$km km'),
-              ),
-            MapMarker(
-              id: 'course-start',
-              position: course.route.first,
-              child: const WdCourseStartDot(),
-              imageKey: 'course-start',
-            ),
-          ] else if (showDistanceMarkers)
-            for (final marker in runDistanceMarkers(run))
-              MapMarker(
-                id: 'run-km-${marker.km}',
-                position: GeoPoint(
-                  marker.point.latitude,
-                  marker.point.longitude,
-                ),
-                imageKey: 'km:${marker.km}',
-                child: WdKmMarker('${marker.km} km'),
-              ),
-          if (points.isNotEmpty && course == null)
-            MapMarker(
-              id: 'run-start',
-              position: points.first,
-              anchor: const Offset(1, 1),
-              imageKey: 'run-start',
-              child: _endpoint('출발'),
-            ),
-          if (points.isNotEmpty && run.state == RunState.finished)
-            MapMarker(
-              id: 'run-finish',
-              position: points.last,
-              anchor: const Offset(0, 1),
-              imageKey: 'run-finish',
-              child: _endpoint('종료'),
-            ),
-        ],
-        onFollowingChanged: (following) => _following = following,
-        onCreated: (controller) async {
-          _map = controller;
-          if (dark) {
-            controller.showMyLocation();
-          } else if (points.length > 1) {
-            await controller.fitPoints(points);
-          }
-        },
-      ),
+            )
+          : map,
     );
   }
 

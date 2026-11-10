@@ -46,6 +46,7 @@ class MapView extends ConsumerWidget {
     this.onTap,
     this.onCameraIdle,
     this.onFollowingChanged,
+    this.grabGestures = false,
   });
 
   static const seoulCityHall = GeoPoint(37.5666, 126.9784);
@@ -80,15 +81,25 @@ class MapView extends ConsumerWidget {
   final ValueChanged<MapCamera>? onCameraIdle;
 
   /// 현재 위치 따라가기가 켜지거나 꺼졌다. [MapController.showMyLocation]으로 켜지고,
-  /// 카메라가 따라가기 말고 다른 이유로 움직이면(사용자가 지도를 끌거나 [MapController.moveTo] 등) 꺼진다.
+  /// 사용자가 지도를 끌거나 확대·돌리거나 [MapController.moveTo]·[MapController.fitPoints]로 옮기면 꺼진다.
   /// 꺼져도 현재 위치 점은 남는다.
   final ValueChanged<bool>? onFollowingChanged;
 
+  /// 지도가 끌기를 부모(페이지 넘기기 · 세로 스크롤)보다 먼저 가져간다(러닝 지도). 대신 지도 위에서는 페이지가 넘어가지 않는다.
+  /// 네이버 지도만 한다(개발용 지도는 그대로).
+  final bool grabGestures;
+
+  /// [grabGestures] 지도에 붙는 표시. 하단 탭 밀어 넘기기(MainShell)는 이 지도에서 시작한 터치를 받지 않는다.
+  static const gestureGrab = #mapGrabsGestures;
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) => switch (ref.watch(mapEngineProvider)) {
-        MapEngine.naver => NaverMapView(map: this),
-        MapEngine.dev => DevMapView(map: this),
-      };
+  Widget build(BuildContext context, WidgetRef ref) {
+    final view = switch (ref.watch(mapEngineProvider)) {
+      MapEngine.naver => NaverMapView(map: this),
+      MapEngine.dev => DevMapView(map: this),
+    };
+    return grabGestures ? MetaData(metaData: gestureGrab, child: view) : view;
+  }
 }
 
 /// 카메라 조작.
@@ -108,6 +119,24 @@ abstract interface class MapController {
 
   /// 현재 위치 점을 숨기고 따라가기를 끝낸다. [MyLocationSource.map]은 위치 받기도 멈춘다.
   void hideMyLocation();
+
+  /// 지도를 [bearing]°(북쪽 0)만큼 돌린다. 따라가는 중이면 따라가기는 그대로다(나침반 버튼으로 북쪽 위로 되돌리기).
+  Future<void> rotateTo(double bearing);
+
+  /// 따라가는 동안 지도를 어느 쪽으로 돌릴지([MyLocationSource.app]만). 따라가기가 꺼지면 돌리기도 멈추고 다시 켜지면 이어진다.
+  void followHeading(MapHeading heading);
+}
+
+/// 따라가는 동안 지도 위쪽. 나침반 · 이동 방향은 시험 기능이다(config.dart `headingTest`).
+enum MapHeading {
+  /// 북쪽이 위(기본). 바꾸면 북쪽으로 되돌린다.
+  north,
+
+  /// 폰 나침반 센서 방향이 위. 개발용 지도는 센서가 없어 돌리지 않는다.
+  compass,
+
+  /// GPS로 움직인 방향이 위([MapView.myLocation]이 일정 거리 이상 움직일 때마다).
+  travel,
 }
 
 /// 현재 위치를 어디서 받나.
@@ -128,10 +157,14 @@ class MapCamera {
     required this.southWest,
     required this.northEast,
     required this.scaleMeters,
+    this.bearing = 0,
   });
 
   final GeoPoint center;
   final double zoom;
+
+  /// 지도가 돌아간 각도(°, 북쪽 0). 0이 아니면 나침반을 보인다.
+  final double bearing;
 
   /// 지도 위젯 전체의 남서쪽 · 북동쪽 끝. [MapView.padding]으로 비운 부분도 들어간다.
   final GeoPoint southWest;

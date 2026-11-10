@@ -31,6 +31,12 @@ const googleIosClientId = '1048451496052-d45s2heki1u509122fh6g7d3q5cpdpre.apps.g
 /// 개발용 지도로 실행: `flutter run --dart-define=REAL_MAP=false`
 const realMap = bool.fromEnvironment('REAL_MAP', defaultValue: true);
 
+/// 시험 기능: 러닝 지도 진행 방향 고정(나침반 센서 · GPS 이동 방향). 기본 꺼짐이고, 켜면 내 위치 버튼을 누를 때마다
+/// 북쪽 위 → 나침반 → 이동 방향으로 바뀐다. 실기기로 비교해 하나로 정하면 이 값을 지우고 정식 기능으로 바꾼다.
+///
+/// 켜고 실행: `flutter run --dart-define=HEADING_TEST=true`
+const headingTest = bool.fromEnvironment('HEADING_TEST');
+
 /// 네이버 지도(NCP Maps · Dynamic Map) Client ID. 앱 안에 들어가는 공개 값이다. Client Secret은 쓰지 않으며 앱·저장소 어디에도 두지 않는다.
 /// NCP 콘솔 Application에 앱 ID `com.wadadak.app`(Android 패키지 이름 · iOS Bundle ID)으로 등록했다.
 const naverMapClientId = '4jno8yckyz';
