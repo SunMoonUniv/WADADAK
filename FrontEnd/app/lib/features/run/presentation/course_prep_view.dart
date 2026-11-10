@@ -9,6 +9,7 @@ import '../../../routes.dart';
 import '../../course/course_format.dart';
 import '../../course/course_list_card.dart';
 import '../../course/detail/course_ranking_state.dart';
+import '../../course/detail/course_rankings_screen.dart';
 import '../../review/review_state.dart';
 import '../domain/course_run.dart';
 import '../domain/run_models.dart';
@@ -120,10 +121,14 @@ class CourseRunPrep extends ConsumerWidget {
                 '비공개 중 · 참여 ${formatCount(ranking!.participantCount)}명',
               _ => '완주하면 코스 랭킹에 올라요',
             },
-            onTap: () => context.push(
-              Routes.courseRankings(id),
-              extra: (courseName: course.name, period: RankingPeriod.all),
-            ),
+            onTap: () {
+              final CourseRankingsArgs args = (
+                courseName: course.name,
+                route: detail?.route ?? const [],
+                period: RankingPeriod.all,
+              );
+              context.push(Routes.courseRankings(id), extra: args);
+            },
           ),
           const SizedBox(height: WdSpace.s8),
           Row(

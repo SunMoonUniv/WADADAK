@@ -65,6 +65,38 @@ void main() {
       );
     }, skip: simulation.isEmpty);
   }
+  test(
+    'own and public course detours hide and resume replay positions',
+    () async {
+      final container = ProviderContainer();
+      final dio = container.read(publicDioProvider)
+        ..options.baseUrl = simulation;
+      addTearDown(() {
+        dio.close(force: true);
+        container.dispose();
+      });
+      final api = RunApiClient(dio);
+      final own = await OwnGhostApi(api).playback(
+        'owner',
+        'course-detour',
+        course: const GhostCourseContext('course', 3),
+      );
+      final public = PreparedPublicGhost(
+        'owner',
+        await PublicGhostApi(api)
+            .prepare('owner', 'course-detour', 'course', 'ALL'),
+      );
+      for (final replay in [own.playback, public.replay.playback]) {
+        expect(replay.eligible, isTrue);
+        expect(replay.at(20000).coursePositionM, isNotNull);
+        expect(replay.at(30000).state, GhostPlaybackState.unknown);
+        expect(replay.at(30000).coursePositionM, isNull);
+        expect(replay.at(48000).state, GhostPlaybackState.tracked);
+        expect(replay.at(48000).coursePositionM, isNotNull);
+      }
+    },
+    skip: simulation.isEmpty,
+  );
   test('deleted own and public replays retain server rejection', () async {
     final container = ProviderContainer();
     final dio = container.read(publicDioProvider)..options.baseUrl = simulation;

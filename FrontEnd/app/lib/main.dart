@@ -7,6 +7,7 @@ import 'package:wadadak_design_system/wadadak_design_system.dart';
 import 'core/config.dart';
 import 'core/auth/account_data_cleanup.dart';
 import 'features/run/application/run_controller.dart';
+import 'features/run/application/wear_run_bridge.dart';
 import 'core/map/map_view.dart';
 import 'core/push/push_service.dart';
 import 'push_binding.dart';
@@ -37,10 +38,14 @@ class WadadakApp extends ConsumerWidget {
   const WadadakApp({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) => MaterialApp.router(
-    title: '와다닥',
-    theme: WdTheme.light(),
-    routerConfig: ref.watch(routerProvider),
-    builder: (_, child) => PushBinding(child: child ?? const SizedBox.shrink()),
-  );
+  Widget build(BuildContext context, WidgetRef ref) {
+    ref.watch(wearRunBridgeProvider);
+    return MaterialApp.router(
+      title: '와다닥',
+      theme: WdTheme.light(),
+      routerConfig: ref.watch(routerProvider),
+      builder: (_, child) =>
+          PushBinding(child: child ?? const SizedBox.shrink()),
+    );
+  }
 }

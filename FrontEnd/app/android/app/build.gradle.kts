@@ -46,6 +46,11 @@ android {
     }
 
     buildTypes {
+        debug {
+            if (providers.gradleProperty("wearSmoke").orNull == "true") {
+                applicationIdSuffix = ".wearsmoke"
+            }
+        }
         release {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
@@ -62,4 +67,8 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    implementation("com.google.android.gms:play-services-wearable:20.0.1")
 }

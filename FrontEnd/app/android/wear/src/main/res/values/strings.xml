@@ -1,0 +1,11 @@
+<resources>
+    <string name="app_name">와다닥</string>
+    <string name="ping_title">와다닥 워치 테스트</string>
+    <string name="send_ping">테스트 보내기</string>
+    <string name="ready">폰과 연결을 확인해요</string>
+    <string name="sending_ping">폰 응답을 기다리는 중</string>
+    <string name="pong_received">폰 응답 확인 · PONG</string>
+    <string name="phone_unavailable">테스트 앱이 설치된 폰과 연결해 주세요</string>
+    <string name="ping_failed">응답을 받지 못했어요. 다시 시도해 주세요.</string>
+    <string name="unexpected_response">예상한 응답이 아니에요</string>
+</resources>

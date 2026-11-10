@@ -2,13 +2,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wadadak/core/api/course_api_client.dart';
+import 'package:wadadak/core/api/member_api_client.dart';
 import 'package:wadadak/core/api/ranking_api_client.dart';
 import 'package:wadadak/core/api/review_api_client.dart';
+import 'package:wadadak/core/auth/token_storage.dart';
 import 'package:wadadak/core/map/geo_point.dart';
+import 'package:wadadak/core/map/map_view.dart' show MapEngine, mapEngineProvider;
+import 'package:wadadak/features/course/detail/course_rankings_screen.dart';
+import 'package:wadadak/features/run/application/run_controller.dart';
 import 'package:wadadak/features/run/domain/course_run.dart';
 import 'package:wadadak/features/run/presentation/course_prep_view.dart';
+import 'package:wadadak/main.dart';
 
 import '../fakes.dart';
+import 'recording/run_controller_test.dart'
+    show FailingStore, TestApi, TestLocation;
 
 /// C6 달리기 준비 — 코스 러닝(Figma 1453:4196)
 void main() {
@@ -72,6 +80,62 @@ void main() {
     expect(find.text('아직 완주 기록이 없어요'), findsOneWidget);
     expect(find.text('완주하면 코스 랭킹에 올라요'), findsOneWidget);
     expect(find.text('달리는 러너 없음'), findsOneWidget);
+  });
+
+  testWidgets('tapping my best record opens the selected course rankings', (
+    tester,
+  ) async {
+    tester.view
+      ..physicalSize = const Size(402, 874)
+      ..devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final course = detail();
+    final runs = RunController(
+      FailingStore(),
+      TestLocation(),
+      TestApi(),
+      () async => 'alice',
+      automaticTicks: false,
+    )..selectCourse(CourseSelection(course.courseId, course.name));
+    addTearDown(runs.dispose);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          runControllerProvider.overrideWithValue(runs),
+          mapEngineProvider.overrideWithValue(MapEngine.dev),
+          tokenStorageProvider.overrideWithValue(
+            MemoryTokenStorage(testTokens),
+          ),
+          memberApiClientProvider.overrideWithValue(FakeMemberApi()),
+          courseApiClientProvider.overrideWithValue(
+            FakeCourseApi()..details = {course.courseId: course},
+          ),
+          rankingApiClientProvider.overrideWithValue(FakeCourseRankingApi()),
+          reviewApiClientProvider.overrideWithValue(FakeCourseReviewApi(null)),
+        ],
+        child: const WadadakApp(),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('달리기'));
+    await tester.pumpAndSettle();
+
+    final bestRecord = find.text('이 코스의 내 최고 기록');
+    await tester.ensureVisible(bestRecord);
+    await tester.tap(bestRecord);
+    await tester.pumpAndSettle();
+
+    final rankings = tester.widget<CourseRankingsScreen>(
+      find.byType(CourseRankingsScreen),
+    );
+    expect(rankings.courseId, course.courseId);
+    expect(rankings.courseName, course.name);
+    expect(rankings.route, course.route);
+    expect(rankings.period, RankingPeriod.all);
+    expect(find.text('전체 순위'), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(bestRecord, findsOneWidget);
   });
 
   test('object particle follows the last syllable', () {

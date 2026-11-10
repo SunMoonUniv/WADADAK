@@ -49,6 +49,9 @@ class FreeRunController extends ChangeNotifier {
   int? get countdown => _recording?.countdown ?? _countdown;
   bool get preparing => _recording?.preparing ?? (_countdown != null);
   bool get canCancelStart => _recording?.canCancelStart ?? preparing;
+  bool get wearReady => _recording?.wearReadyId != null;
+  bool get canPrepareWear => _recording != null && !storageFault;
+  void prepareWearStart() => unawaited(_recording?.prepareWearStart());
   bool get storageFault => _recording?.storageFault ?? false;
   String? get error => _recording?.error;
   String? get ghostStartRejection => _recording?.ghostStartRejection;

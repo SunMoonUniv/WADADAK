@@ -12,6 +12,7 @@ class MainActivity : FlutterActivity() {
     private var screenAwake: RunScreenAwake? = null
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        PhoneRunWearBridge.attach(flutterEngine.dartExecutor.binaryMessenger)
         runDevices?.close()
         audioOutput?.close()
         screenAwake?.close()
@@ -32,6 +33,7 @@ class MainActivity : FlutterActivity() {
             }
     }
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
+        PhoneRunWearBridge.detach(flutterEngine.dartExecutor.binaryMessenger)
         screenAwake?.close(); screenAwake = null
         audioOutput?.close(); audioOutput = null
         runDevices?.close(); runDevices = null

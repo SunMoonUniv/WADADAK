@@ -7,9 +7,11 @@ import com.wadadak.run.internal.judging.CourseJudge;
 import com.wadadak.run.internal.judging.CourseJudge.CourseSample;
 
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
@@ -92,22 +94,24 @@ public final class GhostPlaybackBuilder {
 
     private GhostPlayback compose(Result source, CourseSnapshot snapshot, List<Input> inputs,
                                   CourseJudge.Analysis analysis, String version) {
-        return compose(source.id(),source.policyVersion(),source.calculationVersion(),snapshot,inputs,analysis,version);
+        return compose(source.id(),source.policyVersion(),source.calculationVersion(),snapshot,inputs,analysis,version,
+                VERSION.equals(version));
     }
 
     /** Analytical trace including incomplete/gapped runs; eligibility never changes their saved verdict. */
     public GhostPlayback comparison(java.util.UUID id,CourseSnapshot snapshot,List<Input> inputs,boolean freeV2) {
         var analysis=(freeV2?CourseJudge.freeGhostV2():new CourseJudge()).analyze(snapshot.route(),snapshot.breaks(),inputs);
-        return compose(id,SOURCE_POLICY_VERSION,inputs.getFirst().reason(),snapshot,inputs,analysis,VERSION);
+        return compose(id,SOURCE_POLICY_VERSION,inputs.getFirst().reason(),snapshot,inputs,analysis,VERSION,false);
     }
 
     private GhostPlayback compose(java.util.UUID sourceId,String sourcePolicy,String sourceCalculation,
-            CourseSnapshot snapshot,List<Input> inputs,CourseJudge.Analysis analysis,String version) {
-        inputs = com.wadadak.run.internal.GpsPathFilter.normalize(inputs);
+            CourseSnapshot snapshot,List<Input> raw,CourseJudge.Analysis analysis,String version,boolean allowDetours) {
+        var inputs = com.wadadak.run.internal.GpsPathFilter.normalize(raw);
         long duration = analysis.courseElapsedMs();
         var points = playbackSamples(analysis.samples(), inputs, duration);
         List<Pause> pauses = pauses(inputs, points, duration);
         List<GhostSpan> spans = spans(points, pauses, duration);
+        Set<Interval> detours = allowDetours ? observedDetours(points, raw) : Set.of();
         TreeMap<Long, Double> sampled = new TreeMap<>();
         for (var p : points) sampled.put(p.elapsedMs(), p.positionM());
         var samples = sampled.entrySet().stream().map(e -> new GhostSample(e.getKey(), e.getValue())).toList();
@@ -120,7 +124,7 @@ public final class GhostPlaybackBuilder {
             boolean manuallyPaused = pauseIndex < pauses.size() && pauses.get(pauseIndex).from <= span.fromMs()
                     && pauses.get(pauseIndex).to >= span.toMs();
             if (manuallyPaused) continue;
-            if (span.state() == GhostSpanState.UNKNOWN) {
+            if (span.state() == GhostSpanState.UNKNOWN && !detours.contains(new Interval(span.fromMs(), span.toMs()))) {
                 long length = span.toMs() - span.fromMs();
                 totalGap += length;
                 openGap += length;
@@ -161,7 +165,41 @@ public final class GhostPlaybackBuilder {
         return true;
     }
 
+    private record Interval(long from, long to) {}
     private record Pause(long from, long to, Double position) {}
+
+    /** Only exempt observed movement between a confirmed departure and return. Replay stays positionless there. */
+    private Set<Interval> observedDetours(List<CourseSample> points, List<Input> raw) {
+        int lastOnCourse = points.size() - 1;
+        while (lastOnCourse >= 0 && points.get(lastOnCourse).positionM() == null) lastOnCourse--;
+        Set<Interval> detours = new HashSet<>();
+        boolean started = false;
+        for (int i = 1; i <= lastOnCourse; i++) {
+            var from = points.get(i - 1);
+            var to = points.get(i);
+            started |= from.positionM() != null;
+            if (!started || !(from.offCourse() || to.offCourse())
+                    || from.positionM() == null && !from.offCourse()
+                    || to.positionM() == null && !to.offCourse()) continue;
+            if (continuousGps(raw, from, to)) detours.add(new Interval(from.elapsedMs(), to.elapsedMs()));
+        }
+        return detours;
+    }
+
+    private boolean continuousGps(List<Input> raw, CourseSample from, CourseSample to) {
+        long dt = to.elapsedMs() - from.elapsedMs();
+        if (dt <= 0 || dt > GpsQuality.MAX_INTERVAL_MS) return false;
+        int first = Math.toIntExact(from.seq()), last = Math.toIntExact(to.seq());
+        var a = raw.get(first);
+        var b = raw.get(last);
+        if (!GpsQuality.good(a) || !GpsQuality.good(b)
+                || a.location().distanceMeters(b.location()) * 1000 / dt > GpsQuality.MAX_SPEED_MPS) return false;
+        for (int i = first + 1; i < last; i++) {
+            Kind kind = raw.get(i).kind();
+            if (kind != Kind.CADENCE && kind != Kind.BAROMETER) return false;
+        }
+        return true;
+    }
 
     private List<CourseSample> playbackSamples(List<CourseSample> tracked, List<Input> inputs, long duration) {
         Map<Long, Input> bySeq = inputs.stream().collect(Collectors.toMap(Input::seq, p -> p));
@@ -184,7 +222,7 @@ public final class GhostPlaybackBuilder {
             boolean jump = previous != null && GpsQuality.good(previous) && GpsQuality.good(raw)
                     && dt > 0 && dt <= GpsQuality.MAX_INTERVAL_MS
                     && previous.location().distanceMeters(raw.location()) * 1000 / dt > GpsQuality.MAX_SPEED_MPS;
-            samples.add(jump ? new CourseSample(p.seq(), p.elapsedMs(), null, false, p.ambiguous()) : p);
+            samples.add(jump ? new CourseSample(p.seq(), p.elapsedMs(), null, false, p.ambiguous(), false) : p);
             previous = raw;
         }
         return List.copyOf(samples);
