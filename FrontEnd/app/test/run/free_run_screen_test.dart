@@ -233,4 +233,35 @@ void main() {
       await tester.pump();
     },
   );
+
+  testWidgets(
+    'start gauge fills from the left, fast first, and resets on release',
+    (tester) async {
+      await mount(tester);
+      double fill() => tester
+          .widget<FractionallySizedBox>(
+            find.descendant(
+              of: find.byType(RunHoldToStart),
+              matching: find.byType(FractionallySizedBox),
+            ),
+          )
+          .widthFactor!;
+      final gesture = await tester.startGesture(
+        tester.getCenter(find.text('자유 러닝 시작')),
+      );
+      await tester.pump(); // 게이지는 다음 화면부터 찬다
+      await tester.pump(const Duration(milliseconds: 500));
+      expect(fill(), greaterThan(0.75)); // 반만 눌러도 게이지는 반 넘게 찬다
+      expect(controller.countdown, isNull);
+      await gesture.up();
+      await tester.pump();
+      expect(fill(), 0);
+      await tester.pump(const Duration(seconds: 1));
+      expect(controller.countdown, isNull);
+      await holdStart(tester);
+      expect(controller.countdown, 3);
+      await tester.tap(find.text('시작 취소'));
+      await tester.pump(const Duration(seconds: 4));
+    },
+  );
 }

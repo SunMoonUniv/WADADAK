@@ -738,7 +738,13 @@ class RunHoldToStart extends StatefulWidget {
   State<RunHoldToStart> createState() => _RunHoldToStartState();
 }
 
-class _RunHoldToStartState extends State<RunHoldToStart> {
+class _RunHoldToStartState extends State<RunHoldToStart>
+    with SingleTickerProviderStateMixin {
+  // 누르는 동안 왼쪽부터 차는 게이지(보이기만). 시작은 [_hold] 1초로 정한다
+  late final _gauge = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 1),
+  );
   Timer? _hold;
   int? _pointer;
   Offset? _downPosition;
@@ -749,6 +755,7 @@ class _RunHoldToStartState extends State<RunHoldToStart> {
     // 누르는 중에 비활성이 되면(출발점 반경을 벗어남) 시작하지 않는다
     if (widget.onStart == null && _pointer != null) {
       _hold?.cancel();
+      _gauge.reset();
       _pointer = null;
     }
   }
@@ -756,12 +763,14 @@ class _RunHoldToStartState extends State<RunHoldToStart> {
   void _release(PointerEvent event) {
     if (!mounted || _pointer != event.pointer) return;
     _hold?.cancel();
+    _gauge.reset();
     setState(() => _pointer = null);
   }
 
   @override
   void dispose() {
     _hold?.cancel();
+    _gauge.dispose();
     super.dispose();
   }
 
@@ -778,6 +787,7 @@ class _RunHoldToStartState extends State<RunHoldToStart> {
         if (_pointer != null || onStart == null) return;
         setState(() => _pointer = event.pointer);
         _downPosition = event.position;
+        _gauge.forward(from: 0);
         _hold = Timer(const Duration(seconds: 1), () {
           if (mounted && _pointer == event.pointer) widget.onStart?.call();
         });
@@ -796,9 +806,38 @@ class _RunHoldToStartState extends State<RunHoldToStart> {
       },
       onPointerUp: _release,
       onPointerCancel: _release,
-      child: WdButton(
-        _pointer == null ? widget.label : '누르고 있어 주세요',
-        onPressed: widget.onStart == null ? null : () {},
+      child: Stack(
+        children: [
+          // 누름 표시(점점 어두워지는 물결)는 끄고 게이지로만 보인다
+          Theme(
+            data: Theme.of(context).copyWith(
+              splashFactory: NoSplash.splashFactory,
+              highlightColor: Colors.transparent,
+            ),
+            child: WdButton(
+              _pointer == null ? widget.label : '누르고 있어 주세요',
+              onPressed: widget.onStart == null ? null : () {},
+            ),
+          ),
+          Positioned.fill(
+            child: IgnorePointer(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(WdRadius.r16),
+                child: AnimatedBuilder(
+                  animation: _gauge,
+                  // 처음엔 빠르게 차고 끝으로 갈수록 느려진다
+                  builder: (context, _) => FractionallySizedBox(
+                    alignment: Alignment.centerLeft,
+                    widthFactor: Curves.easeOutCubic.transform(_gauge.value),
+                    child: ColoredBox(
+                      color: WdColors.green.withValues(alpha: 0.35),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     ),
   );
