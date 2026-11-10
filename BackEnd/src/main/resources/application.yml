@@ -51,6 +51,8 @@ app:
     course: false
     # 내 코스 관리(G4 · B7). true면 스텁으로 답한다(공용 서버는 prod라 켤 수 없다)
     course-mine: false
+    # 코스 자동 생성(B3 자동 생성, 앱 전용 API). true면 API와 스텁이 함께 뜬다. 실제 구현 전에는 로컬에서만 켠다
+    course-planner: false
     ranking: false
   course:
     # 기존 GPS 등록 원본 보완은 검토 후 명시적으로 켠다. 신규 등록의 연결 이벤트는 항상 발행한다.
