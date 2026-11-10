@@ -63,12 +63,34 @@ services:
       # 푸시(FCM) 서비스 계정 키. 배포 작업이 Secrets의 FCM_SERVICE_ACCOUNT로 base64:… 를 만든다.
       # 비어 있으면 서버는 그대로 뜨고 푸시만 로그로 남긴다(PushConfig).
       FCM_CREDENTIALS_LOCATION: ${FCM_CREDENTIALS_LOCATION:-}
+      # 코스 자동 생성의 길찾기. graphhopper가 내려가도 서버는 뜨고 자동 생성만 실패한다(depends_on을 걸지 않는다)
+      GRAPHHOPPER_URL: http://graphhopper:8989
     # 포트를 열지 않는다. 밖에서는 cloudflared를 거쳐서만 들어온다.
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:8080/actuator/health"]
       interval: 10s
       timeout: 5s
       start_period: 180s
+      start_interval: 3s
+      retries: 3
+    restart: unless-stopped
+
+  # 코스 자동 생성의 길찾기(GraphHopper 11.1 + 한국 OSM). 이미지는 backend와 같은 JRE라 새로 받지 않는다.
+  # jar · OSM 파일 · 미리 만든 그래프(graph-cache)는 저장소 밖 utilfile/graphhopper에 사람이 넣는다(README `길찾기 데이터`).
+  # 배포 작업은 utilfile을 지우지 않는다(backend.yml). graph-cache가 없으면 기동 중에 그래프부터 만들다(약 4GB · 4분) 배포가 실패한다.
+  graphhopper:
+    image: eclipse-temurin:21-jre
+    command: ["java", "-Xmx2g", "-jar", "/data/graphhopper-web-11.1.jar", "server", "/config.yml"]
+    volumes:
+      - ../utilfile/graphhopper:/data:ro
+      - ../utilfile/graphhopper/graph-cache:/graph-cache
+      - ./graphhopper/config.yml:/config.yml:ro
+    # 포트를 열지 않는다. backend만 서비스 이름으로 붙는다.
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8989/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 120s
       start_interval: 3s
       retries: 3
     restart: unless-stopped

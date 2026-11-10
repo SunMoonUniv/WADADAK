@@ -1,0 +1,39 @@
+# 코스 자동 생성의 길찾기(GraphHopper 11.1). 공용 서버(deploy/compose.yaml)와 로컬(BackEnd/compose.yaml)이 같이 쓴다.
+# 경로는 컨테이너 안: /data = utilfile/graphhopper(jar · OSM 파일, 읽기 전용), /graph-cache = utilfile/graphhopper/graph-cache.
+# 그래프는 미리 만들어 graph-cache에 넣는다(deploy/README.md `길찾기 데이터`). 프로필 · encoded values를 바꾸면 그래프를 다시 만든다.
+graphhopper:
+  datareader.file: /data/south-korea-latest.osm.pbf
+  graph.location: /graph-cache
+  profiles:
+    - name: foot
+      custom_model_files: [foot.json]
+  profiles_ch: []
+  # 경유점이 여러 개인 순환 코스를 빠르게 찾는다(LM)
+  profiles_lm:
+    - profile: foot
+  # road_class: 큰길 비율. 나머지는 foot 프로필이 쓴다
+  graph.encoded_values: foot_access, foot_priority, foot_average_speed, foot_road_access, road_class, road_environment, hike_rating, country, mtb_rating
+  prepare.min_network_size: 200
+  prepare.subnetworks.threads: 1
+  routing.snap_preventions_default: tunnel, ferry
+  routing.non_ch.max_waypoint_distance: 1000000
+  import.osm.ignored_highways: motorway
+  graph.dataaccess.default_type: RAM_STORE
+server:
+  application_connectors:
+    - type: http
+      port: 8989
+      # 컨테이너 밖(backend)에서 붙는다. 포트는 compose가 밖으로 열지 않는다
+      bind_host: 0.0.0.0
+      max_request_header_size: 50k
+  request_log:
+    appenders: []
+  admin_connectors:
+    - type: http
+      port: 8990
+      bind_host: localhost
+logging:
+  appenders:
+    - type: console
+      time_zone: UTC
+      log_format: "%d{HH:mm:ss.SSS} %-5level %logger{36} - %msg%n"
