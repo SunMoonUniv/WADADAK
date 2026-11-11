@@ -327,18 +327,22 @@ void main() {
     expect(toggle(tester, '내 정보 공개').value, isTrue);
   });
 
-  testWidgets('features without a policy or server say they are coming', (
-    tester,
-  ) async {
-    await openSettings(tester);
+  testWidgets('default ghost sheet saves the chosen record kind', (tester) async {
+    final runs = await openSettings(tester);
+    expect(row('기본 고스트', '내 최고 기록'), findsOneWidget);
 
-    for (final label in ['기본 고스트']) {
-      await tap(tester, find.text(label));
-      expect(find.text('준비 중인 기능이에요.'), findsOneWidget, reason: label);
-      ScaffoldMessenger.of(tester.element(find.text(label)))
-          .removeCurrentSnackBar();
-      await tester.pumpAndSettle();
-    }
+    await tap(tester, find.text('기본 고스트'));
+    expect(find.text('매번 직접 고르기'), findsOneWidget);
+    await tap(tester, find.text('내 최근 기록'));
+
+    expect(store.voice.defaultGhost, DefaultGhost.recent);
+    expect(runs.settings.defaultGhost, DefaultGhost.recent);
+    expect(row('기본 고스트', '내 최근 기록'), findsOneWidget);
+
+    // X로 닫으면 그대로다
+    await tap(tester, find.text('기본 고스트'));
+    await tap(tester, find.byTooltip('닫기'));
+    expect(store.voice.defaultGhost, DefaultGhost.recent);
   });
 
   testWidgets('course expiring soon shows the server value and saves on toggle', (tester) async {

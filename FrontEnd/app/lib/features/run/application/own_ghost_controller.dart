@@ -4,6 +4,7 @@ import '../../../core/api/api_client.dart';
 import '../data/own_ghost_api.dart';
 import '../domain/ghost_playback.dart';
 import '../domain/own_ghost.dart';
+import '../domain/run_settings.dart';
 
 /// Selection preparation only. Never calls the F6 recorder, start signal, map or MY.
 class OwnGhostController extends ChangeNotifier {
@@ -169,6 +170,26 @@ class OwnGhostController extends ChangeNotifier {
         _notify();
       }
     }
+  }
+
+  /// 불러온 목록에서 가장 최근에 달린 기록. C2 `내 최근 기록` 카드와 F4 기본 고스트가 같이 쓴다.
+  OwnGhostCandidate? get recent => candidates.isEmpty
+      ? null
+      : candidates.reduce((a, b) => a.startedAt.isAfter(b.startedAt) ? a : b);
+
+  /// F4 기본 고스트를 미리 고른다. [load] 뒤에 부른다.
+  /// 고를 기록이 없거나 고스트로 쓸 수 없는 기록이면, 사용자가 고르지 않은 경고를 띄우지 않도록 선택을 비운다.
+  Future<void> preselect(DefaultGhost preference) async {
+    final pick = switch (preference) {
+      DefaultGhost.best => summary.best,
+      DefaultGhost.recent => recent,
+      DefaultGhost.manual => null,
+    };
+    if (pick == null || _disposed || loading) return;
+    final epoch = _selectEpoch + 1; // select가 바로 하나 올린다
+    await select(pick);
+    // 그사이 사용자가 다른 기록을 눌렀으면 그 선택은 건드리지 않는다
+    if (!_disposed && epoch == _selectEpoch && prepared == null) clearSelection();
   }
 
   void clearSelection() {

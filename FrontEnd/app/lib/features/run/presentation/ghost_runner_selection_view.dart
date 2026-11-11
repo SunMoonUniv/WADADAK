@@ -71,11 +71,7 @@ class _GhostRunnerSelectionViewState
       animation: Listenable.merge([widget.controller, publics]),
       builder: (context, _) {
         final c = widget.controller, best = c.summary.best;
-        final recent = c.candidates.isEmpty
-            ? null
-            : c.candidates.reduce(
-                (a, b) => a.startedAt.isAfter(b.startedAt) ? a : b,
-              );
+        final recent = c.recent;
         final public = publics.selected;
         final publicSelected = public != null;
         final ready = c.prepared;

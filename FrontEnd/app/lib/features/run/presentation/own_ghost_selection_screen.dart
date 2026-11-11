@@ -96,6 +96,9 @@ class _OwnGhostSelectionScreenState
       );
       _choices = choices;
       await choices.load();
+      if (!mounted || epoch != _epoch) return;
+      // F4 기본 고스트. 기다리지 않는다: 확인하는 동안 카드에 `확인 중`이 보인다
+      unawaited(choices.preselect(_runs.settings.defaultGhost));
     } on Object catch (error) {
       if (!mounted || epoch != _epoch) return;
       _error = error is ApiException
