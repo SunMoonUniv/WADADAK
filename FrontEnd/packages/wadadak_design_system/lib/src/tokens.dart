@@ -20,6 +20,7 @@ abstract final class WdColors {
   static const lime = Color(0xFFC3F25C); // --a-color-lime
   static const limeSoft = Color(0xFFEDF8D9); // --a-color-limeSoft
   static const green = Color(0xFF3B601C); // --a-color-green
+  static const ghost = Color(0xFFA6B69C); // --a-color-ghost (고르지 않은 자동 생성 후보)
 
   // ── 시맨틱 (--a-text-* / --a-surface-* / --a-action-*) ──
   static const textPrimary = ink;
