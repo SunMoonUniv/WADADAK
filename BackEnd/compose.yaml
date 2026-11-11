@@ -21,6 +21,19 @@ services:
     volumes:
       - wadadak-photos:/data
 
+  # 코스 자동 생성의 길찾기. 필요할 때만 띄운다: docker compose --profile planner up -d graphhopper
+  # 파일은 프로젝트 최상위 utilfile/graphhopper에 둔다(deploy/README.md `길찾기 데이터`). 설정은 공용 서버와 같다.
+  graphhopper:
+    image: eclipse-temurin:21-jre
+    profiles: [planner]
+    command: ["java", "-Xmx2g", "-jar", "/data/graphhopper-web-11.1.jar", "server", "/config.yml"]
+    ports:
+      - "127.0.0.1:8989:8989"
+    volumes:
+      - ../utilfile/graphhopper:/data:ro
+      - ../utilfile/graphhopper/graph-cache:/graph-cache
+      - ../deploy/graphhopper/config.yml:/config.yml:ro
+
 volumes:
   wadadak-postgres:
   wadadak-photos:
