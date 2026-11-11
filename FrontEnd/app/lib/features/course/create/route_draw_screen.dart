@@ -38,6 +38,9 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
   // 범례 + 아래 여백.
   static const _legendHeight = WdRouteLegend.height + WdSpace.s16;
 
+  // 위 안내 · 되돌리기 · 전체 지우기(위 여백 16 + 버튼 2개). 채운 경로를 맞출 때 그 아래로 들어오게 한다.
+  static const _controlsHeight = 92.0;
+
   var _draft = const RouteDraft();
   var _method = _Method.draw;
   var _generating = false;
@@ -136,8 +139,8 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
   Widget _map() => Stack(
         children: [
           MapView(
-            // 아래 범례만큼 비워 네이버 로고·축척이 범례에 가리지 않게 한다.
-            padding: const EdgeInsets.only(bottom: _legendHeight),
+            // 아래 범례만큼 비워 네이버 로고·축척이 범례에 가리지 않게 한다. 위는 안내 · 버튼만큼 비운다.
+            padding: const EdgeInsets.only(top: _controlsHeight, bottom: _legendHeight),
             initialCenter: _draft.isEmpty ? widget.camera?.center ?? MapView.seoulCityHall : _draft.points.first,
             initialZoom: widget.camera?.zoom ?? 14,
             lines: [MapLine(id: 'draft', points: _draft.points)],

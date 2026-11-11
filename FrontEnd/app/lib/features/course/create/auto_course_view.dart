@@ -14,7 +14,7 @@ import '../../home/my_location.dart';
 import '../../run/application/run_controller.dart';
 import 'auto_course_form.dart';
 
-/// `자동 생성` 탭을 그릴지(빌드 플래그 `AUTO_COURSE`). 시험은 이 값을 켠다.
+/// `자동 생성` 탭을 그릴지(빌드 플래그 `AUTO_COURSE`). 시험은 이 값으로 켜고 끈다.
 final autoCourseProvider = Provider<bool>((ref) => autoCourse);
 
 /// 평소 페이스(초/km)를 구한다. MY 기록 목록과 같은 서버 기록 요약에서 최근 기록의 평균이다. 기록이 없으면 null.
