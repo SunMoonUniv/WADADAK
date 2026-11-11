@@ -129,7 +129,7 @@ Actions → Backend CI → Run workflow(main). deploy 작업이 통과하면 서
 - 키는 저장소에 커밋하지 않는다. 키가 새면 서비스 계정 화면에서 그 키를 지우고 새로 만든다.
 
 ### 7. 길찾기 데이터 (코스 자동 생성)
-코스 자동 생성의 길찾기(`graphhopper` 서비스, GraphHopper 11.1 + 한국 OSM)는 파일이 수백 MB라 저장소에 넣지 않는다. 러너 작업 폴더 최상위의 `utilfile/graphhopper`(기본 `C:\actions-runner-wadadak\_work\WADADAK\WADADAK\utilfile\graphhopper`)에 직접 넣는다. 배포 작업은 `utilfile/`을 지우지 않는다(`backend.yml`의 작업 폴더 정리 단계).
+코스 자동 생성의 길찾기(`graphhopper` 서비스, GraphHopper 11.1 + 한국 OSM)는 파일이 수백 MB라 저장소에 넣지 않는다. 저장소 최상위의 `utilfile/graphhopper`에 직접 넣는다. 서버에서는 러너가 저장소를 받는 작업 폴더의 최상위이고, compose는 `deploy/`에서 상대경로 `../utilfile/graphhopper`로 붙인다. 배포 작업은 `utilfile/`을 지우지 않는다(`backend.yml`의 작업 폴더 정리 단계).
 
 | 파일 | 크기 | 받는 곳 |
 | --- | --- | --- |
