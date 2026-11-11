@@ -1,5 +1,6 @@
 import com.android.build.api.artifact.SingleArtifact.APK
 import com.android.build.api.dsl.ApplicationExtension
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -7,6 +8,11 @@ plugins {
 }
 
 val phoneConfig = project(":app").extensions.getByType<ApplicationExtension>().defaultConfig
+
+// 폰 앱과 같은 Play 업로드 키(android/key.properties).
+val uploadKey = Properties().apply {
+    rootProject.file("key.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+}
 
 android {
     namespace = "com.wadadak.wear"
@@ -16,7 +22,8 @@ android {
         applicationId = "com.wadadak.app"
         minSdk = 30
         targetSdk = 36
-        versionCode = phoneConfig.versionCode
+        // Play는 한 앱(같은 applicationId) 안에서 버전 코드를 다시 쓸 수 없다. 워치는 폰 + 1억.
+        versionCode = phoneConfig.versionCode?.plus(100_000_000)
         versionName = phoneConfig.versionName
     }
 
@@ -36,6 +43,14 @@ android {
                 keyPassword = "android"
             }
         }
+        if (!uploadKey.isEmpty) {
+            create("release") {
+                storeFile = rootProject.file(uploadKey.getProperty("storeFile"))
+                storePassword = uploadKey.getProperty("storePassword")
+                keyAlias = uploadKey.getProperty("keyAlias")
+                keyPassword = uploadKey.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -43,6 +58,10 @@ android {
             if (providers.gradleProperty("wearSmoke").orNull == "true") {
                 applicationIdSuffix = ".wearsmoke"
             }
+        }
+        release {
+            // 폰과 같은 키여야 Data Layer가 붙는다. key.properties가 없으면 디버그 키.
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 }
