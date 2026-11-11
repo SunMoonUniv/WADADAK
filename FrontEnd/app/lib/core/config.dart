@@ -31,6 +31,12 @@ const googleIosClientId = '1048451496052-d45s2heki1u509122fh6g7d3q5cpdpre.apps.g
 /// 개발용 지도로 실행: `flutter run --dart-define=REAL_MAP=false`
 const realMap = bool.fromEnvironment('REAL_MAP', defaultValue: true);
 
+/// 코스 만들기의 `자동 생성` 탭(B3 고도화). 끄면 탭을 그리지 않는다.
+/// 서버에는 끄는 설정이 없어, 기능을 내릴 때는 이 값을 끄고 배포한다.
+///
+/// 끄고 실행: `flutter run --dart-define=AUTO_COURSE=false`
+const autoCourse = bool.fromEnvironment('AUTO_COURSE', defaultValue: true);
+
 /// 네이버 지도(NCP Maps · Dynamic Map) Client ID. 앱 안에 들어가는 공개 값이다. Client Secret은 쓰지 않으며 앱·저장소 어디에도 두지 않는다.
 /// NCP 콘솔 Application에 앱 ID `com.wadadak.app`(Android 패키지 이름 · iOS Bundle ID)으로 등록했다.
 const naverMapClientId = '4jno8yckyz';

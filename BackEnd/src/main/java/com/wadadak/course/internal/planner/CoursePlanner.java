@@ -6,8 +6,8 @@ import jakarta.validation.constraints.Size;
 import java.util.UUID;
 
 /**
- * 코스 자동 생성(정책 B3 `자동 생성`). 앱만 쓰는 API라 지금은 {@code app.stub.course-planner: true}일 때
- * {@link PlannerStub}만 뜬다(개발 정책 3.2).
+ * 코스 자동 생성(정책 B3 `자동 생성`). 실제 구현은 {@link PlannerService}, {@code app.stub.course-planner: true}면
+ * {@link PlannerStub}이 대신 뜬다(개발 정책 3.2).
  */
 interface CoursePlanner {
 

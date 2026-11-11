@@ -153,6 +153,12 @@ docker compose -f BackEnd/compose.yaml --profile planner run --rm graphhopper ja
 - 확인: `docker compose -p wadadak-server ps`에서 graphhopper가 healthy. 경로 시험: `docker exec wadadak-server-graphhopper-1 curl -s "http://localhost:8989/route?point=36.7983,127.0746&point=36.8050,127.0800&profile=foot"`
 - 한 달마다 새 pbf로 그래프를 다시 만든다. 서버에서는 `docker compose -p wadadak-server stop graphhopper` → `graph-cache` 폴더 교체 → `docker compose -p wadadak-server start graphhopper`. 그동안 코스 자동 생성만 실패하고 나머지는 그대로다.
 
+**표고점 파일** (원하는 길 `평지` · `오르막`): 후보 오르막을 계산하는 `utilfile/elevation/spot_heights.bin`(약 67MB)도 저장소 밖에 둔다. backend가 `../utilfile/elevation`을 읽기 전용으로 붙인다(`PLANNER_SPOT_HEIGHTS`).
+
+- 국토지리정보원 표고점(`utilfile/표고선/N3P_F0020000`)으로 만든다: `utilfile/_스크립트/course_planner`에서 `python build_spot_heights.py ../../elevation/spot_heights.bin`
+- 만든 파일을 서버의 같은 위치에 복사한 뒤 backend를 다시 띄운다(다음 배포 또는 `docker compose -p wadadak-server restart backend`). 기동 로그에 `표고점 5378359개를 읽었다`가 남는다.
+- 파일이 없어도 배포는 된다. 그때 평지 · 오르막은 후보에 반영하지 않고 `아직 반영하지 않았어요`로 알린다.
+
 ## 운영
 
 | 할 일 | 방법 |

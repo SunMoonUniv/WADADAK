@@ -350,6 +350,36 @@ class FakeCourseApi implements CourseApiClient {
   Completer<void>? registerGate;
   final registrations = <FakeRegistration>[];
 
+  /// 코스 자동 생성(B3 `자동 생성`). 문장은 늘 [parsed]로, 생성은 [planned]로 답한다. 오류가 있으면 그것으로 실패한다.
+  PlanForm parsed = const PlanForm();
+  ApiException? parseError;
+  PlanResult planned = const PlanResult(candidates: []);
+  ApiException? planError;
+  TypeQuota planLimit = const TypeQuota(limit: 20, remaining: 19);
+  final parsedTexts = <String>[];
+  final plans = <({PlanForm form, GeoPoint currentLocation, int? paceSecPerKm})>[];
+
+  /// 있으면 끝날 때까지 생성 응답을 미룬다(A2 찾는 중).
+  Completer<void>? planGate;
+
+  @override
+  Future<PlanForm> parsePlan(String text) async {
+    parsedTexts.add(text);
+    if (parseError case final error?) throw error;
+    return parsed;
+  }
+
+  @override
+  Future<PlanResult> planCourse(PlanForm form, {required GeoPoint currentLocation, int? paceSecPerKm}) async {
+    plans.add((form: form, currentLocation: currentLocation, paceSecPerKm: paceSecPerKm));
+    await planGate?.future;
+    if (planError case final error?) throw error;
+    return planned;
+  }
+
+  @override
+  Future<TypeQuota> planQuota() async => planLimit;
+
   /// 지도 범위와 상관없이 돌려줄 코스. 필터는 거리 · 난이도 · 최소 평점 · 특징 · 유형을 서버처럼 적용한다.
   /// G6에서 고른 검색어 · 지역([CourseSearchPick])은 이름에 검색어가 들어갔는지만 본다(코스에 지역 값이 없다).
   List<CourseListItem> onMap = [];

@@ -1,6 +1,7 @@
 package com.wadadak.course.internal.planner;
 
 import com.wadadak.TestcontainersConfiguration;
+import com.wadadak.course.internal.planner.PlannerRepository.PoiCounts;
 import com.wadadak.member.MemberApi;
 import org.junit.jupiter.api.Test;
 import org.locationtech.jts.geom.Coordinate;
@@ -118,23 +119,28 @@ class PlannerRepositoryTest {
     }
 
     @Test
-    void countsStoresWithinMeters() {
-        // 서해 바다 위 동서 약 900m 선. 시드 편의점이 없는 곳이다. 위도 0.00027도 ≈ 30m
+    void countsStoresAndToiletsWithinMeters() {
+        // 서해 바다 위 동서 약 900m 선. 시드 편의점 · 화장실이 없는 곳이다. 위도 0.00027도 ≈ 30m
         LineString route = GEOMETRY.createLineString(new Coordinate[]{
                 new Coordinate(125.0000, 36.0000), new Coordinate(125.0100, 36.0000)});
         poi("test:30m", "CONVENIENCE", 125.0050, 36.00027);
         poi("test:70m", "CONVENIENCE", 125.0050, 36.00063);
         poi("test:toilet-10m", "TOILET", 125.0050, 36.00009);
+        poi("test:toilet-70m", "TOILET", 125.0060, 36.00063);
+        poi("test:toilet-150m", "TOILET", 125.0070, 36.00135);
 
-        assertThat(repository.storesNear(route, 50)).isEqualTo(1);
-        assertThat(repository.storesNear(route, 100)).isEqualTo(2);
+        assertThat(repository.poisNear(route, 50, 100)).isEqualTo(new PoiCounts(1, 2));
+        assertThat(repository.poisNear(route, 100, 50)).isEqualTo(new PoiCounts(2, 1));
     }
 
     @Test
-    void seedLoadsConvenienceStores() {
+    void seedLoadsConvenienceStoresAndToilets() {
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM course.planner_pois WHERE source_id LIKE 'sbiz:%' AND kind = 'CONVENIENCE' AND base_month = '2026-09'",
                 Integer.class)).isEqualTo(57_516);
+        assertThat(jdbcTemplate.queryForObject(
+                "SELECT count(*) FROM course.planner_pois WHERE source_id LIKE 'toilet:%' AND kind = 'TOILET' AND base_month = '2026-10'",
+                Integer.class)).isEqualTo(50_643);
     }
 
     private void poi(String sourceId, String kind, double lng, double lat) {

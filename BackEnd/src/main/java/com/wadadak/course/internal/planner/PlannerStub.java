@@ -9,7 +9,6 @@ import com.wadadak.course.internal.planner.PlanForm.Shape;
 import com.wadadak.course.internal.planner.PlanForm.Start;
 import com.wadadak.course.internal.planner.PlanForm.StartKind;
 import com.wadadak.course.internal.planner.PlanResult.PlanCandidate;
-import com.wadadak.course.internal.planner.PlanResult.PlanReason;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
@@ -28,7 +27,7 @@ import java.util.UUID;
  * 코스 자동 생성 스텁({@code app.stub.course-planner: true}). 저장하지 않고 누가 불러도 같은 값을 준다.
  * <ul>
  *     <li>plans: 선문대에서 실제 길을 따라 만든 5km 한 바퀴 후보 3개({@code planner/stub-candidates.json}, 로컬 GraphHopper로
- *     만든 값. 편의점 수만 스텁 값). 모양 · 거리와 상관없이 같다</li>
+ *     만든 값. 편의점 · 화장실 수만 스텁 값). 모양 · 거리와 상관없이 같다</li>
  *     <li>plans 상태 시험: 출발 장소 "없는 장소" PLACE_NOT_FOUND, 도착 · 경유지 "한강" PLACE_TOO_FAR, 출발 장소 "섬" NO_CANDIDATES,
  *     "중복" SIMILAR_EXISTS, "한도" COURSE-012</li>
  *     <li>parse: 선문대 출발 · 한 바퀴 · 5km · 큰길 피하기. 문장에 "초보"가 있으면 거리를 비우고, "주식"이면 무관 요청, "한도"면 COURSE-013</li>
@@ -73,19 +72,16 @@ class PlannerStub implements CoursePlanner, StubImplementation {
             throw new AppException(CourseErrorCode.PLAN_DAILY_LIMIT_EXCEEDED);
         }
         if ("없는 장소".equals(start)) {
-            return PlanResult.failure(PlanReason.PLACE_NOT_FOUND, "'없는 장소'를 찾지 못했어요. 이름을 다시 확인해 주세요.", null);
+            return PlanResult.placeNotFound(start, null);
         }
         if ("한강".equals(strip(form.endQuery())) || "한강".equals(strip(form.viaQuery()))) {
-            return PlanResult.failure(PlanReason.PLACE_TOO_FAR, "한강은 " + from + "에서 약 80km 떨어져 있어요. 가까운 곳을 골라 주세요.", start);
+            return PlanResult.placeTooFar("한강", from, 80_000, start);
         }
         if ("섬".equals(start)) {
-            String message = form.shape() == Shape.LOOP
-                    ? "이 근처에서는 길을 따라 한 바퀴 코스를 만들지 못했어요. 왕복으로 바꿔 보세요."
-                    : "이 근처에서는 길을 따라 코스를 만들지 못했어요.";
-            return PlanResult.failure(PlanReason.NO_CANDIDATES, message, start);
+            return PlanResult.noCandidates(form.shape() == Shape.LOOP, start);
         }
         if ("중복".equals(start)) {
-            return PlanResult.failure(PlanReason.SIMILAR_EXISTS, "비슷한 코스가 이미 있어요. 거리나 출발지를 바꿔 보세요.", start);
+            return PlanResult.similarExists(start);
         }
         Set<Pref> notApplied = EnumSet.noneOf(Pref.class);
         if (form.prefer() != null) {
@@ -95,7 +91,9 @@ class PlannerStub implements CoursePlanner, StubImplementation {
         Set<Pref> notAppliedPrefs = Set.copyOf(notApplied);
         List<PlanCandidate> candidates = routes.stream()
                 .map(r -> new PlanCandidate(r.anchorPoints(), r.distanceMeters(), r.retraceRatio(), r.arterialRatio(), r.storeCount(),
-                        PlanCandidate.summary(r.distanceMeters(), r.arterialRatio(), r.storeCount()), notAppliedPrefs))
+                        r.toiletCount(), r.ascentMeters(),
+                        PlanCandidate.summary(r.distanceMeters(), r.arterialRatio(), r.storeCount(), r.toiletCount(), r.ascentMeters()),
+                        notAppliedPrefs))
                 .toList();
         return new PlanResult(candidates, null, null, start);
     }
@@ -110,6 +108,6 @@ class PlannerStub implements CoursePlanner, StubImplementation {
     }
 
     record StubRoute(List<GeoPoint> anchorPoints, int distanceMeters, double retraceRatio, double arterialRatio,
-                             int storeCount) {
+                     int storeCount, int toiletCount, Integer ascentMeters) {
     }
 }

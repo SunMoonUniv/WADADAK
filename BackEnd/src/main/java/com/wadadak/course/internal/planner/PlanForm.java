@@ -47,10 +47,14 @@ record PlanForm(@NotNull @Valid Start start,
         VIA
     }
 
-    /** 원하는 길. 지금 후보에 반영하는 것은 {@link #SUPPORTED}뿐이고, 나머지는 후보의 notApplied로 알린다(정책 B3-A03) */
+    /**
+     * 원하는 길. 지금 후보에 반영하는 것은 {@link #SUPPORTED}뿐이고, 나머지는 후보의 notApplied로 알린다(정책 B3-A03).
+     * 평지 · 오르막은 표고점 파일이 없으면 반영하지 않는다({@link SpotHeights})
+     */
     enum Pref {
         FLAT, HILLY, SIDEWALK, AVOID_ARTERIAL, STORE_ON_ROUTE, TOILET_ON_ROUTE, RIVER, PARK, NO_RETRACE;
 
-        static final Set<Pref> SUPPORTED = Set.of(AVOID_ARTERIAL, STORE_ON_ROUTE, NO_RETRACE);
+        static final Set<Pref> SUPPORTED = Set.of(AVOID_ARTERIAL, STORE_ON_ROUTE, NO_RETRACE, TOILET_ON_ROUTE, FLAT, HILLY);
+        static final Set<Pref> NEEDS_HEIGHTS = Set.of(FLAT, HILLY);
     }
 }

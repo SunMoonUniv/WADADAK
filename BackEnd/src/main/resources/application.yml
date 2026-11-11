@@ -51,7 +51,7 @@ app:
     course: false
     # 내 코스 관리(G4 · B7). true면 스텁으로 답한다(공용 서버는 prod라 켤 수 없다)
     course-mine: false
-    # 코스 자동 생성(B3 자동 생성, 앱 전용 API). true면 API와 스텁이 함께 뜬다. 실제 구현 전에는 로컬에서만 켠다
+    # 코스 자동 생성(B3 자동 생성). true면 스텁으로 답한다(공용 서버는 prod라 켤 수 없다)
     course-planner: false
     ranking: false
   course:
@@ -63,10 +63,15 @@ app:
       enabled: true
     # 코스 자동 생성(B3 자동 생성). 비밀값은 환경 변수로만 받는다(GitHub Secrets → backend.yml → deploy/compose.yaml).
     planner:
+      # 생성 요청 하나의 기한. 지나면 그때까지 만든 후보로 답한다(앱 수신 대기 15초)
+      deadline: 10s
       # 길찾기. 공용 서버는 compose가 GRAPHHOPPER_URL을 넘긴다. 로컬은 BackEnd/compose.yaml --profile planner
       routing:
         base-url: ${GRAPHHOPPER_URL:http://localhost:8989}
         timeout: 3s
+      # 후보 오르막(평지 · 오르막 조건)에 쓰는 표고점 격자 파일. 저장소 밖 utilfile/elevation에 사람이 넣는다(deploy README).
+      # 파일이 없으면 서버는 그대로 뜨고 평지 · 오르막만 반영하지 않는다. 로컬 기본값은 BackEnd/에서 본 경로다.
+      spot-heights: ${PLANNER_SPOT_HEIGHTS:../utilfile/elevation/spot_heights.bin}
       # 장소 이름 → 좌표. NAVER API HUB(NCP) 지역 검색, 0건이면 NCP 지오코딩(주소 · 동 이름). 앱(키)은 둘이 따로다.
       # 키가 비어 있으면 그 API를 부르지 않는다. 둘 다 비면 장소 입력은 못 찾은 것(PLACE_NOT_FOUND)이 된다.
       place:

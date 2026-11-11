@@ -20,6 +20,38 @@ record PlanResult(List<PlanCandidate> candidates, PlanReason reason, String mess
         return new PlanResult(List.of(), reason, message, startName);
     }
 
+    // 안내 문구(정책 B3-A04). 스텁과 실제 구현이 같이 쓴다
+
+    static PlanResult placeNotFound(String query, String startName) {
+        return failure(PlanReason.PLACE_NOT_FOUND,
+                "'%s'%s 찾지 못했어요. 이름을 다시 확인해 주세요.".formatted(query, particle(query, "을", "를")), startName);
+    }
+
+    /** @param from 출발 장소 이름. 현재 위치 출발이면 "현재 위치" */
+    static PlanResult placeTooFar(String query, String from, double meters, String startName) {
+        return failure(PlanReason.PLACE_TOO_FAR, "%s%s %s에서 약 %dkm 떨어져 있어요. 가까운 곳을 골라 주세요."
+                .formatted(query, particle(query, "은", "는"), from, Math.max(1, Math.round(meters / 1000))), startName);
+    }
+
+    static PlanResult noCandidates(boolean suggestOutAndBack, String startName) {
+        return failure(PlanReason.NO_CANDIDATES, suggestOutAndBack
+                ? "이 근처에서는 길을 따라 한 바퀴 코스를 만들지 못했어요. 왕복으로 바꿔 보세요."
+                : "이 근처에서는 길을 따라 코스를 만들지 못했어요.", startName);
+    }
+
+    static PlanResult similarExists(String startName) {
+        return failure(PlanReason.SIMILAR_EXISTS, "비슷한 코스가 이미 있어요. 거리나 출발지를 바꿔 보세요.", startName);
+    }
+
+    /** 끝 글자에 받침이 있으면 withFinal, 없으면 withoutFinal. 한글로 끝나지 않으면 "을(를)"처럼 둘 다 */
+    private static String particle(String word, String withFinal, String withoutFinal) {
+        char last = word.charAt(word.length() - 1);
+        if (last < '가' || last > '힣') {
+            return withFinal + "(" + withoutFinal + ")";
+        }
+        return (last - '가') % 28 != 0 ? withFinal : withoutFinal;
+    }
+
     /**
      * 후보 하나.
      *
@@ -27,14 +59,17 @@ record PlanResult(List<PlanCandidate> candidates, PlanReason reason, String mess
      * @param retraceRatio  같은 길을 되돌아오는 비율(0~1)
      * @param arterialRatio 큰길(간선도로) 비율(0~1)
      * @param storeCount    경로 50m 안 편의점 수
-     * @param summary       후보 카드 문구. 예: "5.14km · 큰길 24% · 편의점 3곳"
+     * @param toiletCount   경로 100m 안 공중화장실 수
+     * @param ascentMeters  경로를 따라 오른 높이(m). 표고점 파일이 없거나 높이를 모르는 곳이 많으면 null
+     * @param summary       후보 카드 문구. 예: "5.14km · 큰길 24% · 편의점 3곳 · 화장실 1곳 · 오르막 32m"
      * @param notApplied    요청한 원하는 길 중 아직 반영하지 않은 것
      */
     record PlanCandidate(List<GeoPoint> anchorPoints, int distanceMeters, double retraceRatio, double arterialRatio,
-                         int storeCount, String summary, Set<Pref> notApplied) {
+                         int storeCount, int toiletCount, Integer ascentMeters, String summary, Set<Pref> notApplied) {
 
-        static String summary(int distanceMeters, double arterialRatio, int storeCount) {
-            return "%.2fkm · 큰길 %d%% · 편의점 %d곳".formatted(distanceMeters / 1000.0, Math.round(arterialRatio * 100), storeCount);
+        static String summary(int distanceMeters, double arterialRatio, int storeCount, int toiletCount, Integer ascentMeters) {
+            return "%.2fkm · 큰길 %d%% · 편의점 %d곳 · 화장실 %d곳".formatted(distanceMeters / 1000.0, Math.round(arterialRatio * 100),
+                    storeCount, toiletCount) + (ascentMeters == null ? "" : " · 오르막 %dm".formatted(ascentMeters));
         }
     }
 

@@ -73,6 +73,10 @@ services:
       NAVER_GEOCODE_CLIENT_SECRET: ${NAVER_GEOCODE_CLIENT_SECRET:-}
       # 문장 → 폼 보충용 Jev(TypeSafe) 키. 비어 있으면 규칙만 쓴다.
       TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
+      # 후보 오르막(평지 · 오르막 조건)용 표고점 파일. utilfile/elevation에 사람이 넣는다(README 7번). 없으면 평지 · 오르막만 반영하지 않는다
+      PLANNER_SPOT_HEIGHTS: /elevation/spot_heights.bin
+    volumes:
+      - ../utilfile/elevation:/elevation:ro
     # 포트를 열지 않는다. 밖에서는 cloudflared를 거쳐서만 들어온다.
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:8080/actuator/health"]

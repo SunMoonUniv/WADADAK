@@ -10,10 +10,13 @@ import com.wadadak.course.internal.planner.CandidateSelector.Selection;
 import com.wadadak.course.internal.planner.PlanForm.Pref;
 import com.wadadak.course.internal.planner.PlanForm.Shape;
 import com.wadadak.course.internal.planner.PlanResult.PlanCandidate;
+import com.wadadak.course.internal.planner.PlannerRepository.PoiCounts;
 import com.wadadak.course.internal.planner.RoutedPath.RoadClassSpan;
 import com.wadadak.course.internal.route.RouteService;
 import com.wadadak.member.MemberApi;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.locationtech.jts.geom.LineString;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Import;
 import org.springframework.modulith.test.ApplicationModuleTest;
@@ -25,9 +28,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Function;
 
 import static com.wadadak.course.internal.planner.CandidateGenerator.destination;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.when;
 
 /**
  * 거르기 · 순위 · 겹침(PostGIS 유사도)을 실제 DB로 확인한다. 테스트마다 다른 동네(위도)를 써서 서로 저장한 코스가 겹치지 않는다.
@@ -42,11 +48,20 @@ class CandidateSelectorTest {
     @MockitoBean
     MemberApi memberApi;
 
+    // 기본은 표고점 파일이 없을 때(오르막 null). 평지 · 오르막 시험만 값을 준다
+    @MockitoBean
+    SpotHeights spotHeights;
+
     @Autowired
     CandidateSelector selector;
 
     @Autowired
     CourseRepository courseRepository;
+
+    @BeforeEach
+    void noHeights() {
+        when(spotHeights.ascentMeters(any())).thenReturn(null);
+    }
 
     @Test
     void dropsCandidateOverlappingExistingCourse() {
@@ -119,21 +134,47 @@ class CandidateSelectorTest {
         List<PlanCandidate> avoid = select(Shape.LOOP, 5_000, List.of(bigRoadPath, quietPath), Set.of(Pref.AVOID_ARTERIAL)).candidates();
         assertThat(avoid).extracting(PlanCandidate::arterialRatio).containsExactly(0.0, 1.0);
 
-        // 편의점은 큰길 쪽에만 있다
-        List<PlanCandidate> store = selector.select(Shape.LOOP, 5_000, List.of(quietPath, bigRoadPath), Set.of(Pref.STORE_ON_ROUTE),
-                line -> line.getCoordinates()[0].y == bigRoad.getFirst().lat() ? 2 : 0).candidates();
+        // 편의점은 큰길 쪽에만, 화장실은 조용한 길 쪽에만 있다
+        Function<LineString, PoiCounts> pois = line -> line.getCoordinates()[0].y == bigRoad.getFirst().lat()
+                ? new PoiCounts(2, 0) : new PoiCounts(0, 1);
+        List<PlanCandidate> store = selector.select(Shape.LOOP, 5_000, List.of(quietPath, bigRoadPath), Set.of(Pref.STORE_ON_ROUTE), pois)
+                .candidates();
         assertThat(store).extracting(PlanCandidate::storeCount).containsExactly(2, 0);
-        assertThat(store.getFirst().summary()).isEqualTo("5.00km · 큰길 100% · 편의점 2곳");
+        assertThat(store.getFirst().summary()).isEqualTo("5.00km · 큰길 100% · 편의점 2곳 · 화장실 0곳");
+
+        List<PlanCandidate> toilet = selector.select(Shape.LOOP, 5_000, List.of(bigRoadPath, quietPath), Set.of(Pref.TOILET_ON_ROUTE), pois)
+                .candidates();
+        assertThat(toilet).extracting(PlanCandidate::toiletCount).containsExactly(1, 0);
+    }
+
+    @Test
+    void ranksByClimbForFlatAndHilly() {
+        GeoPoint base = new GeoPoint(35.65, 128.10);
+        List<GeoPoint> hill = square(base, 0);
+        List<GeoPoint> flat = square(destination(base, 3_000, 90), 0);
+        when(spotHeights.available()).thenReturn(true);
+        when(spotHeights.ascentMeters(hill)).thenReturn(120);
+        when(spotHeights.ascentMeters(flat)).thenReturn(10);
+
+        // 오르막 1km당 24m · 2m: 평지는 −48 · −4, 오르막은 +48 · +4
+        assertThat(select(Shape.LOOP, 5_000, List.of(path(hill), path(flat)), Set.of(Pref.FLAT)).candidates())
+                .extracting(PlanCandidate::ascentMeters).containsExactly(10, 120);
+        PlanCandidate first = select(Shape.LOOP, 5_000, List.of(path(flat), path(hill)), Set.of(Pref.HILLY)).candidates().getFirst();
+        assertThat(first.ascentMeters()).isEqualTo(120);
+        assertThat(first.summary()).isEqualTo("5.00km · 큰길 0% · 편의점 0곳 · 화장실 0곳 · 오르막 120m");
+        assertThat(first.notApplied()).isEmpty();
     }
 
     @Test
     void fillsNotAppliedPreferences() {
         List<GeoPoint> loop = square(new GeoPoint(35.70, 128.10), 0);
 
-        PlanCandidate candidate = select(Shape.LOOP, 5_000, List.of(path(loop)), Set.of(Pref.FLAT, Pref.AVOID_ARTERIAL, Pref.PARK))
-                .candidates().getFirst();
+        // 표고점 파일이 없으면 평지도 반영하지 않는다
+        PlanCandidate candidate = select(Shape.LOOP, 5_000, List.of(path(loop)),
+                Set.of(Pref.FLAT, Pref.AVOID_ARTERIAL, Pref.TOILET_ON_ROUTE, Pref.PARK)).candidates().getFirst();
 
         assertThat(candidate.notApplied()).containsExactlyInAnyOrder(Pref.FLAT, Pref.PARK);
+        assertThat(candidate.ascentMeters()).isNull();
     }
 
     @Test
@@ -153,7 +194,7 @@ class CandidateSelectorTest {
     }
 
     private Selection select(Shape shape, Integer target, List<RoutedPath> paths, Set<Pref> prefer) {
-        return selector.select(shape, target, paths, prefer, line -> 0);
+        return selector.select(shape, target, paths, prefer, line -> new PoiCounts(0, 0));
     }
 
     /** 한 변 1,250m 정사각형. 변마다 50m 간격 점 */

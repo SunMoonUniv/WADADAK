@@ -195,6 +195,9 @@ class MapLine {
 
 /// 선 모양. 쓰는 곳마다 나눠 두어 한 곳의 색을 바꿔도 다른 곳은 그대로다. 겹치면 뒤에 적힌 모양이 위에 그려진다.
 enum MapLineStyle {
+  /// 코스 자동 생성(B3 A3)에서 고르지 않은 후보. 회녹색 선 + 흰 테두리. 고른 후보는 [course]로 그려 위에 온다.
+  candidate(color: WdColors.ghost, outlineColor: WdColors.white, width: 4, outlineWidth: 2),
+
   /// 홈·코스 만들기·코스 상세의 코스 경로. 라임 선 + 잉크 테두리(Figma 코스 썸네일과 같다).
   course(color: WdColors.lime, outlineColor: WdColors.ink, width: 4, outlineWidth: 2),
 

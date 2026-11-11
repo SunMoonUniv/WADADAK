@@ -5,6 +5,7 @@ import com.wadadak.course.internal.course.CourseGeometry;
 import com.wadadak.course.internal.planner.PlanForm.Pref;
 import com.wadadak.course.internal.planner.PlanForm.Shape;
 import com.wadadak.course.internal.planner.PlanResult.PlanCandidate;
+import com.wadadak.course.internal.planner.PlannerRepository.PoiCounts;
 import com.wadadak.course.internal.registration.SimilarityChecker;
 import com.wadadak.course.internal.route.RouteService;
 import lombok.RequiredArgsConstructor;
@@ -16,13 +17,14 @@ import java.util.Comparator;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
-import java.util.function.ToIntFunction;
+import java.util.function.Function;
 
 /**
  * 후보 경로를 거르고 순위를 매겨 최대 3개를 고른다(정책 B3-A03). 기준은 검증 스크립트 {@code e2e.py}와 같다.
  * <ol>
  *     <li>1~100km 밖을 뺀다. 한 바퀴는 목표 ±5% · 되돌아감 20% 이하, 왕복은 목표 ±10%만 남긴다</li>
- *     <li>점수 = −30×되돌아감. 큰길 피하기 −30×큰길 비율, 같은 길 반복 없이 −30×되돌아감 한 번 더, 편의점 들르기 1곳 이상 +10 · 없으면 −50</li>
+ *     <li>점수 = −30×되돌아감. 큰길 피하기 −30×큰길 비율, 같은 길 반복 없이 −30×되돌아감 한 번 더, 편의점 · 화장실 들르기 1곳 이상 +10 ·
+ *     없으면 −50, 평지 −2×(1km당 오르막 m) · 오르막 +2×(1km당 오르막 m). 오르막을 모르는 후보는 평지 · 오르막 점수가 없다</li>
  *     <li>점수순으로, 기존 활성 코스와 85% 이상 겹치거나 이미 고른 후보와 85% 이상 겹치면 건너뛴다(정책 공통 3과 같은 계산)</li>
  *     <li>고른 경로를 B3 입력점으로 줄인다: 2m, 500개를 넘으면 4m · 8m …</li>
  * </ol>
@@ -39,15 +41,19 @@ class CandidateSelector {
     static final double MAX_LOOP_RETRACE = 0.2;
     static final double ANCHOR_TOLERANCE_METERS = 2;
 
+    /** 평지 · 오르막 점수: 1km당 오르막 1m마다 */
+    static final double CLIMB_WEIGHT = 2;
+
     private final SimilarityChecker similarity;
     private final RouteService routeService;
+    private final SpotHeights spotHeights;
 
     /**
      * @param targetMeters 한 바퀴 · 왕복의 목표 거리. 편도 · 경유는 null이어도 된다
-     * @param stores       경로 근처 편의점 수
+     * @param pois         경로 근처 편의점 · 화장실 수
      * @return 후보가 없고, 거리 · 되돌아감 조건을 통과한 후보가 모두 기존 코스와 겹쳐서 빠졌으면 {@code allSimilarToExisting}
      */
-    Selection select(Shape shape, Integer targetMeters, List<RoutedPath> paths, Set<Pref> prefer, ToIntFunction<LineString> stores) {
+    Selection select(Shape shape, Integer targetMeters, List<RoutedPath> paths, Set<Pref> prefer, Function<LineString, PoiCounts> pois) {
         Set<Pref> wants = prefer == null ? Set.of() : prefer;
         List<Scored> passed = new ArrayList<>();
         for (RoutedPath path : paths) {
@@ -58,8 +64,10 @@ class CandidateSelector {
             }
             LineString line = CourseGeometry.lineString(path.points());
             double arterial = RouteMetrics.arterialRatio(path);
-            int storeCount = stores.applyAsInt(line);
-            passed.add(new Scored(path, line, meters, retrace, arterial, storeCount, score(wants, retrace, arterial, storeCount)));
+            PoiCounts counts = pois.apply(line);
+            Integer ascent = spotHeights.ascentMeters(path.points());
+            passed.add(new Scored(path, line, meters, retrace, arterial, counts, ascent,
+                    score(wants, meters, retrace, arterial, counts, ascent)));
         }
         passed.sort(Comparator.comparingDouble(Scored::score).reversed());
 
@@ -76,9 +84,13 @@ class CandidateSelector {
         Set<Pref> notApplied = EnumSet.noneOf(Pref.class);
         notApplied.addAll(wants);
         notApplied.removeAll(Pref.SUPPORTED);
+        if (!spotHeights.available()) {
+            wants.stream().filter(Pref.NEEDS_HEIGHTS::contains).forEach(notApplied::add);
+        }
         Set<Pref> notAppliedPrefs = Set.copyOf(notApplied);
         List<PlanCandidate> candidates = picked.stream().map(c -> new PlanCandidate(anchors(c.path().points()), c.meters(),
-                c.retrace(), c.arterial(), c.stores(), PlanCandidate.summary(c.meters(), c.arterial(), c.stores()), notAppliedPrefs)).toList();
+                c.retrace(), c.arterial(), c.pois().stores(), c.pois().toilets(), c.ascent(),
+                PlanCandidate.summary(c.meters(), c.arterial(), c.pois().stores(), c.pois().toilets(), c.ascent()), notAppliedPrefs)).toList();
         return new Selection(candidates, picked.isEmpty() && !passed.isEmpty());
     }
 
@@ -97,7 +109,7 @@ class CandidateSelector {
         };
     }
 
-    private static double score(Set<Pref> wants, double retrace, double arterial, int stores) {
+    private static double score(Set<Pref> wants, int meters, double retrace, double arterial, PoiCounts pois, Integer ascent) {
         double score = -30 * retrace;
         if (wants.contains(Pref.AVOID_ARTERIAL)) {
             score -= 30 * arterial;
@@ -106,7 +118,19 @@ class CandidateSelector {
             score -= 30 * retrace;
         }
         if (wants.contains(Pref.STORE_ON_ROUTE)) {
-            score += stores > 0 ? 10 : -50;
+            score += pois.stores() > 0 ? 10 : -50;
+        }
+        if (wants.contains(Pref.TOILET_ON_ROUTE)) {
+            score += pois.toilets() > 0 ? 10 : -50;
+        }
+        if (ascent != null) {
+            double climbPerKm = ascent / (meters / 1000.0);
+            if (wants.contains(Pref.FLAT)) {
+                score -= CLIMB_WEIGHT * climbPerKm;
+            }
+            if (wants.contains(Pref.HILLY)) {
+                score += CLIMB_WEIGHT * climbPerKm;
+            }
         }
         return score;
     }
@@ -127,6 +151,7 @@ class CandidateSelector {
         return anchors;
     }
 
-    private record Scored(RoutedPath path, LineString line, int meters, double retrace, double arterial, int stores, double score) {
+    private record Scored(RoutedPath path, LineString line, int meters, double retrace, double arterial, PoiCounts pois, Integer ascent,
+                          double score) {
     }
 }
