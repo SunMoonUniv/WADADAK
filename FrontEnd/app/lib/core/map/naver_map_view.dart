@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart';
@@ -53,6 +54,9 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
   StreamSubscription<double>? _compass;
   // 나침반 값은 1초에 수십 번 온다. 현재 위치 점 방향처럼 덜 보낸다([MapLocationTracker]).
   final _compassGate = MapLocationTracker(isOff: () => true);
+  // 위치 점을 물방울로 바꿨는지(첫 나침반 값부터)
+  bool _pointed = false;
+  Future<NOverlayImage>? _drop;
 
   @override
   void dispose() {
@@ -309,9 +313,10 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
     final visible = location != null;
     if (visible != _appLocationVisible) {
       _appLocationVisible = visible;
-      // 방향을 모르므로 방향 표시는 뺀다.
+      // SDK 기본 방향 표시(부채꼴)는 빼고, 방향은 물방울 끝으로 보인다(_onHeading).
       if (visible) overlay.setSubIcon(null);
       overlay.setIsVisible(visible);
+      _watchHeading(visible);
     }
     if (location != null && _following) {
       controller.updateCamera(NCameraUpdate.withParams(target: _latLng(location))
@@ -329,16 +334,68 @@ class _NaverMapViewState extends State<NaverMapView> implements MapController {
   void followHeading(MapHeading heading) {
     if (heading == _heading) return;
     _heading = heading;
-    _compass?.cancel();
-    _compass = null;
-    switch (heading) {
-      case MapHeading.north:
-        if (_following) rotateTo(0);
-      case MapHeading.compass:
-        _compass = NDefaultMyLocationTracker().headingStream.listen((bearing) {
-          if (_following && _compassGate.shouldSend(bearing)) rotateTo(bearing);
-        });
+    if (heading == MapHeading.north && _following) rotateTo(0);
+  }
+
+  /// 앱 위치 점이 보이는 동안 폰 나침반을 듣는다. 점은 내 방향을 가리키고, [MapHeading.compass]로 따라가면 지도도 돈다.
+  void _watchHeading(bool on) {
+    if (!on) {
+      _compass?.cancel();
+      _compass = null;
+      return;
     }
+    _compass ??= NDefaultMyLocationTracker().headingStream.listen(_onHeading);
+  }
+
+  Future<void> _onHeading(double bearing) async {
+    final controller = _controller;
+    if (controller == null || !_compassGate.shouldSend(bearing)) return;
+    final overlay = controller.getLocationOverlay();
+    if (!_pointed) {
+      // 나침반 값이 오기 전에는 방향을 모르므로 기본 원으로 둔다(북쪽을 잘못 가리키지 않게).
+      _pointed = true;
+      final drop = await (_drop ??= _dropImage());
+      if (!mounted) return;
+      overlay
+        ..setIcon(drop)
+        ..setAnchor(NPoint(_dropCenter.dx / _dropSize.width, _dropCenter.dy / _dropSize.height));
+    }
+    overlay.setBearing(bearing);
+    if (_heading == MapHeading.compass && _following) rotateTo(bearing);
+  }
+
+  // 흰 물방울 위치 점(dp). 몸통 원 가운데가 내 위치이고 뾰족한 끝이 위(북쪽 0°)를 가리킨다.
+  static const _dropSize = Size(26, 34);
+  static const _dropCenter = Offset(13, 22);
+  static const _dropRadius = 10.0;
+
+  Future<NOverlayImage> _dropImage() async {
+    final ratio = View.of(context).devicePixelRatio;
+    const c = _dropCenter, r = _dropRadius;
+    // 끝은 몸통 가운데에서 반지름 두 배 위라, 끝에서 그은 접선은 원의 끝 방향 ±60°(-30°·-150°)에 닿는다.
+    final body = ui.Path()
+      ..moveTo(c.dx, c.dy - 2 * r)
+      ..lineTo(c.dx + r * math.cos(-math.pi / 6), c.dy + r * math.sin(-math.pi / 6))
+      ..arcTo(Rect.fromCircle(center: c, radius: r), -math.pi / 6, math.pi * 4 / 3, false)
+      ..close();
+    final recorder = ui.PictureRecorder();
+    ui.Canvas(recorder)
+      ..scale(ratio)
+      ..drawShadow(body, WdColors.runBackground, 2, false)
+      ..drawPath(body, ui.Paint()..color = WdColors.white)
+      ..drawPath(
+        body,
+        ui.Paint()
+          ..style = ui.PaintingStyle.stroke
+          ..strokeWidth = 1.5
+          ..color = WdColors.ink.withValues(alpha: 0.4),
+      );
+    final picture = recorder.endRecording();
+    final image = await picture.toImage((_dropSize.width * ratio).ceil(), (_dropSize.height * ratio).ceil());
+    picture.dispose();
+    final png = await image.toByteData(format: ui.ImageByteFormat.png);
+    image.dispose();
+    return NOverlayImage.fromByteArray(png!.buffer.asUint8List(), cacheKey: 'run-location-drop-$ratio');
   }
 
   @override
