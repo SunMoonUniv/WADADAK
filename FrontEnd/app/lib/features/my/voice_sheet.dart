@@ -127,6 +127,70 @@ class _VoiceSheetState extends State<VoiceSheet> {
   }
 }
 
+/// F4 `기본 고스트` 줄에 보이는 이름. 시트와 설정 화면이 같이 쓴다.
+String defaultGhostLabel(DefaultGhost ghost) => switch (ghost) {
+  DefaultGhost.best => '내 최고 기록',
+  DefaultGhost.recent => '내 최근 기록',
+  DefaultGhost.manual => '매번 직접 고르기',
+};
+
+/// F4 · 기본 고스트 시트. 오디오 안내 시트와 같은 모양의 한 줄 고르기이고, 누르면 바로 닫히며 그 값을 돌려준다.
+/// X · 바깥 · 뒤로는 null이다.
+Future<DefaultGhost?> showDefaultGhostSheet(BuildContext context, DefaultGhost current) =>
+    showModalBottomSheet<DefaultGhost>(
+      context: context,
+      backgroundColor: WdColors.paper,
+      showDragHandle: true,
+      builder: (context) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(WdSpace.s16, 0, WdSpace.s16, WdSpace.s16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            spacing: WdSpace.s12,
+            children: [
+              Row(
+                children: [
+                  Expanded(child: Text('기본 고스트', style: WdText.ko20Bold.copyWith(color: WdColors.ink))),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close, color: WdColors.muted),
+                    tooltip: '닫기',
+                  ),
+                ],
+              ),
+              Text('코스 고스트를 고를 때 미리 골라 둘 기록이에요', style: WdText.label12.copyWith(color: WdColors.muted)),
+              WdSurface(
+                color: WdColors.paper,
+                border: const BorderSide(color: WdColors.line),
+                padding: const EdgeInsets.symmetric(horizontal: WdSpace.s14, vertical: WdSpace.s4),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    for (final ghost in DefaultGhost.values) ...[
+                      if (ghost != DefaultGhost.values.first)
+                        const Divider(height: 1, thickness: 1, color: WdColors.map),
+                      _Option(
+                        title: defaultGhostLabel(ghost),
+                        subtitle: switch (ghost) {
+                          DefaultGhost.best => '이 코스에서 가장 빨랐던 내 기록',
+                          DefaultGhost.recent => '이 코스에서 가장 최근에 달린 내 기록',
+                          DefaultGhost.manual => '미리 고르지 않아요',
+                        },
+                        selected: ghost == current,
+                        onTap: () => Navigator.of(context).pop(ghost),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
 /// 동그라미 + 제목(+ 설명) + 오른쪽 −/+. 고른 줄은 제목이 굵고 크다.
 class _Option extends StatelessWidget {
   const _Option({required this.title, this.subtitle, required this.selected, required this.onTap, this.stepper});

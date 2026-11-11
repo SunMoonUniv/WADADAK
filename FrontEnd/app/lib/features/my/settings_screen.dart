@@ -65,8 +65,8 @@ final appVersionProvider = FutureProvider<String>(
 /// - 공개 여부 두 스위치는 바꾸는 즉시 서버에 저장한다(`PUT /members/me/settings`). 실패하면 되돌린다.
 /// - 고스트 격차 음성 안내는 AUD-07의 계정별 설정 이벤트로 저장한다. 전체 음성 OFF면 선택값을 보존하고 잠근다.
 /// - 자동 일시정지는 정상 GPS 정지 10초 뒤 적용한다. 화면 항상 켜기는 진행 중 세션·앱 전면에서만 적용한다.
-/// - 정책이 없는 기본 고스트는
-///   보이기만 하고 누르면 준비 중 안내. 거리 단위는 km 고정이라 뺐다.
+/// - 기본 고스트는 내 최고 기록(기본) · 내 최근 기록 · 매번 직접 고르기 중 하나다. 다른 러닝 설정처럼 계정별로 기기에 저장하고,
+///   코스 고스트 선택(C2)에 들어가면 그 기록을 미리 골라 둔다(2026-11-11 사용자 결정). 거리 단위는 km 고정이라 뺐다.
 /// - 약관 및 개인정보 처리방침은 F7 약관 및 정책을 연다.
 /// - 회원 탈퇴는 확인 창 하나로 묻고 바로 탈퇴한다(`DELETE /members/me`). 끝나면 로그인 화면으로 간다(2026-11-02 사용자 결정).
 /// (2026-10-30 사용자 결정)
@@ -114,10 +114,6 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     final result = {for (final p in AppPermission.values) p: await permissions.granted(p)};
     if (mounted) setState(() => _permissions = result);
   }
-
-  void _soon() => ScaffoldMessenger.of(context)
-    ..hideCurrentSnackBar()
-    ..showSnackBar(const SnackBar(content: Text('준비 중인 기능이에요.')));
 
   /// 한 번 묻고 탈퇴한다. 탈퇴하면 라우터가 로그인 화면으로 보낸다. 실패하면 F4에 남아 오류를 보인다.
   Future<void> _withdraw() async {
@@ -206,6 +202,15 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       distanceKm: picked.distanceKm,
       timeMinutes: picked.timeMinutes,
     ));
+  }
+
+  /// 기본 고스트도 다른 러닝 설정처럼 계정별로 기기에 저장한다(같은 RunSettingsChanged 경로).
+  Future<void> _editDefaultGhost(RunController runs) async {
+    final member = runs.currentOwner;
+    if (_savingRunSettings || member == null) return;
+    final picked = await showDefaultGhostSheet(context, runs.settings.defaultGhost);
+    if (picked == null || picked == runs.settings.defaultGhost || !mounted) return;
+    await _saveRunSettings(runs, RunSettingsChanged(owner: member, defaultGhost: picked));
   }
 
   Future<void> _setGhostGapVoice(RunController runs, bool enabled) async {
@@ -300,7 +305,13 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
           ]),
           const SettingsHeading('고스트 · 대결'),
           SettingsCard([
-            SettingsRow('기본 고스트', onTap: _soon),
+            ListenableBuilder(
+              listenable: runs,
+              builder: (context, _) => SettingsRow('기본 고스트',
+                value: defaultGhostLabel(runs.settings.defaultGhost),
+                onTap: _savingRunSettings || runs.currentOwner == null ? null : () => _editDefaultGhost(runs),
+              ),
+            ),
             ListenableBuilder(
               listenable: runs,
               builder: (context, _) => SettingsRow(

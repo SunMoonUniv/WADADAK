@@ -19,11 +19,13 @@ class RunSettingsChanged {
     this.ghostGapEnabled,
     this.autoPauseEnabled,
     this.keepScreenOn,
+    this.defaultGhost,
   });
   final String owner;
   final bool? enabled, ghostGapEnabled, autoPauseEnabled, keepScreenOn;
   final VoiceUnit? unit;
   final int? distanceKm, timeMinutes;
+  final DefaultGhost? defaultGhost;
 
   RunSettings applyTo(RunSettings current) {
     if (owner.isEmpty ||
@@ -39,6 +41,7 @@ class RunSettingsChanged {
       ghostGapEnabled: ghostGapEnabled,
       autoPauseEnabled: autoPauseEnabled,
       keepScreenOn: keepScreenOn,
+      defaultGhost: defaultGhost,
     );
   }
 }

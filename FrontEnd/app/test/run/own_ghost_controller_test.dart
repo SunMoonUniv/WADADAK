@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wadadak/core/api/api_client.dart';
 import 'package:wadadak/features/run/application/own_ghost_controller.dart';
 import 'package:wadadak/features/run/domain/own_ghost.dart';
+import 'package:wadadak/features/run/domain/run_settings.dart';
 
 import 'own_ghost_test_support.dart';
 
@@ -224,4 +225,53 @@ void main() {
       expect(source.playbackRequests, isEmpty);
     },
   );
+  // F4 기본 고스트: 들어가자마자 고른 기록을 미리 확인해 둔다
+  test('default ghost preselects the best or the most recent record', () async {
+    await c.load();
+    await c.preselect(DefaultGhost.best);
+    expect(c.prepared!.candidate.id, c.summary.best!.id);
+
+    await c.load();
+    await c.preselect(DefaultGhost.recent);
+    final latest = c.candidates.reduce((a, b) => a.startedAt.isAfter(b.startedAt) ? a : b);
+    expect(c.recent!.id, latest.id);
+    expect(c.prepared!.candidate.id, latest.id);
+  });
+  test('manual default ghost or no record picks nothing', () async {
+    await c.load();
+    await c.preselect(DefaultGhost.manual);
+    expect(c.prepared, isNull);
+    expect(source.playbackRequests, isEmpty);
+
+    source.page = OwnGhostPage(const [], null, OwnGhostSummary.empty);
+    await c.load();
+    await c.preselect(DefaultGhost.best);
+    await c.preselect(DefaultGhost.recent);
+    expect(source.playbackRequests, isEmpty);
+  });
+  test('an unusable default ghost leaves no warning the runner did not ask for', () async {
+    await c.load();
+    final best = c.summary.best!;
+    source.onPlayback = (_, _) async => OwnGhostReplay.fromJson({
+      ...replayJson(best),
+      'eligible': false,
+      'unavailableReasons': ['CONTINUOUS_GAP_EXCEEDED'],
+    });
+    await c.preselect(DefaultGhost.best);
+    expect(c.prepared, isNull);
+    expect(c.unavailableReasons, isEmpty);
+    expect(c.error, isNull);
+  });
+  test('a record tapped while the default ghost is checking wins', () async {
+    await c.load();
+    final slow = Completer<OwnGhostReplay>(), best = c.summary.best!;
+    final other = c.candidates.firstWhere((x) => x.id != best.id);
+    source.onPlayback = (_, id) async =>
+        id == best.id ? slow.future : OwnGhostReplay.fromJson(replayJson(other));
+    final pending = c.preselect(DefaultGhost.best);
+    await c.select(other);
+    slow.complete(OwnGhostReplay.fromJson(replayJson(best)));
+    await pending;
+    expect(c.prepared!.candidate.id, other.id);
+  });
 }
