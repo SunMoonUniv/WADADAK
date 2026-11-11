@@ -13,7 +13,10 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.text.SpannableString
+import android.text.Spanned
 import android.text.TextUtils
+import android.text.style.ForegroundColorSpan
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
@@ -60,7 +63,7 @@ class WearRunActivity : Activity() {
     private var itemIndex = 0
     private var touchX = 0f
     private var touchY = 0f
-    private var liveIndex = 1
+    private var liveIndex = LIVE_STATS
     private var resultIndex = 0
     private var previousSession: String? = null
     private var shownTransition: String? = null
@@ -240,7 +243,7 @@ class WearRunActivity : Activity() {
                 previousSession = id
                 shownTransition = null
                 transitionUntil = 0L
-                liveIndex = 1
+                liveIndex = LIVE_STATS
                 resultIndex = 0
             }
             val reason = state.opt("courseEndReason") as? String
@@ -289,6 +292,7 @@ class WearRunActivity : Activity() {
             confirming = null
         }
         val setupIssue = state.opt("setupIssue") as? String ?: commandIssue
+        val courseLive = available && phase == "running" && state.optBoolean("onCourse")
         val current = when {
             confirming != null -> "confirm"
             phase == "ready" && setupIssue == "permissions" -> "permissions"
@@ -296,8 +300,9 @@ class WearRunActivity : Activity() {
             phase == "ready" -> page
             available && phase == "running" && state.optBoolean("deviation") -> "deviation"
             available && phase == "running" && SystemClock.uptimeMillis() < transitionUntil -> "transition"
-            available && phase == "running" && state.optBoolean("onCourse") && liveIndex == 0 -> "liveMap"
-            available && phase == "running" && state.optBoolean("onCourse") && liveIndex == 2 && state.optString("mode") == "ghost" -> "ghostGap"
+            courseLive && liveIndex == LIVE_NEAR_MAP -> "nearMap"
+            courseLive && liveIndex == LIVE_OVERVIEW_MAP -> "liveMap"
+            courseLive && liveIndex == LIVE_GHOST_GAP && state.optString("mode") == "ghost" -> "ghostGap"
             phase == "ended" && resultIndex == 1 -> "courseResult"
             phase == "ended" && resultIndex == 2 -> "ghostResult"
             else -> phase
@@ -337,6 +342,7 @@ class WearRunActivity : Activity() {
             "courses", "ghosts" -> renderPicker(current, enabled)
             "courseReady" -> renderCourseReady(enabled)
             "approach" -> renderApproach(id, enabled)
+            "nearMap" -> renderNearMap(id, enabled, shownMode == "ghost")
             "liveMap" -> renderLiveMap(id, enabled)
             "ghostGap" -> renderGhostGap()
             "deviation" -> renderDeviation(id, shownMode, enabled)
@@ -369,7 +375,7 @@ class WearRunActivity : Activity() {
                 }
                 button("pause", "Ⅱ  일시정지", 54, 161, 108, 34, false,
                     enabled && phase == "running") { request("pause", id) }
-                if (available && state.optBoolean("onCourse")) liveNav()
+                if (courseLive) liveNav()
             }
             "paused" -> {
                 label("mode", modeTitle(shownMode), 57, 17, 102, 12, 10, MUTED)
@@ -495,7 +501,7 @@ class WearRunActivity : Activity() {
                             shiftMode(delta)
                             return true
                         }
-                        current in listOf("running", "liveMap", "ghostGap") &&
+                        current in listOf("running", "nearMap", "liveMap", "ghostGap") &&
                             available && state.optBoolean("onCourse") -> {
                             cancelTouch(event)
                             shiftLive(delta)
@@ -521,16 +527,17 @@ class WearRunActivity : Activity() {
         cancel.recycle()
     }
 
+    private fun livePageCount() = if (state.optString("mode") == "ghost") 4 else 3
+
     private fun shiftLive(delta: Int) {
-        val max = if (state.optString("mode") == "ghost") 2 else 1
-        liveIndex = (liveIndex + delta).coerceIn(0, max)
+        liveIndex = (liveIndex + delta).coerceIn(0, livePageCount() - 1)
         render()
     }
 
     private fun liveNav() {
-        val count = if (state.optString("mode") == "ghost") 3 else 2
+        val count = livePageCount()
         verticalPageArrows("live", liveIndex, count, ::shiftLive)
-        var y = if (count == 3) 92 else 96
+        var y = 108 - (14 + (count - 1) * 9) / 2
         for (i in 0 until count) {
             val key = "live-dot-$i"
             val height = if (i == liveIndex) 14 else 5
@@ -560,6 +567,50 @@ class WearRunActivity : Activity() {
             delta < 0 -> "${seconds}초 앞섬"
             else -> "${seconds}초 뒤처짐"
         }
+    }
+
+    private fun renderNearMap(id: String?, enabled: Boolean, ghost: Boolean) {
+        label("mode", if (ghost) "고스트 지도" else "코스 지도", 60, 17, 96, 12, 10, LIME)
+        val map = slots["near-route"] as? NearRunMap ?: NearRunMap(this, LIME, VIOLET, MUTED, MAP_BACKGROUND).apply {
+            background = pill(MAP_BACKGROUND, 14, BUTTON_LINE)
+            clipToOutline = true
+            place("near-route", this, 14, 33, 188, 124)
+        }
+        val position = state.optJSONArray("position")
+        val gpsWeak = state.optBoolean("gpsWeak")
+        map.update(
+            state.optJSONArray("nearRoute") ?: state.optJSONArray("route"),
+            state.optJSONArray("nearTrack"),
+            position,
+            if (ghost) state.optJSONArray("ghostPosition") else null,
+            gpsWeak,
+        )
+        val warning = when {
+            position == null -> "현재 위치 확인 중"
+            gpsWeak -> "GPS 신호 약함"
+            else -> ""
+        }
+        label("map-warning", warning, 51, 42, 114, 14, 10, PALE_AMBER)
+        slots["map-warning"]?.visibility = if (warning.isEmpty()) View.GONE else View.VISIBLE
+
+        val meters = state.optDouble("remainingM")
+        val remaining = if (meters.isFinite()) "${formatDistance(meters.coerceAtLeast(0.0))} 남음" else "남은 거리 확인 중"
+        val metrics = if (ghost) {
+            val delta = state.optDouble("ghostTimeDeltaMs")
+            val seconds = if (delta.isFinite()) (abs(delta) / 1000).roundToInt() else null
+            val gap = when {
+                seconds == null -> "고스트 격차 확인 중"
+                seconds == 0 -> "고스트와 나란히"
+                else -> "고스트 ${seconds}초 ${if (delta > 0) "앞" else "뒤"}"
+            }
+            val start = remaining.length + 3
+            SpannableString("$remaining · $gap").apply {
+                setSpan(ForegroundColorSpan(VIOLET), start, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+        } else remaining
+        label("map-metrics", metrics, 23, 159, 170, 14, 11)
+        button("pause", "Ⅱ  일시정지", 54, 173, 108, 25, false, enabled) { request("pause", id) }
+        liveNav()
     }
 
     private fun renderLiveMap(id: String?, enabled: Boolean) {
@@ -1033,7 +1084,7 @@ class WearRunActivity : Activity() {
     }
 
     private fun label(
-        key: String, value: String, x: Int, y: Int, width: Int, height: Int, size: Int,
+        key: String, value: CharSequence, x: Int, y: Int, width: Int, height: Int, size: Int,
         color: Int = WHITE,
         bold: Boolean = color != MUTED,
     ) {
@@ -1048,7 +1099,7 @@ class WearRunActivity : Activity() {
             if (key == "status") accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
             place(key, this, x, y, width, height)
         }
-        if (view.text != value) view.text = value
+        if (!TextUtils.equals(view.text, value)) view.text = value
     }
 
     private fun button(
@@ -1128,6 +1179,11 @@ class WearRunActivity : Activity() {
         const val INK = 0xff171b19.toInt()
         const val BUTTON = 0xff222c28.toInt()
         const val BUTTON_LINE = 0xff43524c.toInt()
+        const val MAP_BACKGROUND = 0xff182520.toInt()
+        const val LIVE_NEAR_MAP = 0
+        const val LIVE_OVERVIEW_MAP = 1
+        const val LIVE_STATS = 2
+        const val LIVE_GHOST_GAP = 3
         const val PHONE_CAPABILITY = "wadadak_phone_free_run_v1"
         const val PATH = "/wadadak/free-run/v1"
     }

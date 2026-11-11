@@ -658,7 +658,16 @@ void main() {
       location.clock = 3000;
       location.streams.last.add(location.point(36.00018));
       await until(() => runs.metrics.distanceM > 0);
+      final live = await status(id);
+      expect(live['phase'], 'running');
+      expect(live['position'], [36.00018, 127.0]);
+      expect(live['nearRoute'], isNotEmpty);
+      final nearTrack = live['nearTrack'] as List<List<List<double>>>;
+      expect(nearTrack.last.last, [36.00018, 127.0]);
+      expect(nearTrack.last.length, greaterThan(1));
+
       await runs.pause();
+      expect(await status(id), isNot(contains('nearTrack')));
       await runs.end();
       await until(() => !runs.syncing);
 
