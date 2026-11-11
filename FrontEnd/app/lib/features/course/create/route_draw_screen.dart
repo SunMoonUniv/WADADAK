@@ -14,12 +14,14 @@ import '../../run/application/free_run_controller.dart';
 import '../../run/domain/run_models.dart';
 import '../course_format.dart';
 import '../course_public_period_sheet.dart';
+import 'auto_course_view.dart';
 import 'gps_course_intro.dart';
 import 'route_draft.dart';
 
 /// B3 코스 만들기 — 경로 그리기. 지도를 탭해 입력점을 찍으면 서버가 순서대로 직선으로 이어 최종 경로를 만든다.
 ///
 /// 생성 방식 탭의 `내가 달려서 등록`은 B5다. 달리기를 시작하거나(C5) 지난 기록에서 고른다(B6).
+/// `자동 생성`(빌드 플래그 `AUTO_COURSE`)은 조건으로 후보를 만들고, 고른 후보의 점으로 입력점을 채운다(A4).
 class RouteDrawScreen extends ConsumerStatefulWidget {
   const RouteDrawScreen({super.key, this.camera});
 
@@ -30,7 +32,7 @@ class RouteDrawScreen extends ConsumerStatefulWidget {
   ConsumerState<RouteDrawScreen> createState() => _RouteDrawScreenState();
 }
 
-enum _Method { draw, run }
+enum _Method { draw, run, auto }
 
 class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
   // 범례 + 아래 여백.
@@ -39,6 +41,9 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
   var _draft = const RouteDraft();
   var _method = _Method.draw;
   var _generating = false;
+
+  /// 자동 생성 후보로 채운 뒤 처음 그리는 지도는 채운 경로가 다 보이게 맞춘다.
+  var _fitFilled = false;
 
   /// 오늘 사용자 지정 코스를 더 등록할 수 없다. 한도를 받아 오지 못하면 막지 않는다(등록할 때 서버가 다시 확인한다).
   var _quotaUsedUp = false;
@@ -79,7 +84,7 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: WdSpace.s16, vertical: WdSpace.s10),
                 child: WdSegmentedControl(
-                  items: const ['경로 그리기', '내가 달려서 등록'],
+                  items: ['경로 그리기', '내가 달려서 등록', if (ref.watch(autoCourseProvider)) '자동 생성'],
                   selectedIndex: _method.index,
                   style: WdSegmentStyle.light,
                   onChanged: (index) => _changeMethod(_Method.values[index]),
@@ -88,8 +93,10 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
               if (_method == _Method.draw) ...[
                 Expanded(child: _map()),
                 _summary(),
-              ] else
-                Expanded(child: GpsCourseIntro(quotaUsedUp: _gpsQuotaUsedUp)),
+              ] else if (_method == _Method.run)
+                Expanded(child: GpsCourseIntro(quotaUsedUp: _gpsQuotaUsedUp))
+              else
+                Expanded(child: AutoCourseView(onPick: _fill, onDraw: () => _changeMethod(_Method.draw))),
             ],
           ),
           bottomNavigationBar: _method == _Method.run ? _runBar() : null,
@@ -131,11 +138,16 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
           MapView(
             // 아래 범례만큼 비워 네이버 로고·축척이 범례에 가리지 않게 한다.
             padding: const EdgeInsets.only(bottom: _legendHeight),
-            initialCenter: widget.camera?.center ?? MapView.seoulCityHall,
+            initialCenter: _draft.isEmpty ? widget.camera?.center ?? MapView.seoulCityHall : _draft.points.first,
             initialZoom: widget.camera?.zoom ?? 14,
             lines: [MapLine(id: 'draft', points: _draft.points)],
             markers: _markers(),
             onTap: _addPoint,
+            onCreated: (map) {
+              if (!_fitFilled) return;
+              _fitFilled = false;
+              map.fitPoints(_draft.points);
+            },
           ),
           Positioned(
             left: WdSpace.s16,
@@ -145,10 +157,12 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               spacing: WdSpace.s8,
               children: [
-                const Expanded(
+                Expanded(
                   child: Align(
                     alignment: Alignment.topLeft,
-                    child: WdMapHint('지도를 탭해 경로 그리기 · 점을 순서대로 연결'),
+                    child: WdMapHint(_draft.filledCount > 0
+                        ? '자동 생성 경로 · 탭하면 이어 그려요'
+                        : '지도를 탭해 경로 그리기 · 점을 순서대로 연결'),
                   ),
                 ),
                 Column(
@@ -168,29 +182,31 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
       );
 
   /// 첫 점 출발, 마지막 점 도착, 나머지는 경로 작성점(B3-05). 표지를 눌러도 지도 누름으로 간다.
-  List<MapMarker> _markers() {
-    final points = _draft.points;
-    return [
-      for (var i = 0; i < points.length; i++)
-        if (i == 0)
-          MapMarker(
-            id: 'point-$i',
-            position: points[i],
-            child: const WdRouteEndpoint.start(),
-            imageKey: 'route-start',
-            anchor: WdRouteEndpoint.startAnchor,
-          )
-        else if (i == points.length - 1)
-          MapMarker(
-            id: 'point-$i',
-            position: points[i],
-            child: const WdRouteEndpoint.end(),
-            imageKey: 'route-end',
-            anchor: WdRouteEndpoint.endAnchor,
-          )
-        else
-          MapMarker.icon(id: 'point-$i', position: points[i], icon: WdIcons.routePoint),
-    ];
+  /// 자동 생성 후보로 채운 점(최대 500개)은 출발 · 도착만 그린다. 그 뒤에 이어 찍은 점은 작성점으로 그린다.
+  List<MapMarker> _markers() => [for (var i = 0; i < _draft.points.length; i++) ?_marker(_draft.points, i)];
+
+  MapMarker? _marker(List<GeoPoint> points, int i) {
+    if (i == 0) {
+      return MapMarker(
+        id: 'point-$i',
+        position: points[i],
+        child: const WdRouteEndpoint.start(),
+        imageKey: 'route-start',
+        anchor: WdRouteEndpoint.startAnchor,
+      );
+    }
+    if (i == points.length - 1) {
+      // 한 바퀴처럼 출발점으로 돌아오면 출발만 보인다(Figma A4).
+      if (points[i] == points.first) return null;
+      return MapMarker(
+        id: 'point-$i',
+        position: points[i],
+        child: const WdRouteEndpoint.end(),
+        imageKey: 'route-end',
+        anchor: WdRouteEndpoint.endAnchor,
+      );
+    }
+    return i < _draft.filledCount ? null : MapMarker.icon(id: 'point-$i', position: points[i], icon: WdIcons.routePoint);
   }
 
   Widget _summary() => SafeArea(
@@ -202,7 +218,7 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
             children: [
               WdSummaryTiles([
                 ('총 거리', formatKm(_draft.distanceMeters.round())),
-                ('찍은 점', '${_draft.points.length}'),
+                (_draft.filledCount > 0 ? '입력점 (자동 생성)' : '찍은 점', '${_draft.points.length}'),
               ]),
               if (_quotaUsedUp)
                 const WdInfoBanner(customQuotaUsedUpMessage, tone: WdBannerTone.warning)
@@ -227,6 +243,13 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
   static const _fullMessage = '점은 ${RouteDraft.maxPoints}개까지 찍을 수 있어요.';
 
   void _undo() => setState(() => _draft = _draft.undo());
+
+  /// 고른 자동 생성 후보의 점으로 입력점을 채우고 경로 그리기(A4)로 간다. 되돌리기 한 번이면 채우기 전으로 돌아간다(정책 B3-A08).
+  void _fill(List<GeoPoint> points) => setState(() {
+        _draft = _draft.fill(points);
+        _method = _Method.draw;
+        _fitFilled = true;
+      });
 
   Future<void> _clearAll() async {
     final confirmed = await _confirm(

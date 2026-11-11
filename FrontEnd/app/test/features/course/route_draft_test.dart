@@ -8,6 +8,30 @@ void main() {
   const north = GeoPoint(37.5756, 126.9784);
   const east = GeoPoint(37.5756, 126.9897);
 
+  test('fills with an auto-generated candidate, extends it, and one undo removes the whole fill', () {
+    final drawn = const RouteDraft().add(cityHall);
+
+    final filled = drawn.fill(const [north, east, cityHall]);
+    expect(filled.points, [north, east, cityHall]);
+    expect(filled.filledCount, 3);
+    expect(filled.distanceMeters, GeoPoint.pathLength(filled.points));
+
+    final extended = filled.add(north);
+    expect(extended.filledCount, 3, reason: '이어 찍은 점은 채운 점이 아니다');
+    expect(extended.undo().points, filled.points);
+
+    final undone = filled.undo();
+    expect(undone.points, [cityHall], reason: '되돌리기 한 번이 채운 점 전체를 지우고 채우기 전으로 돌아간다');
+    expect(undone.filledCount, 0);
+    expect(filled.clear().filledCount, 0);
+  });
+
+  test('fills at most 500 points', () {
+    final many = [for (var i = 0; i < 600; i++) GeoPoint(37.5 + i * 0.0001, 126.9)];
+
+    expect(const RouteDraft().fill(many).points, hasLength(RouteDraft.maxPoints));
+  });
+
   test('needs two points and 1 km to go on', () {
     var draft = const RouteDraft();
     expect(draft.canProceed, isFalse);

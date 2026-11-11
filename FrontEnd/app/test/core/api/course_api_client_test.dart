@@ -63,6 +63,117 @@ void main() {
     expect(course.startPoint, start);
   });
 
+  test('fills plan conditions from a sentence, keeping unknown fields empty', () async {
+    final server = _FakeServer({
+      'start': {'kind': 'PLACE', 'query': '선문대'},
+      'shape': 'LOOP',
+      'endQuery': null,
+      'viaQuery': null,
+      'distanceM': null,
+      'durationMin': 30,
+      'prefer': ['AVOID_ARTERIAL', 'FLAT', 'SOMETHING_NEW'],
+      'message': null,
+    });
+
+    final form = await client(server).parsePlan('선문대에서 30분 큰길 피해서');
+
+    expect(server.request.method, 'POST');
+    expect(server.request.path, '/api/v1/courses/plans/parse');
+    expect(server.request.data, {'text': '선문대에서 30분 큰길 피해서'});
+    expect(form.start, PlanStart.place);
+    expect(form.startQuery, '선문대');
+    expect(form.shape, PlanShape.loop);
+    expect(form.distanceM, isNull);
+    expect(form.durationMin, 30);
+    expect(form.prefer, {PlanPref.avoidArterial, PlanPref.flat}, reason: '모르는 값은 버린다');
+    expect(form.message, isNull);
+  });
+
+  test('sends only the fields the shape uses and reads candidates', () async {
+    final server = _FakeServer({
+      'candidates': [
+        {
+          'anchorPoints': [start.toJson(), end.toJson()],
+          'distanceMeters': 5140,
+          'retraceRatio': 0.02,
+          'arterialRatio': 0.24,
+          'storeCount': 3,
+          'summary': '5.14km · 큰길 24% · 편의점 3곳',
+          'notApplied': ['FLAT'],
+        },
+      ],
+      'reason': null,
+      'message': null,
+      'startName': null,
+    });
+
+    final result = await client(server).planCourse(
+      const PlanForm(
+        start: PlanStart.current,
+        startQuery: '쓰지 않음',
+        shape: PlanShape.pointToPoint,
+        endQuery: '아산역',
+        viaQuery: '쓰지 않음',
+        distanceM: 5000,
+        prefer: {PlanPref.noRetrace},
+      ),
+      currentLocation: start,
+      paceSecPerKm: 360,
+    );
+
+    expect(server.request.path, '/api/v1/courses/plans');
+    expect(server.request.data, {
+      'form': {
+        'start': {'kind': 'CURRENT'},
+        'shape': 'POINT_TO_POINT',
+        'endQuery': '아산역',
+        'prefer': ['NO_RETRACE'],
+      },
+      'currentLocation': start.toJson(),
+      'paceSecPerKm': 360,
+    });
+    final candidate = result.candidates.single;
+    expect(candidate.anchorPoints, [start, end]);
+    expect(candidate.distanceMeters, 5140);
+    expect(candidate.arterialRatio, 0.24);
+    expect(candidate.retraceRatio, 0.02);
+    expect(candidate.storeCount, 3);
+    expect(candidate.notApplied, {PlanPref.flat});
+    expect(result.reason, isNull);
+  });
+
+  test('sends the target of a loop without a pace and reads a reason and the quota', () async {
+    final plan = _FakeServer({
+      'candidates': <Object>[],
+      'reason': 'PLACE_TOO_FAR',
+      'message': '한강은 선문대학교에서 약 80km 떨어져 있어요. 가까운 곳을 골라 주세요.',
+      'startName': '선문대학교',
+    });
+
+    final result = await client(plan).planCourse(
+      const PlanForm(start: PlanStart.place, startQuery: '선문대', shape: PlanShape.loop, durationMin: 30),
+      currentLocation: start,
+    );
+
+    expect(plan.request.data, {
+      'form': {
+        'start': {'kind': 'PLACE', 'query': '선문대'},
+        'shape': 'LOOP',
+        'durationMin': 30,
+        'prefer': <String>[],
+      },
+      'currentLocation': start.toJson(),
+    });
+    expect(result.candidates, isEmpty);
+    expect(result.reason, PlanReason.placeTooFar);
+    expect(result.startName, '선문대학교');
+
+    final quota = _FakeServer({'limit': 20, 'remaining': 7});
+    final left = await client(quota).planQuota();
+    expect(quota.request.path, '/api/v1/courses/plans/quota');
+    expect((left.limit, left.remaining), (20, 7));
+  });
+
   test('checks a name', () async {
     final server = _FakeServer({'name': '한강 러닝', 'available': false});
 
