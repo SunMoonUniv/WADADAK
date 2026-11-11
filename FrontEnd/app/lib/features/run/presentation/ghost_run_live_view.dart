@@ -507,7 +507,7 @@ class _GhostRunLiveViewState extends State<GhostRunLiveView> {
         ('거리', runDistance(widget.run)),
         ('평균 페이스', formatRunPace(widget.run.paceSecondsPerKm)),
       ],
-      [('심박수', '—'), ('최고 페이스', '—')],
+      [('심박수', _value(RunMetric.heartRate)), ('최고 페이스', '—')],
       [
         ('케이던스', _value(RunMetric.cadence)),
         (

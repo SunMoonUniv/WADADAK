@@ -111,8 +111,10 @@ class _MyRunRecordScreenState extends ConsumerState<MyRunRecordScreen> {
             ? ref.read(freeRunControllerProvider).savedSnapshot(local)
             : (_remoteOwner == c.currentOwner ? _remote : null);
         if (snapshot != null) {
+          final owner = c.currentOwner;
           return FreeRunResultView(
             run: snapshot,
+            heartRateSource: owner == null ? null : (store: c.store, owner: owner),
             onConfirm: () => Navigator.pop(context),
             onDelete: _deleting ? null : _delete,
             history: true,

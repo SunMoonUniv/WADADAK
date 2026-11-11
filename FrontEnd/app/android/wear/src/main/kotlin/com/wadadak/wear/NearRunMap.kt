@@ -2,24 +2,22 @@ package com.wadadak.wear
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PointF
+import android.location.Location
 import android.view.View
 import org.json.JSONArray
-import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.sin
 
 private data class MapPoint(val lat: Double, val lon: Double) {
-    fun eastFrom(origin: MapPoint) = (lon - origin.lon) * METERS_PER_DEGREE *
-        cos(Math.toRadians(origin.lat))
-    fun northFrom(origin: MapPoint) = (lat - origin.lat) * METERS_PER_DEGREE
+    fun measureTo(target: MapPoint, result: FloatArray) {
+        Location.distanceBetween(lat, lon, target.lat, target.lon, result)
+    }
 
     companion object {
-        private const val METERS_PER_DEGREE = 111195.08
 
         fun fromJson(point: JSONArray?): MapPoint? {
             val lat = point?.optDouble(0) ?: return null
@@ -45,6 +43,8 @@ internal class NearRunMap(
 ) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val path = Path()
+    private val rangeClip = Path()
+    private val measurement = FloatArray(2)
     private var route = emptyList<List<MapPoint>>()
     private var track = emptyList<List<MapPoint>>()
     private var position: MapPoint? = null
@@ -63,7 +63,7 @@ internal class NearRunMap(
         position = MapPoint.fromJson(current)
         ghost = MapPoint.fromJson(opponent)
         if (!gpsWeak) updateHeading()
-        contentDescription = if (position == null) "현재 위치 확인 중" else "내 위치 주변 100 m 축척 지도"
+        contentDescription = if (position == null) "현재 위치 확인 중" else "내 위치 중심 반경 100 m 지도"
         invalidate()
     }
 
@@ -71,16 +71,15 @@ internal class NearRunMap(
         val current = position ?: return
         val segment = track.lastOrNull() ?: return
         val latest = segment.last()
-        if (hypot(latest.eastFrom(current), latest.northFrom(current)) > 30) return
+        current.measureTo(latest, measurement)
+        if (measurement[0] > 30) return
         // Use recent movement in one recorded segment, with enough displacement to ignore jitter.
         for (i in segment.lastIndex - 1 downTo 0) {
-            val previous = segment[i]
-            val east = latest.eastFrom(previous)
-            val north = latest.northFrom(previous)
-            val meters = hypot(east, north)
+            segment[i].measureTo(latest, measurement)
+            val meters = measurement[0]
             if (meters > 60) return
             if (meters >= 8) {
-                heading = atan2(east, north)
+                heading = Math.toRadians(measurement[1].toDouble())
                 return
             }
         }
@@ -89,33 +88,46 @@ internal class NearRunMap(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
         val unit = width / 188f
-        val scale = 0.32f * unit
-        val centerX = width * 0.52f
-        val centerY = height * 0.58f
+        val centerX = width / 2f
+        val centerY = height / 2f
+        val radius = minOf(centerX, centerY) - unit
+        if (radius <= 0f) return
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = unit
+        paint.color = 0xff34463e.toInt()
+        canvas.drawCircle(centerX, centerY, radius, paint)
+
         val origin = position
         if (origin != null) {
             val angle = heading ?: 0.0
-            val sine = sin(angle)
-            val cosine = cos(angle)
+            val pixelsPerMeter = radius / RADIUS_METERS
             fun project(point: MapPoint): PointF {
-                val east = point.eastFrom(origin)
-                val north = point.northFrom(origin)
+                origin.measureTo(point, measurement)
+                val distance = measurement[0] * pixelsPerMeter
+                val bearing = Math.toRadians(measurement[1].toDouble()) - angle
                 return PointF(
-                    centerX + ((east * cosine - north * sine) * scale).toFloat(),
-                    centerY - ((east * sine + north * cosine) * scale).toFloat(),
+                    centerX + (sin(bearing) * distance).toFloat(),
+                    centerY - (cos(bearing) * distance).toFloat(),
                 )
             }
+
+            rangeClip.rewind()
+            rangeClip.addCircle(centerX, centerY, radius, Path.Direction.CW)
+            val saved = canvas.save()
+            canvas.clipPath(rangeClip)
             paint.strokeCap = Paint.Cap.ROUND
             paint.strokeJoin = Paint.Join.ROUND
-            paint.pathEffect = DashPathEffect(floatArrayOf(3f * unit, 6f * unit), 0f)
             drawLines(canvas, route, 0xffd4dfd8.toInt(), 4.5f * unit, ::project)
-            paint.pathEffect = null
             drawLines(canvas, track, lime, 5.5f * unit, ::project)
             ghost?.let {
                 val point = project(it)
-                drawMarker(canvas, point.x, point.y, 6 * unit, violet, unit)
-                drawDisc(canvas, point.x, point.y, 2 * unit, backgroundColor)
+                if (hypot(point.x - centerX, point.y - centerY) <= radius) {
+                    drawMarker(canvas, point.x, point.y, 6 * unit, violet, unit)
+                    drawDisc(canvas, point.x, point.y, 2 * unit, backgroundColor)
+                }
             }
+            canvas.restoreToCount(saved)
+
             drawMarker(canvas, centerX, centerY, 8 * unit, lime, unit)
             if (heading != null) {
                 path.reset()
@@ -128,7 +140,10 @@ internal class NearRunMap(
                 canvas.drawPath(path, paint)
             }
         }
-        drawScale(canvas, unit, scale)
+        paint.style = Paint.Style.FILL
+        paint.color = muted
+        paint.textSize = 8 * unit
+        canvas.drawText("반경 100 m", 12 * unit, height - 14 * unit, paint)
     }
 
     private fun drawLines(
@@ -162,20 +177,7 @@ internal class NearRunMap(
         canvas.drawCircle(x, y, radius, paint)
     }
 
-    private fun drawScale(canvas: Canvas, unit: Float, scale: Float) {
-        val left = 19 * unit
-        val right = left + 100 * scale
-        val y = height - 12 * unit
-        paint.style = Paint.Style.FILL
-        paint.color = backgroundColor
-        canvas.drawRoundRect(left - 3 * unit, y - 13 * unit, right + 3 * unit, y + 5 * unit,
-            3 * unit, 3 * unit, paint)
-        paint.color = muted
-        paint.strokeWidth = unit
-        canvas.drawLine(left, y, right, y, paint)
-        canvas.drawLine(left, y, left, y + 3 * unit, paint)
-        canvas.drawLine(right, y, right, y + 3 * unit, paint)
-        paint.textSize = 8 * unit
-        canvas.drawText("100 m", left, y - 4 * unit, paint)
+    private companion object {
+        const val RADIUS_METERS = 100f
     }
 }

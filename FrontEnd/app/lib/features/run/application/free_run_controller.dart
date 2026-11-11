@@ -264,6 +264,7 @@ class FreeRunController extends ChangeNotifier {
       voiceNotice: live ? _recording?.voiceNotice : null,
       averageCadence: metrics.averageCadence,
       currentCadence: metrics.currentCadence,
+      currentHeartRateBpm: live ? _recording?.currentHeartRateBpm : null,
       cadenceCoverageMs: metrics.cadenceCoverageMs,
       cadenceStatus: live
           ? (_recording?.cadenceStatus ?? '센서 미연결')

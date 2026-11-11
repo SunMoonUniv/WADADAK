@@ -11,15 +11,6 @@ enum RunMetric {
 
   const RunMetric(this.label);
   final String label;
-  static const freeMetrics = [
-    active,
-    distance,
-    averagePace,
-    currentPace,
-    cadence,
-  ];
-  RunMetric get nextFree =>
-      freeMetrics[(freeMetrics.indexOf(this) + 1) % freeMetrics.length];
   RunMetric get next => values[(index + 1) % values.length];
 
   String value(RunSnapshot run) => switch (this) {
@@ -32,7 +23,9 @@ enum RunMetric {
     currentPace => _pace(run.currentPaceDisplay),
     cadence =>
       run.currentCadence == null ? '—' : '${run.currentCadence!.round()} spm',
-    heartRate => '—',
+    heartRate => run.currentHeartRateBpm == null
+        ? '—'
+        : '${run.currentHeartRateBpm} BPM',
   };
 
   static String _pace(double? value) =>

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -15,6 +16,7 @@ import 'package:wadadak/core/time/monotonic_clock.dart';
 import 'package:wadadak/features/run/application/free_run_controller.dart';
 import 'package:wadadak/features/run/application/run_controller.dart';
 import 'package:wadadak/features/run/application/wear_run_bridge.dart';
+import 'package:wadadak/features/run/data/run_local_store.dart';
 import 'package:wadadak/features/run/domain/course_run.dart';
 import 'package:wadadak/features/run/domain/course_tracker.dart';
 import 'package:wadadak/features/run/domain/ghost_live_comparison.dart';
@@ -533,6 +535,145 @@ void main() {
     expect(runs.run!.id, newId);
     expect(runs.onCourse, isTrue);
     expect(api.started.single.$2, newId);
+  });
+
+  test('watch heart rate attaches replay to its original run exactly once', () async {
+    await ready();
+    final bridge = WearRunBridge(() => runs);
+    await runs.prepareStart();
+    final id = runs.run!.id;
+    final startedAt = runs.run!.startedAt.millisecondsSinceEpoch;
+
+    Future<Object?> send(String session, List<(int, int)> values) async {
+      final response = await bridge.handle(
+        MethodCall('request', {
+          'command': 'heartRate',
+          'sessionId': session,
+          'samples': [
+            for (final (elapsed, bpm) in values) [startedAt + elapsed, bpm],
+          ],
+        }),
+      );
+      return response['heartRateAck'];
+    }
+
+    location.clock = 2000;
+    expect(await send(id, [(1000, 132)]), isTrue);
+    final view = FreeRunController.recording(runs);
+    addTearDown(view.dispose);
+    expect(view.snapshot.currentHeartRateBpm, 132);
+    expect(await send('unknown-run', [(1500, 150)]), isFalse);
+    expect(await send(id, [(500, 128), (1000, 170)]), isTrue);
+    expect(runs.currentHeartRateBpm, 132);
+    // A slightly ahead watch clock can put a sample beyond a pause the phone
+    // has not written yet. Final results use the authoritative run boundaries.
+    expect(await send(id, [(3500, 250)]), isTrue);
+
+    location.clock = 3000;
+    await runs.pause();
+    expect(runs.currentHeartRateBpm, isNull);
+    location.clock = 6000;
+    await runs.resume();
+    expect(runs.currentHeartRateBpm, isNull);
+    expect(await send(id, [(2000, 139)]), isTrue);
+    expect(runs.currentHeartRateBpm, isNull);
+    location.clock = 9500;
+    await runs.pause();
+    location.clock = 10000;
+    await runs.end();
+    expect(runs.run!.phase, RunPhase.ended);
+    await until(() => !runs.syncing);
+    final inputsBefore = (await store.list('alice', id: id))
+        .single.inputs.map((input) => input.toJson()).toList();
+
+    Future<Object?> watchSummary() async {
+      final response = await bridge.handle(
+        MethodCall('request', {'command': 'status', 'sessionId': id}),
+      );
+      return response['heartRateSummary'];
+    }
+
+    final summaries = StreamIterator(store.watchHeartRateSummary('alice', id));
+    addTearDown(summaries.cancel);
+    expect(await summaries.moveNext(), isTrue);
+    expect(summaries.current, (averageBpm: 133, maxBpm: 139));
+    expect(await watchSummary(), {'averageBpm': 133, 'maxBpm': 139});
+
+    // The watch reconnects after a second run has already started.
+    runs.clearResult();
+    location.clock = 12000;
+    await runs.prepareStart();
+    expect(runs.run!.id, isNot(id));
+    final replay = [(-100, 101), (4000, 155), (7000, 146), (11000, 190)];
+    expect(await send(id, replay), isTrue);
+    expect(await send(id, replay), isTrue);
+    expect(await summaries.moveNext(), isTrue);
+    expect(summaries.current, (averageBpm: 136, maxBpm: 146));
+    expect(await watchSummary(), isNull);
+    expect(runs.currentHeartRateBpm, isNull);
+    expect(
+      (await store.list('alice', id: id)).single.inputs.map((input) => input.toJson()),
+      inputsBefore,
+    );
+
+    final database = await store.database;
+    final rows = await database.query('run_heart_rates', orderBy: 'measured_at_ms');
+    expect(rows.map((row) => row['session_id']), everyElement(id));
+    expect(rows.map((row) => row['bpm']), [128, 132, 139, 250, 146]);
+    member = 'bob';
+    expect(await send(id, [(8000, 160)]), isFalse);
+    expect(await database.query('run_heart_rates'), hasLength(5));
+    expect(await store.heartRateSummary('bob', id), isNull);
+
+    member = 'alice';
+    await runs.bindOwner();
+    runs.clearResult();
+    expect(await watchSummary(), {'averageBpm': 136, 'maxBpm': 146});
+    await store.deleteRecord('alice', id);
+    expect(await send(id, [(8000, 160)]), isTrue);
+    expect(await database.query('run_heart_rates'), isEmpty);
+  });
+
+  test('upgrading a version six run database preserves existing inputs', () async {
+    await ready();
+    await runs.prepareStart();
+    final run = runs.run!;
+    final input = run.inputs.first;
+    final directory = await Directory.systemTemp.createTemp('wadadak_run_upgrade_');
+    final file = '${directory.path}/runs.db';
+    final old = RunLocalStore(factory: databaseFactoryFfi, databasePath: file);
+    final upgraded = RunLocalStore(factory: databaseFactoryFfi, databasePath: file);
+    addTearDown(() async {
+      await old.close();
+      await upgraded.close();
+      await directory.delete(recursive: true);
+    });
+    await old.create(run, input);
+    final db = await old.database;
+    await db.execute('DROP TABLE run_heart_rates');
+    await db.setVersion(6);
+    await old.close();
+
+    final restored = (await upgraded.list('alice', id: run.id)).single;
+    expect(restored.inputs.single.toJson(), input.toJson());
+    expect((await (await upgraded.database).query('run_heart_rates')), isEmpty);
+    expect(await upgraded.heartRateSummary('alice', run.id), isNull);
+  });
+
+  test('watch live heart rate expires without a fresh measurement', () async {
+    await ready();
+    await runs.prepareStart();
+    final session = runs.run!;
+    location.clock = 1000;
+    expect(
+      await runs.receiveWearHeartRates('alice', session.id, [
+        (measuredAtMs: location.utc.millisecondsSinceEpoch, bpm: 143),
+      ]),
+      isTrue,
+    );
+    expect(runs.currentHeartRateBpm, 143);
+    location.clock = 16000;
+    expect(runs.currentHeartRateBpm, isNull);
   });
 
   test('watch recovers the same session after missing live updates', () async {

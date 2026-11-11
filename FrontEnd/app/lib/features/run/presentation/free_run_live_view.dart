@@ -71,13 +71,13 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
   }
 
   void _cycle(int slot) =>
-      setState(() => _metrics[slot] = _metrics[slot].nextFree);
+      setState(() => _metrics[slot] = _metrics[slot].next);
 
   Widget _metricButton(int slot, Widget child) => Semantics(
     key: ValueKey('run-metric-$slot'),
     button: true,
     label: '${_metrics[slot].label}, ${_metrics[slot].value(widget.run)}',
-    hint: '터치하면 ${_metrics[slot].nextFree.label} 표시',
+    hint: '터치하면 ${_metrics[slot].next.label} 표시',
     onTap: () => _cycle(slot),
     child: ExcludeSemantics(
       child: InkWell(onTap: () => _cycle(slot), child: child),
@@ -315,7 +315,7 @@ class _FreeRunLiveViewState extends State<FreeRunLiveView> {
                         ('현재 페이스', formatRunPace(run.currentPaceDisplay)),
                         ('시간', formatRunTime(run.active)),
                       ],
-                      [('심박수', '—'), ('최고 페이스', '—')],
+                      [('심박수', RunMetric.heartRate.value(run)), ('최고 페이스', '—')],
                       [
                         (
                           '케이던스',

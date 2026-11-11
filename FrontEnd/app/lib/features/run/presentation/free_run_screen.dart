@@ -40,6 +40,8 @@ class FreeRunScreen extends ConsumerWidget {
       listenable: controller,
       builder: (context, _) {
         final run = controller.snapshot;
+        final recording = controller.recordingEngine;
+        final owner = recording?.currentOwner;
         final comparison =
             !controller.preparing &&
                 (run.state == RunState.running || run.state == RunState.paused)
@@ -128,6 +130,9 @@ class FreeRunScreen extends ConsumerWidget {
                     ),
                     RunState.finished => FreeRunResultView(
                       run: run,
+                      heartRateSource: owner == null || recording == null
+                          ? null
+                          : (store: recording.store, owner: owner),
                       onConfirm: controller.newRun,
                       pendingCourse: controller.courseOf(run)?.name,
                       onRetryGhost: controller.retrySync,

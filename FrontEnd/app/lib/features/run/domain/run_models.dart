@@ -89,6 +89,7 @@ class RunSnapshot {
     this.laps = const [],
     this.averageCadence,
     this.currentCadence,
+    this.currentHeartRateBpm,
     this.cadenceCoverageMs = 0,
     this.cadenceStatus = '측정 전',
     this.voiceNotice,
@@ -124,6 +125,7 @@ class RunSnapshot {
   final bool paceDisplayManaged, stationary;
   final List<RunLap> laps;
   final double? averageCadence, currentCadence;
+  final int? currentHeartRateBpm;
   final int cadenceCoverageMs;
   final String cadenceStatus;
   final String? voiceNotice;

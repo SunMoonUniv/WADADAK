@@ -8,4 +8,7 @@
     <string name="phone_unavailable">테스트 앱이 설치된 폰과 연결해 주세요</string>
     <string name="ping_failed">응답을 받지 못했어요. 다시 시도해 주세요.</string>
     <string name="unexpected_response">예상한 응답이 아니에요</string>
+    <string name="heart_rate_channel">러닝 심박수</string>
+    <string name="heart_rate_notification">러닝 심박수 측정 중</string>
+    <string name="heart_rate_stop">심박수 측정 중지</string>
 </resources>
