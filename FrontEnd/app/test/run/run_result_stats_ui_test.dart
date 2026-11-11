@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -7,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wadadak/core/map/map_view.dart';
+import 'package:wadadak/features/run/data/run_local_store.dart';
 import 'package:wadadak/features/run/domain/run_models.dart';
 import 'package:wadadak/features/run/domain/run_result_stats.dart';
 import 'package:wadadak/features/run/presentation/free_run_result_view.dart';
@@ -23,6 +25,16 @@ RunSnapshot snapshot(RunResultStats? stats, {double distance = 3200}) =>
       inputs: const [],
       resultStats: stats,
     );
+
+class _HeartRateResultStore extends RunLocalStore {
+  final updates = StreamController<RunHeartRateSummary?>.broadcast();
+
+  @override
+  Stream<RunHeartRateSummary?> watchHeartRateSummary(String owner, String sessionId) {
+    expect((owner, sessionId), ('alice', 'result'));
+    return updates.stream;
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -99,6 +111,45 @@ void main() {
       }
     });
   }
+  testWidgets('an open result updates both BPM values after late sync', (tester) async {
+    final store = _HeartRateResultStore();
+    addTearDown(store.updates.close);
+    tester.view.physicalSize = const Size(320, 1600);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [mapEngineProvider.overrideWithValue(MapEngine.dev)],
+        child: MaterialApp(
+          theme: WdTheme.light(),
+          home: FreeRunResultView(
+            run: snapshot(null),
+            onConfirm: () {},
+            heartRateSource: (store: store, owner: 'alice'),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('평균 심박수'), findsOneWidget);
+    expect(find.text('최고 심박수'), findsOneWidget);
+    expect(find.textContaining('BPM', findRichText: true), findsNothing);
+
+    store.updates.add((averageBpm: 128, maxBpm: 141));
+    await tester.pumpAndSettle();
+    expect(find.text('128 BPM', findRichText: true), findsOneWidget);
+    expect(find.text('141 BPM', findRichText: true), findsOneWidget);
+
+    store.updates.add((averageBpm: 136, maxBpm: 154));
+    await tester.pumpAndSettle();
+    expect(find.text('136 BPM', findRichText: true), findsOneWidget);
+    expect(find.text('154 BPM', findRichText: true), findsOneWidget);
+    expect(find.text('128 BPM', findRichText: true), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('missing, flat zero and short runs have distinct messages', (
     tester,
   ) async {

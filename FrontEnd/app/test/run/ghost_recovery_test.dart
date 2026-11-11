@@ -591,6 +591,7 @@ void main() {
     }
     await db.execute('DROP TABLE withdrawn_run_owners');
     await db.execute('ALTER TABLE sessions DROP COLUMN guidance_state');
+    await db.execute('DROP TABLE run_heart_rates');
     await db.execute('PRAGMA user_version=3');
     await restart();
     final recovered = (await recorder.recover('alice')).single;
@@ -608,7 +609,7 @@ void main() {
           : run.inputs.first.toJson(),
     );
     expect(await store.deletedIds('bob'), {'deleted-remote'});
-    expect((await store.database).getVersion(), completion(6));
+    expect((await store.database).getVersion(), completion(7));
     expect(jsonEncode(recovered.inputs.last.toJson()), contains('INTERRUPTED'));
   });
 

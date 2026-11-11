@@ -4,6 +4,8 @@ import 'recording_models.dart' as recording;
 import 'motion_pace.dart';
 import 'run_lap.dart';
 
+typedef RunHeartRateSummary = ({int averageBpm, int maxBpm});
+
 /// RESULT_V3 adds barometric elevation only; historical distance/time/laps stay intact.
 class RunResultStats {
   static const currentVersion = 'RESULT_V3';

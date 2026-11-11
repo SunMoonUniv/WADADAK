@@ -143,6 +143,10 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
       canSync: () => !preparing && !recorder.active && !_disposed,
     );
     _changes = recorder.changes.stream.listen((_) {
+      if (_wearHeartRate != null && run?.phase != RunPhase.running) {
+        _wearHeartRate = null;
+        _wearHeartRateExpiry?.cancel();
+      }
       _checkCourseEnd();
       _guide();
       unawaited(_refreshScreenAwake());
@@ -317,6 +321,63 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
   bool _gapOpen = false;
   LocalRun? get run =>
       recorder.current?.owner == currentOwner ? recorder.current : null;
+  static const _heartRateDisplayAgeMs = 15000;
+  ({String sessionId, RunHeartRateSample sample})? _wearHeartRate;
+  Timer? _wearHeartRateExpiry;
+
+  int? get currentHeartRateBpm {
+    final reading = _wearHeartRate;
+    final active = run;
+    if (reading == null ||
+        active?.id != reading.sessionId ||
+        active?.phase != RunPhase.running) {
+      return null;
+    }
+    final age = _utcNow().millisecondsSinceEpoch - reading.sample.measuredAtMs;
+    return age >= -wearHeartRateClockSkewMs && age < _heartRateDisplayAgeMs
+        ? reading.sample.bpm
+        : null;
+  }
+
+  Future<bool> receiveWearHeartRates(
+    String owner,
+    String sessionId,
+    List<RunHeartRateSample> samples,
+  ) async {
+    if (_disposed || currentOwner != owner) return false;
+    final result = await store.saveHeartRates(
+      owner,
+      sessionId,
+      samples,
+      receivedAtMs: _utcNow().millisecondsSinceEpoch,
+    );
+    final latest = result.latest;
+    final previous = _wearHeartRate;
+    if (!_disposed &&
+        currentOwner == owner &&
+        run?.id == sessionId &&
+        run?.phase == RunPhase.running &&
+        latest != null &&
+        (previous == null ||
+            previous.sessionId != sessionId ||
+            latest.measuredAtMs > previous.sample.measuredAtMs)) {
+      final age = _utcNow().millisecondsSinceEpoch - latest.measuredAtMs;
+      if (age >= -wearHeartRateClockSkewMs && age < _heartRateDisplayAgeMs) {
+        _wearHeartRate = (sessionId: sessionId, sample: latest);
+        _wearHeartRateExpiry?.cancel();
+        _wearHeartRateExpiry = Timer(
+          Duration(milliseconds: _heartRateDisplayAgeMs - age),
+          () {
+            _wearHeartRate = null;
+            _notify();
+          },
+        );
+        _notify();
+      }
+    }
+    return result.acknowledged;
+  }
+
   bool get canCancelStart => preparing && !_committing;
   Completer<bool>? _wearFix;
   Completer<bool>? _wearStart;
@@ -2064,6 +2125,7 @@ class RunController extends ChangeNotifier with WidgetsBindingObserver {
     await screenAwake.close();
     ++_generation;
     _timer?.cancel();
+    _wearHeartRateExpiry?.cancel();
     await _ending;
     WidgetsBinding.instance.removeObserver(this);
     await _voiceSettingsSubscription?.cancel();

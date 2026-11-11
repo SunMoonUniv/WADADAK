@@ -1,5 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-feature android:name="android.hardware.type.watch" />
+    <uses-permission android:name="android.permission.BODY_SENSORS" android:maxSdkVersion="35" />
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
+
+    <queries>
+        <package android:name="com.google.android.wearable.healthservices" />
+    </queries>
 
     <application
         android:label="@string/app_name"
@@ -16,5 +24,15 @@
             </intent-filter>
         </activity>
         <activity android:name=".WearPingActivity" android:exported="false" />
+        <service
+            android:name=".WearHeartRateService"
+            android:exported="false"
+            android:foregroundServiceType="health" />
+        <service android:name=".WearHeartRateReconnectService" android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.CAPABILITY_CHANGED" />
+                <data android:scheme="wear" android:host="*" android:path="/wadadak_phone_free_run_v1" />
+            </intent-filter>
+        </service>
     </application>
 </manifest>

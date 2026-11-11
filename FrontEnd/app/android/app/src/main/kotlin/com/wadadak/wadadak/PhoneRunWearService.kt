@@ -42,8 +42,10 @@ internal object PhoneRunWearBridge {
             )
         }
         val request = try {
-            require(bytes.size <= 512)
-            JSONObject(bytes.decodeToString())
+            require(bytes.size <= 2048)
+            JSONObject(bytes.decodeToString()).also {
+                require(bytes.size <= 512 || it.optString("command") == "heartRate")
+            }
         } catch (_: IllegalArgumentException) {
             reply.setException(IllegalArgumentException("Invalid watch request"))
             return reply.task
@@ -51,12 +53,29 @@ internal object PhoneRunWearBridge {
             reply.setException(IllegalArgumentException("Invalid watch request"))
             return reply.task
         }
-        val args = mapOf(
-            "command" to request.optString("command"),
+        val command = request.optString("command")
+        val args = mutableMapOf<String, Any?>(
+            "command" to command,
             "sessionId" to request.optString("sessionId").takeIf(String::isNotEmpty),
             "readyId" to (request.opt("readyId") as? String),
-            "mode" to (request.opt("mode") as? String)
+            "mode" to (request.opt("mode") as? String),
         )
+        if (command == "heartRate") {
+            val samples = request.optJSONArray("samples")
+            val count = samples?.length() ?: 0
+            if (samples == null || count !in 1..32) {
+                reply.setException(IllegalArgumentException("Invalid heart rate batch"))
+                return reply.task
+            }
+            args["samples"] = List(count) { index ->
+                val sample = samples.optJSONArray(index)
+                val timestamp = sample?.opt(0)
+                val bpm = sample?.opt(1)
+                if (sample?.length() == 2 && (timestamp is Int || timestamp is Long) && bpm is Int) {
+                    listOf(timestamp, bpm)
+                } else null
+            }
+        }
         main.post {
             val target = channel
             if (target == null) {

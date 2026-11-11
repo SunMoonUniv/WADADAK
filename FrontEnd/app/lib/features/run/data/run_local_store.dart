@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:path/path.dart' as path;
@@ -5,10 +6,14 @@ import 'package:sqflite/sqflite.dart';
 
 import '../domain/recording_models.dart';
 import '../domain/run_calories.dart';
+import '../domain/run_result_stats.dart';
 import '../domain/run_voice.dart';
 import '../domain/ghost_run.dart';
 import '../domain/course_run.dart';
 import '../../../core/time/monotonic_clock.dart';
+
+typedef RunHeartRateSample = ({int measuredAtMs, int bpm});
+const wearHeartRateClockSkewMs = 5000;
 
 abstract interface class RunGhostStore {
   Future<void> saveGhostIntent(GhostStartIntent intent);
@@ -55,6 +60,8 @@ class RunLocalStore implements RunStore, RunHistoryStore, RunGhostStore {
   final DatabaseFactory? factory;
   final String? databasePath;
   Future<Database>? _database;
+  final _heartRateChanges =
+      StreamController<({String owner, String sessionId})>.broadcast();
   Future<Database> get database => _database ??= _open();
   Future<Database> _open() async {
     final dbFactory = factory ?? databaseFactory;
@@ -62,7 +69,7 @@ class RunLocalStore implements RunStore, RunHistoryStore, RunGhostStore {
       databasePath ??
           path.join(await dbFactory.getDatabasesPath(), 'runs_v1.db'),
       options: OpenDatabaseOptions(
-        version: 6,
+        version: 7,
         onUpgrade: (db, old, _) async {
           if (old < 2) await _createExtras(db);
           if (old < 3) {
@@ -71,6 +78,7 @@ class RunLocalStore implements RunStore, RunHistoryStore, RunGhostStore {
           if (old < 4) await _createGhostStorage(db);
           if (old < 5) await _createCourseStarts(db);
           if (old < 6) await _createAccountAndGuidanceStorage(db);
+          if (old < 7) await _createHeartRateStorage(db);
         },
         onOpen: _retryWithdrawnOwners,
         onConfigure: (db) async {
@@ -94,10 +102,18 @@ class RunLocalStore implements RunStore, RunHistoryStore, RunGhostStore {
           await _createGhostStorage(db);
           await _createCourseStarts(db);
           await _createAccountAndGuidanceStorage(db);
+          await _createHeartRateStorage(db);
         },
       ),
     );
   }
+
+  static Future<void> _createHeartRateStorage(Database db) => db.execute(
+    'CREATE TABLE run_heart_rates ('
+    'session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE, '
+    'measured_at_ms INTEGER NOT NULL, bpm INTEGER NOT NULL, '
+    'PRIMARY KEY(session_id, measured_at_ms))',
+  );
 
   static Future<void> _createAccountAndGuidanceStorage(Database db) async {
     await db.execute('ALTER TABLE sessions ADD COLUMN guidance_state TEXT');
@@ -120,6 +136,181 @@ class RunLocalStore implements RunStore, RunHistoryStore, RunGhostStore {
           "BEGIN SELECT RAISE(ABORT, 'WITHDRAWN_ACCOUNT'); END",
         );
       }
+    }
+  }
+
+  /// Adds the watch samples without changing the recorder or server input log.
+  /// Returns an acknowledgement only after the transaction has committed.
+  Future<({bool acknowledged, RunHeartRateSample? latest})> saveHeartRates(
+    String owner,
+    String sessionId,
+    List<RunHeartRateSample> samples, {
+    required int receivedAtMs,
+  }) async {
+    final db = await database;
+    var hasAcceptedSample = false;
+    final receipt = await db.transaction((tx) async {
+      final row = await _heartRateSession(tx, owner, sessionId);
+      if (row == null) {
+        final deleted = await tx.query(
+          'run_deletions',
+          columns: ['id'],
+          where: 'id=? AND owner=?',
+          whereArgs: [sessionId, owner],
+          limit: 1,
+        );
+        return (acknowledged: deleted.isNotEmpty, latest: null);
+      }
+
+      final start = DateTime.parse(row['started_at'] as String);
+      final startMs = start.millisecondsSinceEpoch;
+      final endMs = row['phase'] == RunPhase.ended.name
+          ? startMs + (row['checkpoint_ms'] as int)
+          : null;
+      final transitions = await _heartRateTransitions(tx, sessionId);
+      final ordered = [...samples]
+        ..sort((a, b) => a.measuredAtMs.compareTo(b.measuredAtMs));
+      final batch = tx.batch();
+      final windows = _heartRateWindows(startMs, endMs, transitions).iterator;
+      var hasWindow = windows.moveNext();
+      for (final sample in ordered) {
+        final at = sample.measuredAtMs;
+        if (at > receivedAtMs + wearHeartRateClockSkewMs) break;
+        while (hasWindow && windows.current.endMs != null && at >= windows.current.endMs!) {
+          hasWindow = windows.moveNext();
+        }
+        if (!hasWindow) break;
+        if (at < windows.current.startMs) continue;
+        hasAcceptedSample = true;
+        batch.insert(
+          'run_heart_rates',
+          {'session_id': sessionId, 'measured_at_ms': at, 'bpm': sample.bpm},
+          conflictAlgorithm: ConflictAlgorithm.ignore,
+        );
+      }
+      await batch.commit(noResult: true);
+      final saved = await tx.query(
+        'run_heart_rates',
+        columns: ['measured_at_ms', 'bpm'],
+        where: 'session_id=?',
+        whereArgs: [sessionId],
+        orderBy: 'measured_at_ms DESC',
+        limit: 1,
+      );
+      final latest = saved.firstOrNull;
+      final measuredAtMs = latest?['measured_at_ms'] as int?;
+      final lastResume = transitions.lastOrNull;
+      return (
+        acknowledged: true,
+        latest: measuredAtMs == null ||
+                (lastResume != null &&
+                    lastResume.kind == RunKind.resume &&
+                    measuredAtMs < startMs + lastResume.elapsedMs)
+            ? null
+            : (measuredAtMs: measuredAtMs, bpm: latest!['bpm'] as int),
+      );
+    });
+    if (hasAcceptedSample && !_heartRateChanges.isClosed) {
+      _heartRateChanges.add((owner: owner, sessionId: sessionId));
+    }
+    return receipt;
+  }
+
+  Future<RunHeartRateSummary?> heartRateSummary(
+    String owner,
+    String sessionId,
+  ) async {
+    final db = await database;
+    return db.transaction((tx) async {
+      final session = await _heartRateSession(tx, owner, sessionId);
+      if (session == null || session['phase'] != RunPhase.ended.name) return null;
+      final startMs = DateTime.parse(session['started_at'] as String).millisecondsSinceEpoch;
+      final endMs = startMs + (session['checkpoint_ms'] as int);
+      final transitions = await _heartRateTransitions(tx, sessionId);
+      final windows = _heartRateWindows(startMs, endMs, transitions).toList();
+      var count = 0;
+      var total = 0;
+      var peak = 0;
+      // Keep below SQLite's bind parameter limit even after many pauses.
+      for (var offset = 0; offset < windows.length; offset += 200) {
+        final ranges = windows.skip(offset).take(200).toList();
+        final values = List.filled(ranges.length, '(?, ?)').join(', ');
+        final rows = await tx.rawQuery(
+          'WITH active_ranges(start_ms, end_ms) AS (VALUES $values) '
+          'SELECT COUNT(*) AS sample_count, SUM(h.bpm) AS total_bpm, MAX(h.bpm) AS peak_bpm '
+          'FROM active_ranges r JOIN run_heart_rates h '
+          'ON h.session_id = ? AND h.measured_at_ms >= r.start_ms '
+          'AND h.measured_at_ms < r.end_ms',
+          [
+            for (final range in ranges) ...[range.startMs, range.endMs],
+            sessionId,
+          ],
+        );
+        final stats = rows.single;
+        count += stats['sample_count'] as int;
+        total += (stats['total_bpm'] as int?) ?? 0;
+        final windowPeak = (stats['peak_bpm'] as int?) ?? 0;
+        if (windowPeak > peak) peak = windowPeak;
+      }
+      return count == 0 ? null : (averageBpm: (total / count).round(), maxBpm: peak);
+    });
+  }
+
+  Stream<RunHeartRateSummary?> watchHeartRateSummary(String owner, String sessionId) =>
+      Stream<void>.multi((events) {
+        final subscription = _heartRateChanges.stream
+            .where((key) => key.owner == owner && key.sessionId == sessionId)
+            .listen((_) => events.add(null), onDone: events.close);
+        events.onCancel = subscription.cancel;
+        events.add(null);
+      }).asyncMap((_) => heartRateSummary(owner, sessionId)).distinct();
+
+  Future<Map<String, Object?>?> _heartRateSession(
+    DatabaseExecutor tx,
+    String owner,
+    String sessionId,
+  ) async => (await tx.query(
+    'sessions',
+    columns: ['started_at', 'phase', 'checkpoint_ms'],
+    where: 'id=? AND owner=? AND NOT EXISTS '
+        '(SELECT 1 FROM withdrawn_run_owners WHERE owner=sessions.owner)',
+    whereArgs: [sessionId, owner],
+    limit: 1,
+  )).firstOrNull;
+
+  Future<List<RunInput>> _heartRateTransitions(DatabaseExecutor tx, String sessionId) async {
+    final boundaries = await tx.query(
+      'inputs',
+      columns: ['payload'],
+      where: 'session_id=? AND (payload LIKE ? OR payload LIKE ?)',
+      whereArgs: [sessionId, '%"kind":"PAUSE"%', '%"kind":"RESUME"%'],
+      orderBy: 'seq',
+    );
+    return boundaries.map((row) => RunInput.fromJson(
+      jsonDecode(row['payload'] as String) as Map<String, dynamic>,
+    )).toList();
+  }
+
+  static Iterable<({int startMs, int? endMs})> _heartRateWindows(
+    int startMs,
+    int? endMs,
+    List<RunInput> transitions,
+  ) sync* {
+    int? activeFrom = startMs;
+    for (final transition in transitions) {
+      final at = startMs + transition.elapsedMs;
+      if (endMs != null && at >= endMs) break;
+      if (transition.kind == RunKind.pause) {
+        if (activeFrom != null && activeFrom < at) {
+          yield (startMs: activeFrom, endMs: at);
+        }
+        activeFrom = null;
+      } else {
+        activeFrom ??= at;
+      }
+    }
+    if (activeFrom != null && (endMs == null || activeFrom < endMs)) {
+      yield (startMs: activeFrom, endMs: endMs);
     }
   }
 
@@ -678,6 +869,7 @@ class RunLocalStore implements RunStore, RunHistoryStore, RunGhostStore {
   }
 
   Future<void> close() async {
+    unawaited(_heartRateChanges.close());
     if (_database != null) {
       await (await _database!).close();
     }

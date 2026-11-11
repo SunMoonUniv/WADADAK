@@ -1,6 +1,7 @@
 package com.wadadak.wear
 
 import android.app.Activity
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.Canvas
 import android.graphics.DashPathEffect
@@ -9,14 +10,17 @@ import android.graphics.Path
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.RippleDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.provider.Settings
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.TextUtils
 import android.text.style.ForegroundColorSpan
+import android.text.style.RelativeSizeSpan
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
@@ -27,9 +31,6 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
-import com.google.android.gms.tasks.Tasks
-import com.google.android.gms.wearable.CapabilityClient
-import com.google.android.gms.wearable.Wearable
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -48,6 +49,8 @@ class WearRunActivity : Activity() {
     private var requestTimeout: Runnable? = null
     private var requestId = 0
     private var visible = false
+    private var resumed = false
+    private val heartRateObserver: () -> Unit = { if (visible) render() }
     private var pending = false
     private var activeCommand: String? = null
     private var queued: Pair<String, String?>? = null
@@ -97,11 +100,25 @@ class WearRunActivity : Activity() {
     override fun onStart() {
         super.onStart()
         visible = true
+        WearHeartRateService.observe(heartRateObserver)
         request("status")
+    }
+
+    override fun onResume() {
+        super.onResume()
+        resumed = true
+        if (available) WearHeartRateService.startIfRunning(this)
+        render()
+    }
+
+    override fun onPause() {
+        resumed = false
+        super.onPause()
     }
 
     override fun onStop() {
         visible = false
+        WearHeartRateService.observe(null)
         available = false
         queued = null
         pending = false
@@ -153,20 +170,8 @@ class WearRunActivity : Activity() {
                 if (command == "start" && mode == "free") "readyId" else "sessionId",
                 if (command == "status") rememberedSession else sessionId,
             )
-        Wearable.getCapabilityClient(context)
-            .getCapability(PHONE_CAPABILITY, CapabilityClient.FILTER_REACHABLE)
-            .onSuccessTask { capability ->
-                if (!visible || !pending || token != requestId) {
-                    return@onSuccessTask Tasks.forCanceled<ByteArray>()
-                }
-                val phone = capability.nodes.firstOrNull { it.isNearby }
-                    ?: capability.nodes.firstOrNull()
-                    ?: return@onSuccessTask Tasks.forException<ByteArray>(
-                        IllegalStateException("Phone unavailable")
-                    )
-                Wearable.getMessageClient(context)
-                    .sendRequest(phone.id, PATH, payload.toString().encodeToByteArray())
-            }.addOnCompleteListener { task ->
+        requestPhoneRun(context, payload) { visible && pending && token == requestId }
+            .addOnCompleteListener { task ->
                 val reply = if (task.isSuccessful) {
                     runCatching { JSONObject(task.result.decodeToString()) }.getOrNull()
                 } else {
@@ -259,6 +264,9 @@ class WearRunActivity : Activity() {
                 "selectCourse" -> if (notice == null) show(if (mode == "ghost") "ghosts" else "courseReady")
                 "selectGhost" -> if (notice == null) show("courseReady")
             }
+            WearHeartRateService.acceptSnapshot(snapshot)
+            if (available && !wasAvailable) WearHeartRateSync.kick(this)
+            if (available && resumed) WearHeartRateService.startIfRunning(this)
         }
         if (visible) {
             render()
@@ -354,10 +362,12 @@ class WearRunActivity : Activity() {
             "running", "ending" -> {
                 label("mode", "●  ${modeTitle(shownMode)}", 49, 15, 118, 14, 11, LIME)
                 label("distance", km, 39, 30, 138, 50, 44)
-                label("unit", "km", 76, 80, 64, 16, 13, MUTED)
-                metric("time", "달린 시간", duration, 43, 98, 57, 18)
-                divider(107, 104, 26)
-                metric("pace", "평균 페이스", pace, 117, 98, 60, 18)
+                label("unit", "km", 76, 77, 64, 15, 13, MUTED)
+                metric("time", "달린 시간", duration, 20, 101, 54, 17, fitValue = true)
+                divider(77, 106, 24)
+                metric("pace", "평균 페이스", pace, 79, 101, 58, 17, fitValue = true)
+                divider(138, 106, 24, key = "heart-rate-divider")
+                renderHeartRate(id, phase == "running")
                 val status = when {
                     phase == "ending" -> "기록 저장 중"
                     state.optBoolean("continuing") -> "이어서 기록 중"
@@ -366,14 +376,17 @@ class WearRunActivity : Activity() {
                     else -> "기록 중"
                 }
                 when {
-                    !available -> renderConnectionWarning(132)
-                    state.optBoolean("gpsWeak") -> {
-                        label("warning", "GPS 신호 약함", 31, 132, 154, 14, 11, PALE_AMBER)
-                        label("warning-detail", "시간 기록 중 · 거리 갱신 대기", 31, 146, 154, 12, 10, MUTED)
+                    !available -> {
+                        label("warning", "폰 연결 끊김", 31, 145, 154, 11, 10, PALE_AMBER)
+                        label("warning-detail", "마지막으로 받은 기록", 31, 156, 154, 11, 9, MUTED)
                     }
-                    else -> label("status", status, 34, 138, 148, 21, 11, MUTED)
+                    state.optBoolean("gpsWeak") -> {
+                        label("warning", "GPS 신호 약함", 31, 145, 154, 11, 10, PALE_AMBER)
+                        label("warning-detail", "시간 기록 중 · 거리 갱신 대기", 31, 156, 154, 11, 9, MUTED)
+                    }
+                    else -> label("status", status, 34, 146, 148, 20, 11, MUTED)
                 }
-                button("pause", "Ⅱ  일시정지", 54, 161, 108, 34, false,
+                button("pause", "Ⅱ  일시정지", 54, 167, 108, 30, false,
                     enabled && phase == "running") { request("pause", id) }
                 if (courseLive) liveNav()
             }
@@ -409,11 +422,15 @@ class WearRunActivity : Activity() {
                 label("mode", modeTitle(shownMode), 56, 16, 104, 12, 10, LIME)
                 val hasCourse = shownMode != "free"
                 label("title", if (hasCourse) "전체 기록" else "러닝 요약", 40, 31, 136, 22, 18)
-                label("distance", km, 41, 53, 103, 48, 40)
-                label("unit", "km", 144, 68, 27, 20, 13, MUTED)
-                metric("time", "달린 시간", duration, 43, 107, 57, 17)
-                divider(107, 112, 24)
-                metric("pace", "평균 페이스", pace, 117, 107, 60, 17)
+                label("distance", km, 41, 53, 103, 40, 36)
+                label("unit", "km", 144, 64, 27, 19, 13, MUTED)
+                metric("time", "달린 시간", duration, 43, 93, 57, 17)
+                divider(107, 98, 24)
+                metric("pace", "평균 페이스", pace, 117, 93, 60, 17)
+                val heartRate = state.optJSONObject("heartRateSummary")
+                val bpm = if (heartRate == null) "평균 — · 최고 —" else
+                    "평균 ${heartRate.optInt("averageBpm")} · 최고 ${heartRate.optInt("maxBpm")} BPM"
+                label("heart-rate-summary", "심박수 $bpm", 26, 129, 164, 13, 10, WHITE)
                 val verdict = if (shownMode == "ghost") "ghostResult" else "courseResult"
                 val waitingForVerdict = hasCourse && state.optJSONObject(verdict) == null
                 val verdictFailed = waitingForVerdict && verdictStatus == "failed"
@@ -425,10 +442,10 @@ class WearRunActivity : Activity() {
                     state.optBoolean("saved") -> "기록 저장 완료"
                     else -> "저장된 기록 없음"
                 }
-                label("status", status, 35, if (hasCourse) 139 else 147, 146, 14, 10,
+                label("status", status, 35, if (hasCourse) 142 else 146, 146, 13, 10,
                     if (verdictFailed || !available) PALE_AMBER else MUTED)
                 if (hasCourse) {
-                    resultLink("코스 결과 ⌄", 1, 153)
+                    resultLink("코스 결과 ⌄", 1, 155, 18)
                     resultNav()
                 }
                 button("done", "완료", 52, if (hasCourse) 173 else 166, 112, if (hasCourse) 25 else 35, true, true) {
@@ -469,6 +486,78 @@ class WearRunActivity : Activity() {
             slots["cancel"]?.visibility = View.VISIBLE
         } else {
             slots["cancel"]?.visibility = View.GONE
+        }
+    }
+
+    private fun renderHeartRate(sessionId: String?, active: Boolean) {
+        val reading = if (active) WearHeartRateService.readingFor(sessionId) else null
+        val permission = WearHeartRateService.hasPermission(this)
+        val bpm = reading?.freshBpm()?.toString()
+        val retryReason = if (permission && reading?.retry == true) reading.text else null
+        val canEnable = active && available && resumed && (!permission || retryReason != null)
+        val value = when {
+            bpm != null -> SpannableString("$bpm BPM").apply {
+                setSpan(RelativeSizeSpan(.62f), bpm.length, length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            }
+            canEnable && !permission -> "켜기"
+            canEnable && retryReason != null -> "재시도"
+            else -> "—"
+        }
+        metric("heart-rate", "심박수", value, 140, 101, 59, 17, fitValue = true)
+
+        val accessibility = if (canEnable) View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            else View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+        slots["heart-rate-caption"]?.importantForAccessibility = accessibility
+        slots["heart-rate-value"]?.apply {
+            importantForAccessibility = accessibility
+            contentDescription = when {
+                bpm != null -> null
+                retryReason != null -> retryReason
+                active && permission && available -> reading?.text ?: "심박수 측정 중"
+                else -> null
+            }
+        }
+        val action = slots["heart-rate-action"] ?: View(this).apply {
+            isFocusable = true
+            place("heart-rate-action", this, 140, 91, 59, 54)
+        }
+        action.visibility = if (canEnable) View.VISIBLE else View.GONE
+        if (canEnable) {
+            action.contentDescription = if (retryReason != null) "$retryReason. 심박수 다시 시도" else "심박수 켜기"
+            action.setOnClickListener {
+                if (retryReason != null) Toast.makeText(this, retryReason, Toast.LENGTH_SHORT).show()
+                enableHeartRate()
+            }
+        }
+    }
+
+    private fun enableHeartRate() {
+        if (WearHeartRateService.hasPermission(this)) {
+            WearHeartRateService.startIfRunning(this, retry = true)
+            return
+        }
+        val permission = WearHeartRateService.permission
+        val permissionRequested = "requested_$permission"
+        if (resumeState.getBoolean(permissionRequested, false) &&
+            !shouldShowRequestPermissionRationale(permission)
+        ) {
+            val settings = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
+            runCatching { startActivity(settings) }.onFailure {
+                Toast.makeText(this, "워치 설정에서 와다닥의 심박수 권한을 허용해 주세요.", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            resumeState.edit().putBoolean(permissionRequested, true).apply()
+            requestPermissions(arrayOf(permission), HEART_RATE_PERMISSION_REQUEST)
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == HEART_RATE_PERMISSION_REQUEST) {
+            if (available && resumed) WearHeartRateService.startIfRunning(this, retry = true)
+            if (visible) render()
         }
     }
 
@@ -1059,15 +1148,26 @@ class WearRunActivity : Activity() {
         }
     }
 
-    private fun metric(key: String, caption: String, value: String, x: Int, y: Int, width: Int, size: Int) {
+    private fun metric(
+        key: String, caption: String, value: CharSequence, x: Int, y: Int, width: Int, size: Int,
+        fitValue: Boolean = false,
+    ) {
+        val valueKey = "$key-value"
+        val newValue = valueKey !in slots
         label("$key-caption", caption, x, y, width, 12, 10, MUTED)
-        label("$key-value", value, x, y + 15, width, size + 4, size)
+        label(valueKey, value, x, y + 15, width, size + 4, size)
+        if (fitValue && newValue) {
+            (slots[valueKey] as? TextView)?.apply {
+                maxLines = 1
+                setAutoSizeTextTypeUniformWithConfiguration(px(11), px(size), 1, TypedValue.COMPLEX_UNIT_PX)
+            }
+        }
     }
 
-    private fun divider(x: Int, y: Int, height: Int) {
-        if (slots.containsKey("divider")) return
+    private fun divider(x: Int, y: Int, height: Int, key: String = "divider") {
+        if (slots.containsKey(key)) return
         val view = View(this).apply { setBackgroundColor(TRACK) }
-        place("divider", view, x, y, 1, height)
+        place(key, view, x, y, 1, height)
     }
 
     private fun icon(resource: Int) {
@@ -1184,7 +1284,6 @@ class WearRunActivity : Activity() {
         const val LIVE_OVERVIEW_MAP = 1
         const val LIVE_STATS = 2
         const val LIVE_GHOST_GAP = 3
-        const val PHONE_CAPABILITY = "wadadak_phone_free_run_v1"
-        const val PATH = "/wadadak/free-run/v1"
+        const val HEART_RATE_PERMISSION_REQUEST = 21
     }
 }

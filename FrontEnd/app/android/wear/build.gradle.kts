@@ -55,6 +55,9 @@ kotlin {
 
 dependencies {
     implementation("com.google.android.gms:play-services-wearable:20.0.1")
+    implementation("androidx.health:health-services-client:1.1.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("androidx.work:work-runtime-ktx:2.11.2")
 }
 
 if (providers.environmentVariable("WADADAK_UPDATE_WEAR").orNull == "1") {

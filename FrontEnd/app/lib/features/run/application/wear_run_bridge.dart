@@ -11,6 +11,7 @@ import '../../../core/api/course_api_client.dart';
 import '../../../core/map/geo_point.dart';
 import '../../home/my_location.dart';
 import '../data/own_ghost_api.dart';
+import '../data/run_local_store.dart';
 import '../domain/course_run.dart';
 import '../domain/own_ghost.dart';
 import '../domain/recording_models.dart';
@@ -97,7 +98,14 @@ class WearRunBridge {
     if (owner != controller.currentOwner || owner != await controller.owner()) {
       return {'phase': 'unavailable', 'message': '폰의 계정을 확인해 주세요.'};
     }
-    if (command == 'status') return _status(controller, owner, args);
+    if (command == 'status') {
+      return _withResultHeartRate(
+        controller,
+        owner,
+        await _status(controller, owner, args),
+      );
+    }
+    if (command == 'heartRate') return _heartRate(controller, owner, args);
 
     final mode = args['mode'] as String?;
     final selectionId = args['sessionId'] as String?;
@@ -231,7 +239,7 @@ class WearRunBridge {
     if (owner != await controller.owner()) {
       return {'phase': 'unavailable', 'message': '폰의 계정을 확인해 주세요.'};
     }
-    return _snapshot(controller);
+    return _withResultHeartRate(controller, owner, _snapshot(controller));
   }
 
   Future<Map<String, Object?>> _courseAction(
@@ -410,6 +418,56 @@ class WearRunBridge {
     } finally {
       _operation = null;
     }
+  }
+
+  Future<Map<String, Object?>> _heartRate(
+    RunController controller,
+    String owner,
+    Map args,
+  ) async {
+    final id = args['sessionId'];
+    final raw = args['samples'];
+    if (id is! String || id.isEmpty || id.length > 128 ||
+        raw is! List || raw.isEmpty || raw.length > 32) {
+      return {'heartRateAck': false};
+    }
+    final samples = <RunHeartRateSample>[];
+    for (final point in raw) {
+      if (point is! List || point.length != 2) return {'heartRateAck': false};
+      final timestamp = point[0];
+      final bpm = point[1];
+      if (timestamp is! int || timestamp <= 0 || bpm is! int || bpm < 1 || bpm > 300) {
+        return {'heartRateAck': false};
+      }
+      samples.add((measuredAtMs: timestamp, bpm: bpm));
+    }
+    return {
+      'heartRateAck': await controller.receiveWearHeartRates(owner, id, samples),
+    };
+  }
+
+  Future<Map<String, Object?>> _withResultHeartRate(
+    RunController controller,
+    String owner,
+    Map<String, Object?> snapshot,
+  ) async {
+    final id = snapshot['sessionId'];
+    if (snapshot['phase'] != 'ended' || id is! String) return snapshot;
+    try {
+      final stats = await controller.store.heartRateSummary(owner, id);
+      if (controller.currentOwner != owner) {
+        return {'phase': 'unavailable', 'message': '폰의 계정을 확인해 주세요.'};
+      }
+      if (stats != null) {
+        snapshot['heartRateSummary'] = {
+          'averageBpm': stats.averageBpm,
+          'maxBpm': stats.maxBpm,
+        };
+      }
+    } on Object {
+      // A missing local metric must not hide the existing workout result.
+    }
+    return snapshot;
   }
 
   Future<Map<String, Object?>> _status(
@@ -665,14 +723,14 @@ class WearRunBridge {
   }
 }
 
-// Match the watch's 100 m scale through a turn. Keep intersecting edges,
-// including edges whose two endpoints are outside the viewport.
+// Preselect edges in a padded box around the 100 m view. The watch clips to
+// the exact circle, including edges whose endpoints are both outside.
 List<List<List<double>>> _nearbyMapLines(
   Iterable<Iterable<GeoPoint>> segments,
   GeoPoint center,
 ) {
   const metersPerDegree = 111195.08;
-  const radiusM = 400;
+  const radiusM = 110;
   final latRadius = radiusM / metersPerDegree;
   final lonRadius =
       latRadius / math.cos(center.lat * math.pi / 180).abs().clamp(.01, 1.0);

@@ -1,14 +1,22 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
+import '../data/run_local_store.dart';
 import '../domain/course_run.dart';
 import '../domain/run_models.dart';
+import '../domain/run_result_stats.dart';
 import 'course_register_card.dart';
 import 'free_run_live_view.dart';
 import 'ghost_result_entry_screen.dart';
 import 'run_pace_bars.dart';
 import 'run_segment_analysis_screen.dart';
 import 'run_share_screen.dart';
+
+final _heartRateSummaryProvider = StreamProvider.autoDispose.family<
+  RunHeartRateSummary?,
+  ({RunLocalStore store, String owner, String sessionId})
+>((ref, key) => key.store.watchHeartRateSummary(key.owner, key.sessionId));
 
 /// Figma D1 / D1-1 / D1-2. Measured values and the server verdict remain authoritative.
 class FreeRunResultView extends StatelessWidget {
@@ -20,6 +28,7 @@ class FreeRunResultView extends StatelessWidget {
     this.history = false,
     this.pendingCourse,
     this.onRetryGhost,
+    this.heartRateSource,
   });
   final RunSnapshot run;
   final VoidCallback onConfirm;
@@ -27,6 +36,30 @@ class FreeRunResultView extends StatelessWidget {
   final bool history;
   final String? pendingCourse;
   final VoidCallback? onRetryGhost;
+  final ({RunLocalStore store, String owner})? heartRateSource;
+
+  Widget _heartRateCard() {
+    final source = heartRateSource;
+    final id = run.sessionId;
+    if (source == null || id == null) return _heartRateStats(null);
+    return Consumer(
+      builder: (context, ref, _) {
+        final stats = ref.watch(
+          _heartRateSummaryProvider((
+            store: source.store,
+            owner: source.owner,
+            sessionId: id,
+          )),
+        );
+        return _heartRateStats(stats.asData?.value);
+      },
+    );
+  }
+
+  Widget _heartRateStats(RunHeartRateSummary? stats) => WdStatSummary([
+    ('평균 심박수', stats == null ? '—' : '${stats.averageBpm} BPM'),
+    ('최고 심박수', stats == null ? '—' : '${stats.maxBpm} BPM'),
+  ]);
 
   @override
   Widget build(BuildContext context) {
@@ -228,6 +261,7 @@ class FreeRunResultView extends StatelessWidget {
                             ),
                           ],
                   ),
+                  _heartRateCard(),
                   SizedBox(
                     height: 180,
                     child: ClipRRect(
