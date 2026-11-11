@@ -9,7 +9,6 @@ import com.wadadak.course.internal.planner.PlanForm.Shape;
 import com.wadadak.course.internal.planner.PlanForm.Start;
 import com.wadadak.course.internal.planner.PlanForm.StartKind;
 import com.wadadak.course.internal.planner.PlanResult.PlanCandidate;
-import com.wadadak.course.internal.planner.PlanResult.PlanReason;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
@@ -73,19 +72,16 @@ class PlannerStub implements CoursePlanner, StubImplementation {
             throw new AppException(CourseErrorCode.PLAN_DAILY_LIMIT_EXCEEDED);
         }
         if ("없는 장소".equals(start)) {
-            return PlanResult.failure(PlanReason.PLACE_NOT_FOUND, "'없는 장소'를 찾지 못했어요. 이름을 다시 확인해 주세요.", null);
+            return PlanResult.placeNotFound(start, null);
         }
         if ("한강".equals(strip(form.endQuery())) || "한강".equals(strip(form.viaQuery()))) {
-            return PlanResult.failure(PlanReason.PLACE_TOO_FAR, "한강은 " + from + "에서 약 80km 떨어져 있어요. 가까운 곳을 골라 주세요.", start);
+            return PlanResult.placeTooFar("한강", from, 80_000, start);
         }
         if ("섬".equals(start)) {
-            String message = form.shape() == Shape.LOOP
-                    ? "이 근처에서는 길을 따라 한 바퀴 코스를 만들지 못했어요. 왕복으로 바꿔 보세요."
-                    : "이 근처에서는 길을 따라 코스를 만들지 못했어요.";
-            return PlanResult.failure(PlanReason.NO_CANDIDATES, message, start);
+            return PlanResult.noCandidates(form.shape() == Shape.LOOP, start);
         }
         if ("중복".equals(start)) {
-            return PlanResult.failure(PlanReason.SIMILAR_EXISTS, "비슷한 코스가 이미 있어요. 거리나 출발지를 바꿔 보세요.", start);
+            return PlanResult.similarExists(start);
         }
         Set<Pref> notApplied = EnumSet.noneOf(Pref.class);
         if (form.prefer() != null) {

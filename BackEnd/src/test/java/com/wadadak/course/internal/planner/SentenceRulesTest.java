@@ -114,6 +114,9 @@ class SentenceRulesTest {
         assertThat(SentenceRules.spans("광안대교 보면서 해변 따라 4km").start()).isEqualTo("광안대교");
         assertThat(SentenceRules.spans("땀 좀 빼고 싶은데 동네 한 바퀴").start()).isNull();
         assertThat(SentenceRules.spans("평평한 길로 하프 거리").start()).isNull();
+        // "왕복" 앞 단어가 "들르는"처럼 꾸미는 말이면 장소가 아니다
+        assertThat(SentenceRules.spans("30분 정도 편의점 들르는 왕복 코스").start()).isNull();
+        assertThat(SentenceRules.spans("독립기념관 왕복 8km").start()).isEqualTo("독립기념관");
         assertThat(SentenceRules.keywordPrefs("횡단보도 덜 건너게 5km")).doesNotContain(Pref.SIDEWALK);
         assertThat(SentenceRules.keywordPrefs("보도블록 깔린 길로만 7km")).contains(Pref.SIDEWALK);
         // Figma A7-1 예시. 키가 없어 규칙만 써도 큰길 피하기를 읽는다

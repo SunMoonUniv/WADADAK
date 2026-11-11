@@ -41,7 +41,7 @@ class CandidateGeneratorTest {
         // 원 12개 + round_trip 12개
         assertThat(paths).hasSize(24);
         assertThat(paths.subList(0, 12)).allSatisfy(p -> assertThat(p.distanceMeters()).isCloseTo(5_000, within(250.0)));
-        verify(routing, atMost(12 * CandidateGenerator.LOOP_MAX_TRIES)).route(any(), anyBoolean());
+        verify(routing, atMost(12 * CandidateGenerator.MAX_TRIES)).route(any(), anyBoolean());
     }
 
     @Test
@@ -110,6 +110,20 @@ class CandidateGeneratorTest {
             // 반환점은 목표/2/1.25 = 2km
             assertThat(START.distanceMeters(p.points().get(1))).isCloseTo(2_000, within(1.0));
         });
+    }
+
+    @Test
+    void outAndBackFixesTurnDistance() {
+        // 길이 직선의 1.6배면 첫 반환점(2km)으로는 6.4km(+28%)다. 반환점을 줄여 ±10% 안에 넣는다
+        when(routing.route(any(), anyBoolean())).thenAnswer(a -> {
+            List<GeoPoint> points = a.getArgument(0);
+            return path(points, 1.6 * straight(points));
+        });
+
+        List<RoutedPath> paths = generator(fixed()).generate(Shape.OUT_AND_BACK, START, null, 5_000, FAR);
+
+        assertThat(paths).hasSize(6).allSatisfy(p -> assertThat(p.distanceMeters()).isCloseTo(5_000, within(500.0)));
+        verify(routing, atMost(6 * CandidateGenerator.MAX_TRIES)).route(any(), anyBoolean());
     }
 
     @Test
