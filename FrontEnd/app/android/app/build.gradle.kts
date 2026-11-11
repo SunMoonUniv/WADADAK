@@ -1,7 +1,14 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
+}
+
+// Play 업로드 키. android/key.properties(커밋 금지)에 storeFile·storePassword·keyAlias·keyPassword.
+val uploadKey = Properties().apply {
+    rootProject.file("key.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
 
 android {
@@ -43,6 +50,14 @@ android {
                 keyPassword = "android"
             }
         }
+        if (!uploadKey.isEmpty) {
+            create("release") {
+                storeFile = rootProject.file(uploadKey.getProperty("storeFile"))
+                storePassword = uploadKey.getProperty("storePassword")
+                keyAlias = uploadKey.getProperty("keyAlias")
+                keyPassword = uploadKey.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -52,9 +67,8 @@ android {
             }
         }
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // key.properties가 없으면 디버그 키로 서명한다(`flutter run --release`용). Play는 이 번들을 거부한다.
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 }
