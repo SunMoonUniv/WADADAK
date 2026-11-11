@@ -13,6 +13,7 @@ import com.wadadak.course.internal.planner.PlanForm.Start;
 import com.wadadak.course.internal.planner.PlanForm.StartKind;
 import com.wadadak.course.internal.planner.PlanResult.PlanCandidate;
 import com.wadadak.course.internal.planner.PlanResult.PlanReason;
+import com.wadadak.course.internal.planner.PlannerRepository.PoiCounts;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.locationtech.jts.geom.LineString;
@@ -26,7 +27,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.ToIntFunction;
+import java.util.function.Function;
 
 import static com.wadadak.course.internal.planner.CandidateGenerator.destination;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -78,18 +79,21 @@ class PlannerServiceTest {
     void plansFromCurrentLocation() {
         List<RoutedPath> paths = List.of(new RoutedPath(List.of(HERE, HERE), 5_000, List.of()));
         when(generator.generate(any(), any(), any(), any(), any())).thenReturn(paths);
-        // 가짜 고르기: 받은 편의점 함수로 센 수를 후보에 넣는다
+        // 가짜 고르기: 받은 편의점 · 화장실 함수로 센 수를 후보에 넣는다
         when(selector.select(any(), any(), any(), any(), any())).thenAnswer(a -> {
-            ToIntFunction<LineString> stores = a.getArgument(4);
-            return new Selection(List.of(candidate(stores.applyAsInt(LINE))), false);
+            Function<LineString, PoiCounts> pois = a.getArgument(4);
+            return new Selection(List.of(candidate(pois.apply(LINE))), false);
         });
-        when(repository.storesNear(LINE, PlannerService.STORE_METERS)).thenReturn(4);
+        when(repository.poisNear(LINE, PlannerService.STORE_METERS, PlannerService.TOILET_METERS)).thenReturn(new PoiCounts(4, 2));
 
         PlanResult result = service.plan(MEMBER, current(Shape.LOOP, 5_000));
 
         assertThat(result.reason()).isNull();
         assertThat(result.startName()).isNull();
-        assertThat(result.candidates()).singleElement().extracting(PlanCandidate::storeCount).isEqualTo(4);
+        assertThat(result.candidates()).singleElement().satisfies(c -> {
+            assertThat(c.storeCount()).isEqualTo(4);
+            assertThat(c.toiletCount()).isEqualTo(2);
+        });
         verify(repository).reserve(MEMBER, TODAY, PlannerRepository.PLAN, PlannerService.PLAN_LIMIT);
         // 기한은 한도를 잡은 때부터 10초
         verify(generator).generate(Shape.LOOP, HERE, null, 5_000, NOW.plusSeconds(10));
@@ -252,7 +256,8 @@ class PlannerServiceTest {
         return new PlanForm(new Start(StartKind.CURRENT, null), Shape.LOOP, null, null, null, minutes, Set.of(), null);
     }
 
-    private static PlanCandidate candidate(int stores) {
-        return new PlanCandidate(List.of(HERE), 5_000, 0.01, 0.1, stores, PlanCandidate.summary(5_000, 0.1, stores), Set.of());
+    private static PlanCandidate candidate(PoiCounts pois) {
+        return new PlanCandidate(List.of(HERE), 5_000, 0.01, 0.1, pois.stores(), pois.toilets(), null,
+                PlanCandidate.summary(5_000, 0.1, pois.stores(), pois.toilets(), null), Set.of());
     }
 }

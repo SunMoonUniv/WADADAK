@@ -1078,7 +1078,8 @@ enum PlanShape {
   static PlanShape? fromApi(String? name) => values.where((value) => value.apiName == name).firstOrNull;
 }
 
-/// 원하는 길. 1단계는 [supported]만 반영하고, 나머지는 문장에서 읽어도 후보에 `아직 반영하지 않았어요`로 알린다.
+/// 원하는 길. [supported]만 반영하고, 나머지는 문장에서 읽어도 후보에 `아직 반영하지 않았어요`로 알린다.
+/// 평지 · 오르막은 서버에 표고점 데이터가 없으면 반영하지 않고 같은 안내가 온다.
 enum PlanPref {
   avoidArterial('AVOID_ARTERIAL', '큰길 피하기'),
   noRetrace('NO_RETRACE', '같은 길 반복 없이'),
@@ -1086,7 +1087,7 @@ enum PlanPref {
   flat('FLAT', '평지'),
   hilly('HILLY', '오르막'),
   sidewalk('SIDEWALK', '인도'),
-  toiletOnRoute('TOILET_ON_ROUTE', '화장실'),
+  toiletOnRoute('TOILET_ON_ROUTE', '화장실 들르기'),
   river('RIVER', '강변'),
   park('PARK', '공원');
 
@@ -1094,8 +1095,8 @@ enum PlanPref {
   final String apiName;
   final String label;
 
-  /// A7 `원하는 길` 칩. 순서도 Figma 그대로다.
-  static const supported = [avoidArterial, noRetrace, storeOnRoute];
+  /// A7 `원하는 길` 칩 순서. 평지와 오르막은 함께 고르지 않는다.
+  static const supported = [avoidArterial, noRetrace, storeOnRoute, toiletOnRoute, flat, hilly];
 
   static PlanPref? fromApi(String? name) => values.where((value) => value.apiName == name).firstOrNull;
 }
@@ -1226,6 +1227,8 @@ class PlanCandidate {
     required this.retraceRatio,
     required this.arterialRatio,
     required this.storeCount,
+    this.toiletCount = 0,
+    this.ascentMeters,
     this.notApplied = const {},
   });
 
@@ -1235,6 +1238,8 @@ class PlanCandidate {
         retraceRatio: (json['retraceRatio']! as num).toDouble(),
         arterialRatio: (json['arterialRatio']! as num).toDouble(),
         storeCount: json['storeCount']! as int,
+        toiletCount: json['toiletCount'] as int? ?? 0,
+        ascentMeters: json['ascentMeters'] as int?,
         notApplied: {for (final pref in json['notApplied'] as List? ?? const []) ?PlanPref.fromApi(pref as String)},
       );
 
@@ -1250,6 +1255,12 @@ class PlanCandidate {
 
   /// 경로 50m 안 편의점 수.
   final int storeCount;
+
+  /// 경로 100m 안 공중화장실 수.
+  final int toiletCount;
+
+  /// 경로를 따라 오른 높이(m). 서버가 모르면 null.
+  final int? ascentMeters;
 
   /// 요청한 원하는 길 중 아직 반영하지 않은 것.
   final Set<PlanPref> notApplied;

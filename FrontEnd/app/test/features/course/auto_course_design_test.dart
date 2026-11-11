@@ -43,7 +43,9 @@ void main() {
         retraceRatio: retrace,
         arterialRatio: arterial,
         storeCount: stores,
-        notApplied: const {PlanPref.flat},
+        toiletCount: stores > 0 ? 1 : 0,
+        ascentMeters: (retrace * 1000).round(),
+        notApplied: const {PlanPref.park},
       );
 
   testWidgets('draws every auto-generation screen', (tester) async {

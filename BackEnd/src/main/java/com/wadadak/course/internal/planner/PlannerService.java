@@ -38,6 +38,8 @@ class PlannerService implements CoursePlanner {
     static final int PARSE_LIMIT = 50;
     /** 후보의 편의점 수: 경로에서 이 거리(m) 안 */
     static final int STORE_METERS = 50;
+    /** 후보의 화장실 수: 경로에서 이 거리(m) 안. 주소로 찾은 좌표라 건물 · 공원 가운데에 찍혀 편의점보다 넓게 본다 */
+    static final int TOILET_METERS = 100;
 
     private final PlannerRepository repository;
     private final SentenceParser parser;
@@ -139,7 +141,7 @@ class PlannerService implements CoursePlanner {
             throw new AppException(CommonErrorCode.INTERNAL_ERROR);
         }
         Selection selection = selector.select(form.shape(), target, paths, form.prefer(),
-                line -> repository.storesNear(line, STORE_METERS));
+                line -> repository.poisNear(line, STORE_METERS, TOILET_METERS));
         PlanResult result = !selection.candidates().isEmpty() ? new PlanResult(selection.candidates(), null, null, startName)
                 : selection.allSimilarToExisting() ? PlanResult.similarExists(startName)
                 : PlanResult.noCandidates(form.shape() == Shape.LOOP, startName);

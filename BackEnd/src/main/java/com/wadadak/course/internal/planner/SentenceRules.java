@@ -97,12 +97,12 @@ final class SentenceRules {
     private static final String TOKEN = "[가-힣A-Za-z0-9]+";
     private static final Pattern TOKEN_P = Pattern.compile(TOKEN);
     private static final Set<String> NOT_PLACE = Set.of("여기", "집", "곳", "동네", "데", "안", "근처", "우리", "지금", "반환점", "중간",
-            "길", "코스", "공원", "출발", "바퀴", "거리");
+            "길", "코스", "공원", "출발", "바퀴", "거리", "오늘", "내일", "아침", "저녁", "처음", "이제");
     private static final Set<String> NEAR = Set.of("근처", "앞", "부근", "주변", "쪽");
     /** "공원 안에서"처럼 장소 안을 말할 때의 "에서"는 출발지가 아니다 */
     private static final Set<String> INSIDE = Set.of("안", "속");
-    /** "선문대 정문에서"는 앞 단어와 붙여 "선문대 정문"으로 읽는다 */
-    private static final Set<String> GATE = Set.of("정문", "후문", "입구");
+    /** "선문대 정문에서" · "선문대 인문관부터"는 앞 단어와 붙여 "선문대 정문" · "선문대 인문관"으로 읽는다 */
+    private static final Pattern PART_OF_PLACE = Pattern.compile("(정문|후문|입구|관|홀|센터|캠퍼스)$");
     private static final Pattern VERBISH = Pattern.compile(
             "(요|어|줘|자|해|다|게|로|고|서|와|래|꼬|는|싶어|추천|부탁해요|코스|km|키로|킬로)$");
     /** 문장 앞 · 가운데의 지명("수원 광교호수공원 둘레로", "광안대교 보면서"). 세 글자 이상만 본다(추천 · 하천 등 제외) */
@@ -110,7 +110,7 @@ final class SentenceRules {
     private static final Pattern DIGIT = Pattern.compile("\\d");
     private static final Pattern END = Pattern.compile("(" + TOKEN + ")까지");
     private static final Pattern VIA = Pattern.compile("(" + TOKEN + ")\\s*(찍고|들렀다|들러|거쳐)");
-    private static final Pattern FROM = Pattern.compile("(" + TOKEN + ")\\s*에서");
+    private static final Pattern FROM = Pattern.compile("(" + TOKEN + ")\\s*(?:에서|부터)");
     private static final Pattern DEPART = Pattern.compile("(" + TOKEN + ")\\s*출발");
     private static final Pattern FROM_EN = Pattern.compile("(?:from|near)\\s+([^,]+?)(?:,|$)", Pattern.CASE_INSENSITIVE);
 
@@ -120,7 +120,7 @@ final class SentenceRules {
         String via = (m = VIA.matcher(text)).find() ? clean(m.group(1)) : null;
 
         String start = null;
-        boolean saidFrom = false; // "…에서"가 있었다. 있으면 아래 추측은 하지 않는다
+        boolean saidFrom = false; // "…에서" · "…부터"가 있었다. 있으면 아래 추측은 하지 않는다
         m = FROM.matcher(text);
         while (m.find()) {
             String token = m.group(1);
@@ -132,7 +132,7 @@ final class SentenceRules {
             String prev = before.isEmpty() ? null : before.getLast();
             if (NEAR.contains(token)) { // "천안역 근처에서"는 앞 단어
                 token = prev;
-            } else if (GATE.contains(token) && clean(prev) != null) {
+            } else if (PART_OF_PLACE.matcher(token).find() && clean(prev) != null && !verbish(prev)) {
                 token = prev + " " + token;
             }
             if (clean(token) != null) {
