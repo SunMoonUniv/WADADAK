@@ -152,6 +152,57 @@ void main() {
     expect(find.text('찍은 점을 모두 지울까요?'), findsNothing);
   });
 
+  testWidgets('tapping a point picks it, the next tap moves it there, and undo puts it back (B3-09)', (tester) async {
+    const ring = ValueKey('selected-point');
+    const start = ValueKey('point-0');
+    await openCourseCreate(tester);
+    await tapMap(tester, first);
+    await tapMap(tester, second);
+    final drawn = summary(tester, '총 거리');
+
+    // 점에서 22dp 안을 누르면 새 점을 찍지 않고 그 점을 고른다.
+    await tapMap(tester, first + const Offset(12, 12));
+    expect(summary(tester, '찍은 점'), '2');
+    expect(find.byKey(ring), findsOneWidget);
+    expect(find.text('옮길 곳을 탭하세요 · 점을 다시 탭하면 취소'), findsOneWidget);
+
+    // 고른 점 위(10dp 안)를 다시 누르면 옮기지 않고 고르기만 푼다.
+    await tapMap(tester, first + const Offset(6, 0));
+    expect(find.byKey(ring), findsNothing);
+    expect(find.text('지도를 탭해 경로 그리기 · 점을 순서대로 연결'), findsOneWidget);
+    expect(tester.getTopLeft(find.byKey(start)), offsetMoreOrLessEquals(first, epsilon: 0.5));
+
+    // 점 바로 옆(10dp 밖)은 고르는 범위(22dp) 안이어도 옮긴다.
+    await tapMap(tester, first);
+    await tapMap(tester, first + const Offset(15, 0));
+    expect(find.byKey(ring), findsNothing);
+    expect(tester.getTopLeft(find.byKey(start)), offsetMoreOrLessEquals(first + const Offset(15, 0), epsilon: 0.5));
+    await tap(tester, find.text('↺  되돌리기'));
+    expect(tester.getTopLeft(find.byKey(start)), offsetMoreOrLessEquals(first, epsilon: 0.5));
+
+    await tapMap(tester, first);
+    await tapMap(tester, const Offset(100, 200));
+    expect(summary(tester, '찍은 점'), '2', reason: '옮기기는 점을 늘리지 않는다');
+    expect(tester.getTopLeft(find.byKey(start)), offsetMoreOrLessEquals(const Offset(100, 200), epsilon: 0.5));
+    expect(summary(tester, '총 거리'), isNot(drawn), reason: '선과 거리도 따라온다');
+    expect(find.byKey(ring), findsNothing, reason: '옮기면 고르기가 풀린다');
+
+    await tap(tester, find.text('↺  되돌리기'));
+    expect(tester.getTopLeft(find.byKey(start)), offsetMoreOrLessEquals(first, epsilon: 0.5));
+    expect(summary(tester, '총 거리'), drawn);
+
+    // 22dp 밖은 지금처럼 새 점을 찍는다.
+    await tapMap(tester, second + const Offset(30, 0));
+    expect(summary(tester, '찍은 점'), '3');
+
+    // 고른 점이 되돌리기로 없어져도 고르기가 풀려 있다.
+    await tapMap(tester, second + const Offset(30, 0));
+    expect(find.byKey(ring), findsOneWidget);
+    await tap(tester, find.text('↺  되돌리기'));
+    expect(summary(tester, '찍은 점'), '2');
+    expect(find.byKey(ring), findsNothing);
+  });
+
   testWidgets('leaving with points asks before throwing them away', (tester) async {
     await openCourseCreate(tester);
     await tapMap(tester, first);

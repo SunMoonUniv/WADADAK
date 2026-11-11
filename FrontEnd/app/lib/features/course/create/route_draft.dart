@@ -24,7 +24,7 @@ class RouteDraft {
   /// 점을 순서대로 직선으로 이은 길이(m). 서버와 같은 WGS84 타원체 기준이다.
   final double distanceMeters;
 
-  // 되돌리기로 돌아갈 상태들. 점을 더한 편집은 마지막 점만 빼면 되므로 null, 전체 지우기 · 채우기는 그 전 상태.
+  // 되돌리기로 돌아갈 상태들. 점을 더한 편집은 마지막 점만 빼면 되므로 null, 전체 지우기 · 채우기 · 옮기기는 그 전 상태.
   final List<RouteDraft?> _history;
 
   /// 자동 생성 후보로 채운 앞쪽 점 수(B3 `자동 생성` A4). 0이면 직접 찍은 점만 있다.
@@ -58,6 +58,13 @@ class RouteDraft {
   RouteDraft fill(List<GeoPoint> filled) {
     final kept = List<GeoPoint>.unmodifiable(filled.take(maxPoints));
     return RouteDraft._(kept, GeoPoint.pathLength(kept), [..._history, _withoutHistory], kept.length);
+  }
+
+  /// [index]번째 점을 [point]로 옮긴다(B3-09). 앞뒤 점과는 직선으로 이어진다. 되돌리기 한 번이면 옮기기 전으로 돌아간다.
+  RouteDraft move(int index, GeoPoint point) {
+    if (points[index] == point) return this;
+    final moved = List<GeoPoint>.unmodifiable([...points]..[index] = point);
+    return RouteDraft._(moved, GeoPoint.pathLength(moved), [..._history, _withoutHistory], filledCount);
   }
 
   /// 직전 편집을 취소한다(B3-03). 되돌릴 편집이 없으면 그대로다. 횟수 제한은 없다.

@@ -89,6 +89,35 @@ void main() {
     expect(const RouteDraft().clear().canUndo, isFalse);
   });
 
+  test('moves one point, and one undo puts it back (B3-09)', () {
+    const moved = GeoPoint(37.5700, 126.9900);
+    final drawn = const RouteDraft().add(cityHall).add(north).add(east);
+
+    final edited = drawn.move(1, moved);
+    expect(edited.points, [cityHall, moved, east]);
+    expect(edited.distanceMeters, GeoPoint.pathLength(edited.points));
+
+    final restored = edited.undo();
+    expect(restored.points, drawn.points);
+    expect(restored.distanceMeters, drawn.distanceMeters);
+    // 옮기기 전의 편집도 이어서 되돌릴 수 있고, 옮긴 뒤 찍은 점은 그 점만 되돌린다.
+    expect(restored.undo().points, [cityHall, north]);
+    expect(edited.add(cityHall).undo().points, edited.points);
+
+    expect(drawn.move(1, north), same(drawn), reason: '같은 자리면 되돌릴 기록이 생기지 않는다');
+  });
+
+  test('moving the start of a loop leaves the end where it was, and filled points stay filled', () {
+    const moved = GeoPoint(37.5600, 126.9700);
+    final loop = const RouteDraft().fill(const [cityHall, north, east, cityHall]);
+
+    final edited = loop.move(0, moved);
+    expect(edited.points, [moved, north, east, cityHall], reason: '출발점만 옮긴다(4.1 B3-09)');
+    expect(edited.filledCount, 4);
+    expect(edited.undo().points, loop.points);
+    expect(edited.undo().undo().isEmpty, isTrue, reason: '그다음 되돌리기가 채운 점을 모두 지운다');
+  });
+
   test('stops at 500 points', () {
     var draft = const RouteDraft();
     for (var i = 0; i < RouteDraft.maxPoints; i++) {

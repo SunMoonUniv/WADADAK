@@ -34,6 +34,17 @@ class RouteDrawScreen extends ConsumerStatefulWidget {
 
 enum _Method { draw, run, auto }
 
+// 고른 점을 두르는 고리(4.1 B3-09). 지도에서 고른 코스 이름표(MAP-03)와 같은 파랑이다. Figma에는 아직 이 모양이 없다.
+const _selectedRing = SizedBox.square(
+  dimension: 36,
+  child: DecoratedBox(
+    decoration: BoxDecoration(
+      shape: BoxShape.circle,
+      border: Border.fromBorderSide(BorderSide(color: WdColors.info, width: 3)),
+    ),
+  ),
+);
+
 class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
   // 범례 + 아래 여백.
   static const _legendHeight = WdRouteLegend.height + WdSpace.s16;
@@ -41,9 +52,24 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
   // 위 안내 · 되돌리기 · 전체 지우기(위 여백 16 + 버튼 2개). 채운 경로를 맞출 때 그 아래로 들어오게 한다.
   static const _controlsHeight = 92.0;
 
+  /// 누른 곳에서 화면 거리로 이 안(dp)에 표지가 보이는 점이 있으면 그 점을 고른다(4.1 B3-09). 지름 44dp 누름 영역이다.
+  static const _pickRadius = 22.0;
+
+  /// 고른 점에서 화면 거리로 이 안(dp)을 다시 누르면 옮기지 않고 고르기만 푼다(4.1 B3-09). 점 표지 위를 누른 정도다.
+  static const _cancelRadius = 10.0;
+
+  /// 자동 생성 후보로 채운 가운데 점은 축척 막대가 이 거리(m) 이하일 때만 그린다(4.1 B3-09).
+  static const _filledPointScaleMeters = 50;
+
   var _draft = const RouteDraft();
   var _method = _Method.draw;
   var _generating = false;
+
+  /// 옮기려고 고른 점의 순서(B3-09). 고른 채로 지도를 누르면 그 자리로 옮긴다.
+  int? _selected;
+
+  /// 멈춘 지도의 범위 · 축척. 채운 점 중 무엇을 그릴지, 누른 곳 근처에 점이 있는지를 여기서 본다.
+  MapCamera? _camera;
 
   /// 자동 생성 후보로 채운 뒤 처음 그리는 지도는 채운 경로가 다 보이게 맞춘다.
   var _fitFilled = false;
@@ -145,7 +171,8 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
             initialZoom: widget.camera?.zoom ?? 14,
             lines: [MapLine(id: 'draft', points: _draft.points)],
             markers: _markers(),
-            onTap: _addPoint,
+            onTap: _tapMap,
+            onCameraIdle: (camera) => setState(() => _camera = camera),
             onCreated: (map) {
               if (!_fitFilled) return;
               _fitFilled = false;
@@ -163,9 +190,11 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
                 Expanded(
                   child: Align(
                     alignment: Alignment.topLeft,
-                    child: WdMapHint(_draft.filledCount > 0
-                        ? '자동 생성 경로 · 탭하면 이어 그려요'
-                        : '지도를 탭해 경로 그리기 · 점을 순서대로 연결'),
+                    child: WdMapHint(_selected != null
+                        ? '옮길 곳을 탭하세요 · 점을 다시 탭하면 취소'
+                        : _draft.filledCount > 0
+                            ? '자동 생성 경로 · 탭하면 이어 그려요'
+                            : '지도를 탭해 경로 그리기 · 점을 순서대로 연결'),
                   ),
                 ),
                 Column(
@@ -184,11 +213,43 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
         ],
       );
 
-  /// 첫 점 출발, 마지막 점 도착, 나머지는 경로 작성점(B3-05). 표지를 눌러도 지도 누름으로 간다.
-  /// 자동 생성 후보로 채운 점(최대 500개)은 출발 · 도착만 그린다. 그 뒤에 이어 찍은 점은 작성점으로 그린다.
-  List<MapMarker> _markers() => [for (var i = 0; i < _draft.points.length; i++) ?_marker(_draft.points, i)];
+  /// 첫 점 출발, 마지막 점 도착, 나머지는 경로 작성점(B3-05). 표지를 눌러도 지도 누름으로 가고, 거기서 가까운 점을 찾는다([_tapMap]).
+  /// 고른 점에는 고리를 두른다(B3-09).
+  List<MapMarker> _markers() {
+    final points = _draft.points;
+    final selected = _selected;
+    return [
+      for (var i = 0; i < points.length; i++)
+        if (_shows(i)) _marker(points, i),
+      if (selected != null)
+        MapMarker(
+          id: 'selected-point',
+          position: points[selected],
+          child: _selectedRing,
+          imageKey: 'route-selected',
+          priority: 1,
+        ),
+    ];
+  }
 
-  MapMarker? _marker(List<GeoPoint> points, int i) {
+  /// [i]번째 점에 표지를 그리는가. 자동 생성 후보로 채운 가운데 점(최대 500개)은 축척 [_filledPointScaleMeters]m 이하로
+  /// 확대했을 때 화면 안의 것만 그린다(4.1 B3-09). 그 뒤에 이어 찍은 점은 늘 그린다.
+  bool _shows(int i) {
+    final points = _draft.points;
+    if (i == 0) return true;
+    // 한 바퀴처럼 출발점으로 돌아오면 출발만 보인다(Figma A4).
+    if (i == points.length - 1) return points[i] != points.first;
+    if (i >= _draft.filledCount) return true;
+    final camera = _camera;
+    return camera != null &&
+        camera.scaleMeters <= _filledPointScaleMeters &&
+        points[i].lat >= camera.southWest.lat &&
+        points[i].lat <= camera.northEast.lat &&
+        points[i].lng >= camera.southWest.lng &&
+        points[i].lng <= camera.northEast.lng;
+  }
+
+  MapMarker _marker(List<GeoPoint> points, int i) {
     if (i == 0) {
       return MapMarker(
         id: 'point-$i',
@@ -199,8 +260,6 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
       );
     }
     if (i == points.length - 1) {
-      // 한 바퀴처럼 출발점으로 돌아오면 출발만 보인다(Figma A4).
-      if (points[i] == points.first) return null;
       return MapMarker(
         id: 'point-$i',
         position: points[i],
@@ -209,8 +268,32 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
         anchor: WdRouteEndpoint.endAnchor,
       );
     }
-    return i < _draft.filledCount ? null : MapMarker.icon(id: 'point-$i', position: points[i], icon: WdIcons.routePoint);
+    return MapMarker.icon(id: 'point-$i', position: points[i], icon: WdIcons.routePoint);
   }
+
+  /// [tap]에서 화면 거리 [_pickRadius] 안에 있는, 표지가 보이는 가장 가까운 점의 순서. 없으면 null.
+  int? _nearestShown(GeoPoint tap) {
+    final camera = _camera;
+    if (camera == null) return null;
+    final radiusMeters = _metersOf(_pickRadius, camera);
+    int? nearest;
+    var best = double.infinity;
+    for (var i = 0; i < _draft.points.length; i++) {
+      if (!_shows(i)) continue;
+      final distance = _draft.points[i].distanceTo(tap);
+      if (distance < best) {
+        best = distance;
+        nearest = i;
+      }
+    }
+    return best <= radiusMeters ? nearest : null;
+  }
+
+  /// 화면 거리 [dp]가 [camera]에서 몇 m인지. 지도 너비에 보이는 거리로 바꾼다. 지도를 돌리면 범위가 넓게 잡혀 조금 커진다.
+  double _metersOf(double dp, MapCamera camera) =>
+      camera.southWest.distanceTo(GeoPoint(camera.southWest.lat, camera.northEast.lng)) *
+      dp /
+      MediaQuery.sizeOf(context).width;
 
   Widget _summary() => SafeArea(
         top: false,
@@ -234,10 +317,24 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
         ),
       );
 
-  void _addPoint(GeoPoint point) {
-    // 보낸 점과 화면의 점이 달라지지 않게 경로를 만드는 동안은 찍지 않는다.
+  /// 지도를 눌렀다. 고른 점이 있으면 누른 곳으로 옮기고(그 점을 다시 누르면 고르기만 푼다), 표지가 보이는 점 근처면
+  /// 그 점을 고르고(B3-09), 아니면 끝에 새 점을 찍는다(B3-01).
+  void _tapMap(GeoPoint point) {
+    // 보낸 점과 화면의 점이 달라지지 않게 경로를 만드는 동안은 고치지 않는다.
     if (_generating) return;
     if (_quotaUsedUp) return _notify(customQuotaUsedUpMessage);
+    final selected = _selected;
+    final camera = _camera;
+    if (selected != null && camera != null) {
+      // 점 표지 위를 다시 눌렀을 때만 취소다. 그 밖은 바로 옆이어도 옮긴다.
+      final onPoint = _draft.points[selected].distanceTo(point) <= _metersOf(_cancelRadius, camera);
+      return setState(() {
+        if (!onPoint) _draft = _draft.move(selected, point);
+        _selected = null;
+      });
+    }
+    final near = _nearestShown(point);
+    if (near != null) return setState(() => _selected = near);
     if (_draft.isFull) return _notify(_fullMessage);
     setState(() => _draft = _draft.add(point));
     if (_draft.isFull) _notify(_fullMessage);
@@ -245,11 +342,16 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
 
   static const _fullMessage = '점은 ${RouteDraft.maxPoints}개까지 찍을 수 있어요.';
 
-  void _undo() => setState(() => _draft = _draft.undo());
+  // 점의 순서가 바뀌는 편집(되돌리기 · 채우기 · 전체 지우기 · 방식 바꾸기)은 고른 점을 푼다.
+  void _undo() => setState(() {
+        _draft = _draft.undo();
+        _selected = null;
+      });
 
   /// 고른 자동 생성 후보의 점으로 입력점을 채우고 경로 그리기(A4)로 간다. 되돌리기 한 번이면 채우기 전으로 돌아간다(정책 B3-A08).
   void _fill(List<GeoPoint> points) => setState(() {
         _draft = _draft.fill(points);
+        _selected = null;
         _method = _Method.draw;
         _fitFilled = true;
       });
@@ -261,7 +363,11 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
       cancel: '취소',
       ok: '지우기',
     );
-    if (confirmed) setState(() => _draft = _draft.clear());
+    if (!confirmed) return;
+    setState(() {
+      _draft = _draft.clear();
+      _selected = null;
+    });
   }
 
   /// 서버에 최종 경로를 만들어 B4로 간다. 실패하면 B3에 머물러 점을 그대로 두고 다시 시도할 수 있게 한다(B3-06).
@@ -299,6 +405,7 @@ class _RouteDrawScreenState extends ConsumerState<RouteDrawScreen> {
     }
     setState(() {
       _method = method;
+      _selected = null;
       if (method == _Method.run) _draft = const RouteDraft();
     });
   }

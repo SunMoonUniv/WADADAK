@@ -8,6 +8,7 @@ import 'package:wadadak/core/api/course_api_client.dart';
 import 'package:wadadak/core/api/member_api_client.dart';
 import 'package:wadadak/core/auth/social_login.dart';
 import 'package:wadadak/core/auth/token_storage.dart';
+import 'package:wadadak/core/map/dev_map_view.dart';
 import 'package:wadadak/core/map/map_view.dart';
 import 'package:wadadak/features/course/create/auto_course_view.dart';
 import 'package:wadadak/features/home/my_location.dart';
@@ -157,6 +158,46 @@ void main() {
     // 되돌리기 한 번이 채운 점 전체를 지운다
     await tap(tester, find.text('↺  되돌리기'));
     expect(summary(tester, '찍은 점'), '0');
+  });
+
+  testWidgets('zooming in shows the filled points on screen, and one can be picked and moved (A4 · B3-09)',
+      (tester) async {
+    final filledPoint = find.byWidgetPredicate((widget) => widget is WdIcon && widget.icon == WdIcons.routePoint);
+    courses.planned = PlanResult(candidates: [first]);
+    await openAuto(tester);
+    await tap(tester, find.text('직접 조건 고르기'));
+    await tap(tester, find.text('5km'));
+    await tap(tester, find.text('코스 찾기'));
+    await tap(tester, find.text('이 코스로 만들기'));
+    expect(filledPoint, findsNothing, reason: '코스 전체가 보이는 축척에서는 출발만 그린다');
+
+    // 축척 50m 이하로 확대하면 화면 안의 채운 점만 그린다. 다른 두 점은 1km 넘게 떨어져 화면 밖이다.
+    final map = tester.state(find.byType(DevMapView)) as MapController;
+    await map.moveTo(first.anchorPoints[1], zoom: 17);
+    await tester.pumpAndSettle();
+    expect(filledPoint, findsOneWidget);
+    final at = tester.getCenter(filledPoint);
+
+    await tester.tapAt(at);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('selected-point')), findsOneWidget);
+    expect(summary(tester, '입력점 (자동 생성)'), '4', reason: '채운 점을 누르면 이어 찍지 않고 고른다');
+
+    await tester.tapAt(at + const Offset(60, 40));
+    await tester.pumpAndSettle();
+    expect(tester.getCenter(filledPoint), offsetMoreOrLessEquals(at + const Offset(60, 40), epsilon: 0.5));
+    expect(summary(tester, '입력점 (자동 생성)'), '4');
+
+    await map.moveTo(first.anchorPoints[1], zoom: 14);
+    await tester.pumpAndSettle();
+    expect(filledPoint, findsNothing, reason: '축소하면 다시 숨긴다');
+
+    // 옮긴 점만 바뀐 채로 서버에 간다.
+    await tap(tester, find.text('다음 · 코스 정보 입력'));
+    final sent = courses.sentPoints!;
+    expect(sent, hasLength(4));
+    expect([sent[0], sent[2], sent[3]], [first.anchorPoints[0], first.anchorPoints[2], first.anchorPoints[3]]);
+    expect(sent[1], isNot(first.anchorPoints[1]));
   });
 
   testWidgets('direct conditions: point to point asks for the end place instead of a distance (A7 · A7-2)',
