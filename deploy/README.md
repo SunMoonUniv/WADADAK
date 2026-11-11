@@ -11,7 +11,7 @@ main push ─► backend.yml
                         비밀값은 GitHub 환경 wadadak-server의 Secrets에서 받는다
 
 서버 PC (Docker Desktop) · compose 프로젝트 wadadak-server
-   postgres · storage(RustFS) · backend · cloudflared ──► Cloudflare ◄── 폰 https://api.leedohyunn8n.shop
+   postgres · storage(RustFS) · backend · graphhopper · cloudflared ──► Cloudflare ◄── 폰 https://api.leedohyunn8n.shop
    (포트를 열지 않는다)                                        └──────── 사진 https://files.leedohyunn8n.shop
 ```
 
@@ -131,6 +131,28 @@ Actions → Backend CI → Run workflow(main). deploy 작업이 통과하면 서
 
 - 키는 저장소에 커밋하지 않는다. 키가 새면 서비스 계정 화면에서 그 키를 지우고 새로 만든다.
 
+### 7. 길찾기 데이터 (코스 자동 생성)
+코스 자동 생성의 길찾기(`graphhopper` 서비스, GraphHopper 11.1 + 한국 OSM)는 파일이 수백 MB라 저장소에 넣지 않는다. 저장소 최상위의 `utilfile/graphhopper`에 직접 넣는다. 서버에서는 러너가 저장소를 받는 작업 폴더의 최상위이고, compose는 `deploy/`에서 상대경로 `../utilfile/graphhopper`로 붙인다. 배포 작업은 `utilfile/`을 지우지 않는다(`backend.yml`의 작업 폴더 정리 단계).
+
+| 파일 | 크기 | 받는 곳 |
+| --- | --- | --- |
+| `graphhopper-web-11.1.jar` | 약 45MB | GitHub `graphhopper/graphhopper` Releases 11.1 |
+| `south-korea-latest.osm.pbf` | 약 280MB | [Geofabrik 한국](https://download.geofabrik.de/asia/south-korea.html) |
+| `graph-cache/` | 약 490MB | 아래 명령으로 만든다 |
+
+**graph-cache를 넣기 전에는 이 서비스가 들어간 main을 배포하지 않는다.** 배포는 모든 서비스가 healthy가 될 때까지 기다린다. graph-cache가 없으면 graphhopper가 기동 중에 그래프부터 만들다(약 4GB · 4분) 메모리나 대기 시간(300초)을 넘겨 배포 전체가 실패한다.
+
+그래프는 메모리가 넉넉한 PC(8GB 이상)에서 만든다. 프로젝트 최상위 `utilfile/graphhopper`에 jar · pbf를 넣고, 예전 `graph-cache`가 있으면 지운 뒤:
+
+```bash
+docker compose -f BackEnd/compose.yaml --profile planner run --rm graphhopper java -Xmx6g -jar /data/graphhopper-web-11.1.jar import /config.yml
+```
+
+만든 `utilfile/graphhopper/graph-cache`를 서버의 같은 위치에 복사한다. 설정(`deploy/graphhopper/config.yml`)의 프로필이나 encoded values를 바꾸면 그래프를 다시 만든다.
+
+- 확인: `docker compose -p wadadak-server ps`에서 graphhopper가 healthy. 경로 시험: `docker exec wadadak-server-graphhopper-1 curl -s "http://localhost:8989/route?point=36.7983,127.0746&point=36.8050,127.0800&profile=foot"`
+- 한 달마다 새 pbf로 그래프를 다시 만든다. 서버에서는 `docker compose -p wadadak-server stop graphhopper` → `graph-cache` 폴더 교체 → `docker compose -p wadadak-server start graphhopper`. 그동안 코스 자동 생성만 실패하고 나머지는 그대로다.
+
 ## 운영
 
 | 할 일 | 방법 |
@@ -142,6 +164,7 @@ Actions → Backend CI → Run workflow(main). deploy 작업이 통과하면 서
 | 요청 로그 | `docker logs -f wadadak-server-backend-1 2>&1 \| grep RequestLogFilter` — 한 줄에 메서드 · 경로 · 상태 · 처리 시간 · IP. `/actuator`는 빠진다 |
 | DB 접속 | `docker exec -it wadadak-server-postgres-1 psql -U wadadak` |
 | DB 초기화 (데이터 전부 삭제) | `docker compose -p wadadak-server down` → `docker volume rm wadadak-server_db` → 수동 배포 |
+| 길찾기 로그 | `docker logs -f wadadak-server-graphhopper-1`. 내려가 있으면 코스 자동 생성만 실패한다. 그래프 갱신은 서버 PC 준비 7번 |
 | 사진 저장소 로그 | `docker logs -f wadadak-server-storage-1`. 사진 파일은 볼륨 `wadadak-server_photos`에 있다. DB를 초기화하면 사진도 같이 지운다(`docker volume rm wadadak-server_photos`) |
 
 ## 앱 연결
