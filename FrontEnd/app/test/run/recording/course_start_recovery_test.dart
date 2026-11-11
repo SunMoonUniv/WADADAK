@@ -286,6 +286,7 @@ void main() {
     }
     await db.execute('DROP TABLE withdrawn_run_owners');
     await db.execute('ALTER TABLE sessions DROP COLUMN guidance_state');
+    await db.execute('DROP TABLE run_heart_rates');
     await db.execute('PRAGMA user_version=4');
     await restart();
     final saved = (await store.list('alice', id: old.id)).single;

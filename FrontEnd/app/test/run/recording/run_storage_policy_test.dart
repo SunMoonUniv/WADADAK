@@ -160,6 +160,7 @@ void main() {
       }
       await db.execute('DROP TABLE withdrawn_run_owners');
       await db.execute('ALTER TABLE sessions DROP COLUMN guidance_state');
+      await db.execute('DROP TABLE run_heart_rates');
       await db.execute('PRAGMA user_version=2');
       await disk.close();
       disk = RunLocalStore(factory: databaseFactoryFfi, databasePath: path);
