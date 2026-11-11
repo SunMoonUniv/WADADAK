@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -609,6 +610,17 @@ class WearRunBridge {
         'startDistanceM': approach.distanceToStartM,
       },
       if (position != null) 'position': [position.lat, position.lng],
+      if (phase == 'running' && tracker != null && position != null) ...{
+        'nearRoute': _nearbyMapLines(tracker.route.segments, position),
+        'nearTrack': _nearbyMapLines(
+          controller.recorder.calculator.segments.reversed.map(
+            (segment) => segment.reversed
+                .where((point) => point.lat != null && point.lng != null)
+                .map((point) => GeoPoint(point.lat!, point.lng!)),
+          ),
+          position,
+        ).reversed.map((line) => line.reversed.toList()).toList(),
+      },
       if (route != null)
         'route': [
           for (final segment in route.take(12))
@@ -651,4 +663,66 @@ class WearRunBridge {
               : controller.records.any((item) => item.id == run?.id)),
     };
   }
+}
+
+// Match the watch's 100 m scale through a turn. Keep intersecting edges,
+// including edges whose two endpoints are outside the viewport.
+List<List<List<double>>> _nearbyMapLines(
+  Iterable<Iterable<GeoPoint>> segments,
+  GeoPoint center,
+) {
+  const metersPerDegree = 111195.08;
+  const radiusM = 400;
+  final latRadius = radiusM / metersPerDegree;
+  final lonRadius =
+      latRadius / math.cos(center.lat * math.pi / 180).abs().clamp(.01, 1.0);
+  final south = center.lat - latRadius, north = center.lat + latRadius;
+  final west = center.lng - lonRadius, east = center.lng + lonRadius;
+
+  Iterable<List<GeoPoint>> visibleRuns() sync* {
+    for (final segment in segments) {
+      GeoPoint? previous;
+      var line = <GeoPoint>[];
+      for (final point in segment) {
+        if (previous != null) {
+          final intersects =
+              math.max(previous.lat, point.lat) >= south &&
+              math.min(previous.lat, point.lat) <= north &&
+              math.max(previous.lng, point.lng) >= west &&
+              math.min(previous.lng, point.lng) <= east;
+          if (intersects) {
+            if (line.isEmpty) line.add(previous);
+            line.add(point);
+          } else if (line.isNotEmpty) {
+            yield line;
+            line = <GeoPoint>[];
+          }
+        }
+        previous = point;
+      }
+      if (line.isNotEmpty) {
+        yield line;
+      } else if (previous != null &&
+          previous.lat >= south &&
+          previous.lat <= north &&
+          previous.lng >= west &&
+          previous.lng <= east) {
+        yield [previous];
+      }
+    }
+  }
+
+  // Bound each live response while keeping both ends of each visible line.
+  return [
+    for (final line in visibleRuns().take(6))
+      [
+        for (
+          var i = 0;
+          i < line.length - 1;
+          i += ((line.length - 1) / 24).ceil()
+        )
+          [line[i].lat, line[i].lng],
+        [line.last.lat, line.last.lng],
+      ],
+  ];
 }
