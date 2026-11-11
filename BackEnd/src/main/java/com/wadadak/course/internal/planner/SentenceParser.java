@@ -9,6 +9,7 @@ import com.wadadak.course.internal.planner.SentenceRules.Numbers;
 import com.wadadak.course.internal.planner.SentenceRules.Spans;
 import org.springframework.stereotype.Component;
 
+import java.util.EnumSet;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -69,9 +70,11 @@ class SentenceParser {
         }
 
         Set<Pref> prefer = SentenceRules.keywordPrefs(text);
+        Set<Pref> rules = EnumSet.copyOf(prefer);
         jev.ifPresent(a -> {
             for (Pref p : Pref.values()) {
-                if (a.noul("pref_" + p.name().toLowerCase(Locale.ROOT)) >= 0.9) {
+                // 규칙이 평지(예: "오르막 아닌")를 읽었으면 Jev가 오르막을 붙이지 못한다. 반대도 같다
+                if (a.noul("pref_" + p.name().toLowerCase(Locale.ROOT)) >= 0.9 && !rules.contains(opposite(p))) {
                     prefer.add(p);
                 }
             }
@@ -81,5 +84,13 @@ class SentenceParser {
                 shape == Shape.POINT_TO_POINT ? spans.end() : null,
                 shape == Shape.VIA ? spans.via() : null,
                 numbers.distanceM(), numbers.durationMin(), prefer, null);
+    }
+
+    private static Pref opposite(Pref p) {
+        return switch (p) {
+            case FLAT -> Pref.HILLY;
+            case HILLY -> Pref.FLAT;
+            default -> null;
+        };
     }
 }

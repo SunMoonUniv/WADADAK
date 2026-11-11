@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import tools.jackson.core.type.TypeReference;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -119,6 +120,17 @@ class SentenceParserTest {
         assertThat(form.message()).isEqualTo(SentenceParser.OFF_TOPIC);
         assertThat(form.start()).isNull();
         assertThat(form.shape()).isNull();
+    }
+
+    /** 규칙이 "오르막 아닌"을 평지로 읽으면 Jev가 오르막이라 해도 붙이지 않는다 */
+    @Test
+    void jevCannotAddHillyWhenRulesReadFlat() {
+        Map<String, Answer> answers = new HashMap<>(RECORDED.get(1).answers());
+        answers.put("pref_hilly", new Answer(0.97, null, null));
+
+        PlanForm form = SentenceParser.form("오르막아닌 5km 코스", Optional.of(new JevAnswers(answers)));
+
+        assertThat(form.prefer()).contains(Pref.FLAT).doesNotContain(Pref.HILLY);
     }
 
     /** Jev가 장소라는데 이름을 못 읽으면 장소 칸을 비운다(사용자가 채움) */

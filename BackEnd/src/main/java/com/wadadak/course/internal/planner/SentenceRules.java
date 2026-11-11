@@ -230,8 +230,8 @@ final class SentenceRules {
         return Shape.LOOP;
     }
 
-    /** 부정: "큰길은 피하고", "오르막 없는", "대로는 빼고" */
-    private static final String NEG = "\\s*(?:은|는|이|가)?\\s*(?:없|말고|싫|피하|피해|빼|안\\s)";
+    /** 부정: "큰길은 피하고", "오르막 없는", "대로는 빼고", "오르막 아닌", "언덕은 별로" */
+    private static final String NEG = "\\s*(?:은|는|이|가)?\\s*(?:없|말고|싫|피하|피해|빼|아니|아닌|별로|안\\s)";
     private static final Pattern HILL_NEG = Pattern.compile("(언덕|오르막|경사)" + NEG);
     private static final Pattern FLAT = Pattern.compile("평지|평탄|평평");
     private static final Pattern HILL = Pattern.compile("언덕|오르막|경사|\\bhill", Pattern.CASE_INSENSITIVE);

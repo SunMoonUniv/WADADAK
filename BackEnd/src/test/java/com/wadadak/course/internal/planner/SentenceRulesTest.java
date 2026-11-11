@@ -122,6 +122,10 @@ class SentenceRulesTest {
         assertThat(SentenceRules.spans("천안역부터 5km 한 바퀴").start()).isEqualTo("천안역");
         assertThat(SentenceRules.spans("지금부터 30분 달릴 코스").start()).isNull();
         assertThat(SentenceRules.keywordPrefs("평평하고 사람 많이 안다니는 선문대 인문관부터 3km 코스")).containsExactly(Pref.FLAT);
+        // 오르막을 부정하면 평지다
+        assertThat(SentenceRules.keywordPrefs("오르막아닌 5km 코스")).containsExactly(Pref.FLAT);
+        assertThat(SentenceRules.keywordPrefs("언덕은 별로인 3km")).containsExactly(Pref.FLAT);
+        assertThat(SentenceRules.keywordPrefs("오르막 많은 5km")).containsExactly(Pref.HILLY);
         assertThat(SentenceRules.keywordPrefs("횡단보도 덜 건너게 5km")).doesNotContain(Pref.SIDEWALK);
         assertThat(SentenceRules.keywordPrefs("보도블록 깔린 길로만 7km")).contains(Pref.SIDEWALK);
         // Figma A7-1 예시. 키가 없어 규칙만 써도 큰길 피하기를 읽는다
