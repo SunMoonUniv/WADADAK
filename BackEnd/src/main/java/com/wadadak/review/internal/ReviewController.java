@@ -37,6 +37,7 @@ class ReviewController {
 
     private final ReviewService reviewService;
     private final ReviewQueryService queryService;
+    private final ReviewReportService reportService;
 
     @Operation(summary = "코스 평점 요약 (B8·G2 상단)",
             description = "전체 별점 평균·리뷰 수·별점별 분포·항목별 평균(안전성·도로 상태·야간 조명·편의시설). "
@@ -127,6 +128,19 @@ class ReviewController {
     @DeleteMapping("/{reviewId}")
     ApiResult<Void> delete(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID reviewId) {
         reviewService.delete(memberId(jwt), reviewId);
+        return ApiResult.success();
+    }
+
+    @Operation(summary = "리뷰 신고 (G2-2)",
+            description = "다른 러너의 리뷰를 신고한다. reason은 ADVERTISING(광고·홍보)·ABUSE(욕설·비하)·PRIVACY(개인정보 노출)·"
+                    + "IRRELEVANT(관계없는 내용)·OTHER(기타) 중 하나(필수), detail은 자세한 내용(선택, 100자). "
+                    + "한 리뷰는 한 번만 신고할 수 있다. 목록의 reportedByMe가 true면 이 API를 부르지 않고 바로 G2-4 안내를 띄우고, "
+                    + "REVIEW-009를 받아도 같은 G2-4를 띄운다. 신고한 사실은 작성자에게 알리지 않는다. "
+                    + "없음 REVIEW-003, 내 리뷰 008, 이미 신고함 009, 형식 오류 COMMON-001.")
+    @PostMapping("/{reviewId}/reports") // POST /api/v1/reviews/{reviewId}/reports
+    ApiResult<Void> report(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID reviewId,
+                           @Valid @RequestBody ReportReviewRequest request) {
+        reportService.report(memberId(jwt), reviewId, request);
         return ApiResult.success();
     }
 

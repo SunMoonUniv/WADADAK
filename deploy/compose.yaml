@@ -1,5 +1,5 @@
 # 공용 서버 실행 구성. 절차는 deploy/README.md.
-# 비밀값(DB_PASSWORD · JWT_* · STORAGE_SECRET_KEY · TUNNEL_TOKEN · FCM_SERVICE_ACCOUNT)은 배포 작업(backend.yml deploy)이 GitHub Secrets에서 환경 변수로 넘긴다.
+# 비밀값(DB_PASSWORD · JWT_* · STORAGE_SECRET_KEY · TUNNEL_TOKEN · FCM_SERVICE_ACCOUNT · NAVER_* · TYPESAFE_API_KEY)은 배포 작업(backend.yml deploy)이 GitHub Secrets에서 환경 변수로 넘긴다.
 # 서버 PC에는 비밀값 파일을 두지 않는다.
 name: wadadak-server
 
@@ -65,6 +65,14 @@ services:
       FCM_CREDENTIALS_LOCATION: ${FCM_CREDENTIALS_LOCATION:-}
       # 코스 자동 생성의 길찾기. graphhopper가 내려가도 서버는 뜨고 자동 생성만 실패한다(depends_on을 걸지 않는다)
       GRAPHHOPPER_URL: http://graphhopper:8989
+      # 코스 자동 생성의 장소 검색(NAVER API HUB 지역 검색 · NCP 지오코딩) 키.
+      # 비어 있으면 서버는 그대로 뜨고 장소 입력만 못 찾는다(현재 위치 출발은 된다).
+      NAVER_SEARCH_CLIENT_ID: ${NAVER_SEARCH_CLIENT_ID:-}
+      NAVER_SEARCH_CLIENT_SECRET: ${NAVER_SEARCH_CLIENT_SECRET:-}
+      NAVER_GEOCODE_CLIENT_ID: ${NAVER_GEOCODE_CLIENT_ID:-}
+      NAVER_GEOCODE_CLIENT_SECRET: ${NAVER_GEOCODE_CLIENT_SECRET:-}
+      # 문장 → 폼 보충용 Jev(TypeSafe) 키. 비어 있으면 규칙만 쓴다.
+      TYPESAFE_API_KEY: ${TYPESAFE_API_KEY:-}
     # 포트를 열지 않는다. 밖에서는 cloudflared를 거쳐서만 들어온다.
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:8080/actuator/health"]

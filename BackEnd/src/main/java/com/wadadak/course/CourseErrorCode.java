@@ -22,7 +22,11 @@ public enum CourseErrorCode implements ErrorCode {
     // 같은 러닝 기록은 한 번만 코스로 만든다. 그 코스가 지워지거나 만료돼도 다시 쓰지 않는다(정책 공통 3)
     RUN_RECORD_ALREADY_REGISTERED(HttpStatus.CONFLICT, "COURSE-010", "이미 코스로 등록한 러닝 기록입니다."),
     // 경로 조각 사이 빈칸을 이을 수 없다(정책 문서 4.1 `공통 3 GPS 등록 끊긴 구간 · B6-04`)
-    GPS_ACCURACY_LOW(HttpStatus.BAD_REQUEST, "COURSE-011", "GPS 정확도가 부족해 코스로 등록할 수 없습니다.");
+    GPS_ACCURACY_LOW(HttpStatus.BAD_REQUEST, "COURSE-011", "GPS 정확도가 부족해 코스로 등록할 수 없습니다."),
+    // 코스 자동 생성 하루 20회(정책 B3-A05). 길을 찾지 않고 끝난 요청은 세지 않는다
+    PLAN_DAILY_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "COURSE-012", "오늘 코스 자동 생성 횟수를 넘었습니다."),
+    // 조건 자동 채우기 하루 50회(정책 B3-A05). `직접 조건 고르기`는 그대로 쓸 수 있다
+    PARSE_DAILY_LIMIT_EXCEEDED(HttpStatus.TOO_MANY_REQUESTS, "COURSE-013", "오늘 조건 자동 채우기 횟수를 넘었습니다.");
 
     private final HttpStatus status;
     private final String code;

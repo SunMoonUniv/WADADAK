@@ -18,11 +18,12 @@ import java.util.UUID;
  * @param bestProgressPercent 이 회원의 이 코스 최고 진행도(%). "완주 100%"·"62% 주행"으로 표시한다
  * @param completedCount      이 회원의 이 코스 완주 횟수(삭제된 기록 제외). 0이면 표시하지 않는다(정책 제4부 4.1 D-09)
  * @param createdAt           작성 시각. 수정해도 바뀌지 않는다
+ * @param reportedByMe        요청자가 이 리뷰를 이미 신고했으면 {@code true}. 앱은 신고 메뉴(G2-1)에서 사유 화면 대신 바로 G2-4를 띄운다
  */
 record ReviewCard(UUID reviewId, UUID memberId, String nickname, String profileImageUrl, boolean mine,
                   int rating, int safetyRating, int roadRating, int lightingRating, int amenityRating,
                   String content, Set<ReviewTag> tags, List<ReviewView.Photo> photos,
-                  int bestProgressPercent, int completedCount, Instant createdAt) {
+                  int bestProgressPercent, int completedCount, Instant createdAt, boolean reportedByMe) {
 
     /**
      * 닉네임·프로필 사진과 리뷰 사진을 채운 카드. record는 값을 바꿀 수 없어서 새로 만든다.
@@ -33,6 +34,6 @@ record ReviewCard(UUID reviewId, UUID memberId, String nickname, String profileI
         return new ReviewCard(reviewId, memberId, profile == null ? null : profile.nickname(),
                 profile == null ? null : profile.profileImageUrl(), mine,
                 rating, safetyRating, roadRating, lightingRating, amenityRating,
-                content, tags, photos, bestProgressPercent, completedCount, createdAt);
+                content, tags, photos, bestProgressPercent, completedCount, createdAt, reportedByMe);
     }
 }

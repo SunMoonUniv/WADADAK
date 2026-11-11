@@ -15,16 +15,16 @@
 | 스키마 | 모듈 | 테이블 |
 | --- | --- | --- |
 | `member` | member | `members`, `agreements`, `refresh_tokens`, `region_event_backfill` |
-| `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `gps_course_sources`, `completion_elevation_profiles`, `gps_source_completion_receipts`, `course_stats`, `course_daily_stats`, `course_completions`, `course_active_runners`, `course_bookmarks`, `processed_events` |
+| `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `gps_course_sources`, `completion_elevation_profiles`, `gps_source_completion_receipts`, `course_stats`, `course_daily_stats`, `course_completions`, `course_active_runners`, `course_bookmarks`, `daily_plan_counts`, `planner_pois`, `processed_events` |
 | `ranking` | ranking | `course_ranking_entries`, `distance_run_records`, `course_status_copies`, `member_visibility_copies`, `member_region_history`, `withdrawn_members` |
-| `review` | review | `reviews`, `review_photos`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
+| `review` | review | `reviews`, `review_photos`, `review_reports`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
 | `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members`, `course_attempts`, `course_runner_counts`, `ghost_starts`, `ghost_start_playbacks`, `ghost_results`, `free_ghost_starts`, `free_ghost_results`, `ghost_comparisons`, `gps_source_links`, `gps_course_status_copies` |
 | `notification` | notification | `device_tokens`, `notification_settings`, `notifications`, `deliveries`, `withdrawn_members` |
 | `common` | common | `region`, `event_publication`, `shedlock`, `photo_uploads`, `flyway_schema_history` |
 
 ### 공통 규칙 (개발 정책 6장)
 
-- **PK**: 애플리케이션이 만든 UUID v7(`UuidV7.create()`). 예외는 `region`(법정동 코드), `shedlock`(작업 이름), `photo_uploads`(사진 키), `event_publication`(Modulith가 만듦), `flyway_schema_history`(Flyway가 관리)다.
+- **PK**: 애플리케이션이 만든 UUID v7(`UuidV7.create()`). 예외는 `region`(법정동 코드), `planner_pois`(원본 식별자), `shedlock`(작업 이름), `photo_uploads`(사진 키), `event_publication`(Modulith가 만듦), `flyway_schema_history`(Flyway가 관리)다.
   - 다른 모듈의 행 하나에 정확히 한 행이 대응하는 테이블은 그 모듈의 ID를 PK로 쓴다. 이벤트를 다시 받아도 PK로 한 번만 저장된다(개발 정책 5.4). 예: `course_ranking_entries`·`review.course_run_records`(run 기록 ID), 복사본 테이블(코스·회원 ID)
 - **시각**: `TIMESTAMPTZ`에 UTC로 저장한다. 엔티티 테이블은 모두 `created_at`·`updated_at`을 가진다(`BaseEntity`).
 - **enum**: Java enum 이름을 `VARCHAR`로 저장하고 `CHECK`로 값을 제한한다.
@@ -56,6 +56,7 @@ erDiagram
     members ||..o{ course_bookmarks : "member_id"
     members ||..o{ courses : "creator_id"
     members ||..o{ daily_registration_counts : "member_id"
+    members ||..o{ daily_plan_counts : "member_id"
     members ||..o{ registration_requests : "member_id"
     members ||..o{ gps_course_sources : "member_id"
     region ||..o{ members : "region_code"
@@ -68,6 +69,8 @@ erDiagram
     region ||..o{ member_region_history : "region_code"
     members ||..o| withdrawn_members : "member_id"
     reviews ||--o{ review_photos : "review_id"
+    reviews ||--o{ review_reports : "review_id"
+    members ||..o{ review_reports : "reporter_member_id"
     courses ||..o{ reviews : "course_id"
     members ||..o{ reviews : "member_id"
     course_run_records ||..o{ reviews : "source_run_record_id"
@@ -145,6 +148,13 @@ erDiagram
         varchar(10) course_type
         integer registered_count
     }
+    daily_plan_counts {
+        uuid id PK
+        uuid member_id "member ID"
+        date plan_date "Asia/Seoul"
+        varchar(10) kind "PLAN, PARSE"
+        integer plan_count
+    }
     registration_requests {
         uuid id PK
         uuid member_id "member ID"
@@ -195,6 +205,12 @@ erDiagram
         uuid course_id PK "FK"
         timestamptz created_at "저장 시각"
     }
+    planner_pois {
+        varchar(40) source_id PK "sbiz: + 상가업소번호"
+        varchar(20) kind "CONVENIENCE, TOILET"
+        geography location "Point"
+        varchar(7) base_month "원본 기준 월"
+    }
     course_ranking_entries {
         uuid run_record_id PK "run 기록 ID"
         uuid course_id "course ID"
@@ -244,6 +260,13 @@ erDiagram
         uuid review_id FK
         varchar(100) photo_key UK "review/..."
         integer display_order "0~4"
+    }
+    review_reports {
+        uuid id PK
+        uuid review_id FK
+        uuid reporter_member_id "member ID"
+        varchar(20) reason "ADVERTISING, ABUSE, PRIVACY, IRRELEVANT, OTHER"
+        varchar(100) detail "선택"
     }
     course_run_records {
         uuid run_record_id PK "run 기록 ID"
@@ -512,6 +535,21 @@ erDiagram
 - 하루 한도는 `CUSTOM` 1개, `GPS` 3개다. 성공한 등록만 센다.
 - 그날 첫 등록이면 0건 행을 `INSERT … ON CONFLICT DO NOTHING`으로 만들고, 행을 잠근 뒤 1을 더한다. 같은 회원의 동시 등록이 함께 한도를 넘지 않는다.
 
+#### `course.daily_plan_counts` — 자동 생성 요청 수
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `id` | `UUID` | | PK |
+| `member_id` | `UUID` | | 회원 ID(member 모듈, FK 없음) |
+| `plan_date` | `DATE` | | 요청 날짜(Asia/Seoul) |
+| `kind` | `VARCHAR(10)` | | `PLAN`(코스 자동 생성), `PARSE`(조건 자동 채우기) |
+| `plan_count` | `INTEGER` | | 그날 센 요청 수. 0 이상 |
+
+- `daily_plan_counts_uk`: `UNIQUE (member_id, plan_date, kind)`
+- 하루 한도는 `PLAN` 20회, `PARSE` 50회다(정책 문서 B3 `자동 생성` B3-A05). 날짜가 바뀌면 새 행이라 Asia/Seoul 00:00에 다시 센다.
+- 요청 전에 `INSERT … ON CONFLICT DO UPDATE SET plan_count = plan_count + 1 WHERE plan_count < 한도 RETURNING plan_count` 한 문장으로 1을 더한다. 행이 나오지 않으면 한도에 닿은 것이다. 한 문장이라 같은 회원의 동시 요청도 한도를 넘지 않는다.
+- 세지 않는 요청(장소를 못 찾았거나 너무 멀거나 출발지 지역을 확인하지 못해 길을 찾지 않은 요청, 서버 장애)은 끝난 뒤 1을 뺀다. 0 아래로 내려가지 않는다.
+
 #### `course.registration_requests` — 등록 멱등 키
 
 | 컬럼 | 타입 | NULL | 설명 |
@@ -628,6 +666,21 @@ erDiagram
 - 새로 저장할 때만 코스가 공개 중(`ACTIVE`)이고 만료 시각 전인지 본다. 코스 행을 공유 잠금(`FOR SHARE`)해 확인과 저장 사이에 삭제로 바뀌지 않는다. 이미 저장한 코스는 비공개(삭제 예정)가 돼도 남는다.
 - 코스가 `DELETED`가 되면(`CourseStatusChangedEvent`) 그 코스의 줄을, 회원이 탈퇴하면(`MemberWithdrawnEvent`) 그 회원의 줄을 지운다. 지우기만 해서 다시 받아도 결과가 같아 `processed_events`에 적지 않는다.
 - `course_bookmarks_course_id_idx`: `(course_id)`. 코스 삭제 때 그 코스의 줄을 찾는다. 내 목록 · 합계는 PK 앞쪽(`member_id`)으로 찾는다.
+
+#### `course.planner_pois` — 자동 생성 후보 지표용 공공 POI
+
+읽기 전용 참조 데이터다. 시드 마이그레이션이 데이터를 넣는다. 시드 파일은 `utilfile/_스크립트/course_planner/build_pois_seed.py`로 만들고 직접 고치지 않는다.
+
+- 원본: 소상공인시장진흥공단 상가(상권)정보 2026-09(`20260930` 배포) 상권업종소분류 `G20405`(편의점). 57,516곳. 좌표는 소수 5자리(약 1m)로 줄였다.
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `source_id` | `VARCHAR(40)` | | PK. 원본 식별자. 상가정보는 `sbiz:` + 상가업소번호 |
+| `kind` | `VARCHAR(20)` | | `CONVENIENCE`(편의점), `TOILET`(화장실). 지금은 편의점만 있다 |
+| `location` | `geography(Point, 4326)` | | 위치 |
+| `base_month` | `VARCHAR(7)` | | 원본 기준 월. 예: `2026-09` |
+
+- `planner_pois_location_idx`: `location` GiST. 자동 생성 후보 경로 50m 안의 편의점 수(원하는 길 `편의점`, 후보 요약)를 `ST_DWithin`으로 센다.
 
 #### `course.processed_events` — 이벤트 처리 기록
 
@@ -774,6 +827,23 @@ erDiagram
 - `review_photos_key_uk`: `UNIQUE (photo_key)`. 사진 주소에 키가 보이므로, 남의 리뷰 사진 키를 가져다 붙이면 그 리뷰를 지울 때 원래 리뷰의 파일까지 지워진다. 그래서 키 하나는 리뷰 하나만 쓴다(REVIEW-007).
 - 리뷰를 수정하면 사진 행을 모두 지우고 보낸 순서대로 다시 넣는다(`ReviewPhotos`). 빠진 사진과 지운 리뷰의 사진 파일은 커밋한 뒤 저장소에서 지운다. 회원 탈퇴 때 지우는 처리는 탈퇴 이벤트를 받을 때 붙인다.
 
+#### `review.review_reports` — 리뷰 신고
+
+다른 러너의 리뷰를 사유와 함께 신고한다(G2-1~G2-4, 2026-11-10). 쌓기만 하고 고치지 않는다. 처리 결과(삭제 · 문제 없음)는 운영자 화면을 만들 때 따로 남긴다.
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `id` | `UUID` | | PK |
+| `review_id` | `UUID` | | FK `reviews.id`. 리뷰를 지우면(작성자 삭제 · 코스 삭제 · 작성자 탈퇴) 함께 지운다(`ON DELETE CASCADE`) |
+| `reporter_member_id` | `UUID` | | 신고한 회원 ID(member 모듈, FK 없음) |
+| `reason` | `VARCHAR(20)` | | 사유. `ADVERTISING`(광고·홍보), `ABUSE`(욕설·비하), `PRIVACY`(개인정보 노출), `IRRELEVANT`(관계없는 내용), `OTHER`(기타) |
+| `detail` | `VARCHAR(100)` | ✓ | 자세한 내용. 선택 입력, 공백만 있으면 NULL |
+| `created_at` | `TIMESTAMPTZ` | | 신고 시각 |
+
+- `review_reports_review_reporter_uk`: `UNIQUE (review_id, reporter_member_id)`. 한 회원은 한 리뷰를 한 번만 신고한다. 미리 확인을 통과한 동시 신고도 이 제약이 막는다(`REVIEW-009`). 리뷰 목록의 `reportedByMe`도 이 인덱스로 찾는다.
+- `review_reports_reporter_member_id_idx`: `(reporter_member_id)`. 회원 탈퇴 때 그 회원이 한 신고를 지운다.
+- 내 리뷰는 신고할 수 없다(`REVIEW-008`). 신고한 사실은 작성자에게 알리지 않는다.
+
 #### `review.course_run_records` — 코스 주행 기록 복사본
 
 run이 확정한 코스 주행 기록 1건이 1행이다(`RunSessionEndedEvent`, 자유 러닝은 받지 않는다). 리뷰 작성 자격과 리뷰 카드의 완주 횟수에 쓴다.
@@ -807,7 +877,7 @@ ranking의 같은 이름 테이블과 같다(3.3). 숨김·삭제된 코스만 �
 
 ranking의 같은 이름 테이블과 같다(3.3).
 
-- `MemberWithdrawnEvent`를 받으면 그 회원의 리뷰(사진·S3 파일 포함)와 주행 기록 복사본을 바로 지우고 이 행을 남긴다. 리뷰마다 `ReviewDeletedEvent`를 발행해 course 평점에서 뺀다(정책 공통 4·5).
+- `MemberWithdrawnEvent`를 받으면 그 회원의 리뷰(사진·S3 파일·달린 신고 포함), 주행 기록 복사본, 그 회원이 한 리뷰 신고를 바로 지우고 이 행을 남긴다. 리뷰마다 `ReviewDeletedEvent`를 발행해 course 평점에서 뺀다(정책 공통 4·5).
 - 탈퇴 뒤에 도착한 그 회원의 주행 기록은 받지 않는다.
 
 ### 3.5 common
