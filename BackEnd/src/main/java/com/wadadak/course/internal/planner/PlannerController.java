@@ -6,7 +6,6 @@ import com.wadadak.course.internal.planner.CoursePlanner.PlanQuota;
 import io.swagger.v3.oas.annotations.Operation;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -17,10 +16,9 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.util.UUID;
 
-/** B3 `자동 생성`(정책 B3-A01~A08). 실제 구현 전이라 {@code app.stub.course-planner: true}일 때만 뜬다(개발 정책 3.2). */
+/** B3 `자동 생성`(정책 B3-A01~A08). 앱만 쓰는 API다. */
 @RestController
 @RequestMapping("/api/v1/courses/plans")
-@ConditionalOnProperty(name = "app.stub.course-planner", havingValue = "true")
 @RequiredArgsConstructor
 class PlannerController {
 

@@ -58,7 +58,7 @@ class PlaceSearchTest {
                           {"title": "<b>선문대</b> 앞 &quot;밥&amp;술&quot;", "category": "술집>요리주점",
                            "mapx": "1270800000", "mapy": "368000000"},
                           {"title": "좌표 없는 곳", "category": "지명", "mapx": "", "mapy": ""}
-                        ]}""", MediaType.APPLICATION_JSON));
+                        ]}""", MediaType.parseMediaType("text/plain;charset=UTF-8"))); // 실제 지역 검색은 JSON을 text/plain으로 보낸다
 
         assertThat(placeSearch.search("선문대", SUNMOON)).containsExactly(
                 new PlaceHit("선문대학교 아산캠퍼스", new GeoPoint(36.79915, 127.07491), false),

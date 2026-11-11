@@ -14,6 +14,9 @@ import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.HtmlUtils;
+import tools.jackson.core.JacksonException;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.net.http.HttpClient;
 import java.time.Duration;
@@ -41,6 +44,9 @@ class PlaceSearch {
     /** 지역 검색 분류에 이 말이 들어 있으면 가게다(검증 스크립트 naver_local_test.py의 BUSINESS) */
     private static final List<String> SHOP_CATEGORIES = List.of(
             "음식점", "카페", "술집", "한식", "중식", "일식", "양식", "분식", "제과", "숙박", "미용", "쇼핑", "생활,편의", "부동산");
+
+    /** 응답에서 쓰는 칸만 읽는다 */
+    private static final JsonMapper JSON = JsonMapper.builder().disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES).build();
 
     private final RestClient rest;
     private final Api search;
@@ -119,18 +125,19 @@ class PlaceSearch {
         return hits;
     }
 
-    /** 키가 없거나 실패하면 null */
+    /** 키가 없거나 실패하면 null. 지역 검색은 JSON을 {@code text/plain}으로 보내서 바이트로 받아 직접 읽는다 */
     private <T> T get(Api api, String uri, Class<T> type, Object... uriVariables) {
         if (!StringUtils.hasText(api.clientId()) || !StringUtils.hasText(api.clientSecret())) {
             return null;
         }
         try {
-            return rest.get().uri(api.baseUrl() + uri, uriVariables)
+            byte[] body = rest.get().uri(api.baseUrl() + uri, uriVariables)
                     .header("X-NCP-APIGW-API-KEY-ID", api.clientId())
                     .header("X-NCP-APIGW-API-KEY", api.clientSecret())
                     .retrieve()
-                    .body(type);
-        } catch (RestClientException e) {
+                    .body(byte[].class);
+            return body == null ? null : JSON.readValue(body, type);
+        } catch (RestClientException | JacksonException e) {
             // 요청 주소에 검색어 · 좌표가 들어 있어 예외 메시지는 남기지 않는다
             log.warn("장소 검색 실패: {} {}", uri.substring(0, uri.indexOf('?')),
                     e instanceof RestClientResponseException response ? response.getStatusCode() : e.getClass().getSimpleName());
