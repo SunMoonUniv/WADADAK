@@ -147,9 +147,9 @@ flutter test
   - 지도 위에 버튼 · 범례를 올리면 그 높이만큼 `padding`을 준다. 네이버 로고 · 축척이 그 위로 올라가 가리지 않는다(네이버 지도는 로고를 가리면 안 된다).
   - 거리는 `GeoPoint.distanceTo` · `GeoPoint.pathLength` — 서버(PostGIS `ST_Length(geography)`)와 같은 WGS84 타원체 기준이다.
   - 키 없이 시험하려면 `flutter run --dart-define=REAL_MAP=false` — 개발용 지도(배경색 위에 선 · 표지만)가 뜬다. 위젯 테스트는 `mapEngineProvider`를 `MapEngine.dev`로 바꾼다.
-- 코스 만들기의 `자동 생성` 탭(B3 고도화)은 빌드 플래그로 켠다: `flutter run --dart-define=AUTO_COURSE=true`. 서버의 코스 자동 생성 API가 공용 서버에 올라가기 전에는 기본값(false)으로 탭을 숨긴다.
+- 코스 만들기의 `자동 생성` 탭(B3 고도화)은 빌드 플래그 `AUTO_COURSE`(기본 true)로 그린다. 서버에는 끄는 설정이 없어, 기능을 내릴 때는 `--dart-define=AUTO_COURSE=false`로 빌드해 탭을 숨긴다.
   - 서버 없이 화면만 보려면 로컬 서버를 스텁으로 띄운다: `./gradlew bootRun --args='--app.stub.course-planner=true'`(선문대 5km 후보 3개를 고정으로 준다).
-  - 위젯 테스트는 `autoCourseProvider`를 true로, 평소 페이스는 `usualPaceProvider`를 바꾼다.
+  - 위젯 테스트는 탭을 `autoCourseProvider`로 켜고 끄고, 평소 페이스는 `usualPaceProvider`를 바꾼다.
 - 저장소 경로에 한글(예: `바탕화면\와다닥`)이 있으면:
   - Android 빌드: `app/android/gradle.properties`의 `android.overridePathCheck=true`로 이미 막아 두었다.
   - `flutter analyze`가 분석 서버 오류로 멈춘다. 대신 `dart analyze`를 쓴다.
