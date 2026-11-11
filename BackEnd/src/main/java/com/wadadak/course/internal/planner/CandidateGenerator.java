@@ -23,14 +23,20 @@ import java.util.function.Supplier;
 @RequiredArgsConstructor
 class CandidateGenerator {
 
-    /** 한 바퀴: 30°마다 원 하나 */
+    /** 한 바퀴: 한 라운드에 30°마다 원 하나 */
     static final int LOOP_HEADING_STEP = 30;
     /** 한 방향에서 반지름 · 반환점 거리를 고치는 최대 횟수 */
     static final int MAX_TRIES = 5;
-    /** 한 바퀴: 엔진의 round_trip으로 더 만드는 후보 수 */
+    /** 한 바퀴: 한 라운드에 엔진의 round_trip으로 더 만드는 후보 수 */
     static final int ROUND_TRIP_SEEDS = 12;
-    /** 왕복: 60°마다 */
+    /** 왕복: 한 라운드에 60°마다 */
     static final int OUT_AND_BACK_HEADING_STEP = 60;
+    /**
+     * 라운드 수. 둘째 라운드는 방향을 반 칸(한 바퀴 15° · 왕복 30°) 비키고 round_trip 씨앗도 새로 쓴다. 그래서 한 바퀴는 24방향 + round_trip 24개,
+     * 왕복은 12방향이다. 기본 방향을 먼저 다 돌아 기한에 걸려도 첫 라운드 후보는 남는다.
+     * 라운드가 하나면 학교 · 산 옆처럼 길이 적은 곳(선문대 4km)에서 거리 · 되돌아감을 통과하는 후보가 1개뿐이었다
+     */
+    static final int ROUNDS = 2;
     /** 길은 직선보다 약 25% 길다. 첫 반지름 · 왕복 반환점 거리를 이만큼 줄여 잡는다 */
     static final double DETOUR = 1.25;
     /** 경유: 경유지에서 옆으로 비켜 돌아오는 점. 같은 길로 되돌아오지 않게 한다 */
@@ -49,10 +55,12 @@ class CandidateGenerator {
         switch (shape) {
             case LOOP -> loops(start, targetMeters, deadline, paths);
             case OUT_AND_BACK -> {
-                for (int heading = 0; heading < 360; heading += OUT_AND_BACK_HEADING_STEP) {
-                    int h = heading;
-                    addIfPresent(paths, fit(targetMeters / 2.0 / DETOUR, targetMeters, CandidateSelector.OUT_AND_BACK_TOLERANCE,
-                            deadline, half -> routing.route(List.of(start, destination(start, half, h), start), false)));
+                for (int round = 0; round < ROUNDS; round++) {
+                    for (int heading = round * OUT_AND_BACK_HEADING_STEP / ROUNDS; heading < 360; heading += OUT_AND_BACK_HEADING_STEP) {
+                        int h = heading;
+                        addIfPresent(paths, fit(targetMeters / 2.0 / DETOUR, targetMeters, CandidateSelector.OUT_AND_BACK_TOLERANCE,
+                                deadline, half -> routing.route(List.of(start, destination(start, half, h), start), false)));
+                    }
                 }
             }
             case POINT_TO_POINT -> {
@@ -72,14 +80,16 @@ class CandidateGenerator {
 
     /** 출발점을 지나는 원 위의 경유점 3개로 돈다 */
     private void loops(GeoPoint start, int targetMeters, Instant deadline, List<RoutedPath> paths) {
-        for (int heading = 0; heading < 360; heading += LOOP_HEADING_STEP) {
-            int h = heading;
-            addIfPresent(paths, fit(targetMeters / (2 * Math.PI * DETOUR), targetMeters, CandidateSelector.LOOP_TOLERANCE,
-                    deadline, radius -> routing.route(circle(start, radius, h), true)));
-        }
-        for (long seed = 0; seed < ROUND_TRIP_SEEDS && !expired(deadline); seed++) {
-            long s = seed;
-            addIfRouted(paths, () -> routing.roundTrip(start, targetMeters, s));
+        for (int round = 0; round < ROUNDS; round++) {
+            for (int heading = round * LOOP_HEADING_STEP / ROUNDS; heading < 360; heading += LOOP_HEADING_STEP) {
+                int h = heading;
+                addIfPresent(paths, fit(targetMeters / (2 * Math.PI * DETOUR), targetMeters, CandidateSelector.LOOP_TOLERANCE,
+                        deadline, radius -> routing.route(circle(start, radius, h), true)));
+            }
+            for (long seed = (long) round * ROUND_TRIP_SEEDS; seed < (round + 1L) * ROUND_TRIP_SEEDS && !expired(deadline); seed++) {
+                long s = seed;
+                addIfRouted(paths, () -> routing.roundTrip(start, targetMeters, s));
+            }
         }
     }
 
