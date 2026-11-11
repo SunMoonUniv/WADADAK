@@ -38,10 +38,12 @@ class CandidateGeneratorTest {
 
         List<RoutedPath> paths = generator(fixed()).generate(Shape.LOOP, START, null, 5_000, FAR);
 
-        // 원 12개 + round_trip 12개
-        assertThat(paths).hasSize(24);
+        // 30°마다 원 12개 + round_trip 12개(씨앗 0~11), 그다음 15° 비킨 원 12개 + round_trip 12개(씨앗 12~23)
+        assertThat(paths).hasSize(48);
         assertThat(paths.subList(0, 12)).allSatisfy(p -> assertThat(p.distanceMeters()).isCloseTo(5_000, within(250.0)));
-        verify(routing, atMost(12 * CandidateGenerator.MAX_TRIES)).route(any(), anyBoolean());
+        assertThat(paths.subList(24, 36)).allSatisfy(p -> assertThat(p.distanceMeters()).isCloseTo(5_000, within(250.0)));
+        verify(routing).roundTrip(START, 5_000, 23);
+        verify(routing, atMost(24 * CandidateGenerator.MAX_TRIES)).route(any(), anyBoolean());
     }
 
     @Test
@@ -58,7 +60,7 @@ class CandidateGeneratorTest {
 
         List<RoutedPath> paths = generator(fixed()).generate(Shape.LOOP, START, null, 5_000, FAR);
 
-        assertThat(paths).isNotEmpty().hasSizeLessThan(12).allSatisfy(p -> assertThat(p.distanceMeters()).isPositive());
+        assertThat(paths).isNotEmpty().hasSizeLessThan(24).allSatisfy(p -> assertThat(p.distanceMeters()).isPositive());
     }
 
     @Test
@@ -99,17 +101,21 @@ class CandidateGeneratorTest {
     }
 
     @Test
-    void outAndBackTurnsAtSixHeadings() {
+    void outAndBackTurnsAtTwelveHeadings() {
         roadsAreLongerThanStraight();
 
         List<RoutedPath> paths = generator(fixed()).generate(Shape.OUT_AND_BACK, START, null, 5_000, FAR);
 
-        assertThat(paths).hasSize(6).allSatisfy(p -> {
+        assertThat(paths).hasSize(12).allSatisfy(p -> {
             assertThat(p.points()).hasSize(3);
             assertThat(p.points().getFirst()).isEqualTo(p.points().getLast());
             // 반환점은 목표/2/1.25 = 2km
             assertThat(START.distanceMeters(p.points().get(1))).isCloseTo(2_000, within(1.0));
         });
+        // 60°마다 6개 뒤에 30° 비킨 6개. 7번째 반환점은 출발점에서 북동(30°)
+        GeoPoint turn = paths.get(6).points().get(1);
+        assertThat(turn.lat()).isGreaterThan(START.lat());
+        assertThat(turn.lng()).isGreaterThan(START.lng());
     }
 
     @Test
@@ -122,8 +128,8 @@ class CandidateGeneratorTest {
 
         List<RoutedPath> paths = generator(fixed()).generate(Shape.OUT_AND_BACK, START, null, 5_000, FAR);
 
-        assertThat(paths).hasSize(6).allSatisfy(p -> assertThat(p.distanceMeters()).isCloseTo(5_000, within(500.0)));
-        verify(routing, atMost(6 * CandidateGenerator.MAX_TRIES)).route(any(), anyBoolean());
+        assertThat(paths).hasSize(12).allSatisfy(p -> assertThat(p.distanceMeters()).isCloseTo(5_000, within(500.0)));
+        verify(routing, atMost(12 * CandidateGenerator.MAX_TRIES)).route(any(), anyBoolean());
     }
 
     @Test
