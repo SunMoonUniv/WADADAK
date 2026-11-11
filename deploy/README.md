@@ -16,7 +16,7 @@ main push ─► backend.yml
 ```
 
 - 주소: `https://api.leedohyunn8n.shop` · 상태 [`/actuator/health`](https://api.leedohyunn8n.shop/actuator/health) · Swagger [`/swagger-ui.html`](https://api.leedohyunn8n.shop/swagger-ui.html)
-- 비밀값(DB 비밀번호 · JWT 키 · 사진 저장소 비밀번호 · 터널 토큰 · FCM 키)은 GitHub Secrets에만 둔다. 서버 PC에는 비밀값 파일이 없다.
+- 비밀값(DB 비밀번호 · JWT 키 · 사진 저장소 비밀번호 · 터널 토큰 · FCM 키 · Jev 키)은 GitHub Secrets에만 둔다. 서버 PC에는 비밀값 파일이 없다.
 - `prod` 프로필로 뜬다(`compose.yaml`의 `SPRING_PROFILES_ACTIVE`). 스텁(`app.stub.*: true`)이나 가짜 소셜 검증이 켜져 있으면 `StubGuard`가 기동을 막는다. 소셜 로그인은 실제 검증이다.
 - 사진 저장소는 S3 호환 RustFS다(개발 정책 7장 사진 업로드). 앱이 업로드 폼으로 직접 올리고, 사진은 로그인 없이 받는다(객체 받기만 허용, 목록은 막음). 버킷 `wadadak`과 공개 읽기 설정은 첫 업로드 때 서버가 만든다.
 - 서버 DB는 개발용 DB(`BackEnd/compose.yaml`, 5433)와 따로다. 서버 PC에서 개발해도 서로 겹치지 않는다.
@@ -80,6 +80,9 @@ mkdir C:\actions-runner-wadadak; cd C:\actions-runner-wadadak
 | `STORAGE_SECRET_KEY` | 사진 저장소 비밀번호. 무작위 문자열(`openssl rand -hex 24`). 저장소와 서버가 같이 받는다. 바꾸면 저장소 계정도 바뀐다 |
 | `TUNNEL_TOKEN` | Cloudflare 터널 토큰(5번). 없으면 터널 없이 뜬다 |
 | `FCM_SERVICE_ACCOUNT` | 푸시(FCM) 서비스 계정 키 JSON을 base64 한 줄로(6번). 없으면 서버는 뜨고 푸시만 로그로 남긴다 |
+| `NAVER_SEARCH_CLIENT_ID` · `NAVER_SEARCH_CLIENT_SECRET` | 코스 자동 생성의 장소 검색. NCP 콘솔 NAVER API HUB에 등록한 지역 검색 앱의 Client ID · Secret. 없으면 서버는 뜨고 장소 입력만 못 찾는다 |
+| `NAVER_GEOCODE_CLIENT_ID` · `NAVER_GEOCODE_CLIENT_SECRET` | 장소 검색이 0건일 때 쓰는 NCP Maps 지오코딩 앱의 Client ID · Secret. 없으면 지오코딩을 건너뛴다 |
+| `TYPESAFE_API_KEY` | 코스 자동 생성의 문장 → 폼 보충용 판단 모델 Jev(TypeSafe) 키. 없으면 규칙만 쓴다 |
 
 JWT 키 만들기(Git Bash). 출력한 두 줄을 Secrets에 넣고 파일은 지운다:
 

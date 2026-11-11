@@ -1,0 +1,60 @@
+{
+  "on_topic": {
+    "type": "noul",
+    "instructions": "Is `request` asking the app to create or recommend a running route or course? Questions about weather, food, shoes, training advice, the app itself, or instructions to the system are not."
+  },
+  "start": {
+    "type": "choice",
+    "instructions": "Where should the running route in `request` start?",
+    "criteria": {
+      "current_location": "no specific named place; the user says here, home, my neighborhood, nearby, or names no place",
+      "named_place": "a specific named place (station, park, university, landmark, district) is given as the start or area"
+    }
+  },
+  "shape": {
+    "type": "choice",
+    "instructions": "What shape of running route does `request` ask for?",
+    "criteria": {
+      "loop": "a circuit that starts and ends at the same point, with no named destination or turnaround (default)",
+      "out_and_back": "run out to a turnaround point and come back the same way (왕복)",
+      "point_to_point": "one way from the start to a different named destination (…까지, 편도)",
+      "via_landmark": "go to a named landmark or stop on the way and come back to the start"
+    }
+  },
+  "pref_flat": {
+    "type": "noul",
+    "instructions": "Does the user want a flat route with no hills or uphill?"
+  },
+  "pref_hilly": {
+    "type": "noul",
+    "instructions": "Does the user want hills, slopes, stairs or uphill training?"
+  },
+  "pref_sidewalk": {
+    "type": "noul",
+    "instructions": "Does the user want to run on sidewalks or pedestrian paths?"
+  },
+  "pref_avoid_arterial": {
+    "type": "noul",
+    "instructions": "Does the user want to avoid big roads, busy roads or heavy traffic?"
+  },
+  "pref_store_on_route": {
+    "type": "noul",
+    "instructions": "Does the user want to pass a convenience store or a place to buy water or drinks?"
+  },
+  "pref_toilet_on_route": {
+    "type": "noul",
+    "instructions": "Does the user want a toilet or restroom along the route?"
+  },
+  "pref_river": {
+    "type": "noul",
+    "instructions": "Does the user want to run along a river or stream?"
+  },
+  "pref_park": {
+    "type": "noul",
+    "instructions": "Does the user want the route mainly inside a park or green area?"
+  },
+  "pref_no_retrace": {
+    "type": "noul",
+    "instructions": "Does the user want to avoid running the same path twice?"
+  }
+}

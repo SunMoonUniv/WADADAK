@@ -8,14 +8,15 @@ import org.springframework.stereotype.Component;
 /**
  * 동일 코스 유사도(정책 공통 3) = 기존 코스와 겹치는 구간 길이 ÷ 새 코스 전체 길이.
  * 기존 활성 코스 하나씩 비교해 가장 큰 값을 쓴다. 진행 방향은 보지 않는다.
+ * 코스 자동 생성도 같은 기준으로 기존 코스와 겹치는 후보, 서로 겹치는 후보를 뺀다(정책 B3-A03).
  */
 @Component
 @RequiredArgsConstructor
-class SimilarityChecker {
+public class SimilarityChecker {
 
     /** 새 코스 구간이 기존 경로에서 이 거리(m) 안이면 겹친 것으로 본다. 같은 길을 손으로 찍을 때의 어긋남을 흡수한다 */
     static final int OVERLAP_TOLERANCE_METERS = 20;
-    static final double MAX_SIMILARITY = 0.85;
+    public static final double MAX_SIMILARITY = 0.85;
 
     // 공간 인덱스로 후보를 먼저 줄이는 도(degree) 단위 거리. 위도 33~38도에서 20m보다 넉넉하다(약 26~33m)
     private static final double CANDIDATE_DEGREES = 0.0003;
@@ -30,7 +31,7 @@ class SimilarityChecker {
      *
      * @return 0~1. 겹칠 수 있는 기존 활성 코스가 없으면 0
      */
-    double maxSimilarity(LineString route) {
+    public double maxSimilarity(LineString route) {
         Double similarity = jdbcTemplate.queryForObject("""
                         WITH new AS (SELECT ST_Transform(ST_GeomFromText(?, 4326), 5179) AS g)
                         SELECT max(overlap.meters / ST_Length(new.g))
@@ -41,6 +42,17 @@ class SimilarityChecker {
                         WHERE c.status = 'ACTIVE'
                           AND ST_DWithin(c.route, ST_GeomFromText(?, 4326), ?)""",
                 Double.class, route.toText(), OVERLAP_TOLERANCE_METERS, route.toText(), CANDIDATE_DEGREES);
+        return similarity == null ? 0 : similarity;
+    }
+
+    /** a가 b와 겹치는 비율(0~1). {@link #maxSimilarity}와 같은 계산을 두 경로 사이에서 한다. 방향이 있다: a 길이 기준 */
+    public double similarity(LineString a, LineString b) {
+        Double similarity = jdbcTemplate.queryForObject("""
+                        WITH a AS (SELECT ST_Transform(ST_GeomFromText(?, 4326), 5179) AS g),
+                             b AS (SELECT ST_Buffer(ST_Transform(ST_GeomFromText(?, 4326), 5179), ?) AS g)
+                        SELECT (SELECT sum(ST_Length(ST_Intersection(s.geom, b.g))) FROM ST_DumpSegments(a.g) s) / ST_Length(a.g)
+                        FROM a, b""",
+                Double.class, a.toText(), b.toText(), OVERLAP_TOLERANCE_METERS);
         return similarity == null ? 0 : similarity;
     }
 }
