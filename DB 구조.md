@@ -17,7 +17,7 @@
 | `member` | member | `members`, `agreements`, `refresh_tokens`, `region_event_backfill` |
 | `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `gps_course_sources`, `completion_elevation_profiles`, `gps_source_completion_receipts`, `course_stats`, `course_daily_stats`, `course_completions`, `course_active_runners`, `course_bookmarks`, `processed_events` |
 | `ranking` | ranking | `course_ranking_entries`, `distance_run_records`, `course_status_copies`, `member_visibility_copies`, `member_region_history`, `withdrawn_members` |
-| `review` | review | `reviews`, `review_photos`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
+| `review` | review | `reviews`, `review_photos`, `review_reports`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
 | `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members`, `course_attempts`, `course_runner_counts`, `ghost_starts`, `ghost_start_playbacks`, `ghost_results`, `free_ghost_starts`, `free_ghost_results`, `ghost_comparisons`, `gps_source_links`, `gps_course_status_copies` |
 | `notification` | notification | `device_tokens`, `notification_settings`, `notifications`, `deliveries`, `withdrawn_members` |
 | `common` | common | `region`, `event_publication`, `shedlock`, `photo_uploads`, `flyway_schema_history` |
@@ -68,6 +68,8 @@ erDiagram
     region ||..o{ member_region_history : "region_code"
     members ||..o| withdrawn_members : "member_id"
     reviews ||--o{ review_photos : "review_id"
+    reviews ||--o{ review_reports : "review_id"
+    members ||..o{ review_reports : "reporter_member_id"
     courses ||..o{ reviews : "course_id"
     members ||..o{ reviews : "member_id"
     course_run_records ||..o{ reviews : "source_run_record_id"
@@ -244,6 +246,13 @@ erDiagram
         uuid review_id FK
         varchar(100) photo_key UK "review/..."
         integer display_order "0~4"
+    }
+    review_reports {
+        uuid id PK
+        uuid review_id FK
+        uuid reporter_member_id "member ID"
+        varchar(20) reason "ADVERTISING, ABUSE, PRIVACY, IRRELEVANT, OTHER"
+        varchar(100) detail "선택"
     }
     course_run_records {
         uuid run_record_id PK "run 기록 ID"
@@ -774,6 +783,23 @@ erDiagram
 - `review_photos_key_uk`: `UNIQUE (photo_key)`. 사진 주소에 키가 보이므로, 남의 리뷰 사진 키를 가져다 붙이면 그 리뷰를 지울 때 원래 리뷰의 파일까지 지워진다. 그래서 키 하나는 리뷰 하나만 쓴다(REVIEW-007).
 - 리뷰를 수정하면 사진 행을 모두 지우고 보낸 순서대로 다시 넣는다(`ReviewPhotos`). 빠진 사진과 지운 리뷰의 사진 파일은 커밋한 뒤 저장소에서 지운다. 회원 탈퇴 때 지우는 처리는 탈퇴 이벤트를 받을 때 붙인다.
 
+#### `review.review_reports` — 리뷰 신고
+
+다른 러너의 리뷰를 사유와 함께 신고한다(G2-1~G2-4, 2026-11-10). 쌓기만 하고 고치지 않는다. 처리 결과(삭제 · 문제 없음)는 운영자 화면을 만들 때 따로 남긴다.
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `id` | `UUID` | | PK |
+| `review_id` | `UUID` | | FK `reviews.id`. 리뷰를 지우면(작성자 삭제 · 코스 삭제 · 작성자 탈퇴) 함께 지운다(`ON DELETE CASCADE`) |
+| `reporter_member_id` | `UUID` | | 신고한 회원 ID(member 모듈, FK 없음) |
+| `reason` | `VARCHAR(20)` | | 사유. `ADVERTISING`(광고·홍보), `ABUSE`(욕설·비하), `PRIVACY`(개인정보 노출), `IRRELEVANT`(관계없는 내용), `OTHER`(기타) |
+| `detail` | `VARCHAR(100)` | ✓ | 자세한 내용. 선택 입력, 공백만 있으면 NULL |
+| `created_at` | `TIMESTAMPTZ` | | 신고 시각 |
+
+- `review_reports_review_reporter_uk`: `UNIQUE (review_id, reporter_member_id)`. 한 회원은 한 리뷰를 한 번만 신고한다. 미리 확인을 통과한 동시 신고도 이 제약이 막는다(`REVIEW-009`). 리뷰 목록의 `reportedByMe`도 이 인덱스로 찾는다.
+- `review_reports_reporter_member_id_idx`: `(reporter_member_id)`. 회원 탈퇴 때 그 회원이 한 신고를 지운다.
+- 내 리뷰는 신고할 수 없다(`REVIEW-008`). 신고한 사실은 작성자에게 알리지 않는다.
+
 #### `review.course_run_records` — 코스 주행 기록 복사본
 
 run이 확정한 코스 주행 기록 1건이 1행이다(`RunSessionEndedEvent`, 자유 러닝은 받지 않는다). 리뷰 작성 자격과 리뷰 카드의 완주 횟수에 쓴다.
@@ -807,7 +833,7 @@ ranking의 같은 이름 테이블과 같다(3.3). 숨김·삭제된 코스만 �
 
 ranking의 같은 이름 테이블과 같다(3.3).
 
-- `MemberWithdrawnEvent`를 받으면 그 회원의 리뷰(사진·S3 파일 포함)와 주행 기록 복사본을 바로 지우고 이 행을 남긴다. 리뷰마다 `ReviewDeletedEvent`를 발행해 course 평점에서 뺀다(정책 공통 4·5).
+- `MemberWithdrawnEvent`를 받으면 그 회원의 리뷰(사진·S3 파일·달린 신고 포함), 주행 기록 복사본, 그 회원이 한 리뷰 신고를 바로 지우고 이 행을 남긴다. 리뷰마다 `ReviewDeletedEvent`를 발행해 course 평점에서 뺀다(정책 공통 4·5).
 - 탈퇴 뒤에 도착한 그 회원의 주행 기록은 받지 않는다.
 
 ### 3.5 common

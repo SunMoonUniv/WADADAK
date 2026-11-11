@@ -33,7 +33,8 @@ class ReviewQueries {
 
     /*
      * 카드 한 장에 필요한 값. 완주 횟수는 저장하지 않고 주행 기록 복사본에서 센다(정책 제4부 4.1 D-09).
-     * :requesterId와 같은 회원이면 mine = true다.
+     * :requesterId와 같은 회원이면 mine = true, 그 회원이 신고한 리뷰면 reported_by_me = true다.
+     * 신고 여부는 유니크 제약 (review_id, reporter_member_id)의 인덱스로 리뷰마다 한 번에 찾는다.
      */
     private static final String CARD = """
             SELECT r.id, r.member_id, r.member_id = :requesterId AS mine,
@@ -42,7 +43,10 @@ class ReviewQueries {
                    (SELECT count(*)
                     FROM review.course_run_records c
                     WHERE c.member_id = r.member_id AND c.course_id = r.course_id
-                      AND c.completed AND NOT c.deleted) AS completed_count
+                      AND c.completed AND NOT c.deleted) AS completed_count,
+                   EXISTS (SELECT 1
+                           FROM review.review_reports rr
+                           WHERE rr.review_id = r.id AND rr.reporter_member_id = :requesterId) AS reported_by_me
             FROM review.reviews r
             WHERE r.course_id = :courseId""";
 
@@ -53,7 +57,8 @@ class ReviewQueries {
             rs.getInt("rating"), rs.getInt("safety_rating"), rs.getInt("road_rating"),
             rs.getInt("lighting_rating"), rs.getInt("amenity_rating"),
             rs.getString("content"), tags(rs.getArray("tags")), List.of(), rs.getInt("best_progress_percent"),
-            rs.getInt("completed_count"), rs.getObject("created_at", OffsetDateTime.class).toInstant());
+            rs.getInt("completed_count"), rs.getObject("created_at", OffsetDateTime.class).toInstant(),
+            rs.getBoolean("reported_by_me"));
 
     private final JdbcClient jdbc;
 

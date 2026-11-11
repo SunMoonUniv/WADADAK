@@ -8,6 +8,7 @@ import '../../core/error_message.dart';
 import '../../routes.dart';
 import '../course/course_format.dart';
 import 'review_form_screen.dart';
+import 'review_report_sheet.dart';
 import 'review_state.dart';
 import 'review_widgets.dart';
 
@@ -195,7 +196,11 @@ class _ReviewListScreenState extends ConsumerState<ReviewListScreen> {
                         ),
                       ],
                       AsyncValue(:final value?) => [
-                        for (final card in value.cards) ...[const SizedBox(height: WdSpace.s16), ReviewCardView(card)],
+                        for (final card in value.cards) ...[
+                          const SizedBox(height: WdSpace.s16),
+                          // 목록은 내 리뷰를 빼고 받지만, 혹시 섞여 와도 내 리뷰에는 신고 버튼을 달지 않는다
+                          ReviewCardView(card, onMore: card.mine ? null : () => openReviewMenu(context, card)),
+                        ],
                       ],
                       AsyncValue(:final error?) => [
                         const SizedBox(height: WdSpace.s16),

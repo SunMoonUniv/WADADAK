@@ -87,7 +87,9 @@ class ReviewCard {
       photos = [for (final photo in json['photos'] as List) ReviewPhoto.fromJson(photo as Map)],
       bestProgressPercent = json['bestProgressPercent'] as int,
       completedCount = json['completedCount'] as int,
-      createdAt = DateTime.parse(json['createdAt'] as String);
+      createdAt = DateTime.parse(json['createdAt'] as String),
+      // 신고 기능 전 서버는 이 값을 보내지 않아서 없으면 false로 읽는다
+      reportedByMe = json['reportedByMe'] as bool? ?? false;
 
   final String reviewId;
   final String memberId;
@@ -117,6 +119,23 @@ class ReviewCard {
 
   /// 작성 시각. 수정해도 바뀌지 않는다.
   final DateTime createdAt;
+
+  /// 내가 이미 신고한 리뷰. 신고 메뉴(G2-1)에서 사유 화면 대신 바로 "이미 신고한 리뷰" 안내(G2-4)를 띄운다.
+  final bool reportedByMe;
+}
+
+/// 리뷰 신고 사유(G2-2). 정해진 5개 중 하나를 고른다.
+enum ReviewReportReason {
+  advertising('ADVERTISING', '광고·홍보', '상품·가게 홍보나 링크로 끌어들이는 글'),
+  abuse('ABUSE', '욕설·비하', '다른 사람을 깎아내리거나 불쾌하게 하는 말'),
+  privacy('PRIVACY', '개인정보 노출', '전화번호·주소처럼 누군지 알 수 있는 정보'),
+  irrelevant('IRRELEVANT', '관계없는 내용', '이 코스와 상관없는 글'),
+  other('OTHER', '기타', '위에 없는 다른 문제');
+
+  const ReviewReportReason(this.apiName, this.label, this.description);
+  final String apiName;
+  final String label;
+  final String description;
 }
 
 /// 이 코스를 달린 내 기록 한 건. B2 · B10 상단에 "5.2km · 2026.09.08 완주 100% · 27:14"로 보인다.
@@ -263,6 +282,15 @@ class ReviewApiClient {
 
   /// 사진도 함께 지운다.
   Future<void> delete(String reviewId) => callApi(() => _dio.delete('$_base/${Uri.encodeComponent(reviewId)}'));
+
+  /// 다른 러너의 리뷰를 신고한다. [detail]은 선택(100자, 비우면 없는 것으로 저장).
+  /// 없음 REVIEW-003, 내 리뷰 008, 이미 신고함 009.
+  Future<void> report(String reviewId, ReviewReportReason reason, String detail) => callApi(
+    () => _dio.post(
+      '$_base/${Uri.encodeComponent(reviewId)}/reports',
+      data: {'reason': reason.apiName, 'detail': detail},
+    ),
+  );
 
   /// 리뷰 사진 한 장을 올릴 폼. 사진 업로더(`PhotoUploader.upload`)에 넘긴다.
   Future<UploadForm> photoUploadForm() async =>
