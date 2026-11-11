@@ -57,7 +57,7 @@ public class RouteService {
         if (joined.size() < 2) {
             throw new AppException(CourseErrorCode.ROUTE_TOO_FEW_POINTS);
         }
-        List<GeoPoint> route = simplified(joined);
+        List<GeoPoint> route = simplify(joined, SIMPLIFY_TOLERANCE_METERS);
         // 2m 안에 모두 모인 경로는 한 점으로 줄어든다. 1km에 한참 못 미친다
         if (route.size() < 2) {
             throw new AppException(CourseErrorCode.ROUTE_TOO_SHORT);
@@ -73,14 +73,17 @@ public class RouteService {
     /**
      * Douglas-Peucker로 점을 줄인다. 1초에 한 점씩 쌓인 기록(30분에 약 1,800개)을 그대로 두면 코스 러닝 판정 · 지도 · 유사도
      * 계산이 무거워진다. 거리 기준이 미터여야 해서 유사도처럼 한국 전역 미터 좌표계(EPSG:5179)에서 줄인다. 첫 점과 끝 점은 남는다.
+     * 코스 자동 생성도 후보 경로를 B3 입력점으로 줄일 때 쓴다.
+     *
+     * @param toleranceMeters 줄인 경로가 원래 점에서 벗어나도 되는 거리(m)
      */
-    private List<GeoPoint> simplified(List<GeoPoint> points) {
+    public List<GeoPoint> simplify(List<GeoPoint> points, double toleranceMeters) {
         return jdbcTemplate.query("""
                         SELECT ST_Y(d.geom) AS lat, ST_X(d.geom) AS lng
                         FROM ST_DumpPoints(ST_Transform(ST_Simplify(ST_Transform(ST_GeomFromEWKT(?), 5179), ?), 4326)) AS d
                         ORDER BY d.path[1]""",
                 (rs, rowNum) -> new GeoPoint(rs.getDouble("lat"), rs.getDouble("lng")),
-                toWkt(points), SIMPLIFY_TOLERANCE_METERS);
+                toWkt(points), toleranceMeters);
     }
 
     /** 저장된 코스 경로의 1km 표지(B1-02). 등록할 때(B4-01)와 같은 계산이다. */

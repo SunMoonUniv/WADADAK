@@ -182,6 +182,9 @@ class ReviewEventHandlerTest {
         runRecord(course, member);
         UUID othersReview = review(course);
         runRecord(course);
+        UUID reportOnMine = report(mine, UUID.randomUUID());       // 탈퇴 회원의 리뷰에 달린 신고: 리뷰와 함께 지워진다
+        UUID myReport = report(othersReview, member);              // 탈퇴 회원이 한 신고: 지운다
+        UUID othersReport = report(othersReview, UUID.randomUUID()); // 남의 리뷰에 남이 한 신고: 그대로
         MemberWithdrawnEvent withdrawn = new MemberWithdrawnEvent(UUID.randomUUID(), Instant.now(), member, Instant.now());
 
         publish(withdrawn);
@@ -202,11 +205,27 @@ class ReviewEventHandlerTest {
         // 다른 회원의 리뷰 · 기록은 그대로
         assertThat(jdbc.queryForObject("SELECT count(*) FROM review.reviews WHERE id = ?", Long.class, othersReview)).isOne();
         assertThat(count("review.course_run_records", course)).isOne();
+        assertThat(reportExists(reportOnMine)).isFalse();
+        assertThat(reportExists(myReport)).isFalse();
+        assertThat(reportExists(othersReport)).isTrue();
 
         // 탈퇴 뒤에 늦게 온 주행 기록은 받지 않는다
         RunSessionEndedEvent late = ended(UUID.randomUUID(), member, course, 100, true);
         publish(late);
         assertThat(recordCount(late.runRecordId())).isZero();
+    }
+
+    /** 리뷰 신고 1건(광고·홍보). */
+    private UUID report(UUID reviewId, UUID reporterId) {
+        UUID id = UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO review.review_reports (id, review_id, reporter_member_id, reason, created_at, updated_at)
+                VALUES (?, ?, ?, 'ADVERTISING', now(), now())""", id, reviewId, reporterId);
+        return id;
+    }
+
+    private boolean reportExists(UUID reportId) {
+        return jdbc.queryForObject("SELECT count(*) FROM review.review_reports WHERE id = ?", Long.class, reportId) == 1;
     }
 
     private static RunSessionEndedEvent ended(UUID runRecordId, UUID memberId, UUID courseId, double progress, boolean eligible) {

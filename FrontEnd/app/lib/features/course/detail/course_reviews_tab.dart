@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:wadadak_design_system/wadadak_design_system.dart';
 
 import '../../../core/api/review_api_client.dart';
+import '../../review/review_report_sheet.dart';
 import '../../review/review_widgets.dart';
 import '../course_format.dart';
 import 'course_empty_card.dart';
@@ -130,7 +131,12 @@ class CourseReviewsTab extends StatelessWidget {
             ),
             ?previewStale,
           ],
-          AsyncValue(:final value?) => [for (final card in value) ReviewCardView(card), ?previewStale],
+          AsyncValue(:final value?) => [
+            // 미리보기에는 내 리뷰도 섞여 오므로 다른 러너 리뷰에만 신고 버튼(⋯)을 단다(G2와 같다)
+            for (final card in value)
+              ReviewCardView(card, onMore: card.mine ? null : () => openReviewMenu(context, card)),
+            ?previewStale,
+          ],
           AsyncValue(hasError: true) => [_Failure(onRetry: onRetryPreview)],
           _ => const [_Loading()],
         },

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wadadak/core/api/api_client.dart';
 import 'package:wadadak/core/api/course_api_client.dart';
 import 'package:wadadak/core/api/member_api_client.dart';
 import 'package:wadadak/core/api/review_api_client.dart';
@@ -10,6 +11,7 @@ import 'package:wadadak/core/map/map_view.dart';
 import 'package:wadadak/core/upload/photo_uploader.dart';
 import 'package:wadadak/features/home/home_screen.dart';
 import 'package:wadadak/features/review/review_entry.dart';
+import 'package:wadadak/features/review/review_report_sheet.dart';
 import 'package:wadadak/main.dart';
 import 'package:wadadak/router.dart';
 import 'package:wadadak/routes.dart';
@@ -69,6 +71,13 @@ class FakeReviewApi implements ReviewApiClient {
   ({String reviewId, ReviewInput input})? edited;
   String? deleted;
 
+  /// 목록에서 reportedByMe = true로 보낼 리뷰.
+  final reportedByMe = <String>{};
+
+  /// 신고 요청. [reportError]가 있으면 그 오류를 던진다(다른 기기에서 먼저 신고 등).
+  final reports = <({String reviewId, ReviewReportReason reason, String detail})>[];
+  Object? reportError;
+
   @override
   Future<ReviewSummary> summary(String courseId) async {
     calls.add('summary');
@@ -91,7 +100,10 @@ class FakeReviewApi implements ReviewApiClient {
     calls.add('list ${sort.apiName} photoOnly=$photoOnly excludeMine=$excludeMine');
     final cards = [_card('r1', '러너_하늘', 5), _card('r2', '달리는곰', 3, progress: 62, completed: 0)];
     return (
-      cards: [for (final card in sort == ReviewSort.lowest ? cards.reversed : cards) ReviewCard.fromJson(card)],
+      cards: [
+        for (final card in sort == ReviewSort.lowest ? cards.reversed : cards)
+          ReviewCard.fromJson({...card, 'reportedByMe': reportedByMe.contains(card['reviewId'])}),
+      ],
       nextCursor: null,
     );
   }
@@ -114,6 +126,12 @@ class FakeReviewApi implements ReviewApiClient {
 
   @override
   Future<void> delete(String reviewId) async => deleted = reviewId;
+
+  @override
+  Future<void> report(String reviewId, ReviewReportReason reason, String detail) async {
+    if (reportError case final error?) throw error;
+    reports.add((reviewId: reviewId, reason: reason, detail: detail));
+  }
 
   @override
   Future<UploadForm> photoUploadForm() async =>
@@ -294,6 +312,63 @@ void main() {
     expect(edited.input.safetyRating, 4);
     expect(edited.input.tags, {ReviewTag.nightView});
     expect(find.text('리뷰를 수정했어요.'), findsOneWidget);
+  });
+
+  testWidgets('G2 reports another runner review with a reason and then says it is already reported', (tester) async {
+    api.my = {...api.my, 'review': _card('mine', '원세찬', 4, mine: true), 'sourceRecord': _record};
+    await openReviews(tester);
+
+    // 내 리뷰에는 ⋯가 없고, 다른 러너 리뷰 2개에만 있다
+    expect(find.byTooltip('더보기'), findsNWidgets(2));
+
+    await tap(tester, find.byTooltip('더보기').first);
+    await tap(tester, find.text('이 리뷰 신고하기'));
+    expect(find.text('리뷰 신고'), findsOneWidget);
+
+    // 사유를 고르기 전에는 신고되지 않는다
+    await tap(tester, find.text('신고하기'));
+    expect(api.reports, isEmpty);
+
+    await tap(tester, find.text('욕설·비하'));
+    await tester.enterText(find.byType(TextField), '불쾌한 말이 있어요');
+    await tester.pump();
+    expect(find.text('10/100'), findsOneWidget);
+    await tap(tester, find.text('신고하기'));
+
+    expect(api.reports.single, (reviewId: 'r1', reason: ReviewReportReason.abuse, detail: '불쾌한 말이 있어요'));
+    expect(find.text('리뷰 신고'), findsNothing); // 시트가 닫힌다
+    expect(find.text(reviewReportedMessage), findsOneWidget);
+
+    // 같은 리뷰를 다시 누르면 사유 화면 없이 바로 G2-4
+    await tap(tester, find.byTooltip('더보기').first);
+    await tap(tester, find.text('이 리뷰 신고하기'));
+    expect(find.text('리뷰 신고'), findsNothing);
+    expect(find.text(reviewAlreadyReportedMessage), findsOneWidget);
+    expect(api.reports, hasLength(1));
+  });
+
+  testWidgets('G2 goes straight to already reported when the list says so', (tester) async {
+    api.reportedByMe.add('r2');
+    await openReviews(tester);
+
+    await tap(tester, find.byTooltip('더보기').last);
+    await tap(tester, find.text('이 리뷰 신고하기'));
+
+    expect(find.text('리뷰 신고'), findsNothing);
+    expect(find.text(reviewAlreadyReportedMessage), findsOneWidget);
+  });
+
+  testWidgets('G2 shows already reported when another device reported first', (tester) async {
+    api.reportError = const ApiException('REVIEW-009', '이미 신고한 리뷰예요.', status: 409);
+    await openReviews(tester);
+
+    await tap(tester, find.byTooltip('더보기').first);
+    await tap(tester, find.text('이 리뷰 신고하기'));
+    await tap(tester, find.text('기타'));
+    await tap(tester, find.text('신고하기'));
+
+    expect(find.text('리뷰 신고'), findsNothing);
+    expect(find.text(reviewAlreadyReportedMessage), findsOneWidget);
   });
 
   testWidgets('my review is deleted only after confirming', (tester) async {

@@ -28,9 +28,12 @@ String courseRunLine(CourseRun run) {
 
 /// 리뷰 카드(B8-04 · G2). 완주 횟수가 0이면 날짜만 보인다(정책 D-09). 내 리뷰는 `나 (닉네임)`.
 class ReviewCardView extends StatelessWidget {
-  const ReviewCardView(this.card, {super.key});
+  const ReviewCardView(this.card, {super.key, this.onMore});
 
   final ReviewCard card;
+
+  /// ⋯ 버튼(G2-1). 다른 러너 리뷰에만 넘긴다.
+  final VoidCallback? onMore;
 
   @override
   Widget build(BuildContext context) {
@@ -49,6 +52,7 @@ class ReviewCardView extends StatelessWidget {
       photos: [for (final photo in card.photos) NetworkImage(photo.url)],
       onTapPhoto: (index) => showReviewPhotos(context, card.photos, index),
       tags: [for (final tag in card.tags) tag.label],
+      onMore: onMore,
     );
   }
 }

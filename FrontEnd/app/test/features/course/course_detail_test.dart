@@ -22,6 +22,7 @@ import 'package:wadadak/features/home/my_location.dart';
 import 'package:wadadak/features/my/bookmark_state.dart';
 import 'package:wadadak/features/onboarding/permission_screen.dart';
 import 'package:wadadak/features/review/review_list_screen.dart';
+import 'package:wadadak/features/review/review_report_sheet.dart';
 import 'package:wadadak/features/review/review_state.dart';
 import 'package:wadadak/features/review/review_widgets.dart';
 import 'package:wadadak/features/run/application/course_run_entry.dart';
@@ -510,6 +511,36 @@ void main() {
           ['나 (러닝왕김)', '러너_하늘'], reason: 'Figma B8처럼 두 개');
       expect(text('리뷰 128개 모두 보기'), findsOneWidget);
       expect(find.textContaining('공개 기간이'), findsOneWidget, reason: '어느 탭에서나 보인다');
+    });
+
+    testWidgets('reports another runner review right from the preview, not my own (G2-1~G2-4)', (tester) async {
+      await openReviews(tester);
+
+      // 미리보기 두 장 중 내 리뷰에는 ⋯가 없다
+      expect(find.byTooltip('더보기'), findsOneWidget);
+
+      Future<void> openMenu() async {
+        await tester.ensureVisible(find.byTooltip('더보기'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('더보기'));
+        await tester.pumpAndSettle();
+        await tester.tap(text('이 리뷰 신고하기'));
+        await tester.pumpAndSettle();
+      }
+
+      await openMenu();
+      await tester.tap(text('광고·홍보'));
+      await tester.pumpAndSettle();
+      await tester.tap(text('신고하기'));
+      await tester.pumpAndSettle();
+      expect(reviews.reports, [(reviewId: 'review-러너_하늘', reason: ReviewReportReason.advertising)]);
+      expect(text(reviewReportedMessage), findsOneWidget);
+
+      // 같은 리뷰를 다시 누르면 사유 화면 없이 바로 이미 신고함 안내
+      await openMenu();
+      expect(text('리뷰 신고'), findsNothing);
+      expect(text(reviewAlreadyReportedMessage), findsOneWidget);
+      expect(reviews.reports, hasLength(1));
     });
 
     testWidgets('sorts and filters photos, keeping the choice across tabs', (tester) async {

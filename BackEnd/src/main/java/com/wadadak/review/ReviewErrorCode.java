@@ -17,7 +17,9 @@ public enum ReviewErrorCode implements ErrorCode {
     NOT_REVIEW_OWNER(HttpStatus.FORBIDDEN, "REVIEW-004", "내가 쓴 리뷰만 수정하거나 삭제할 수 있습니다."),
     COURSE_NOT_REVIEWABLE(HttpStatus.CONFLICT, "REVIEW-005", "비공개되었거나 삭제된 코스에는 리뷰를 쓸 수 없습니다."),
     TOO_MANY_PHOTOS(HttpStatus.BAD_REQUEST, "REVIEW-006", "리뷰 사진은 5장까지 올릴 수 있습니다."),
-    PHOTO_NOT_FOUND(HttpStatus.BAD_REQUEST, "REVIEW-007", "사진을 찾을 수 없습니다. 다시 올려 주세요.");
+    PHOTO_NOT_FOUND(HttpStatus.BAD_REQUEST, "REVIEW-007", "사진을 찾을 수 없습니다. 다시 올려 주세요."),
+    CANNOT_REPORT_OWN_REVIEW(HttpStatus.FORBIDDEN, "REVIEW-008", "내가 쓴 리뷰는 신고할 수 없습니다."),
+    ALREADY_REPORTED(HttpStatus.CONFLICT, "REVIEW-009", "이미 신고한 리뷰예요. 확인 후 처리할게요.");
 
     private final HttpStatus status;
     private final String code;
