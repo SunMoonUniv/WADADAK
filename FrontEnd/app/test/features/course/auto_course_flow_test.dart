@@ -24,7 +24,9 @@ void main() {
   const sunmoon = GeoPoint(36.7983, 127.0746);
 
   /// 선문대에서 출발해 돌아오는 후보. [shift]마다 다른 방향이고, 두 점 사이는 1km가 넘는다.
-  PlanCandidate candidate(int meters, double arterial, int stores, double retrace, double shift) => PlanCandidate(
+  PlanCandidate candidate(int meters, double arterial, int stores, double retrace, double shift,
+          {int toilets = 0, int? ascent}) =>
+      PlanCandidate(
         anchorPoints: [
           sunmoon,
           GeoPoint(36.8083 + shift, 127.0746),
@@ -35,9 +37,11 @@ void main() {
         retraceRatio: retrace,
         arterialRatio: arterial,
         storeCount: stores,
+        toiletCount: toilets,
+        ascentMeters: ascent,
       );
 
-  final first = candidate(5140, 0.24, 3, 0.02, 0);
+  final first = candidate(5140, 0.24, 3, 0.02, 0, toilets: 1, ascent: 32);
   final second = candidate(4930, 0.31, 1, 0.06, 0.01);
   final third = candidate(5210, 0.18, 0, 0.09, -0.02);
 
@@ -109,6 +113,10 @@ void main() {
     expect(button(tester, '코스 찾기'), isNull);
     await tap(tester, find.text('5km'));
     expect(find.text('골라 주세요'), findsNothing);
+    // 평지와 오르막은 하나만 고른다
+    await tap(tester, find.text('평지'));
+    await tap(tester, find.text('오르막'));
+    await tap(tester, find.text('화장실 들르기'));
 
     // A2: 응답을 기다리는 동안
     courses.planGate = Completer();
@@ -124,14 +132,14 @@ void main() {
     expect(sent.form.startQuery, '선문대');
     expect(sent.form.shape, PlanShape.loop);
     expect(sent.form.distanceM, 5000);
-    expect(sent.form.prefer, {PlanPref.avoidArterial});
+    expect(sent.form.prefer, {PlanPref.avoidArterial, PlanPref.hilly, PlanPref.toiletOnRoute});
     expect(sent.currentLocation, sunmoon);
     expect(sent.paceSecPerKm, 360);
 
     // A3
     expect(find.text('선문대학교 아산캠퍼스 출발 · 5km · 한 바퀴'), findsOneWidget);
-    expect(find.text('5.14km · 한 바퀴'), findsOneWidget);
-    expect(find.text('큰길 24% · 편의점 3곳 · 같은 길 2%'), findsOneWidget);
+    expect(find.text('5.14km · 한 바퀴 · 오르막 32m'), findsOneWidget);
+    expect(find.text('큰길 24% · 편의점 3곳 · 화장실 1곳 · 같은 길 2%'), findsOneWidget, reason: '화장실은 골랐을 때만 보인다');
     expect(find.text('4.93km · 한 바퀴'), findsOneWidget);
     expect(find.text('5.21km · 한 바퀴'), findsOneWidget);
     expect(find.text('© OpenStreetMap contributors'), findsOneWidget);
@@ -175,7 +183,7 @@ void main() {
     expect(sent.endQuery, '아산역');
     expect(sent.distanceM, isNull);
     expect(find.text('현재 위치 출발 · 편도 · 아산역 도착'), findsOneWidget);
-    expect(find.text('5.14km · 편도'), findsOneWidget, reason: '후보가 1개면 카드도 1개');
+    expect(find.text('5.14km · 편도 · 오르막 32m'), findsOneWidget, reason: '후보가 1개면 카드도 1개');
   });
 
   testWidgets('a place problem stays on the form with the server message; no roads for a loop suggests out-and-back',
@@ -210,7 +218,7 @@ void main() {
     await tap(tester, find.text('왕복으로 만들기'));
     expect(courses.plans.last.form.shape, PlanShape.outAndBack);
     expect(courses.plans.last.form.distanceM, 3000);
-    expect(find.text('5.14km · 왕복'), findsOneWidget);
+    expect(find.text('5.14km · 왕복 · 오르막 32m'), findsOneWidget);
   });
 
   testWidgets('similar courses already exist: only 다시 입력, back to the same conditions (A6)', (tester) async {
@@ -284,7 +292,7 @@ void main() {
       ..planned = PlanResult(candidates: [first]);
     await tap(tester, find.text('다시 시도'));
     expect(courses.plans, hasLength(2));
-    expect(find.text('5.14km · 한 바퀴'), findsOneWidget);
+    expect(find.text('5.14km · 한 바퀴 · 오르막 32m'), findsOneWidget);
   });
 
   testWidgets('the tab stays hidden while the build flag is off', (tester) async {

@@ -553,6 +553,7 @@ class _CandidatesViewState extends State<_CandidatesView> {
                     number: i + 1,
                     candidate: candidate,
                     shape: widget.form.shape!,
+                    showToilets: widget.form.prefer.contains(PlanPref.toiletOnRoute),
                     selected: i == _selected,
                     onTap: () => setState(() => _selected = i),
                   ),
@@ -647,12 +648,14 @@ class _NumberBadge extends StatelessWidget {
       );
 }
 
-/// 후보 카드(Figma AI / Candidate card). 예: `5.14km · 한 바퀴` / `큰길 24% · 편의점 3곳 · 같은 길 2%`.
+/// 후보 카드(Figma AI / Candidate card). 예: `5.14km · 한 바퀴 · 오르막 32m` / `큰길 24% · 편의점 3곳 · 같은 길 2%`.
+/// 오르막은 서버가 알 때만, 화장실 수는 `화장실 들르기`를 골랐을 때만 보인다(둘째 줄이 한 줄을 넘지 않게).
 class _CandidateCard extends StatelessWidget {
   const _CandidateCard({
     required this.number,
     required this.candidate,
     required this.shape,
+    required this.showToilets,
     required this.selected,
     required this.onTap,
   });
@@ -660,6 +663,7 @@ class _CandidateCard extends StatelessWidget {
   final int number;
   final PlanCandidate candidate;
   final PlanShape shape;
+  final bool showToilets;
   final bool selected;
   final VoidCallback onTap;
 
@@ -697,11 +701,22 @@ class _CandidateCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     spacing: 2,
                     children: [
-                      Text('${(candidate.distanceMeters / 1000).toStringAsFixed(2)}km · ${shape.label}',
+                      Text(
+                          [
+                            '${(candidate.distanceMeters / 1000).toStringAsFixed(2)}km',
+                            shape.label,
+                            if (candidate.ascentMeters case final ascent?) '오르막 ${ascent}m',
+                          ].join(' · '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: WdText.cardTitle14.copyWith(color: WdColors.ink)),
                       Text(
-                        '큰길 ${_percent(candidate.arterialRatio)} · 편의점 ${candidate.storeCount}곳 · '
-                        '같은 길 ${_percent(candidate.retraceRatio)}',
+                        [
+                          '큰길 ${_percent(candidate.arterialRatio)}',
+                          '편의점 ${candidate.storeCount}곳',
+                          if (showToilets) '화장실 ${candidate.toiletCount}곳',
+                          '같은 길 ${_percent(candidate.retraceRatio)}',
+                        ].join(' · '),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: WdText.label12.copyWith(color: WdColors.muted),

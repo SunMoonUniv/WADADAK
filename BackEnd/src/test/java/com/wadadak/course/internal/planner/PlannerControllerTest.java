@@ -83,7 +83,7 @@ class PlannerControllerTest {
     @Test
     void planReturnsThreeCandidates() {
         MvcTestResult result = plan(form("""
-                "start": {"kind": "PLACE", "query": "선문대"}, "shape": "LOOP", "distanceM": 5000, "prefer": ["AVOID_ARTERIAL", "FLAT"]"""));
+                "start": {"kind": "PLACE", "query": "선문대"}, "shape": "LOOP", "distanceM": 5000, "prefer": ["AVOID_ARTERIAL", "PARK"]"""));
 
         assertThat(result).hasStatusOk();
         assertThat(result).bodyJson().extractingPath("$.data.reason").isNull();
@@ -93,9 +93,12 @@ class PlannerControllerTest {
                 .satisfies(d -> assertThat(d.intValue()).isBetween(4750, 5250));
         assertThat(result).bodyJson().extractingPath("$.data.candidates[0].anchorPoints.length()").asNumber()
                 .satisfies(n -> assertThat(n.intValue()).isBetween(2, 500));
-        assertThat(result).bodyJson().extractingPath("$.data.candidates[0].summary").isEqualTo("5.14km · 큰길 16% · 편의점 3곳");
-        // 평지는 아직 반영하지 않고, 큰길 피하기는 반영한다
-        assertThat(result).bodyJson().extractingPath("$.data.candidates[0].notApplied").asArray().containsExactly("FLAT");
+        assertThat(result).bodyJson().extractingPath("$.data.candidates[0].summary")
+                .isEqualTo("5.14km · 큰길 16% · 편의점 3곳 · 화장실 1곳 · 오르막 109m");
+        assertThat(result).bodyJson().extractingPath("$.data.candidates[0].toiletCount").isEqualTo(1);
+        assertThat(result).bodyJson().extractingPath("$.data.candidates[0].ascentMeters").isEqualTo(109);
+        // 공원은 아직 반영하지 않고, 큰길 피하기는 반영한다
+        assertThat(result).bodyJson().extractingPath("$.data.candidates[0].notApplied").asArray().containsExactly("PARK");
     }
 
     @Test

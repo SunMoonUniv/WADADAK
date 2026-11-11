@@ -117,6 +117,11 @@ class SentenceRulesTest {
         // "왕복" 앞 단어가 "들르는"처럼 꾸미는 말이면 장소가 아니다
         assertThat(SentenceRules.spans("30분 정도 편의점 들르는 왕복 코스").start()).isNull();
         assertThat(SentenceRules.spans("독립기념관 왕복 8km").start()).isEqualTo("독립기념관");
+        // "…부터"도 출발이다. 건물 이름은 앞 단어와 붙인다. 때를 말하는 "지금부터"는 장소가 아니다
+        assertThat(SentenceRules.spans("평평하고 사람 많이 안다니는 선문대 인문관부터 3km 코스").start()).isEqualTo("선문대 인문관");
+        assertThat(SentenceRules.spans("천안역부터 5km 한 바퀴").start()).isEqualTo("천안역");
+        assertThat(SentenceRules.spans("지금부터 30분 달릴 코스").start()).isNull();
+        assertThat(SentenceRules.keywordPrefs("평평하고 사람 많이 안다니는 선문대 인문관부터 3km 코스")).containsExactly(Pref.FLAT);
         assertThat(SentenceRules.keywordPrefs("횡단보도 덜 건너게 5km")).doesNotContain(Pref.SIDEWALK);
         assertThat(SentenceRules.keywordPrefs("보도블록 깔린 길로만 7km")).contains(Pref.SIDEWALK);
         // Figma A7-1 예시. 키가 없어 규칙만 써도 큰길 피하기를 읽는다

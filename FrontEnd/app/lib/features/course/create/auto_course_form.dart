@@ -95,6 +95,14 @@ class _AutoCourseFormState extends State<AutoCourseForm> {
 
   bool get _complete => !_startMissing && !_placeMissing && !_targetMissing;
 
+  /// 평지와 오르막은 하나만 고른다.
+  void _toggle(PlanPref pref) {
+    if (_prefer.remove(pref)) return;
+    _prefer
+      ..add(pref)
+      ..remove(switch (pref) { PlanPref.flat => PlanPref.hilly, PlanPref.hilly => PlanPref.flat, _ => null });
+  }
+
   void _submit() {
     final target = _chosenTarget;
     widget.onSubmit(PlanForm(
@@ -178,9 +186,7 @@ class _AutoCourseFormState extends State<AutoCourseForm> {
                   _group('원하는 길', children: [
                     _chips([
                       for (final pref in PlanPref.supported)
-                        WdFilterChip(pref.label,
-                            selected: _prefer.contains(pref),
-                            onTap: () => setState(() => _prefer.contains(pref) ? _prefer.remove(pref) : _prefer.add(pref))),
+                        WdFilterChip(pref.label, selected: _prefer.contains(pref), onTap: () => setState(() => _toggle(pref))),
                     ]),
                   ]),
                 ],

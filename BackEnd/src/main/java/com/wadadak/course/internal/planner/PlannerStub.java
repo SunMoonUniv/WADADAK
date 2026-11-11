@@ -27,7 +27,7 @@ import java.util.UUID;
  * 코스 자동 생성 스텁({@code app.stub.course-planner: true}). 저장하지 않고 누가 불러도 같은 값을 준다.
  * <ul>
  *     <li>plans: 선문대에서 실제 길을 따라 만든 5km 한 바퀴 후보 3개({@code planner/stub-candidates.json}, 로컬 GraphHopper로
- *     만든 값. 편의점 수만 스텁 값). 모양 · 거리와 상관없이 같다</li>
+ *     만든 값. 편의점 · 화장실 수만 스텁 값). 모양 · 거리와 상관없이 같다</li>
  *     <li>plans 상태 시험: 출발 장소 "없는 장소" PLACE_NOT_FOUND, 도착 · 경유지 "한강" PLACE_TOO_FAR, 출발 장소 "섬" NO_CANDIDATES,
  *     "중복" SIMILAR_EXISTS, "한도" COURSE-012</li>
  *     <li>parse: 선문대 출발 · 한 바퀴 · 5km · 큰길 피하기. 문장에 "초보"가 있으면 거리를 비우고, "주식"이면 무관 요청, "한도"면 COURSE-013</li>
@@ -91,7 +91,9 @@ class PlannerStub implements CoursePlanner, StubImplementation {
         Set<Pref> notAppliedPrefs = Set.copyOf(notApplied);
         List<PlanCandidate> candidates = routes.stream()
                 .map(r -> new PlanCandidate(r.anchorPoints(), r.distanceMeters(), r.retraceRatio(), r.arterialRatio(), r.storeCount(),
-                        PlanCandidate.summary(r.distanceMeters(), r.arterialRatio(), r.storeCount()), notAppliedPrefs))
+                        r.toiletCount(), r.ascentMeters(),
+                        PlanCandidate.summary(r.distanceMeters(), r.arterialRatio(), r.storeCount(), r.toiletCount(), r.ascentMeters()),
+                        notAppliedPrefs))
                 .toList();
         return new PlanResult(candidates, null, null, start);
     }
@@ -106,6 +108,6 @@ class PlannerStub implements CoursePlanner, StubImplementation {
     }
 
     record StubRoute(List<GeoPoint> anchorPoints, int distanceMeters, double retraceRatio, double arterialRatio,
-                             int storeCount) {
+                     int storeCount, int toiletCount, Integer ascentMeters) {
     }
 }

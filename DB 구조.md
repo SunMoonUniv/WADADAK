@@ -206,7 +206,7 @@ erDiagram
         timestamptz created_at "저장 시각"
     }
     planner_pois {
-        varchar(40) source_id PK "sbiz: + 상가업소번호"
+        varchar(40) source_id PK "sbiz: 또는 toilet: + 원본 번호"
         varchar(20) kind "CONVENIENCE, TOILET"
         geography location "Point"
         varchar(7) base_month "원본 기준 월"
@@ -669,18 +669,20 @@ erDiagram
 
 #### `course.planner_pois` — 자동 생성 후보 지표용 공공 POI
 
-읽기 전용 참조 데이터다. 시드 마이그레이션이 데이터를 넣는다. 시드 파일은 `utilfile/_스크립트/course_planner/build_pois_seed.py`로 만들고 직접 고치지 않는다.
+읽기 전용 참조 데이터다. 시드 마이그레이션이 데이터를 넣는다. 시드 파일은 `utilfile/_스크립트/course_planner/build_pois_seed.py`(편의점) · `build_toilets_seed.py`(화장실)로 만들고 직접 고치지 않는다.
 
-- 원본: 소상공인시장진흥공단 상가(상권)정보 2026-09(`20260930` 배포) 상권업종소분류 `G20405`(편의점). 57,516곳. 좌표는 소수 5자리(약 1m)로 줄였다.
+- 편의점: 소상공인시장진흥공단 상가(상권)정보 2026-09(`20260930` 배포) 상권업종소분류 `G20405`. 57,516곳.
+- 화장실: 행정안전부 공중화장실 표준데이터(데이터기준일자 2026-10까지). 주소를 VWorld 주소 API로 바꾼 좌표 50,643곳. 주소로 못 찾거나 시군구가 맞지 않는 2,243곳은 뺐다.
+- 좌표는 소수 5자리(약 1m)로 줄였다.
 
 | 컬럼 | 타입 | NULL | 설명 |
 | --- | --- | --- | --- |
-| `source_id` | `VARCHAR(40)` | | PK. 원본 식별자. 상가정보는 `sbiz:` + 상가업소번호 |
-| `kind` | `VARCHAR(20)` | | `CONVENIENCE`(편의점), `TOILET`(화장실). 지금은 편의점만 있다 |
+| `source_id` | `VARCHAR(40)` | | PK. 원본 식별자. 상가정보는 `sbiz:` + 상가업소번호, 공중화장실은 `toilet:` + 관리번호 |
+| `kind` | `VARCHAR(20)` | | `CONVENIENCE`(편의점), `TOILET`(화장실) |
 | `location` | `geography(Point, 4326)` | | 위치 |
 | `base_month` | `VARCHAR(7)` | | 원본 기준 월. 예: `2026-09` |
 
-- `planner_pois_location_idx`: `location` GiST. 자동 생성 후보 경로 50m 안의 편의점 수(원하는 길 `편의점`, 후보 요약)를 `ST_DWithin`으로 센다.
+- `planner_pois_location_idx`: `location` GiST. 자동 생성 후보 경로 50m 안의 편의점 수와 100m 안의 화장실 수(원하는 길 `편의점 들르기` · `화장실 들르기`, 후보 요약)를 `ST_DWithin`으로 센다. 화장실은 주소 좌표라 건물 · 공원 가운데에 찍혀 더 넓게 본다.
 
 #### `course.processed_events` — 이벤트 처리 기록
 

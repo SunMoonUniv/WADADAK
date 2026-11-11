@@ -52,11 +52,17 @@ class PlannerRepository {
                 WHERE member_id = ? AND plan_date = ? AND kind = ?""", Integer.class, memberId, date, kind);
     }
 
-    /** 경로에서 meters 안에 있는 편의점 수 */
-    int storesNear(LineString route, int meters) {
+    /** 경로에서 storeMeters 안 편의점 수와 toiletMeters 안 화장실 수 */
+    PoiCounts poisNear(LineString route, int storeMeters, int toiletMeters) {
         return jdbcTemplate.queryForObject("""
-                        SELECT count(*) FROM course.planner_pois
-                        WHERE kind = 'CONVENIENCE' AND ST_DWithin(location, ST_GeomFromText(?, 4326)::geography, ?)""",
-                Integer.class, route.toText(), meters);
+                        SELECT count(*) FILTER (WHERE kind = 'CONVENIENCE' AND ST_DWithin(location, route.line, ?)) AS stores,
+                               count(*) FILTER (WHERE kind = 'TOILET' AND ST_DWithin(location, route.line, ?)) AS toilets
+                        FROM course.planner_pois, (SELECT ST_GeomFromText(?, 4326)::geography AS line) AS route
+                        WHERE ST_DWithin(location, route.line, greatest(?, ?))""",
+                (rs, i) -> new PoiCounts(rs.getInt("stores"), rs.getInt("toilets")),
+                storeMeters, toiletMeters, route.toText(), storeMeters, toiletMeters);
+    }
+
+    record PoiCounts(int stores, int toilets) {
     }
 }
