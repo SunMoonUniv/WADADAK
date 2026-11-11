@@ -20,6 +20,38 @@ record PlanResult(List<PlanCandidate> candidates, PlanReason reason, String mess
         return new PlanResult(List.of(), reason, message, startName);
     }
 
+    // 안내 문구(정책 B3-A04). 스텁과 실제 구현이 같이 쓴다
+
+    static PlanResult placeNotFound(String query, String startName) {
+        return failure(PlanReason.PLACE_NOT_FOUND,
+                "'%s'%s 찾지 못했어요. 이름을 다시 확인해 주세요.".formatted(query, particle(query, "을", "를")), startName);
+    }
+
+    /** @param from 출발 장소 이름. 현재 위치 출발이면 "현재 위치" */
+    static PlanResult placeTooFar(String query, String from, double meters, String startName) {
+        return failure(PlanReason.PLACE_TOO_FAR, "%s%s %s에서 약 %dkm 떨어져 있어요. 가까운 곳을 골라 주세요."
+                .formatted(query, particle(query, "은", "는"), from, Math.max(1, Math.round(meters / 1000))), startName);
+    }
+
+    static PlanResult noCandidates(boolean suggestOutAndBack, String startName) {
+        return failure(PlanReason.NO_CANDIDATES, suggestOutAndBack
+                ? "이 근처에서는 길을 따라 한 바퀴 코스를 만들지 못했어요. 왕복으로 바꿔 보세요."
+                : "이 근처에서는 길을 따라 코스를 만들지 못했어요.", startName);
+    }
+
+    static PlanResult similarExists(String startName) {
+        return failure(PlanReason.SIMILAR_EXISTS, "비슷한 코스가 이미 있어요. 거리나 출발지를 바꿔 보세요.", startName);
+    }
+
+    /** 끝 글자에 받침이 있으면 withFinal, 없으면 withoutFinal. 한글로 끝나지 않으면 "을(를)"처럼 둘 다 */
+    private static String particle(String word, String withFinal, String withoutFinal) {
+        char last = word.charAt(word.length() - 1);
+        if (last < '가' || last > '힣') {
+            return withFinal + "(" + withoutFinal + ")";
+        }
+        return (last - '가') % 28 != 0 ? withFinal : withoutFinal;
+    }
+
     /**
      * 후보 하나.
      *

@@ -104,7 +104,7 @@ final class SentenceRules {
     /** "선문대 정문에서"는 앞 단어와 붙여 "선문대 정문"으로 읽는다 */
     private static final Set<String> GATE = Set.of("정문", "후문", "입구");
     private static final Pattern VERBISH = Pattern.compile(
-            "(요|어|줘|자|해|다|게|로|고|서|와|래|꼬|싶어|추천|부탁해요|코스|km|키로|킬로)$");
+            "(요|어|줘|자|해|다|게|로|고|서|와|래|꼬|는|싶어|추천|부탁해요|코스|km|키로|킬로)$");
     /** 문장 앞 · 가운데의 지명("수원 광교호수공원 둘레로", "광안대교 보면서"). 세 글자 이상만 본다(추천 · 하천 등 제외) */
     private static final Pattern PLACE_SUFFIX = Pattern.compile("(공원|호수|역|천|못|호|대교|산성|해수욕장|운동장|기념관|터미널)$");
     private static final Pattern DIGIT = Pattern.compile("\\d");
@@ -170,7 +170,7 @@ final class SentenceRules {
                 start = tail.getFirst();
             } else if (text.contains("왕복")) {
                 List<String> head = words(text.substring(0, text.indexOf("왕복")));
-                start = head.isEmpty() ? null : clean(head.getLast());
+                start = head.isEmpty() || verbish(head.getLast()) ? null : clean(head.getLast());
             }
         }
         if (start == null) {

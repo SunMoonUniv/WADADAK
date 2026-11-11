@@ -47,6 +47,16 @@ class RoutingClient {
                 .queryParam("round_trip.seed", seed));
     }
 
+    /** 길찾기 서버가 응답하는지. 후보를 하나도 못 만들었을 때 길이 없는 것인지 서버 장애인지 가른다 */
+    boolean healthy() {
+        try {
+            client.get().uri("/health").retrieve().toBodilessEntity();
+            return true;
+        } catch (RuntimeException e) {
+            return false;
+        }
+    }
+
     private RoutedPath get(Function<UriBuilder, UriBuilder> params) {
         GhResponse response = client.get()
                 .uri(uri -> params.apply(uri.path("/route")
