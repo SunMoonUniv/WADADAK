@@ -9,6 +9,7 @@ import com.wadadak.event.member.MemberWithdrawnEvent;
 import com.wadadak.event.review.ReviewDeletedEvent;
 import com.wadadak.event.run.RunRecordDeletedEvent;
 import com.wadadak.event.run.RunSessionEndedEvent;
+import com.wadadak.course.CourseApi;
 import com.wadadak.member.MemberApi;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -61,6 +62,10 @@ class ReviewEventHandlerTest {
     @MockitoBean
     MemberApi memberApi;
 
+    // 운영자 리뷰 관리가 코스 이름을 받으려고 부른다. 이 테스트에서는 쓰지 않는다
+    @MockitoBean
+    CourseApi courseApi;
+
     @Autowired
     DeletedReviews deletedReviews;
 
@@ -70,6 +75,9 @@ class ReviewEventHandlerTest {
         UUID review = review(course);
         String photo = photo(review);
         runRecord(course);
+        UUID pending = report(review, UUID.randomUUID());
+        UUID handled = report(review, UUID.randomUUID());
+        jdbc.update("UPDATE review.review_reports SET status = 'DISMISSED', handled_at = now() WHERE id = ?", handled);
         UUID otherCourse = UUID.randomUUID();
         String otherPhoto = photo(review(otherCourse));
         runRecord(otherCourse);
@@ -87,6 +95,9 @@ class ReviewEventHandlerTest {
         assertThat(count("review.course_run_records", course)).isZero();
         assertThat(jdbc.queryForObject("SELECT count(*) FROM review.review_photos WHERE review_id = ?", Long.class, review))
                 .isZero();
+        // 처리 전 신고는 함께 지우고, 처리한 신고는 운영자 기록으로 남긴다
+        assertThat(reportExists(pending)).isFalse();
+        assertThat(reportExists(handled)).isTrue();
         // 다른 코스는 그대로
         assertThat(count("review.reviews", otherCourse)).isOne();
         assertThat(count("review.course_run_records", otherCourse)).isOne();
@@ -182,7 +193,7 @@ class ReviewEventHandlerTest {
         runRecord(course, member);
         UUID othersReview = review(course);
         runRecord(course);
-        UUID reportOnMine = report(mine, UUID.randomUUID());       // 탈퇴 회원의 리뷰에 달린 신고: 리뷰와 함께 지워진다
+        UUID reportOnMine = report(mine, UUID.randomUUID());       // 탈퇴 회원의 리뷰에 달린 신고: 리뷰 내용 복사본이 있어서 지운다
         UUID myReport = report(othersReview, member);              // 탈퇴 회원이 한 신고: 지운다
         UUID othersReport = report(othersReview, UUID.randomUUID()); // 남의 리뷰에 남이 한 신고: 그대로
         MemberWithdrawnEvent withdrawn = new MemberWithdrawnEvent(UUID.randomUUID(), Instant.now(), member, Instant.now());
@@ -215,12 +226,14 @@ class ReviewEventHandlerTest {
         assertThat(recordCount(late.runRecordId())).isZero();
     }
 
-    /** 리뷰 신고 1건(광고·홍보). */
+    /** 리뷰 신고 1건(광고·홍보, 대기). 신고할 때의 리뷰 내용을 함께 저장한다. */
     private UUID report(UUID reviewId, UUID reporterId) {
         UUID id = UUID.randomUUID();
         jdbc.update("""
-                INSERT INTO review.review_reports (id, review_id, reporter_member_id, reason, created_at, updated_at)
-                VALUES (?, ?, ?, 'ADVERTISING', now(), now())""", id, reviewId, reporterId);
+                INSERT INTO review.review_reports (id, review_id, reporter_member_id, reason, course_id, review_member_id,
+                    review_rating, review_content, review_created_at, created_at, updated_at)
+                SELECT ?, r.id, ?, 'ADVERTISING', r.course_id, r.member_id, r.rating, r.content, r.created_at, now(), now()
+                FROM review.reviews r WHERE r.id = ?""", id, reporterId, reviewId);
         return id;
     }
 

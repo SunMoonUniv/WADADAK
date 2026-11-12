@@ -2,6 +2,7 @@ package com.wadadak.review.internal;
 
 import com.wadadak.TestcontainersConfiguration;
 import com.wadadak.common.storage.ObjectStorage;
+import com.wadadak.course.CourseApi;
 import com.wadadak.member.MemberApi;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,6 +51,10 @@ class ReviewReportControllerTest {
     // review만 띄워서 member 모듈이 없다. 목록이 닉네임을 붙이려고 부르므로 빈 목록을 돌려주게 한다
     @MockitoBean
     MemberApi memberApi;
+
+    // 운영자 리뷰 관리가 코스 이름을 받으려고 부른다. 이 테스트에서는 쓰지 않는다
+    @MockitoBean
+    CourseApi courseApi;
 
     @MockitoBean
     ObjectStorage storage;
@@ -118,13 +123,32 @@ class ReviewReportControllerTest {
     }
 
     @Test
-    void deletingReviewDeletesItsReports() {
+    void reportKeepsReviewSnapshot() {
         assertThat(report(me, review, Map.of("reason", "ABUSE"))).hasStatusOk();
 
-        jdbcTemplate.update("DELETE FROM review.reviews WHERE id = ?", review);
+        // 운영자가 리뷰를 지운 뒤에도 무엇을 지웠는지 보이게 신고할 때의 리뷰를 저장한다
+        Map<String, Object> row = jdbcTemplate.queryForMap(
+                "SELECT course_id, review_member_id, review_rating, review_content, status FROM review.review_reports WHERE review_id = ?",
+                review);
+        assertThat(row).containsEntry("course_id", course).containsEntry("review_member_id", writer)
+                .containsEntry("review_rating", 1).containsEntry("review_content", "광고) 러닝화 최저가")
+                .containsEntry("status", "PENDING");
+    }
 
-        assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM review.review_reports WHERE review_id = ?", Long.class, review))
-                .isZero();
+    @Test
+    void authorDeletingReviewDeletesOnlyPendingReports() {
+        assertThat(report(me, review, Map.of("reason", "ABUSE"))).hasStatusOk();
+        UUID handledReporter = UUID.randomUUID();
+        assertThat(report(handledReporter, review, Map.of("reason", "OTHER"))).hasStatusOk();
+        jdbcTemplate.update("UPDATE review.review_reports SET status = 'DISMISSED', handled_at = now() WHERE reporter_member_id = ?",
+                handledReporter);
+
+        assertThat(mvc.delete().uri("/api/v1/reviews/{reviewId}", review)
+                .with(jwt().jwt(j -> j.subject(writer.toString()))).exchange()).hasStatusOk();
+
+        // 리뷰가 없어졌으니 처리할 신고도 없다. 이미 처리한 신고는 기록으로 남는다
+        assertThat(jdbcTemplate.queryForList("SELECT reporter_member_id FROM review.review_reports WHERE review_id = ?",
+                UUID.class, review)).containsExactly(handledReporter);
     }
 
     /** 근거 기록 없이 리뷰 1건. */

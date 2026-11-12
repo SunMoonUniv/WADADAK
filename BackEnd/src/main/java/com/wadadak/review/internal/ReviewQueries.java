@@ -147,14 +147,14 @@ class ReviewQueries {
     }
 
     /** DB 배열(VARCHAR[])을 태그 집합으로. 태그 순서는 enum 선언 순서다. */
-    private static Set<ReviewTag> tags(Array array) throws SQLException {
+    static Set<ReviewTag> tags(Array array) throws SQLException {
         return Arrays.stream((String[]) array.getArray())
                 .map(ReviewTag::valueOf)
                 .collect(Collectors.toCollection(() -> EnumSet.noneOf(ReviewTag.class)));
     }
 
     /** round()는 NUMERIC이라 BigDecimal로 온다. 리뷰가 없으면 avg가 NULL이다. */
-    private static Double decimal(ResultSet rs, String column) throws SQLException {
+    static Double decimal(ResultSet rs, String column) throws SQLException {
         BigDecimal value = rs.getBigDecimal(column);
         return value == null ? null : value.doubleValue();
     }

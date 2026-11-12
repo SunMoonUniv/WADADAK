@@ -38,7 +38,7 @@ class ReviewReportService {
         }
         try {
             // saveAndFlush: 바로 INSERT까지 보내야 유니크 제약 위반을 여기서 잡을 수 있다(리뷰 작성과 같은 방식)
-            reportRepository.saveAndFlush(ReviewReport.report(reviewId, reporterId, request.reason(), request.detail()));
+            reportRepository.saveAndFlush(ReviewReport.report(review, reporterId, request.reason(), request.detail()));
         } catch (DataIntegrityViolationException e) {
             // 위 확인을 동시에 통과한 두 번째 요청. 유니크 제약 (review_id, reporter_member_id)이 하나만 남긴다
             throw new AppException(ReviewErrorCode.ALREADY_REPORTED);

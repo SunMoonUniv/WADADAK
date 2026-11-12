@@ -46,6 +46,11 @@ app:
       bucket: wadadak
       access-key: ${STORAGE_ACCESS_KEY:wadadak}
       secret-key: ${STORAGE_SECRET_KEY:wadadak-local}
+  # 운영자 웹(/admin) · 운영자 API(/api/v1/admin/**) 로그인. 공용 운영자 계정 하나다(2026-11-12).
+  # 비밀값이라 환경 변수로만 받는다(GitHub Secrets → backend.yml → deploy/compose.yaml). 비어 있으면 운영자 API는 모두 401.
+  admin:
+    username: ${ADMIN_USERNAME:}
+    password: ${ADMIN_PASSWORD:}
   stub:
     member: false
     course: false

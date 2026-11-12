@@ -6,6 +6,9 @@ spring:
           public-key-location: classpath:jwt/test-public.pem
 
 app:
+  admin:
+    username: test-admin
+    password: test-admin-password
   member:
     jwt:
       private-key-location: classpath:jwt/test-private.pem
