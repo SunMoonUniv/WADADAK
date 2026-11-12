@@ -48,6 +48,9 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/error", "/actuator/health", "/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html")
                         .permitAll()
+                        // 운영자 웹 페이지(정적 HTML) 자체는 누구나 받는다. 데이터는 /api/v1/admin/** 가 운영자 계정으로 막는다
+                        .requestMatchers("/admin", "/admin/**")
+                        .permitAll()
                         .anyRequest().authenticated())
                 .oauth2ResourceServer(oauth2 -> oauth2
                         .jwt(Customizer.withDefaults())

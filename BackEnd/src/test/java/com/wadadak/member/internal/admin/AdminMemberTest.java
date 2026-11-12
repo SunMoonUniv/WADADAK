@@ -75,6 +75,13 @@ class AdminMemberTest {
     }
 
     @Test
+    void adminPageIsServedWithoutLogin() {
+        // 페이지(정적 HTML)는 누구나 받고, 데이터는 위의 운영자 API가 막는다
+        assertThat(mvc.get().uri("/admin").exchange()).hasStatus3xxRedirection().hasRedirectedUrl("/admin/");
+        assertThat(mvc.get().uri("/admin/").exchange()).hasStatusOk().hasForwardedUrl("/admin/index.html");
+    }
+
+    @Test
     void statsCountActiveMembersOnly() throws Exception {
         JsonNode before = data(admin("/api/v1/admin/members/stats"));
         join(SocialProvider.KAKAO, RunningExperience.YEAR_1, null);

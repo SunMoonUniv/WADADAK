@@ -1,0 +1,700 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>와다닥 운영자</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Geist:wght@600&display=swap" rel="stylesheet">
+<!--
+  운영자 웹(Figma "🛠 운영자 페이지" ADM-1 · ADM-1-1 · ADM-2 · ADM-2-1 · ADM-2-2). 빌드 도구 없이 이 파일 하나로 돈다.
+  서버가 /admin 으로 내보내고, 데이터는 /api/v1/admin/** 를 운영자 계정(HTTP Basic)으로 부른다.
+  아이디:비밀번호는 이 탭의 sessionStorage에만 둔다(탭을 닫으면 다시 로그인).
+  색은 Figma 변수 모음 "운영자 웹 · Admin" 값이다. 앱 디자인 토큰과는 따로 간다.
+-->
+<style>
+  :root {
+    --ink: #171b19;
+    --text-secondary: #3d443f;
+    --muted: #6b736d;
+    --white: #ffffff;
+    --soft: #f3f5f1;
+    --page: #eef1ec;
+    --header: #e4e8e1;
+    --border: #cfd5cc;
+    --border-strong: #aab2a6;
+    --neutral-bg: #e1e6dd;
+    --danger-bg: #fbe4e4;
+    --danger-text: #b42d33;
+    --danger: #b42d33;
+    --warning-bg: #f4e6c6;
+    --warning-text: #7a4c0c;
+    --success-bg: #dcefe0;
+    --success-text: #1e6b34;
+    --rating-low: #a8641a;
+    --shadow-lg: 0 24px 32px -8px rgba(0, 0, 0, .16);
+    --font: "Noto Sans KR", system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    --num: "Geist", var(--font);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body { font: 400 14px/20px var(--font); color: var(--ink); background: var(--page); }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  [hidden] { display: none !important; }
+
+  /* 로그인 */
+  .login { min-height: 100%; display: grid; place-items: center; padding: 16px; }
+  .login form { width: 100%; max-width: 360px; background: var(--white); border: 1px solid var(--border); border-radius: 16px; padding: 28px; display: grid; gap: 14px; }
+  .login h1 { font: 700 20px/28px var(--font); letter-spacing: -.4px; margin: 0; }
+  .login p { margin: -8px 0 4px; color: var(--muted); font-size: 13px; }
+  .field { display: grid; gap: 6px; font-size: 13px; color: var(--text-secondary); }
+  .input { height: 40px; border: 1px solid var(--border); border-radius: 8px; padding: 0 12px; background: var(--white); }
+  .input:focus, select:focus, textarea:focus { outline: 2px solid var(--ink); outline-offset: -1px; }
+  .error { color: var(--danger-text); font-size: 13px; min-height: 18px; margin: 0; }
+
+  /* 뼈대 */
+  .app { display: grid; grid-template-columns: 240px 1fr; min-height: 100%; }
+  .side { background: var(--white); border-right: 1px solid var(--border); padding: 28px 16px 20px; display: flex; flex-direction: column; gap: 24px; position: sticky; top: 0; height: 100vh; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px; }
+  .brand-mark { width: 28px; height: 28px; border-radius: 8px; background: var(--ink); color: var(--white); display: grid; place-items: center; font: 700 15px/1 var(--font); }
+  .brand b { display: block; font: 700 16px/22px var(--font); letter-spacing: -.3px; }
+  .brand small { display: block; font-size: 12px; line-height: 16px; color: var(--text-secondary); }
+  .nav { display: grid; gap: 4px; }
+  .nav a { display: block; padding: 10px 12px; border-radius: 8px; text-decoration: none; color: var(--text-secondary); }
+  .nav a:hover { background: var(--soft); }
+  .nav a[aria-current="page"] { background: var(--ink); color: var(--white); }
+  .logout { margin-top: auto; align-self: flex-start; border: 0; background: none; padding: 4px 8px; font-size: 12px; color: var(--text-secondary); }
+  main { padding: 32px; min-width: 0; }
+  h2 { font: 700 24px/32px var(--font); letter-spacing: -.96px; margin: 0; }
+  .lead { margin: 4px 0 24px; color: var(--text-secondary); }
+
+  /* 탭 */
+  .tabs { display: flex; gap: 8px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+  .tab { border: 0; background: none; padding: 8px 4px 10px; margin-bottom: -1px; color: var(--text-secondary); border-bottom: 2px solid transparent; display: flex; align-items: center; gap: 6px; }
+  .tab[aria-selected="true"] { color: var(--ink); font-weight: 500; border-bottom-color: var(--ink); }
+  .tab .count { font-size: 11px; line-height: 16px; padding: 1px 7px; border-radius: 99px; background: var(--neutral-bg); }
+  .tab .count.alert { background: var(--danger-bg); color: var(--danger-text); }
+
+  /* 숫자 카드 */
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 20px; }
+  .stat { background: var(--white); border: 1px solid var(--border); border-radius: 16px; padding: 16px 20px; }
+  .stat span { display: block; font: 500 12px/16px var(--font); color: var(--text-secondary); }
+  .stat b { display: block; margin-top: 6px; font: 600 24px/32px var(--num); letter-spacing: -.96px; }
+  .stat b.alert { color: var(--danger-text); }
+
+  /* 필터 */
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 16px; }
+  .filters select { height: 36px; border: 1px solid var(--border); border-radius: 8px; background: var(--white); padding: 0 32px 0 12px; font-size: 13px; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23171b19' stroke-width='2.5'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center; }
+  .filters .spacer { flex: 1; }
+
+  /* 버튼 */
+  .btn { height: 32px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--border-strong); background: var(--white); font: 500 13px/16px var(--font); white-space: nowrap; }
+  .btn:hover { background: var(--soft); }
+  .btn.dark { background: var(--ink); border-color: var(--ink); color: var(--white); }
+  .btn.dark:hover { background: #2b312d; }
+  .btn.danger { background: var(--danger); border-color: var(--danger); color: var(--white); }
+  .btn.danger-line { border-color: var(--danger); color: var(--danger-text); }
+  .btn.danger-line:hover { background: var(--danger-bg); }
+  .btn.lg { height: 40px; padding: 0 16px; }
+  .btn:disabled { opacity: .5; cursor: default; }
+
+  /* 표 */
+  .card { background: var(--white); border: 1px solid var(--border); border-radius: 16px; overflow: hidden; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; }
+  th { background: var(--header); font: 500 13px/18px var(--font); text-align: left; padding: 12px 16px; white-space: nowrap; }
+  td { padding: 12px 16px; border-top: 1px solid var(--border); vertical-align: middle; font-size: 13px; white-space: nowrap; }
+  th:last-child, td:last-child { text-align: right; }
+  td.strong { font-weight: 500; }
+  td.clip { max-width: 240px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  td .actions { display: inline-flex; gap: 6px; }
+  .empty { padding: 48px 16px; text-align: center; color: var(--muted); }
+  .foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-secondary); }
+  .pager { display: flex; gap: 4px; align-items: center; }
+  .pager button { min-width: 28px; height: 28px; border-radius: 6px; border: 0; background: none; font: 400 12px/1 var(--num); }
+  .pager button[aria-current="page"] { background: var(--ink); color: var(--white); }
+  .pager button:disabled { opacity: .35; cursor: default; }
+  .who { display: inline-flex; align-items: center; gap: 8px; }
+  .avatar { width: 24px; height: 24px; border-radius: 50%; background: var(--neutral-bg); object-fit: cover; flex: none; display: inline-grid; place-items: center; color: var(--text-secondary); }
+  .avatar.lg { width: 44px; height: 44px; }
+  .avatar svg { width: 55%; height: 55%; }
+
+  /* 칩 */
+  .chip { display: inline-block; font: 500 11px/16px var(--font); padding: 2px 8px; border-radius: 99px; background: var(--neutral-bg); color: var(--ink); white-space: nowrap; }
+  .chip.warning { background: var(--warning-bg); color: var(--warning-text); }
+  .chip.danger { background: var(--danger-bg); color: var(--danger-text); }
+  .chip.success { background: var(--success-bg); color: var(--success-text); }
+  .chips { display: inline-flex; flex-wrap: wrap; gap: 4px; }
+  .rating { font-weight: 500; white-space: nowrap; }
+  .rating.low { color: var(--rating-low); }
+  .num-alert { color: var(--danger-text); font-weight: 500; }
+
+  /* 오른쪽 패널 */
+  .scrim { position: fixed; inset: 0; background: rgba(23, 27, 25, .32); z-index: 10; }
+  .drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(560px, 100%); background: var(--white); box-shadow: var(--shadow-lg); z-index: 11; display: flex; flex-direction: column; }
+  .drawer header { display: flex; align-items: flex-start; gap: 12px; padding: 20px 24px; border-bottom: 1px solid var(--border); }
+  .drawer header h3 { margin: 0; font: 700 20px/28px var(--font); letter-spacing: -.4px; display: flex; align-items: center; gap: 8px; }
+  .drawer header p { margin: 2px 0 0; font-size: 12px; color: var(--text-secondary); }
+  .drawer .close { margin-left: auto; border: 0; background: none; width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; }
+  .drawer .close:hover { background: var(--soft); }
+  .drawer .body { flex: 1; overflow-y: auto; padding: 20px 24px 28px; display: grid; gap: 24px; align-content: start; }
+  .drawer footer { display: flex; align-items: center; gap: 8px; padding: 14px 24px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-secondary); }
+  .drawer footer .spacer { flex: 1; }
+  .section h4 { margin: 0 0 10px; font: 700 15px/22px var(--font); letter-spacing: -.15px; display: flex; align-items: center; gap: 6px; }
+  .review-box { background: var(--header); border-radius: 12px; padding: 14px; display: grid; gap: 8px; }
+  .review-box .top { display: flex; align-items: center; gap: 8px; }
+  .review-box .top .date { margin-left: auto; font-size: 12px; color: var(--text-secondary); }
+  .review-box .meta { font-size: 12px; color: var(--text-secondary); display: flex; flex-wrap: wrap; gap: 4px 14px; }
+  .review-box .content { white-space: pre-wrap; word-break: break-word; }
+  .photos { display: flex; flex-wrap: wrap; gap: 6px; }
+  .photos img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; background: var(--neutral-bg); }
+  .note { font-size: 12px; color: var(--danger-text); }
+  .reports { border: 1px solid var(--border); border-radius: 12px; }
+  .reports li { list-style: none; padding: 12px 14px; display: grid; gap: 4px; }
+  .reports li + li { border-top: 1px solid var(--border); }
+  .reports ul { margin: 0; padding: 0; }
+  .reports .head { display: flex; align-items: center; gap: 8px; font-weight: 500; }
+  .reports .head time { margin-left: auto; font: 400 12px/16px var(--font); color: var(--text-secondary); }
+  .reports .detail { font-size: 13px; color: var(--text-secondary); word-break: break-word; }
+  textarea { width: 100%; min-height: 72px; border: 1px solid var(--border-strong); border-radius: 8px; padding: 10px 12px; resize: vertical; }
+  dl.rows { margin: 0; display: grid; grid-template-columns: 136px 1fr; }
+  dl.rows dt, dl.rows dd { margin: 0; padding: 7px 0; border-bottom: 1px solid var(--border); font-size: 13px; }
+  dl.rows dt { color: var(--text-secondary); }
+  dl.rows dd { word-break: break-all; }
+  dl.rows small { color: var(--muted); font-size: 11px; margin-left: 6px; }
+
+  /* 확인 창 · 알림 */
+  dialog { border: 0; border-radius: 16px; padding: 24px; width: min(400px, calc(100% - 32px)); box-shadow: var(--shadow-lg); }
+  dialog::backdrop { background: rgba(23, 27, 25, .32); }
+  dialog h3 { margin: 0 0 8px; font: 700 16px/24px var(--font); }
+  dialog p { margin: 0 0 20px; color: var(--text-secondary); font-size: 13px; }
+  dialog .row { display: flex; justify-content: flex-end; gap: 8px; }
+  .toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--ink); color: var(--white); padding: 10px 16px; border-radius: 10px; font-size: 13px; z-index: 20; }
+
+  @media (max-width: 860px) {
+    .app { grid-template-columns: 1fr; }
+    .side { position: static; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; padding: 12px 16px; gap: 12px; border-right: 0; border-bottom: 1px solid var(--border); }
+    .nav { display: flex; }
+    .logout { margin: 0 0 0 auto; }
+    main { padding: 20px 16px; }
+    dl.rows { grid-template-columns: 112px 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<section class="login" id="login" hidden>
+  <form id="login-form" autocomplete="on">
+    <h1>와다닥 운영자</h1>
+    <p>운영자 계정으로 로그인해 주세요</p>
+    <label class="field">아이디<input class="input" name="username" autocomplete="username" required></label>
+    <label class="field">비밀번호<input class="input" name="password" type="password" autocomplete="current-password" required></label>
+    <p class="error" id="login-error" role="alert"></p>
+    <button class="btn dark lg" type="submit">로그인</button>
+  </form>
+</section>
+
+<div class="app" id="app" hidden>
+  <aside class="side">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">와</span>
+      <div><b>와다닥 운영자</b><small>관리자 전용</small></div>
+    </div>
+    <nav class="nav">
+      <a href="#members" data-page="members">회원 관리</a>
+      <a href="#reviews" data-page="reviews">리뷰 관리</a>
+    </nav>
+    <button class="logout" id="logout" type="button">로그아웃</button>
+  </aside>
+  <main id="main"></main>
+</div>
+
+<div id="overlay"></div>
+
+<dialog id="confirm">
+  <h3 id="confirm-title"></h3>
+  <p id="confirm-text"></p>
+  <div class="row">
+    <button class="btn lg" value="cancel" id="confirm-cancel" type="button">취소</button>
+    <button class="btn danger lg" id="confirm-ok" type="button"></button>
+  </div>
+</dialog>
+
+<script>
+"use strict";
+
+// ---------- 공통 ----------
+const KEY = "wadadak-admin"; // sessionStorage: "아이디:비밀번호"를 base64로
+const $ = (sel, root = document) => root.querySelector(sel);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const PERSON = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>';
+const CLOSE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+
+const LABEL = {
+  provider: { KAKAO: "카카오", GOOGLE: "구글", APPLE: "애플" },
+  experience: { BEGINNER: "입문", MONTHS_6: "6개월+", YEAR_1: "1년+", YEAR_3: "3년+" },
+  gender: { MALE: "남성", FEMALE: "여성" },
+  tag: { NIGHT_VIEW: "야경 좋음", FEW_SIGNALS: "신호 적음", GOOD_SURFACE: "노면 좋음", CROWDED: "붐빔" },
+  reason: { ADVERTISING: "광고·홍보", ABUSE: "욕설·비하", PRIVACY: "개인정보 노출", IRRELEVANT: "관계없는 내용", OTHER: "기타" },
+  status: { PENDING: ["대기", "warning"], DELETED: ["삭제함", "danger"], DISMISSED: ["문제 없음", "success"] },
+  agreement: { OVER_14: "만 14세 이상", SERVICE_TERMS: "서비스 이용약관", PRIVACY_POLICY: "개인정보 처리방침",
+    LOCATION_TERMS: "위치기반서비스 약관", PROFILE_INFO: "프로필 정보 수집", BODY_INFO: "신체 정보 수집(선택)" },
+};
+// "서울특별시 강남구" → "서울 강남구"
+const SIDO = { "서울특별시": "서울", "부산광역시": "부산", "대구광역시": "대구", "인천광역시": "인천", "광주광역시": "광주",
+  "대전광역시": "대전", "울산광역시": "울산", "세종특별자치시": "세종", "경기도": "경기", "강원도": "강원", "강원특별자치도": "강원",
+  "충청북도": "충북", "충청남도": "충남", "전라북도": "전북", "전북특별자치도": "전북", "전라남도": "전남",
+  "경상북도": "경북", "경상남도": "경남", "제주특별자치도": "제주" };
+const regionText = (r) => r ? r.fullName.replace(/^\S+/, (s) => SIDO[s] ?? s) : "–";
+
+const KST = { timeZone: "Asia/Seoul" };
+const parts = (iso) => Object.fromEntries(new Intl.DateTimeFormat("en-CA", { ...KST, year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date(iso)).map((p) => [p.type, p.value]));
+const date = (iso) => { if (!iso) return "–"; const p = parts(iso); return `${p.year}.${p.month}.${p.day}`; };
+const dateTime = (iso) => { if (!iso) return "–"; const p = parts(iso); return `${p.year}.${p.month}.${p.day} ${p.hour}:${p.minute}`; };
+const num = (n) => Number(n ?? 0).toLocaleString("ko-KR");
+const nick = (n) => n ?? "알 수 없음";
+const chip = (text, tone = "") => `<span class="chip ${tone}">${esc(text)}</span>`;
+const statusChip = (s) => s ? chip(...LABEL.status[s]) : "";
+const avatar = (url, lg = false) => url
+  ? `<img class="avatar${lg ? " lg" : ""}" src="${esc(url)}" alt="">`
+  : `<span class="avatar${lg ? " lg" : ""}" aria-hidden="true">${PERSON}</span>`;
+const stars = (r) => `<span class="rating${r <= 2 ? " low" : ""}">★ ${Number(r).toFixed(1)}</span>`;
+
+function toast(text) {
+  const el = Object.assign(document.createElement("div"), { className: "toast", textContent: text, role: "status" });
+  document.body.append(el);
+  setTimeout(() => el.remove(), 2400);
+}
+
+function confirmBox(title, text, ok) {
+  const dlg = $("#confirm");
+  $("#confirm-title").textContent = title;
+  $("#confirm-text").textContent = text;
+  $("#confirm-ok").textContent = ok;
+  dlg.showModal();
+  return new Promise((resolve) => {
+    const done = (v) => { dlg.close(); $("#confirm-ok").onclick = $("#confirm-cancel").onclick = null; resolve(v); };
+    $("#confirm-ok").onclick = () => done(true);
+    $("#confirm-cancel").onclick = () => done(false);
+    dlg.oncancel = () => done(false);
+  });
+}
+
+// ---------- 서버 호출 ----------
+class ApiError extends Error {
+  constructor(status, code, message) { super(message); this.status = status; this.code = code; }
+}
+
+async function api(path, { method = "GET", body, auth = sessionStorage.getItem(KEY) } = {}) {
+  const res = await fetch(path, {
+    method,
+    headers: { Authorization: `Basic ${auth}`, ...(body ? { "Content-Type": "application/json" } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (res.status === 401) {
+    if (auth === sessionStorage.getItem(KEY)) logout("다시 로그인해 주세요.");
+    throw new ApiError(401, json.code, "아이디나 비밀번호가 맞지 않아요.");
+  }
+  if (!res.ok) throw new ApiError(res.status, json.code, json.message ?? "요청을 처리하지 못했어요.");
+  return json.data;
+}
+
+const query = (params) => new URLSearchParams(Object.entries(params).filter(([, v]) => v !== "" && v != null)).toString();
+
+// ---------- 로그인 ----------
+function encode(text) { return btoa(String.fromCharCode(...new TextEncoder().encode(text))); }
+
+$("#login-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const form = e.currentTarget;
+  const auth = encode(`${form.username.value.trim()}:${form.password.value}`);
+  $("#login-error").textContent = "";
+  try {
+    await api("/api/v1/admin/members/stats", { auth });
+    sessionStorage.setItem(KEY, auth);
+    form.reset();
+    start();
+  } catch (err) {
+    $("#login-error").textContent = err.message;
+  }
+});
+
+function logout(message = "") {
+  sessionStorage.removeItem(KEY);
+  closeDrawer();
+  $("#app").hidden = true;
+  $("#login").hidden = false;
+  $("#login-error").textContent = message;
+}
+$("#logout").addEventListener("click", () => logout());
+
+// ---------- 화면 전환 ----------
+const state = {
+  members: { socialProvider: "", runningExperience: "", page: 0 },
+  reviews: { tab: "all", rating: "", days: "", page: 0, status: "", reason: "", reportPage: 0 },
+};
+const SIZE = 20;
+
+function start() {
+  $("#login").hidden = true;
+  $("#app").hidden = false;
+  route();
+}
+
+function route() {
+  const page = location.hash === "#reviews" ? "reviews" : "members";
+  document.querySelectorAll(".nav a").forEach((a) => a.dataset.page === page ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"));
+  closeDrawer();
+  (page === "reviews" ? renderReviews : renderMembers)();
+}
+window.addEventListener("hashchange", route);
+
+function showError(err) {
+  if (err.status === 401) return;
+  toast(err.message);
+}
+
+function select(name, label, options, value) {
+  return `<select name="${name}" aria-label="${esc(label)}">
+    ${options.map(([v, t]) => `<option value="${esc(v)}"${String(v) === String(value) ? " selected" : ""}>${esc(label)}: ${esc(t)}</option>`).join("")}
+  </select>`;
+}
+
+function pager(page, total, onPage) {
+  const last = Math.max(0, Math.ceil(total / SIZE) - 1);
+  const pages = [...new Set([0, page - 2, page - 1, page, page + 1, page + 2, last])].filter((p) => p >= 0 && p <= last).sort((a, b) => a - b);
+  const nav = document.createElement("div");
+  nav.className = "pager";
+  const btn = (label, p, current = false, disabled = false, aria = "") => {
+    const b = Object.assign(document.createElement("button"), { type: "button", textContent: label, disabled });
+    if (aria) b.setAttribute("aria-label", aria);
+    if (current) b.setAttribute("aria-current", "page");
+    b.onclick = () => onPage(p);
+    nav.append(b);
+  };
+  btn("‹", page - 1, false, page === 0, "이전 페이지");
+  pages.forEach((p, i) => {
+    if (i > 0 && p - pages[i - 1] > 1) nav.append(Object.assign(document.createElement("span"), { textContent: "…" }));
+    btn(String(p + 1), p, p === page);
+  });
+  btn("›", page + 1, false, page >= last, "다음 페이지");
+  return nav;
+}
+
+const range = (page, count, total) => count ? `${num(page * SIZE + 1)}–${num(page * SIZE + count)} / ${num(total)}` : `0 / ${num(total)}`;
+
+// ---------- 회원 관리 (ADM-1) ----------
+async function renderMembers() {
+  const s = state.members;
+  const main = $("#main");
+  main.innerHTML = `
+    <h2>회원 관리</h2>
+    <p class="lead">가입한 회원의 정보를 찾아볼 수 있어요</p>
+    <div class="stats" id="member-stats"></div>
+    <div class="filters" id="member-filters">
+      ${select("socialProvider", "가입 방식", [["", "전체"], ...Object.entries(LABEL.provider)], s.socialProvider)}
+      ${select("runningExperience", "러닝 경력", [["", "전체"], ...Object.entries(LABEL.experience)], s.runningExperience)}
+      <span class="spacer"></span>
+      <button class="btn" type="button" id="member-reset">초기화</button>
+    </div>
+    <div class="card"><div class="table-wrap" id="member-table"></div><div class="foot" id="member-foot"></div></div>`;
+  $("#member-filters").addEventListener("change", (e) => { s[e.target.name] = e.target.value; s.page = 0; loadMembers(); });
+  $("#member-reset").onclick = () => { Object.assign(s, { socialProvider: "", runningExperience: "", page: 0 }); renderMembers(); };
+  api("/api/v1/admin/members/stats").then((st) => {
+    $("#member-stats").innerHTML = [["전체 회원", st.totalMembers], ["이번 주 가입", st.weekJoined], ["이번 달 가입", st.monthJoined]]
+      .map(([k, v]) => `<div class="stat"><span>${k}</span><b>${num(v)}</b></div>`).join("");
+  }).catch(showError);
+  loadMembers();
+}
+
+async function loadMembers() {
+  const s = state.members;
+  try {
+    const data = await api(`/api/v1/admin/members?${query({ socialProvider: s.socialProvider, runningExperience: s.runningExperience, page: s.page, size: SIZE })}`);
+    const rows = data.content;
+    $("#member-table").innerHTML = rows.length ? `
+      <table>
+        <thead><tr><th>닉네임</th><th>가입 방식</th><th>활동 지역</th><th>소속</th><th>러닝 경력</th><th>가입일</th><th>관리</th></tr></thead>
+        <tbody>${rows.map((m) => `
+          <tr>
+            <td class="strong"><span class="who">${avatar(m.profileImageUrl)}${esc(m.nickname)}</span></td>
+            <td>${chip(LABEL.provider[m.socialProvider])}</td>
+            <td>${esc(regionText(m.region))}</td>
+            <td class="clip">${esc(m.affiliation ?? "–")}</td>
+            <td>${esc(LABEL.experience[m.runningExperience])}</td>
+            <td>${date(m.joinedAt)}</td>
+            <td><button class="btn" type="button" data-member="${esc(m.memberId)}">상세</button></td>
+          </tr>`).join("")}</tbody>
+      </table>` : `<div class="empty">조건에 맞는 회원이 없어요</div>`;
+    $("#member-table").onclick = (e) => { const id = e.target.closest("[data-member]")?.dataset.member; if (id) openMember(id); };
+    const foot = $("#member-foot");
+    foot.innerHTML = `<span>${range(s.page, rows.length, data.totalCount)}명</span>`;
+    foot.append(pager(s.page, data.totalCount, (p) => { s.page = p; loadMembers(); }));
+  } catch (err) { showError(err); }
+}
+
+async function openMember(id) {
+  let m;
+  try { m = await api(`/api/v1/admin/members/${encodeURIComponent(id)}`); } catch (err) { return showError(err); }
+  const b = m.bodyInfo;
+  const bodyAgreed = m.agreements.find((a) => a.type === "BODY_INFO")?.agreed;
+  const on = (v) => v ? chip("켜짐", "success") : chip("꺼짐");
+  const rows = (pairs) => `<dl class="rows">${pairs.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("")}</dl>`;
+  openDrawer(`
+    <header>
+      ${avatar(m.profileImageUrl, true)}
+      <div><h3>${esc(m.nickname)}</h3><p>${esc(LABEL.provider[m.socialProvider])}로 가입 · ${date(m.joinedAt)} 가입</p></div>
+      <button class="close" type="button" data-close aria-label="닫기">${CLOSE}</button>
+    </header>
+    <div class="body">
+      <section class="section"><h4>기본 정보</h4>${rows([
+        ["회원 ID", esc(m.memberId)],
+        ["닉네임", esc(m.nickname)],
+        ["한 줄 소개", esc(m.bio ?? "–")],
+        ["활동 지역", `${esc(regionText(m.region))}<small>코드 ${esc(m.regionCode)}</small>`],
+        ["소속", esc(m.affiliation ?? "–")],
+        ["러닝 경력", esc(LABEL.experience[m.runningExperience])],
+        ["프로필 사진", esc(m.profileImageKey ?? "없음")],
+      ])}</section>
+      <section class="section"><h4>계정</h4>${rows([
+        ["가입 방식", chip(LABEL.provider[m.socialProvider])],
+        ["소셜 ID", esc(m.socialId ?? "–")],
+        ["가입 일시", dateTime(m.joinedAt)],
+        ["최근 수정", dateTime(m.updatedAt)],
+        ["닉네임 변경", m.nicknameChangedAt ? dateTime(m.nicknameChangedAt) : "변경한 적 없음"],
+      ])}</section>
+      <section class="section"><h4>신체 정보 ${bodyAgreed ? chip("선택 동의함", "success") : chip("동의 안 함")}</h4>${b ? rows([
+        ["출생연도", esc(b.birthYear)],
+        ["키", `${esc(b.heightCm)} cm`],
+        ["몸무게", `${esc(b.weightKg)} kg`],
+        ["성별", esc(LABEL.gender[b.gender] ?? b.gender)],
+      ]) : `<p class="detail">입력하지 않았어요</p>`}</section>
+      <section class="section"><h4>공개 설정</h4>${rows([
+        ["내 정보 공개", on(m.infoPublic)],
+        ["프로필 검색 허용", on(m.profileSearchable)],
+      ])}</section>
+      <section class="section"><h4>약관 동의</h4>${m.agreements.length ? rows(m.agreements.map((a) => [
+        LABEL.agreement[a.type] ?? a.type,
+        `${a.agreed ? "동의" : "동의 안 함"} · v${esc(a.version)}<small>${dateTime(a.agreedAt)}</small>`,
+      ])) : `<p class="detail">동의 기록이 없어요</p>`}</section>
+    </div>`);
+}
+
+// ---------- 리뷰 관리 (ADM-2 · ADM-2-1 · ADM-2-2) ----------
+let reviewStats = null;
+
+async function renderReviews() {
+  const s = state.reviews;
+  const all = s.tab === "all";
+  $("#main").innerHTML = `
+    <h2>리뷰 관리</h2>
+    <p class="lead">${all ? "코스 리뷰를 확인하고 부적절한 리뷰를 삭제해요" : "신고된 리뷰를 확인하고 삭제하거나 문제 없음으로 처리해요"}</p>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" type="button" data-tab="all" aria-selected="${all}">전체 리뷰 <span class="count" id="count-all"></span></button>
+      <button class="tab" role="tab" type="button" data-tab="reports" aria-selected="${!all}">신고 접수 <span class="count alert" id="count-reports"></span></button>
+    </div>
+    <div class="stats" id="review-stats"></div>
+    <div class="filters" id="review-filters">
+      ${all
+        ? select("rating", "별점", [["", "전체"], ...[5, 4, 3, 2, 1].map((r) => [r, `${r}점`])], s.rating)
+          + select("days", "기간", [["", "전체"], [1, "오늘"], [7, "최근 7일"], [30, "최근 30일"]], s.days)
+        : select("reason", "사유", [["", "전체"], ...Object.entries(LABEL.reason)], s.reason)
+          + select("status", "처리 상태", [["", "전체"], ...Object.entries(LABEL.status).map(([k, [t]]) => [k, t])], s.status)}
+      <span class="spacer"></span>
+      <button class="btn" type="button" id="review-reset">초기화</button>
+    </div>
+    <div class="card"><div class="table-wrap" id="review-table"></div><div class="foot" id="review-foot"></div></div>`;
+  $(".tabs").onclick = (e) => { const t = e.target.closest("[data-tab]")?.dataset.tab; if (t && t !== s.tab) { s.tab = t; renderReviews(); } };
+  $("#review-filters").addEventListener("change", (e) => {
+    s[e.target.name] = e.target.value;
+    if (all) s.page = 0; else s.reportPage = 0;
+    loadReviewList();
+  });
+  $("#review-reset").onclick = () => {
+    Object.assign(s, all ? { rating: "", days: "", page: 0 } : { reason: "", status: "", reportPage: 0 });
+    renderReviews();
+  };
+  loadReviewStats();
+  loadReviewList();
+}
+
+async function loadReviewStats() {
+  try { reviewStats = await api("/api/v1/admin/reviews/stats"); } catch (err) { return showError(err); }
+  const st = reviewStats;
+  const cards = state.reviews.tab === "all"
+    ? [["전체 리뷰", num(st.totalReviews)], ["이번 주 작성", num(st.weekReviews)],
+       ["평균 별점", st.averageRating == null ? "–" : Number(st.averageRating).toFixed(1)], ["처리 대기 신고", num(st.pendingReviews), true]]
+    : [["처리 대기", num(st.pendingReviews), true], ["오늘 접수", num(st.todayReports)],
+       ["이번 주 처리", num(st.weekHandledReviews)], ["누적 신고", num(st.totalReports)]];
+  $("#review-stats").innerHTML = cards.map(([k, v, alert]) => `<div class="stat"><span>${k}</span><b class="${alert && v !== "0" ? "alert" : ""}">${v}</b></div>`).join("");
+  $("#count-all").textContent = num(st.totalReviews);
+  $("#count-reports").textContent = num(st.pendingReviews);
+}
+
+function loadReviewList() {
+  return state.reviews.tab === "all" ? loadAllReviews() : loadReports();
+}
+
+async function loadAllReviews() {
+  const s = state.reviews;
+  try {
+    const data = await api(`/api/v1/admin/reviews?${query({ rating: s.rating, days: s.days, page: s.page, size: SIZE })}`);
+    const rows = data.content;
+    $("#review-table").innerHTML = rows.length ? `
+      <table>
+        <thead><tr><th>코스</th><th>작성자</th><th>별점</th><th>한줄 후기</th><th>태그</th><th>신고</th><th>작성일</th><th>관리</th></tr></thead>
+        <tbody>${rows.map((r) => `
+          <tr>
+            <td class="strong">${esc(r.courseName ?? "코스 정보 없음")}</td>
+            <td>${esc(nick(r.authorNickname))}</td>
+            <td>${stars(r.rating)}</td>
+            <td class="clip" title="${esc(r.content)}">${esc(r.content ?? "–")}</td>
+            <td>${r.tags.length ? `<span class="chips">${r.tags.map((t) => chip(LABEL.tag[t] ?? t)).join("")}</span>` : "–"}</td>
+            <td>${r.pendingReportCount ? chip(`신고 ${r.pendingReportCount}`, "danger") : "–"}</td>
+            <td>${date(r.createdAt)}</td>
+            <td><span class="actions">
+              <button class="btn" type="button" data-open="${esc(r.reviewId)}">상세</button>
+              <button class="btn danger-line" type="button" data-delete="${esc(r.reviewId)}">삭제</button>
+            </span></td>
+          </tr>`).join("")}</tbody>
+      </table>` : `<div class="empty">조건에 맞는 리뷰가 없어요</div>`;
+    $("#review-table").onclick = (e) => {
+      const open = e.target.closest("[data-open]")?.dataset.open;
+      const del = e.target.closest("[data-delete]")?.dataset.delete;
+      if (open) openReview(open);
+      if (del) handle(del, "DELETED", null);
+    };
+    const foot = $("#review-foot");
+    foot.innerHTML = `<span>${range(s.page, rows.length, data.totalCount)}개</span>`;
+    foot.append(pager(s.page, data.totalCount, (p) => { s.page = p; loadAllReviews(); }));
+  } catch (err) { showError(err); }
+}
+
+async function loadReports() {
+  const s = state.reviews;
+  try {
+    const data = await api(`/api/v1/admin/review-reports?${query({ status: s.status, reason: s.reason, page: s.reportPage, size: SIZE })}`);
+    const rows = data.content;
+    $("#review-table").innerHTML = rows.length ? `
+      <table>
+        <thead><tr><th>코스</th><th>작성자</th><th>신고된 후기</th><th>신고 사유</th><th>신고 수</th><th>최근 신고</th><th>상태</th><th>관리</th></tr></thead>
+        <tbody>${rows.map((r) => `
+          <tr>
+            <td class="strong">${esc(r.courseName ?? "코스 정보 없음")}</td>
+            <td>${esc(nick(r.authorNickname))}</td>
+            <td class="clip" title="${esc(r.content)}">${esc(r.content ?? "(후기 없음)")}</td>
+            <td><span class="chips">${chip(LABEL.reason[r.reasons[0]] ?? r.reasons[0])}${r.reasons.length > 1 ? chip(`외 ${r.reasons.length - 1}`) : ""}</span></td>
+            <td class="${r.reportCount >= 3 ? "num-alert" : "strong"}">${num(r.reportCount)}건</td>
+            <td>${date(r.lastReportedAt)}</td>
+            <td>${statusChip(r.status)}</td>
+            <td>${r.status === "PENDING"
+              ? `<button class="btn dark" type="button" data-open="${esc(r.reviewId)}">처리</button>`
+              : `<button class="btn" type="button" data-open="${esc(r.reviewId)}">보기</button>`}</td>
+          </tr>`).join("")}</tbody>
+      </table>` : `<div class="empty">조건에 맞는 신고가 없어요</div>`;
+    $("#review-table").onclick = (e) => { const id = e.target.closest("[data-open]")?.dataset.open; if (id) openReview(id); };
+    const foot = $("#review-foot");
+    foot.innerHTML = `<span>${range(s.reportPage, rows.length, data.totalCount)}건 · 처리 대기 ${num(reviewStats?.pendingReviews)}건</span>`;
+    foot.append(pager(s.reportPage, data.totalCount, (p) => { s.reportPage = p; loadReports(); }));
+  } catch (err) { showError(err); }
+}
+
+async function openReview(id) {
+  let r;
+  try { r = await api(`/api/v1/admin/reviews/${encodeURIComponent(id)}`); } catch (err) { return showError(err); }
+  const pending = r.status === "PENDING";
+  const hasReports = r.reports.length > 0;
+  const items = r.safetyRating == null ? "" : `<div class="meta">
+      <span>안전성 ${r.safetyRating}</span><span>도로 상태 ${r.roadRating}</span>
+      <span>야간 조명 ${r.lightingRating}</span><span>편의시설 ${r.amenityRating}</span></div>`;
+  const handledNote = !pending && r.handledAt
+    ? `<section class="section"><h4>처리 결과 ${statusChip(r.status)}</h4>
+        <dl class="rows"><dt>처리 시각</dt><dd>${dateTime(r.handledAt)}</dd><dt>처리 메모</dt><dd>${esc(r.memo ?? "–")}</dd></dl></section>`
+    : "";
+  openDrawer(`
+    <header>
+      <div>
+        <h3>${hasReports ? "신고 처리" : "리뷰 상세"} ${statusChip(r.status)}</h3>
+        <p>${esc(r.courseName ?? "코스 정보 없음")} 리뷰${hasReports ? ` · 신고 ${num(r.reports.length)}건` : ""}</p>
+      </div>
+      <button class="close" type="button" data-close aria-label="닫기">${CLOSE}</button>
+    </header>
+    <div class="body">
+      <section class="section">
+        <h4>${hasReports ? "신고된 리뷰" : "리뷰"}</h4>
+        <div class="review-box">
+          <div class="top">${avatar(null)}<b>${esc(nick(r.authorNickname))}</b>${stars(r.rating)}<span class="date">${date(r.createdAt)} 작성</span></div>
+          <div class="content">${esc(r.content ?? "(한줄 후기 없음)")}</div>
+          ${items}
+          <div class="meta"><span>코스 ${esc(r.courseName ?? "–")}</span>
+            <span>${r.tags.length ? `태그 ${r.tags.map((t) => esc(LABEL.tag[t] ?? t)).join(" · ")}` : "태그 없음"}</span></div>
+          ${r.photos.length ? `<div class="photos">${r.photos.map((p) => `<a href="${esc(p.url)}" target="_blank" rel="noopener"><img src="${esc(p.url)}" alt="리뷰 사진" loading="lazy"></a>`).join("")}</div>` : ""}
+          ${r.reviewDeleted ? `<div class="note">이미 삭제된 리뷰예요. 신고할 때 저장한 내용을 보여 줘요.</div>` : ""}
+        </div>
+      </section>
+      ${hasReports ? `<section class="section">
+        <h4>신고 내역 ${chip(`${num(r.reports.length)}건`, "danger")}</h4>
+        <div class="reports"><ul>${r.reports.map((p) => `
+          <li>
+            <div class="head">${esc(nick(p.reporterNickname))} ${chip(LABEL.reason[p.reason] ?? p.reason)}<time>${dateTime(p.reportedAt)}</time></div>
+            <div class="detail">${p.detail ? `“${esc(p.detail)}”` : "남긴 설명 없음"}</div>
+          </li>`).join("")}</ul></div>
+      </section>` : ""}
+      ${handledNote}
+      ${pending ? `<section class="section"><h4><label for="memo">처리 메모</label></h4>
+        <textarea id="memo" maxlength="200" placeholder="처리 이유를 적어 두면 나중에 다시 볼 때 편해요 (선택)"></textarea></section>` : ""}
+    </div>
+    ${pending || !r.reviewDeleted ? `<footer>
+      ${r.reviewDeleted ? "" : "<span>삭제하면 되돌릴 수 없어요</span>"}
+      <span class="spacer"></span>
+      ${pending ? `<button class="btn lg" type="button" id="dismiss">문제 없음</button>` : ""}
+      ${r.reviewDeleted ? "" : `<button class="btn danger lg" type="button" id="delete">리뷰 삭제</button>`}
+    </footer>` : ""}`);
+  const memo = () => $("#memo")?.value.trim() || null;
+  $("#dismiss")?.addEventListener("click", () => handle(r.reviewId, "DISMISSED", memo()));
+  $("#delete")?.addEventListener("click", () => handle(r.reviewId, "DELETED", memo()));
+}
+
+async function handle(reviewId, result, memo) {
+  if (result === "DELETED" && !await confirmBox("리뷰를 삭제할까요?", "사진도 함께 지워지고 되돌릴 수 없어요. 처리 대기 중인 신고는 '삭제함'으로 바뀌어요.", "삭제")) return;
+  const buttons = document.querySelectorAll("#dismiss, #delete");
+  buttons.forEach((b) => b.disabled = true);
+  try {
+    await api(`/api/v1/admin/reviews/${encodeURIComponent(reviewId)}/handle`, { method: "POST", body: { result, memo } });
+    toast(result === "DELETED" ? "리뷰를 삭제했어요" : "문제 없음으로 처리했어요");
+    closeDrawer();
+    loadReviewStats();
+    loadReviewList();
+  } catch (err) {
+    buttons.forEach((b) => b.disabled = false);
+    showError(err);
+  }
+}
+
+// ---------- 오른쪽 패널 ----------
+let lastFocus = null;
+function openDrawer(html) {
+  lastFocus = document.activeElement;
+  $("#overlay").innerHTML = `<div class="scrim" data-close></div><aside class="drawer" role="dialog" aria-modal="true" tabindex="-1">${html}</aside>`;
+  $("#overlay").onclick = (e) => { if (e.target.closest("[data-close]")) closeDrawer(); };
+  $(".drawer").focus();
+}
+function closeDrawer() {
+  if (!$("#overlay").innerHTML) return;
+  $("#overlay").innerHTML = "";
+  lastFocus?.focus?.();
+}
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("#confirm").open) closeDrawer(); });
+
+// ---------- 시작 ----------
+if (sessionStorage.getItem(KEY)) start(); else logout();
+</script>
+</body>
+</html>
