@@ -14,6 +14,9 @@ import '../../home/my_location.dart';
 import '../../run/application/run_controller.dart';
 import 'auto_course_form.dart';
 
+part 'auto_course_candidates.dart';
+part 'auto_course_searching.dart';
+
 /// `자동 생성` 탭을 그릴지(빌드 플래그 `AUTO_COURSE`). 시험은 이 값으로 켜고 끈다.
 final autoCourseProvider = Provider<bool>((ref) => autoCourse);
 
@@ -39,7 +42,7 @@ int? usualPace(List<Map<String, dynamic>> records, {int count = 5}) {
 
 /// 목표 거리 · 시간 표시. `5km` · `7.5km` · `30분` · `1시간`.
 String planTargetLabel(PlanForm form) => switch ((form.distanceM, form.durationMin)) {
-      (final meters?, _) => meters % 1000 == 0 ? '${meters ~/ 1000}km' : '${(meters / 1000).toStringAsFixed(1)}km',
+      (final meters?, _) => '${kmText(meters)}km',
       (_, final minutes?) => formatMinutes(minutes),
       _ => '',
     };
@@ -93,33 +96,29 @@ final class _Input extends _Stage {
 
 /// A7 · A7-1 · A7-2 조건 폼.
 final class _Form extends _Stage {
-  const _Form(this.form, {this.request, this.notice});
+  const _Form(this.form, {this.notice});
   final PlanForm form;
-  final String? request;
   final String? notice;
 }
 
 /// A2 찾는 중.
 final class _Searching extends _Stage {
-  const _Searching(this.form, {this.request});
+  const _Searching(this.form);
   final PlanForm form;
-  final String? request;
 }
 
 /// A3 후보.
 final class _Candidates extends _Stage {
-  const _Candidates(this.form, this.result, {this.request});
+  const _Candidates(this.form, this.result);
   final PlanForm form;
   final PlanResult result;
-  final String? request;
 }
 
 /// A6 후보 없음 · 비슷한 코스가 이미 있음.
 final class _Empty extends _Stage {
-  const _Empty(this.form, this.result, {this.request});
+  const _Empty(this.form, this.result);
   final PlanForm form;
   final PlanResult result;
-  final String? request;
 }
 
 /// A8 오늘 생성 한도.
@@ -131,6 +130,9 @@ class _AutoCourseViewState extends ConsumerState<AutoCourseView> {
   _Stage _stage = const _Input();
   final _text = TextEditingController();
   var _parsing = false;
+
+  /// 조건을 채운 문장(A7-1). `직접 조건 고르기`로 시작했으면 null이다. 폼 · 찾는 중 화면 위에 보인다.
+  String? _request;
 
   /// 오늘 남은 생성 횟수. 받지 못하면 보이지 않는다.
   int? _remaining;
@@ -169,7 +171,14 @@ class _AutoCourseViewState extends ConsumerState<AutoCourseView> {
     try {
       final form = await ref.read(courseApiClientProvider).parsePlan(text);
       if (!mounted) return;
-      setState(() => _stage = form.message != null ? _Input(notice: form.message) : _Form(form, request: text));
+      setState(() {
+        if (form.message != null) {
+          _stage = _Input(notice: form.message);
+        } else {
+          _request = text;
+          _stage = _Form(form);
+        }
+      });
     } on ApiException catch (e) {
       if (!mounted) return;
       if (e.code == 'COURSE-013') {
@@ -184,11 +193,11 @@ class _AutoCourseViewState extends ConsumerState<AutoCourseView> {
 
   /// `코스 찾기`(A7 → A2 → A3 · A6 · A8). 장소를 못 찾거나 너무 멀면 폼에 서버 안내를 보인다.
   /// 그 밖의 오류(서버 오류 · 시간 초과)는 폼으로 돌아가 `다시 시도`를 보인다.
-  Future<void> _plan(PlanForm form, {String? request}) async {
-    setState(() => _stage = _Searching(form, request: request));
+  Future<void> _plan(PlanForm form) async {
+    setState(() => _stage = _Searching(form));
     final location = await requestMyLocation(context, ref.read(myLocationProvider));
     if (!mounted) return;
-    if (location == null) return setState(() => _stage = _Form(form, request: request));
+    if (location == null) return setState(() => _stage = _Form(form));
     int? pace;
     try {
       pace = await ref.read(usualPaceProvider)();
@@ -200,37 +209,37 @@ class _AutoCourseViewState extends ConsumerState<AutoCourseView> {
           await ref.read(courseApiClientProvider).planCourse(form, currentLocation: location, paceSecPerKm: pace);
       if (!mounted) return;
       setState(() => _stage = switch (result.reason) {
-            null => _Candidates(form, result, request: request),
-            PlanReason.placeNotFound || PlanReason.placeTooFar => _Form(form, request: request, notice: result.message),
-            PlanReason.noCandidates || PlanReason.similarExists => _Empty(form, result, request: request),
+            null => _Candidates(form, result),
+            PlanReason.placeNotFound || PlanReason.placeTooFar => _Form(form, notice: result.message),
+            PlanReason.noCandidates || PlanReason.similarExists => _Empty(form, result),
           });
     } on ApiException catch (e) {
       if (!mounted) return;
       if (e.code == 'COURSE-012') return setState(() => _stage = const _Limit());
-      setState(() => _stage = _Form(form, request: request));
-      showError(context, e, onRetry: () => _plan(form, request: request));
+      setState(() => _stage = _Form(form));
+      showError(context, e, onRetry: () => _plan(form));
     }
   }
 
   @override
   Widget build(BuildContext context) => switch (_stage) {
         _Input(:final notice) => _input(notice),
-        _Form(:final form, :final request, :final notice) => AutoCourseForm(
+        _Form(:final form, :final notice) => AutoCourseForm(
             // 같은 단계로 돌아와도 넘긴 조건으로 다시 채운다.
             key: ObjectKey(_stage),
             initial: form,
-            request: request,
+            request: _request,
             notice: notice,
-            onSubmit: (submitted) => _plan(submitted, request: request),
+            onSubmit: _plan,
           ),
-        _Searching(:final form, :final request) => _SearchingView(form: form, request: request),
-        _Candidates(:final form, :final result, :final request) => _CandidatesView(
+        _Searching(:final form) => _SearchingView(form: form, request: _request),
+        _Candidates(:final form, :final result) => _CandidatesView(
             form: form,
             result: result,
-            onRetry: () => setState(() => _stage = _Form(form, request: request)),
+            onRetry: () => setState(() => _stage = _Form(form)),
             onPick: widget.onPick,
           ),
-        _Empty(:final form, :final result, :final request) => _empty(form, result, request),
+        _Empty(:final form, :final result) => _empty(form, result),
         _Limit() => _limit(),
       };
 
@@ -299,11 +308,11 @@ class _AutoCourseViewState extends ConsumerState<AutoCourseView> {
       );
 
   /// A6. 한 바퀴를 만들 길이 없으면 왕복을 권한다(정책 B3-A04).
-  Widget _empty(PlanForm form, PlanResult result, String? request) {
+  Widget _empty(PlanForm form, PlanResult result) {
     final loopFailed = result.reason == PlanReason.noCandidates && form.shape == PlanShape.loop;
     final retry = WdButton('다시 입력',
         variant: WdButtonVariant.secondary,
-        onPressed: () => setState(() => _stage = _Form(form, request: request)));
+        onPressed: () => setState(() => _stage = _Form(form)));
     return Column(
       children: [
         Expanded(
@@ -323,7 +332,7 @@ class _AutoCourseViewState extends ConsumerState<AutoCourseView> {
         if (loopFailed)
           WdBottomBar.dual(
             secondary: retry,
-            primary: WdButton('왕복으로 만들기', onPressed: () => _plan(form.withShape(PlanShape.outAndBack), request: request)),
+            primary: WdButton('왕복으로 만들기', onPressed: () => _plan(form.withShape(PlanShape.outAndBack))),
           )
         else
           WdBottomBar.pinned(primary: retry),
@@ -387,347 +396,4 @@ class _PromptField extends StatelessWidget {
       ),
     );
   }
-}
-
-/// A2 찾는 중. 서버가 단계를 알려 주지 않아 시간에 따라 단계를 넘긴다(출발지 찾기 → 후보 만들기 → 고르기).
-class _SearchingView extends StatefulWidget {
-  const _SearchingView({required this.form, this.request});
-
-  final PlanForm form;
-  final String? request;
-
-  static const steps = ['출발지 찾기', '길 따라 후보 만들기', '서로 다른 3개 고르기'];
-
-  @override
-  State<_SearchingView> createState() => _SearchingViewState();
-}
-
-class _SearchingViewState extends State<_SearchingView> {
-  var _step = 0;
-  final _timers = <Timer>[];
-
-  @override
-  void initState() {
-    super.initState();
-    _timers.addAll([
-      Timer(const Duration(milliseconds: 800), () => setState(() => _step = 1)),
-      Timer(const Duration(seconds: 4), () => setState(() => _step = 2)),
-    ]);
-  }
-
-  @override
-  void dispose() {
-    for (final timer in _timers) {
-      timer.cancel();
-    }
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => Column(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(WdSpace.s24, WdSpace.s20, WdSpace.s24, WdSpace.s16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                spacing: WdSpace.s16,
-                children: [
-                  PlanRequestBubble(widget.request ?? planSummary(widget.form)),
-                  Container(
-                    padding: const EdgeInsets.all(WdSpace.s20),
-                    decoration: BoxDecoration(color: WdColors.soft, borderRadius: BorderRadius.circular(WdRadius.r16)),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      spacing: WdSpace.s12,
-                      children: [
-                        Text('코스를 찾고 있어요', style: WdText.title17.copyWith(color: WdColors.ink)),
-                        Text(
-                          widget.form.shape == PlanShape.loop
-                              ? '길을 따라 12개 방향으로 후보를 만들고, 서로 겹치지 않는 3개를 고르는 중이에요.'
-                              : '길을 따라 후보를 만들고, 서로 겹치지 않는 코스를 고르는 중이에요.',
-                          style: WdText.body13.copyWith(color: WdColors.muted),
-                        ),
-                        WdProgressBar(value: const [0.2, 0.58, 0.85][_step]),
-                        for (final (i, label) in _SearchingView.steps.indexed)
-                          _ProgressStep(label, done: i < _step, active: i == _step),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(WdSpace.s24, 0, WdSpace.s24, WdSpace.s24),
-              child: Column(
-                spacing: WdSpace.s16,
-                children: [
-                  Text('보통 몇 초 안에 끝나요.', style: WdText.label12.copyWith(color: WdColors.muted)),
-                  const WdButton('코스 찾는 중…', onPressed: null),
-                ],
-              ),
-            ),
-          ),
-        ],
-      );
-}
-
-/// 찾는 단계 한 줄(Figma AI / Progress step: Done · Active · Pending).
-class _ProgressStep extends StatelessWidget {
-  const _ProgressStep(this.label, {required this.done, required this.active});
-
-  final String label;
-  final bool done;
-  final bool active;
-
-  @override
-  Widget build(BuildContext context) => SizedBox(
-        height: 24,
-        child: Row(
-          spacing: WdSpace.s10,
-          children: [
-            Container(
-              width: 20,
-              height: 20,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: done ? WdColors.lime : (active ? WdColors.limeSoft : WdColors.paper),
-                border: Border.all(
-                  color: done || active ? WdColors.ink : WdColors.line,
-                  width: active ? 2 : 1,
-                ),
-              ),
-              child: done ? const WdIcon(WdIcons.check, size: 12, color: WdColors.ink) : null,
-            ),
-            Expanded(
-              child: Text(
-                label,
-                style: (done || active ? WdText.raw(14, FontWeight.w500, 20) : WdText.run14W400H20)
-                    .copyWith(color: done || active ? WdColors.ink : WdColors.muted),
-              ),
-            ),
-          ],
-        ),
-      );
-}
-
-/// A3 후보. 지도에 후보를 모두 그리고 고른 후보를 라임 선으로 강조한다. 카드 · 지도 번호를 누르면 고른다.
-class _CandidatesView extends StatefulWidget {
-  const _CandidatesView({required this.form, required this.result, required this.onRetry, required this.onPick});
-
-  final PlanForm form;
-  final PlanResult result;
-  final VoidCallback onRetry;
-  final ValueChanged<List<GeoPoint>> onPick;
-
-  @override
-  State<_CandidatesView> createState() => _CandidatesViewState();
-}
-
-class _CandidatesViewState extends State<_CandidatesView> {
-  var _selected = 0;
-
-  List<PlanCandidate> get _candidates => widget.result.candidates;
-
-  @override
-  Widget build(BuildContext context) {
-    final notApplied = _candidates.first.notApplied;
-    return Column(
-      children: [
-        SizedBox(height: 268, child: _map()),
-        Expanded(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(WdSpace.s24, WdSpace.s16, WdSpace.s24, WdSpace.s8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              spacing: WdSpace.s10,
-              children: [
-                Text(planSummary(widget.form, startName: widget.result.startName),
-                    style: WdText.body13Medium.copyWith(color: WdColors.ink)),
-                for (final (i, candidate) in _candidates.indexed)
-                  _CandidateCard(
-                    number: i + 1,
-                    candidate: candidate,
-                    shape: widget.form.shape!,
-                    showToilets: widget.form.prefer.contains(PlanPref.toiletOnRoute),
-                    selected: i == _selected,
-                    onTap: () => setState(() => _selected = i),
-                  ),
-                if (notApplied.isNotEmpty)
-                  WdInfoBanner('${[for (final pref in notApplied) pref.label].join(' · ')} 조건은 아직 반영하지 않았어요.',
-                      tone: WdBannerTone.warning),
-              ],
-            ),
-          ),
-        ),
-        WdBottomBar.dual(
-          secondary: WdButton('다시 찾기', variant: WdButtonVariant.secondary, onPressed: widget.onRetry),
-          primary: WdButton('이 코스로 만들기', onPressed: () => widget.onPick(_candidates[_selected].anchorPoints)),
-        ),
-      ],
-    );
-  }
-
-  Widget _map() {
-    final start = _candidates.first.anchorPoints.first;
-    return Stack(
-      children: [
-        MapView(
-          initialCenter: start,
-          initialZoom: 14,
-          onCreated: (map) => map.fitPoints([for (final candidate in _candidates) ...candidate.anchorPoints]),
-          lines: [
-            for (final (i, candidate) in _candidates.indexed)
-              MapLine(
-                id: 'plan-$i',
-                points: candidate.anchorPoints,
-                style: i == _selected ? MapLineStyle.course : MapLineStyle.candidate,
-              ),
-          ],
-          markers: [
-            MapMarker(
-              id: 'plan-start',
-              position: start,
-              child: const WdRouteEndpoint.start(),
-              imageKey: 'route-start',
-              anchor: WdRouteEndpoint.startAnchor,
-              priority: 1,
-            ),
-            for (final (i, candidate) in _candidates.indexed)
-              MapMarker(
-                id: 'plan-number-$i',
-                position: _farthest(candidate.anchorPoints),
-                child: _NumberBadge(i + 1, selected: i == _selected),
-                imageKey: 'plan-number-${i + 1}-${i == _selected}',
-                priority: i == _selected ? 3 : 2,
-                onTap: () => setState(() => _selected = i),
-              ),
-          ],
-        ),
-        // OSM 데이터로 만든 경로라 출처를 보인다(정책 B3-A07).
-        Positioned(
-          right: WdSpace.s8,
-          bottom: WdSpace.s8,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: WdSpace.s6, vertical: WdSpace.s2),
-            decoration: BoxDecoration(color: WdColors.paper, borderRadius: BorderRadius.circular(4)),
-            child: Text('© OpenStreetMap contributors', style: WdText.micro10.copyWith(color: WdColors.muted)),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// 번호표 자리: 출발점에서 가장 먼 점. 후보마다 다른 방향이라 번호가 잘 겹치지 않는다.
-  static GeoPoint _farthest(List<GeoPoint> points) =>
-      points.reduce((a, b) => points.first.distanceTo(b) > points.first.distanceTo(a) ? b : a);
-}
-
-/// 지도 위 후보 번호(Figma A3 `후보 N · 번호`). 고른 후보는 라임 바탕.
-class _NumberBadge extends StatelessWidget {
-  const _NumberBadge(this.number, {required this.selected});
-
-  final int number;
-  final bool selected;
-
-  @override
-  Widget build(BuildContext context) => Container(
-        width: 22,
-        height: 22,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: selected ? WdColors.lime : WdColors.paper,
-          shape: BoxShape.circle,
-          border: Border.all(color: selected ? WdColors.ink : WdColors.ghost, width: 1.5),
-        ),
-        child: Text('$number', style: WdText.body13Bold.copyWith(color: selected ? WdColors.ink : WdColors.muted)),
-      );
-}
-
-/// 후보 카드(Figma AI / Candidate card). 예: `5.14km · 한 바퀴 · 오르막 32m` / `큰길 24% · 편의점 3곳 · 같은 길 2%`.
-/// 오르막은 서버가 알 때만, 화장실 수는 `화장실 들르기`를 골랐을 때만 보인다(둘째 줄이 한 줄을 넘지 않게).
-class _CandidateCard extends StatelessWidget {
-  const _CandidateCard({
-    required this.number,
-    required this.candidate,
-    required this.shape,
-    required this.showToilets,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final int number;
-  final PlanCandidate candidate;
-  final PlanShape shape;
-  final bool showToilets;
-  final bool selected;
-  final VoidCallback onTap;
-
-  static String _percent(double ratio) => '${(ratio * 100).round()}%';
-
-  @override
-  Widget build(BuildContext context) => Semantics(
-        button: true,
-        selected: selected,
-        child: GestureDetector(
-          onTap: onTap,
-          child: Container(
-            height: 72,
-            padding: const EdgeInsets.fromLTRB(WdSpace.s14, WdSpace.s14, WdSpace.s16, WdSpace.s14),
-            decoration: BoxDecoration(
-              color: selected ? WdColors.limeSoft : WdColors.paper,
-              borderRadius: BorderRadius.circular(WdRadius.r16),
-              border: Border.all(color: selected ? WdColors.ink : WdColors.line, width: selected ? 1.5 : 1),
-            ),
-            child: Row(
-              spacing: WdSpace.s12,
-              children: [
-                Container(
-                  width: 26,
-                  height: 26,
-                  alignment: Alignment.center,
-                  decoration:
-                      BoxDecoration(color: selected ? WdColors.lime : WdColors.soft, shape: BoxShape.circle),
-                  child: Text('$number',
-                      style: WdText.body13Bold.copyWith(color: selected ? WdColors.ink : WdColors.muted)),
-                ),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    spacing: 2,
-                    children: [
-                      Text(
-                          [
-                            '${(candidate.distanceMeters / 1000).toStringAsFixed(2)}km',
-                            shape.label,
-                            if (candidate.ascentMeters case final ascent?) '오르막 ${ascent}m',
-                          ].join(' · '),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: WdText.cardTitle14.copyWith(color: WdColors.ink)),
-                      Text(
-                        [
-                          '큰길 ${_percent(candidate.arterialRatio)}',
-                          '편의점 ${candidate.storeCount}곳',
-                          if (showToilets) '화장실 ${candidate.toiletCount}곳',
-                          '같은 길 ${_percent(candidate.retraceRatio)}',
-                        ].join(' · '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: WdText.label12.copyWith(color: WdColors.muted),
-                      ),
-                    ],
-                  ),
-                ),
-                if (selected) const WdIcon(WdIcons.check, size: 24, color: WdColors.ink),
-              ],
-            ),
-          ),
-        ),
-      );
 }

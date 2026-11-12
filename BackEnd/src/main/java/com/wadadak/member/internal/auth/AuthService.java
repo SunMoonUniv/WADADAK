@@ -12,6 +12,7 @@ import com.wadadak.member.internal.account.AgreementRepository;
 import com.wadadak.member.internal.account.BodyInfo;
 import com.wadadak.member.internal.account.Member;
 import com.wadadak.member.internal.account.MemberRepository;
+import com.wadadak.member.internal.account.ProfileRules;
 import com.wadadak.member.internal.social.SocialAccount;
 import com.wadadak.member.internal.social.SocialTokenVerifier;
 import lombok.RequiredArgsConstructor;
@@ -21,7 +22,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.time.Year;
 import java.util.List;
 import java.util.UUID;
 
@@ -61,14 +61,8 @@ class AuthService {
         if (memberRepository.existsByNicknameIgnoreCase(request.nickname())) {
             throw new AppException(MemberErrorCode.NICKNAME_TAKEN);
         }
-        // FK가 없으니 시·도·읍·면·동이나 없는 코드를 여기서 막는다. 지역 주간 랭킹이 이 코드로 회원을 묶는다.
-        if (regions.findSigungu(request.regionCode()).isEmpty()) {
-            throw new AppException(MemberErrorCode.REGION_NOT_FOUND);
-        }
         BodyInfo body = request.bodyInfo();
-        if (body != null && !BodyInfo.allowsBirthYear(body.birthYear(), Year.now(clock))) {
-            throw new AppException(MemberErrorCode.INVALID_BIRTH_YEAR);
-        }
+        ProfileRules.check(regions, clock, request.regionCode(), body);
         String photo = request.profileImageKey();
         // 사진 주소에 키가 보여서 남의 사진 키를 가져다 쓸 수 있다. 이 계정이 받은 폼의 키만, 한 번만 받는다(DB 유니크가 마지막 방어)
         if (photo != null && !uploads.claim(Member.PHOTO_MODULE, uploader(account), List.of(photo))) {

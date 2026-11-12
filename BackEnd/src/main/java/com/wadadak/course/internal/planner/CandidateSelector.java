@@ -14,7 +14,6 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Function;
@@ -50,11 +49,14 @@ class CandidateSelector {
 
     /**
      * @param targetMeters 한 바퀴 · 왕복의 목표 거리. 편도 · 경유는 null이어도 된다
-     * @param pois         경로 근처 편의점 · 화장실 수
+     * @param pois         경로 근처 편의점 · 화장실 수(DB 조회)
      * @return 후보가 없고, 거리 · 되돌아감 조건을 통과한 후보가 모두 기존 코스와 겹쳐서 빠졌으면 {@code allSimilarToExisting}
      */
     Selection select(Shape shape, Integer targetMeters, List<RoutedPath> paths, Set<Pref> prefer, Function<LineString, PoiCounts> pois) {
         Set<Pref> wants = prefer == null ? Set.of() : prefer;
+        // 편의점 · 화장실 수(DB 조회)와 오르막은 점수에 쓸 때만 후보마다 구하고, 아니면 고른 후보만 구한다
+        boolean scorePois = wants.contains(Pref.STORE_ON_ROUTE) || wants.contains(Pref.TOILET_ON_ROUTE);
+        boolean scoreClimb = wants.contains(Pref.FLAT) || wants.contains(Pref.HILLY);
         List<Scored> passed = new ArrayList<>();
         for (RoutedPath path : paths) {
             int meters = (int) Math.round(path.distanceMeters());
@@ -64,8 +66,8 @@ class CandidateSelector {
             }
             LineString line = CourseGeometry.lineString(path.points());
             double arterial = RouteMetrics.arterialRatio(path);
-            PoiCounts counts = pois.apply(line);
-            Integer ascent = spotHeights.ascentMeters(path.points());
+            PoiCounts counts = scorePois ? pois.apply(line) : null;
+            Integer ascent = scoreClimb ? spotHeights.ascentMeters(path.points()) : null;
             passed.add(new Scored(path, line, meters, retrace, arterial, counts, ascent,
                     score(wants, meters, retrace, arterial, counts, ascent)));
         }
@@ -81,20 +83,17 @@ class CandidateSelector {
                 picked.add(c);
             }
         }
-        Set<Pref> notApplied = EnumSet.noneOf(Pref.class);
-        notApplied.addAll(wants);
-        notApplied.removeAll(Pref.SUPPORTED);
-        if (!spotHeights.available()) {
-            wants.stream().filter(Pref.NEEDS_HEIGHTS::contains).forEach(notApplied::add);
-        }
-        Set<Pref> notAppliedPrefs = Set.copyOf(notApplied);
-        List<PlanCandidate> candidates = picked.stream().map(c -> new PlanCandidate(anchors(c.path().points()), c.meters(),
-                c.retrace(), c.arterial(), c.pois().stores(), c.pois().toilets(), c.ascent(),
-                PlanCandidate.summary(c.meters(), c.arterial(), c.pois().stores(), c.pois().toilets(), c.ascent()), notAppliedPrefs)).toList();
-        return new Selection(candidates, picked.isEmpty() && !passed.isEmpty());
+        List<PlanCandidate> candidates = picked.stream().map(c -> {
+            PoiCounts counts = scorePois ? c.pois() : pois.apply(c.line());
+            Integer ascent = scoreClimb ? c.ascent() : spotHeights.ascentMeters(c.path().points());
+            return new PlanCandidate(anchors(c.path().points()), c.meters(), c.retrace(), c.arterial(), counts.stores(), counts.toilets(),
+                    ascent);
+        }).toList();
+        return new Selection(candidates, picked.isEmpty() && !passed.isEmpty(), Pref.notApplied(wants, spotHeights.available()));
     }
 
-    record Selection(List<PlanCandidate> candidates, boolean allSimilarToExisting) {
+    /** @param notApplied 요청한 원하는 길 중 반영하지 못한 것 */
+    record Selection(List<PlanCandidate> candidates, boolean allSimilarToExisting, Set<Pref> notApplied) {
     }
 
     private static boolean fitsShape(Shape shape, Integer targetMeters, int meters, double retrace) {
@@ -151,6 +150,7 @@ class CandidateSelector {
         return anchors;
     }
 
+    /** @param pois 점수에 쓰지 않았으면 null */
     private record Scored(RoutedPath path, LineString line, int meters, double retrace, double arterial, PoiCounts pois, Integer ascent,
                           double score) {
     }

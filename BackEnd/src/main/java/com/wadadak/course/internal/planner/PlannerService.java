@@ -101,13 +101,40 @@ class PlannerService implements CoursePlanner {
         Integer target = request.targetMeters();
         long started = System.nanoTime();
 
+        Places places = places(request, target);
+        if (places.failure() != null) {
+            log.info("코스 자동 생성: {} 장소 {}ms {}", form.shape(), millis(started, System.nanoTime()), places.failure().reason());
+            return new Outcome(places.failure(), false);
+        }
+        String startName = places.startName();
+
+        long placed = System.nanoTime();
+        List<RoutedPath> paths = generator.generate(form.shape(), places.start(), places.place(), target, deadline);
+        long routed = System.nanoTime();
+        if (paths.isEmpty() && !routing.healthy()) {
+            log.warn("코스 자동 생성: 길찾기 서버가 응답하지 않는다");
+            throw new AppException(CommonErrorCode.INTERNAL_ERROR);
+        }
+        Selection selection = selector.select(form.shape(), target, paths, form.prefer(),
+                line -> repository.poisNear(line, STORE_METERS, TOILET_METERS));
+        PlanResult result = !selection.candidates().isEmpty() ? PlanResult.found(selection.candidates(), startName, selection.notApplied())
+                : selection.allSimilarToExisting() ? PlanResult.similarExists(startName)
+                : PlanResult.noCandidates(form.shape() == Shape.LOOP, startName);
+        log.info("코스 자동 생성: {} 장소 {}ms 길찾기 {}ms({}개) 고르기 {}ms 후보 {}개 {}", form.shape(), millis(started, placed),
+                millis(placed, routed), paths.size(), millis(routed, System.nanoTime()), result.candidates().size(), result.reason());
+        return new Outcome(result, true);
+    }
+
+    /** 출발지와 도착지 · 경유지를 찾는다. 못 찾았거나 너무 멀거나 지역 데이터 밖이면 그 안내만 돌려준다 */
+    private Places places(PlanRequest request, Integer target) {
+        PlanForm form = request.form();
         GeoPoint start = request.currentLocation();
         String startName = null;
         if (form.start().kind() == StartKind.PLACE) {
             String query = form.start().query().strip();
             Optional<PlaceHit> hit = find(query, request.currentLocation());
             if (hit.isEmpty()) {
-                return notRouted(form, PlanResult.placeNotFound(query, null), started);
+                return Places.failed(PlanResult.placeNotFound(query, null));
             }
             start = hit.get().location();
             startName = hit.get().name();
@@ -119,44 +146,24 @@ class PlannerService implements CoursePlanner {
             String query = placeQuery.strip();
             Optional<PlaceHit> hit = find(query, start);
             if (hit.isEmpty()) {
-                return notRouted(form, PlanResult.placeNotFound(query, startName), started);
+                return Places.failed(PlanResult.placeNotFound(query, startName));
             }
             place = hit.get().location();
             if (PlaceRules.tooFar(form.shape(), start, place, target)) {
                 String from = startName != null ? startName : "현재 위치";
-                return notRouted(form, PlanResult.placeTooFar(query, from, start.distanceMeters(place), startName), started);
+                return Places.failed(PlanResult.placeTooFar(query, from, start.distanceMeters(place), startName));
             }
         }
 
         // 지역 데이터 밖(바다 · 국외)이면 길찾기 그래프도 없다
         if (regionResolver.resolveCode(start.lat(), start.lng()).isEmpty()) {
-            return notRouted(form, PlanResult.noCandidates(false, startName), started);
+            return Places.failed(PlanResult.noCandidates(false, startName));
         }
-
-        long placed = System.nanoTime();
-        List<RoutedPath> paths = generator.generate(form.shape(), start, place, target, deadline);
-        long routed = System.nanoTime();
-        if (paths.isEmpty() && !routing.healthy()) {
-            log.warn("코스 자동 생성: 길찾기 서버가 응답하지 않는다");
-            throw new AppException(CommonErrorCode.INTERNAL_ERROR);
-        }
-        Selection selection = selector.select(form.shape(), target, paths, form.prefer(),
-                line -> repository.poisNear(line, STORE_METERS, TOILET_METERS));
-        PlanResult result = !selection.candidates().isEmpty() ? new PlanResult(selection.candidates(), null, null, startName)
-                : selection.allSimilarToExisting() ? PlanResult.similarExists(startName)
-                : PlanResult.noCandidates(form.shape() == Shape.LOOP, startName);
-        log.info("코스 자동 생성: {} 장소 {}ms 길찾기 {}ms({}개) 고르기 {}ms 후보 {}개 {}", form.shape(), millis(started, placed),
-                millis(placed, routed), paths.size(), millis(routed, System.nanoTime()), result.candidates().size(), result.reason());
-        return new Outcome(result, true);
+        return new Places(start, startName, place, null);
     }
 
     private Optional<PlaceHit> find(String query, GeoPoint near) {
         return PlaceRules.pick(query, placeSearch.search(query, near), near);
-    }
-
-    private static Outcome notRouted(PlanForm form, PlanResult result, long started) {
-        log.info("코스 자동 생성: {} 장소 {}ms {}", form.shape(), millis(started, System.nanoTime()), result.reason());
-        return new Outcome(result, false);
     }
 
     private static long millis(long from, long to) {
@@ -169,5 +176,16 @@ class PlannerService implements CoursePlanner {
 
     /** @param routed 길찾기를 했는지. false면 한도를 되돌린다 */
     private record Outcome(PlanResult result, boolean routed) {
+    }
+
+    /**
+     * @param place   편도의 도착지 또는 경유의 경유지. 한 바퀴 · 왕복은 null
+     * @param failure 길을 찾지 않고 끝낼 때의 안내. 이때 나머지는 비어 있다
+     */
+    private record Places(GeoPoint start, String startName, GeoPoint place, PlanResult failure) {
+
+        static Places failed(PlanResult failure) {
+            return new Places(null, null, null, failure);
+        }
     }
 }

@@ -28,7 +28,9 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
+import java.util.stream.IntStream;
 
 import static com.wadadak.course.internal.planner.CandidateGenerator.destination;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -140,7 +142,6 @@ class CandidateSelectorTest {
         List<PlanCandidate> store = selector.select(Shape.LOOP, 5_000, List.of(quietPath, bigRoadPath), Set.of(Pref.STORE_ON_ROUTE), pois)
                 .candidates();
         assertThat(store).extracting(PlanCandidate::storeCount).containsExactly(2, 0);
-        assertThat(store.getFirst().summary()).isEqualTo("5.00km · 큰길 100% · 편의점 2곳 · 화장실 0곳");
 
         List<PlanCandidate> toilet = selector.select(Shape.LOOP, 5_000, List.of(bigRoadPath, quietPath), Set.of(Pref.TOILET_ON_ROUTE), pois)
                 .candidates();
@@ -159,10 +160,9 @@ class CandidateSelectorTest {
         // 오르막 1km당 24m · 2m: 평지는 −48 · −4, 오르막은 +48 · +4
         assertThat(select(Shape.LOOP, 5_000, List.of(path(hill), path(flat)), Set.of(Pref.FLAT)).candidates())
                 .extracting(PlanCandidate::ascentMeters).containsExactly(10, 120);
-        PlanCandidate first = select(Shape.LOOP, 5_000, List.of(path(flat), path(hill)), Set.of(Pref.HILLY)).candidates().getFirst();
-        assertThat(first.ascentMeters()).isEqualTo(120);
-        assertThat(first.summary()).isEqualTo("5.00km · 큰길 0% · 편의점 0곳 · 화장실 0곳 · 오르막 120m");
-        assertThat(first.notApplied()).isEmpty();
+        Selection hilly = select(Shape.LOOP, 5_000, List.of(path(flat), path(hill)), Set.of(Pref.HILLY));
+        assertThat(hilly.candidates().getFirst().ascentMeters()).isEqualTo(120);
+        assertThat(hilly.notApplied()).isEmpty();
     }
 
     @Test
@@ -170,11 +170,35 @@ class CandidateSelectorTest {
         List<GeoPoint> loop = square(new GeoPoint(35.70, 128.10), 0);
 
         // 표고점 파일이 없으면 평지도 반영하지 않는다
-        PlanCandidate candidate = select(Shape.LOOP, 5_000, List.of(path(loop)),
-                Set.of(Pref.FLAT, Pref.AVOID_ARTERIAL, Pref.TOILET_ON_ROUTE, Pref.PARK)).candidates().getFirst();
+        Selection result = select(Shape.LOOP, 5_000, List.of(path(loop)),
+                Set.of(Pref.FLAT, Pref.AVOID_ARTERIAL, Pref.TOILET_ON_ROUTE, Pref.PARK));
 
-        assertThat(candidate.notApplied()).containsExactlyInAnyOrder(Pref.FLAT, Pref.PARK);
-        assertThat(candidate.ascentMeters()).isNull();
+        assertThat(result.notApplied()).containsExactlyInAnyOrder(Pref.FLAT, Pref.PARK);
+        assertThat(result.candidates().getFirst().ascentMeters()).isNull();
+    }
+
+    @Test
+    void countsPoisOnlyForPickedCandidatesUnlessScored() {
+        GeoPoint base = new GeoPoint(35.75, 128.10);
+        List<RoutedPath> four = IntStream.range(0, 4).mapToObj(i -> path(square(destination(base, 3_000.0 * i, 90), 0))).toList();
+        AtomicInteger calls = new AtomicInteger();
+        Function<LineString, PoiCounts> pois = line -> {
+            calls.incrementAndGet();
+            return new PoiCounts(1, 2);
+        };
+
+        // 편의점 · 화장실을 점수에 쓰지 않으면 고른 3개만 센다
+        List<PlanCandidate> plain = selector.select(Shape.LOOP, 5_000, four, Set.of(), pois).candidates();
+        assertThat(plain).hasSize(3).allSatisfy(c -> {
+            assertThat(c.storeCount()).isEqualTo(1);
+            assertThat(c.toiletCount()).isEqualTo(2);
+        });
+        assertThat(calls).hasValue(3);
+
+        // 점수에 쓰면 통과한 후보를 모두 센다
+        calls.set(0);
+        selector.select(Shape.LOOP, 5_000, four, Set.of(Pref.STORE_ON_ROUTE), pois);
+        assertThat(calls).hasValue(4);
     }
 
     @Test

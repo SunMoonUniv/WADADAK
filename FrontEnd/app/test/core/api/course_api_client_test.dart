@@ -100,13 +100,12 @@ void main() {
           'storeCount': 3,
           'toiletCount': 1,
           'ascentMeters': 32,
-          'summary': '5.14km · 큰길 24% · 편의점 3곳 · 화장실 1곳 · 오르막 32m',
-          'notApplied': ['PARK'],
         },
       ],
       'reason': null,
       'message': null,
       'startName': null,
+      'notApplied': ['PARK'],
     });
 
     final result = await client(server).planCourse(
@@ -142,7 +141,7 @@ void main() {
     expect(candidate.storeCount, 3);
     expect(candidate.toiletCount, 1);
     expect(candidate.ascentMeters, 32);
-    expect(candidate.notApplied, {PlanPref.park});
+    expect(result.notApplied, {PlanPref.park});
     expect(result.reason, isNull);
   });
 

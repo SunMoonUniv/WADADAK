@@ -1,12 +1,14 @@
 package com.wadadak.course.internal.planner;
 
 import com.wadadak.course.internal.planner.JevClient.JevAnswers;
+import com.wadadak.course.internal.planner.PlanForm.Pref;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
+import org.springframework.test.web.client.ResponseActions;
 import org.springframework.web.client.RestClient;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.json.JsonMapper;
@@ -14,6 +16,7 @@ import tools.jackson.databind.json.JsonMapper;
 import java.net.http.HttpTimeoutException;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -64,6 +67,20 @@ class JevClientTest {
             assertThat(a.choice("start")).isEqualTo("named_place");
             assertThat(a.confidence("shape")).isEqualTo(1.0);
         });
+    }
+
+    /** SentenceParser는 Pref마다 {@code pref_} + 소문자 이름의 답을 읽는다. 질문이 빠지면 parse가 NullPointerException으로 죽는다 */
+    @Test
+    void asksAQuestionForEveryPref() {
+        ResponseActions request = jev.expect(requestTo(URL));
+        for (Pref pref : Pref.values()) {
+            request.andExpect(jsonPath("$.questions.pref_" + pref.name().toLowerCase(Locale.ROOT)).exists());
+        }
+        request.andRespond(withSuccess(recordedResponse(), MediaType.APPLICATION_JSON));
+
+        client.ask(TEXT);
+
+        jev.verify();
     }
 
     @Test

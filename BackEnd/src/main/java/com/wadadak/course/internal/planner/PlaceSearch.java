@@ -1,5 +1,6 @@
 package com.wadadak.course.internal.planner;
 
+import com.wadadak.common.config.HttpTimeouts;
 import com.wadadak.common.geo.GeoPoint;
 import com.wadadak.common.region.Region;
 import com.wadadak.common.region.RegionDirectory;
@@ -7,7 +8,6 @@ import com.wadadak.common.region.RegionResolver;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestClient;
@@ -18,7 +18,6 @@ import tools.jackson.core.JacksonException;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
@@ -63,7 +62,7 @@ class PlaceSearch {
                 @Value("${app.course.planner.place.geocode.client-secret}") String geocodeClientSecret,
                 @Value("${app.course.planner.place.timeout}") Duration timeout,
                 RegionResolver regionResolver, RegionDirectory regionDirectory) {
-        this(RestClient.builder().requestFactory(timeouts(timeout)),
+        this(RestClient.builder().requestFactory(HttpTimeouts.requestFactory(timeout)),
                 new Api(searchBaseUrl, searchClientId, searchClientSecret),
                 new Api(geocodeBaseUrl, geocodeClientId, geocodeClientSecret),
                 regionResolver, regionDirectory);
@@ -166,13 +165,6 @@ class PlaceSearch {
 
     private static boolean isShop(String category) {
         return category != null && SHOP_CATEGORIES.stream().anyMatch(category::contains);
-    }
-
-    private static JdkClientHttpRequestFactory timeouts(Duration timeout) {
-        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(
-                HttpClient.newBuilder().connectTimeout(timeout).build());
-        factory.setReadTimeout(timeout);
-        return factory;
     }
 
     /** NCP API 하나의 주소와 앱 키 */

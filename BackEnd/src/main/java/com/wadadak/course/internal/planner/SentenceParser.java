@@ -31,8 +31,6 @@ import java.util.Set;
 @Component
 class SentenceParser {
 
-    static final String OFF_TOPIC = "코스와 관련된 문장이 아니에요. 출발지 · 거리 · 모양을 말해 주세요.";
-
     private static final Map<String, Shape> JEV_SHAPE = Map.of(
             "loop", Shape.LOOP, "out_and_back", Shape.OUT_AND_BACK, "point_to_point", Shape.POINT_TO_POINT, "via_landmark", Shape.VIA);
 
@@ -47,7 +45,7 @@ class SentenceParser {
     }
 
     static PlanForm fill(String text, Optional<JevAnswers> jev) {
-        return onTopic(text, jev) ? form(text, jev) : new PlanForm(null, null, null, null, null, null, Set.of(), OFF_TOPIC);
+        return onTopic(text, jev) ? form(text, jev) : PlanForm.offTopic();
     }
 
     static boolean onTopic(String text, Optional<JevAnswers> jev) {

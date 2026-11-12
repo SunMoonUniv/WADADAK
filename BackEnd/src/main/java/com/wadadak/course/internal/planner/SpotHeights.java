@@ -17,7 +17,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
-import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -62,7 +61,7 @@ class SpotHeights {
         if (grid == null) {
             return null;
         }
-        List<double[]> samples = resample(route.stream().map(SpotHeights::tm5179).toList());
+        List<double[]> samples = RouteMetrics.resample(route.stream().map(SpotHeights::tm5179).toList(), STEP_METERS);
         double[] z = new double[samples.size()];
         int known = 0;
         for (int i = 0; i < z.length; i++) {
@@ -94,25 +93,6 @@ class SpotHeights {
             }
             previous = i;
         }
-    }
-
-    /** 50m마다 다시 찍은 점 [x, y] */
-    private static List<double[]> resample(List<double[]> xy) {
-        List<double[]> samples = new ArrayList<>();
-        double walked = 0;
-        double next = 0;
-        for (int i = 0; i + 1 < xy.size(); i++) {
-            double[] a = xy.get(i);
-            double[] b = xy.get(i + 1);
-            double length = Math.hypot(b[0] - a[0], b[1] - a[1]);
-            while (next < walked + length) {
-                double t = (next - walked) / length;
-                samples.add(new double[]{a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1])});
-                next += STEP_METERS;
-            }
-            walked += length;
-        }
-        return samples;
     }
 
     private static Grid load(Path file) {

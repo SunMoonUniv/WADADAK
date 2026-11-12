@@ -117,7 +117,7 @@ class SentenceParserTest {
     void offTopicWithoutJevUsesKeywords() {
         PlanForm form = SentenceParser.fill("주식 추천 좀 해줘", Optional.empty());
 
-        assertThat(form.message()).isEqualTo(SentenceParser.OFF_TOPIC);
+        assertThat(form.message()).isEqualTo(PlanForm.OFF_TOPIC);
         assertThat(form.start()).isNull();
         assertThat(form.shape()).isNull();
     }

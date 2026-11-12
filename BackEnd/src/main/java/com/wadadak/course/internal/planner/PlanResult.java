@@ -13,11 +13,16 @@ import java.util.Set;
  * @param reason     후보가 없을 때만 이유. 후보가 있으면 null
  * @param message    reason에 맞는 안내 문구(정책 B3-A04). 앱은 그대로 보인다
  * @param startName  찾은 출발 장소 이름. 현재 위치 출발이면 null
+ * @param notApplied 요청한 원하는 길 중 아직 반영하지 않은 것. 후보가 없으면 비어 있다
  */
-record PlanResult(List<PlanCandidate> candidates, PlanReason reason, String message, String startName) {
+record PlanResult(List<PlanCandidate> candidates, PlanReason reason, String message, String startName, Set<Pref> notApplied) {
+
+    static PlanResult found(List<PlanCandidate> candidates, String startName, Set<Pref> notApplied) {
+        return new PlanResult(candidates, null, null, startName, notApplied);
+    }
 
     static PlanResult failure(PlanReason reason, String message, String startName) {
-        return new PlanResult(List.of(), reason, message, startName);
+        return new PlanResult(List.of(), reason, message, startName, Set.of());
     }
 
     // 안내 문구(정책 B3-A04). 스텁과 실제 구현이 같이 쓴다
@@ -61,16 +66,9 @@ record PlanResult(List<PlanCandidate> candidates, PlanReason reason, String mess
      * @param storeCount    경로 50m 안 편의점 수
      * @param toiletCount   경로 100m 안 공중화장실 수
      * @param ascentMeters  경로를 따라 오른 높이(m). 표고점 파일이 없거나 높이를 모르는 곳이 많으면 null
-     * @param summary       후보 카드 문구. 예: "5.14km · 큰길 24% · 편의점 3곳 · 화장실 1곳 · 오르막 32m"
-     * @param notApplied    요청한 원하는 길 중 아직 반영하지 않은 것
      */
     record PlanCandidate(List<GeoPoint> anchorPoints, int distanceMeters, double retraceRatio, double arterialRatio,
-                         int storeCount, int toiletCount, Integer ascentMeters, String summary, Set<Pref> notApplied) {
-
-        static String summary(int distanceMeters, double arterialRatio, int storeCount, int toiletCount, Integer ascentMeters) {
-            return "%.2fkm · 큰길 %d%% · 편의점 %d곳 · 화장실 %d곳".formatted(distanceMeters / 1000.0, Math.round(arterialRatio * 100),
-                    storeCount, toiletCount) + (ascentMeters == null ? "" : " · 오르막 %dm".formatted(ascentMeters));
-        }
+                         int storeCount, int toiletCount, Integer ascentMeters) {
     }
 
     enum PlanReason {

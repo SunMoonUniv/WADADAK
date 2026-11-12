@@ -1,7 +1,6 @@
 package com.wadadak.course.internal.planner;
 
 import com.wadadak.common.exception.AppException;
-import com.wadadak.common.geo.GeoPoint;
 import com.wadadak.common.stub.StubImplementation;
 import com.wadadak.course.CourseErrorCode;
 import com.wadadak.course.internal.planner.PlanForm.Pref;
@@ -18,7 +17,6 @@ import tools.jackson.databind.json.JsonMapper;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
-import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
@@ -38,11 +36,11 @@ import java.util.UUID;
 @ConditionalOnProperty(name = "app.stub.course-planner", havingValue = "true")
 class PlannerStub implements CoursePlanner, StubImplementation {
 
-    private final List<StubRoute> routes;
+    private final List<PlanCandidate> candidates;
 
     PlannerStub(JsonMapper jsonMapper) {
         try (InputStream in = new ClassPathResource("planner/stub-candidates.json").getInputStream()) {
-            routes = jsonMapper.readValue(in, new TypeReference<>() {
+            candidates = jsonMapper.readValue(in, new TypeReference<>() {
             });
         } catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -55,8 +53,7 @@ class PlannerStub implements CoursePlanner, StubImplementation {
             throw new AppException(CourseErrorCode.PARSE_DAILY_LIMIT_EXCEEDED);
         }
         if (text.contains("주식")) {
-            return new PlanForm(null, null, null, null, null, null, Set.of(),
-                    "코스와 관련된 문장이 아니에요. 출발지 · 거리 · 모양을 말해 주세요.");
+            return PlanForm.offTopic();
         }
         Integer distance = text.contains("초보") ? null : 5_000;
         return new PlanForm(new Start(StartKind.PLACE, "선문대"), Shape.LOOP, null, null, distance, null,
@@ -83,19 +80,7 @@ class PlannerStub implements CoursePlanner, StubImplementation {
         if ("중복".equals(start)) {
             return PlanResult.similarExists(start);
         }
-        Set<Pref> notApplied = EnumSet.noneOf(Pref.class);
-        if (form.prefer() != null) {
-            notApplied.addAll(form.prefer());
-        }
-        notApplied.removeAll(Pref.SUPPORTED);
-        Set<Pref> notAppliedPrefs = Set.copyOf(notApplied);
-        List<PlanCandidate> candidates = routes.stream()
-                .map(r -> new PlanCandidate(r.anchorPoints(), r.distanceMeters(), r.retraceRatio(), r.arterialRatio(), r.storeCount(),
-                        r.toiletCount(), r.ascentMeters(),
-                        PlanCandidate.summary(r.distanceMeters(), r.arterialRatio(), r.storeCount(), r.toiletCount(), r.ascentMeters()),
-                        notAppliedPrefs))
-                .toList();
-        return new PlanResult(candidates, null, null, start);
+        return PlanResult.found(candidates, start, Pref.notApplied(form.prefer(), true));
     }
 
     @Override
@@ -105,9 +90,5 @@ class PlannerStub implements CoursePlanner, StubImplementation {
 
     private static String strip(String s) {
         return s == null ? null : s.strip();
-    }
-
-    record StubRoute(List<GeoPoint> anchorPoints, int distanceMeters, double retraceRatio, double arterialRatio,
-                     int storeCount, int toiletCount, Integer ascentMeters) {
     }
 }

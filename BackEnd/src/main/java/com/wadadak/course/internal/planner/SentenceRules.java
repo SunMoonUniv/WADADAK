@@ -8,6 +8,7 @@ import java.util.EnumSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.MatchResult;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -109,7 +110,9 @@ final class SentenceRules {
     private static final Pattern PLACE_SUFFIX = Pattern.compile("(공원|호수|역|천|못|호|대교|산성|해수욕장|운동장|기념관|터미널)$");
     private static final Pattern DIGIT = Pattern.compile("\\d");
     private static final Pattern END = Pattern.compile("(" + TOKEN + ")까지");
-    private static final Pattern VIA = Pattern.compile("(" + TOKEN + ")\\s*(찍고|들렀다|들러|거쳐)");
+    /** 경유를 말하는 단어. 경유지 이름({@link #spans})과 모양({@link #keywordShape})이 같이 본다 */
+    private static final String VIA_WORDS = "찍고|들렀다|들러|거쳐";
+    private static final Pattern VIA = Pattern.compile("(" + TOKEN + ")\\s*(" + VIA_WORDS + ")");
     private static final Pattern FROM = Pattern.compile("(" + TOKEN + ")\\s*(?:에서|부터)");
     private static final Pattern DEPART = Pattern.compile("(" + TOKEN + ")\\s*출발");
     private static final Pattern FROM_EN = Pattern.compile("(?:from|near)\\s+([^,]+?)(?:,|$)", Pattern.CASE_INSENSITIVE);
@@ -186,7 +189,7 @@ final class SentenceRules {
     }
 
     private static List<String> tokens(String text) {
-        return TOKEN_P.matcher(text).results().map(r -> r.group()).toList();
+        return TOKEN_P.matcher(text).results().map(MatchResult::group).toList();
     }
 
     private static List<String> words(String text) {
@@ -213,7 +216,7 @@ final class SentenceRules {
         return n.distanceM() != null || n.durationMin() != null || ON_TOPIC.matcher(text).find();
     }
 
-    private static final Pattern VIA_WORD = Pattern.compile("찍고|들렀다|들러|거쳐");
+    private static final Pattern VIA_WORD = Pattern.compile(VIA_WORDS);
     private static final Pattern END_WORD = Pattern.compile("까지|편도");
 
     /** 모양 단어가 없으면 LOOP */
@@ -231,7 +234,7 @@ final class SentenceRules {
     }
 
     /** 부정: "큰길은 피하고", "오르막 없는", "대로는 빼고", "오르막 아닌", "언덕은 별로" */
-    private static final String NEG = "\\s*(?:은|는|이|가)?\\s*(?:없|말고|싫|피하|피해|빼|아니|아닌|별로|안\\s)";
+    private static final String NEG = "\\s*[은는이가]?\\s*(?:없|말고|싫|피하|피해|빼|아니|아닌|별로|안\\s)";
     private static final Pattern HILL_NEG = Pattern.compile("(언덕|오르막|경사)" + NEG);
     private static final Pattern FLAT = Pattern.compile("평지|평탄|평평");
     private static final Pattern HILL = Pattern.compile("언덕|오르막|경사|\\bhill", Pattern.CASE_INSENSITIVE);

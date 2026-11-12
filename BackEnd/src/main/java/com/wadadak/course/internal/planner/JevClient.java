@@ -2,13 +2,13 @@ package com.wadadak.course.internal.planner;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
+import com.wadadak.common.config.HttpTimeouts;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
@@ -19,7 +19,6 @@ import tools.jackson.databind.json.JsonMapper;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
-import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.Map;
 import java.util.Optional;
@@ -49,7 +48,7 @@ class JevClient {
               @Value("${app.course.planner.jev.model}") String model,
               @Value("${app.course.planner.jev.timeout}") Duration timeout,
               JsonMapper json) {
-        this(RestClient.builder().requestFactory(timeouts(timeout)), baseUrl, apiKey, model, json);
+        this(RestClient.builder().requestFactory(HttpTimeouts.requestFactory(timeout)), baseUrl, apiKey, model, json);
         if (apiKey.isBlank()) {
             log.info("TYPESAFE_API_KEY가 없어 문장 → 폼은 규칙만 쓴다(app.course.planner.jev.api-key)");
         }
@@ -65,14 +64,6 @@ class JevClient {
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
-    }
-
-    /** 연결 · 응답 각각 timeout까지 기다린다 */
-    private static JdkClientHttpRequestFactory timeouts(Duration timeout) {
-        JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(
-                HttpClient.newBuilder().connectTimeout(timeout).build());
-        factory.setReadTimeout(timeout);
-        return factory;
     }
 
     Optional<JevAnswers> ask(String text) {

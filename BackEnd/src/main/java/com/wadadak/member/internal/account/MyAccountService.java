@@ -18,7 +18,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.time.Instant;
-import java.time.Year;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
@@ -91,14 +90,8 @@ class MyAccountService {
                 throw new AppException(MemberErrorCode.NICKNAME_TAKEN);
             }
         }
-        // FK가 없으니 시·도·읍·면·동이나 없는 코드를 여기서 막는다. 지역 주간 랭킹이 이 코드로 회원을 묶는다
-        if (regions.findSigungu(request.regionCode()).isEmpty()) {
-            throw new AppException(MemberErrorCode.REGION_NOT_FOUND);
-        }
         BodyInfo body = request.bodyInfo();
-        if (body != null && !BodyInfo.allowsBirthYear(body.birthYear(), Year.now(clock))) {
-            throw new AppException(MemberErrorCode.INVALID_BIRTH_YEAR);
-        }
+        ProfileRules.check(regions, clock, request.regionCode(), body);
         String oldPhoto = member.getProfileImageKey();
         String photo = request.profileImageKey();
         // 새 사진은 내가 받은 폼으로 올린 키만, 한 번만 받는다(가입과 같은 규칙. DB 유니크가 마지막 방어)

@@ -45,7 +45,6 @@ void main() {
         storeCount: stores,
         toiletCount: stores > 0 ? 1 : 0,
         ascentMeters: (retrace * 1000).round(),
-        notApplied: const {PlanPref.park},
       );
 
   testWidgets('draws every auto-generation screen', (tester) async {
@@ -66,6 +65,7 @@ void main() {
           candidate(5210, 0.18, 0, 0.09, 0.006),
         ],
         startName: '선문대학교 아산캠퍼스',
+        notApplied: const {PlanPref.park},
       );
 
     Future<void> shot(String name) async {

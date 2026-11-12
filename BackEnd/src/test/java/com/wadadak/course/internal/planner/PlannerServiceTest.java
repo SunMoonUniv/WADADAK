@@ -8,6 +8,7 @@ import com.wadadak.common.region.RegionResolver;
 import com.wadadak.course.CourseErrorCode;
 import com.wadadak.course.internal.course.CourseGeometry;
 import com.wadadak.course.internal.planner.CandidateSelector.Selection;
+import com.wadadak.course.internal.planner.PlanForm.Pref;
 import com.wadadak.course.internal.planner.PlanForm.Shape;
 import com.wadadak.course.internal.planner.PlanForm.Start;
 import com.wadadak.course.internal.planner.PlanForm.StartKind;
@@ -70,7 +71,7 @@ class PlannerServiceTest {
         when(repository.reserve(any(), any(), any(), anyInt())).thenReturn(true);
         when(regionResolver.resolveCode(anyDouble(), anyDouble())).thenReturn(Optional.of("4420010100"));
         when(routing.healthy()).thenReturn(true);
-        when(selector.select(any(), any(), any(), any(), any())).thenReturn(new Selection(List.of(), false));
+        when(selector.select(any(), any(), any(), any(), any())).thenReturn(new Selection(List.of(), false, Set.of()));
     }
 
     // --- 정상 흐름
@@ -82,7 +83,7 @@ class PlannerServiceTest {
         // 가짜 고르기: 받은 편의점 · 화장실 함수로 센 수를 후보에 넣는다
         when(selector.select(any(), any(), any(), any(), any())).thenAnswer(a -> {
             Function<LineString, PoiCounts> pois = a.getArgument(4);
-            return new Selection(List.of(candidate(pois.apply(LINE))), false);
+            return new Selection(List.of(candidate(pois.apply(LINE))), false, Set.of(Pref.PARK));
         });
         when(repository.poisNear(LINE, PlannerService.STORE_METERS, PlannerService.TOILET_METERS)).thenReturn(new PoiCounts(4, 2));
 
@@ -90,6 +91,7 @@ class PlannerServiceTest {
 
         assertThat(result.reason()).isNull();
         assertThat(result.startName()).isNull();
+        assertThat(result.notApplied()).containsExactly(Pref.PARK);
         assertThat(result.candidates()).singleElement().satisfies(c -> {
             assertThat(c.storeCount()).isEqualTo(4);
             assertThat(c.toiletCount()).isEqualTo(2);
@@ -175,7 +177,7 @@ class PlannerServiceTest {
     @Test
     void allSimilarToExistingIsCounted() {
         when(generator.generate(any(), any(), any(), any(), any())).thenReturn(List.of(new RoutedPath(List.of(HERE, HERE), 5_000, List.of())));
-        when(selector.select(any(), any(), any(), any(), any())).thenReturn(new Selection(List.of(), true));
+        when(selector.select(any(), any(), any(), any(), any())).thenReturn(new Selection(List.of(), true, Set.of()));
 
         PlanResult result = service.plan(MEMBER, current(Shape.LOOP, 5_000));
 
@@ -257,7 +259,6 @@ class PlannerServiceTest {
     }
 
     private static PlanCandidate candidate(PoiCounts pois) {
-        return new PlanCandidate(List.of(HERE), 5_000, 0.01, 0.1, pois.stores(), pois.toilets(), null,
-                PlanCandidate.summary(5_000, 0.1, pois.stores(), pois.toilets(), null), Set.of());
+        return new PlanCandidate(List.of(HERE), 5_000, 0.01, 0.1, pois.stores(), pois.toilets(), null);
     }
 }

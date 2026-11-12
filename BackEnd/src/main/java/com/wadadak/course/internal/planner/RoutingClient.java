@@ -1,14 +1,13 @@
 package com.wadadak.course.internal.planner;
 
+import com.wadadak.common.config.HttpTimeouts;
 import com.wadadak.common.geo.GeoPoint;
 import com.wadadak.course.internal.planner.RoutedPath.RoadClassSpan;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.util.UriBuilder;
 
-import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -25,10 +24,7 @@ class RoutingClient {
 
     RoutingClient(@Value("${app.course.planner.routing.base-url}") String baseUrl,
                   @Value("${app.course.planner.routing.timeout}") Duration timeout) {
-        JdkClientHttpRequestFactory requestFactory = new JdkClientHttpRequestFactory(
-                HttpClient.newBuilder().connectTimeout(timeout).build());
-        requestFactory.setReadTimeout(timeout);
-        this.client = RestClient.builder().baseUrl(baseUrl).requestFactory(requestFactory).build();
+        this.client = RestClient.builder().baseUrl(baseUrl).requestFactory(HttpTimeouts.requestFactory(timeout)).build();
     }
 
     /** 점을 순서대로 지나는 경로. passThrough면 경유점에서 U턴하지 않는다(되돌아감이 줄어든다) */

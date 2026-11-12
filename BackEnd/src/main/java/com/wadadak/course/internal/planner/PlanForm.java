@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
+import java.util.EnumSet;
 import java.util.Set;
 
 /**
@@ -30,6 +31,13 @@ record PlanForm(@NotNull @Valid Start start,
                 Set<Pref> prefer,
                 String message) {
 
+    static final String OFF_TOPIC = "코스와 관련된 문장이 아니에요. 출발지 · 거리 · 모양을 말해 주세요.";
+
+    /** 코스와 무관한 문장의 parse 응답. 안내 문구만 있다. 스텁과 실제 구현이 같이 쓴다 */
+    static PlanForm offTopic() {
+        return new PlanForm(null, null, null, null, null, null, Set.of(), OFF_TOPIC);
+    }
+
     /** @param query 장소 이름. kind가 CURRENT면 null */
     record Start(@NotNull StartKind kind, @Size(max = 100) String query) {
     }
@@ -48,7 +56,7 @@ record PlanForm(@NotNull @Valid Start start,
     }
 
     /**
-     * 원하는 길. 지금 후보에 반영하는 것은 {@link #SUPPORTED}뿐이고, 나머지는 후보의 notApplied로 알린다(정책 B3-A03).
+     * 원하는 길. 지금 후보에 반영하는 것은 {@link #SUPPORTED}뿐이고, 나머지는 결과의 notApplied로 알린다(정책 B3-A03).
      * 평지 · 오르막은 표고점 파일이 없으면 반영하지 않는다({@link SpotHeights})
      */
     enum Pref {
@@ -56,5 +64,15 @@ record PlanForm(@NotNull @Valid Start start,
 
         static final Set<Pref> SUPPORTED = Set.of(AVOID_ARTERIAL, STORE_ON_ROUTE, NO_RETRACE, TOILET_ON_ROUTE, FLAT, HILLY);
         static final Set<Pref> NEEDS_HEIGHTS = Set.of(FLAT, HILLY);
+
+        /** 요청한 것 중 후보에 반영하지 못하는 것. 표고점이 없으면 평지 · 오르막도 든다 */
+        static Set<Pref> notApplied(Set<Pref> prefer, boolean heightsAvailable) {
+            Set<Pref> notApplied = EnumSet.noneOf(Pref.class);
+            if (prefer != null) {
+                notApplied.addAll(prefer);
+            }
+            notApplied.removeIf(p -> SUPPORTED.contains(p) && (heightsAvailable || !NEEDS_HEIGHTS.contains(p)));
+            return Set.copyOf(notApplied);
+        }
     }
 }

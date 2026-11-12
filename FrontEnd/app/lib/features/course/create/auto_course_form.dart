@@ -55,7 +55,7 @@ class _AutoCourseFormState extends State<AutoCourseForm> {
   ];
   late PlanTarget? _target = _initialTarget();
   late final _customKm = TextEditingController(
-      text: _custom ? _kmText(widget.initial.distanceM!) : '');
+      text: _custom ? kmText(widget.initial.distanceM!) : '');
   late bool _custom = widget.initial.distanceM != null && !_targets.any((t) => t.$2 == _target);
 
   PlanTarget? _initialTarget() {
@@ -229,8 +229,6 @@ class _AutoCourseFormState extends State<AutoCourseForm> {
 
   Widget _chips(List<Widget> chips) => Wrap(spacing: WdSpace.s8, runSpacing: WdSpace.s8, children: chips);
 
-  static String _kmText(int meters) =>
-      meters % 1000 == 0 ? '${meters ~/ 1000}' : (meters / 1000).toStringAsFixed(1);
 }
 
 /// 사용자가 보낸 문장(Figma AI / Request bubble). 오른쪽에 둔다.
@@ -257,6 +255,9 @@ class PlanRequestBubble extends StatelessWidget {
         ),
       );
 }
+
+/// km 숫자. `5` · `7.5`.
+String kmText(int meters) => meters % 1000 == 0 ? '${meters ~/ 1000}' : (meters / 1000).toStringAsFixed(1);
 
 /// `30분` · `1시간` · `1시간 30분`.
 String formatMinutes(int minutes) {

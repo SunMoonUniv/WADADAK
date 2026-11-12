@@ -28,7 +28,7 @@ final class RouteMetrics {
      * 50m 격자로 이웃 칸만 보므로 O(n)이다. 22km(한 바퀴 상한)까지는 출발점 기준 평면 근사로 충분하다.
      */
     static double retraceRatio(List<GeoPoint> points) {
-        List<double[]> samples = resample(project(points));
+        List<double[]> samples = resample(project(points), RESAMPLE_METERS);
         if (samples.isEmpty()) {
             return 0;
         }
@@ -97,8 +97,8 @@ final class RouteMetrics {
                 r * (Math.toRadians(p.lat()) - lat0)}).toList();
     }
 
-    /** 경로를 따라 10m마다 찍은 점 [x, y, 출발부터 거리] */
-    private static List<double[]> resample(List<double[]> xy) {
+    /** 평면(m) 좌표 경로를 따라 stepMeters마다 다시 찍은 점 [x, y, 출발부터 거리]. {@link SpotHeights}도 쓴다 */
+    static List<double[]> resample(List<double[]> xy, double stepMeters) {
         List<double[]> samples = new ArrayList<>();
         double walked = 0;
         double next = 0;
@@ -109,7 +109,7 @@ final class RouteMetrics {
             while (next < walked + length) {
                 double t = (next - walked) / length;
                 samples.add(new double[]{a[0] + t * (b[0] - a[0]), a[1] + t * (b[1] - a[1]), next});
-                next += RESAMPLE_METERS;
+                next += stepMeters;
             }
             walked += length;
         }

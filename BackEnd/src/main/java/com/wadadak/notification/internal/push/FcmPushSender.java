@@ -3,10 +3,10 @@ package com.wadadak.notification.internal.push;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.auth.oauth2.ServiceAccountCredentials;
+import com.wadadak.common.config.HttpTimeouts;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
-import org.springframework.http.client.JdkClientHttpRequestFactory;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientResponseException;
@@ -15,7 +15,6 @@ import tools.jackson.databind.json.JsonMapper;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.net.http.HttpClient;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
@@ -64,10 +63,8 @@ class FcmPushSender implements PushSender {
         }
         GoogleCredentials scoped = account.createScoped(List.of(SCOPE));
         // 카카오 토큰 확인(member)과 같은 시간 제한. FCM이 멈춰도 발송 작업이 오래 붙잡히지 않는다
-        JdkClientHttpRequestFactory timeouts = new JdkClientHttpRequestFactory(
-                HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(3)).build());
-        timeouts.setReadTimeout(Duration.ofSeconds(5));
-        return new FcmPushSender(RestClient.builder().requestFactory(timeouts), account.getProjectId(), () -> {
+        return new FcmPushSender(RestClient.builder()
+                .requestFactory(HttpTimeouts.requestFactory(Duration.ofSeconds(3), Duration.ofSeconds(5))), account.getProjectId(), () -> {
             scoped.refreshIfExpired(); // 곧 만료되면 새로 받고, 아니면 갖고 있던 토큰을 그대로 쓴다
             return scoped.getAccessToken().getTokenValue();
         }, json);
