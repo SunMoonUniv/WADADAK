@@ -1,4 +1,4 @@
-package com.wadadak.course.internal.registration;
+package com.wadadak.course;
 
 import com.wadadak.common.geo.GeoPoint;
 
@@ -16,7 +16,7 @@ import java.util.List;
  * </ul>
  * 하나라도 잇지 못하면 {@code GPS 정확도 부족}이다. 빈칸 길이 상한은 없고, 경계(20m · 15°)는 통과다.
  *
- * <p>run은 {@link com.wadadak.course.CourseApi#checkGpsGaps}로 부르고, 코스 등록은 이 클래스를 바로 쓴다.
+ * <p>계산만 하고 DB를 읽지 않아 run도 {@link #check}를 바로 부른다(동기 호출이 아니다. 분리 후에는 계약 jar {@code course-api}에 둔다).
  * 기준을 바꾸면 {@link #VERSION}을 올린다. run은 저장해 둔 판단을 그 버전으로 다시 계산한다.
  */
 public final class GpsGapRule {
@@ -34,6 +34,11 @@ public final class GpsGapRule {
     static final double MAX_ANGLE_DEG = 15;
 
     private GpsGapRule() {
+    }
+
+    /** 판단과 기준 버전. run이 기록 결과에 저장한다(B6 · 결과 화면의 {@code GPS 정확도 부족}). */
+    public static GpsGapCheck check(List<List<GeoPoint>> segments) {
+        return new GpsGapCheck(passes(segments), VERSION);
     }
 
     /**

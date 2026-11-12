@@ -1,4 +1,4 @@
-package com.wadadak.course.internal.registration;
+package com.wadadak.course;
 
 import com.wadadak.common.geo.GeoPoint;
 import org.junit.jupiter.api.Test;
@@ -97,6 +97,12 @@ class GpsGapRuleTest {
         assertThat(GpsGapRule.bearing(GAP_START, move(GAP_START, -5, 100))).isCloseTo(355, within(0.01));
         assertThat(GpsGapRule.angleBetween(355, 5)).isCloseTo(10, within(1e-9));
         assertThat(GpsGapRule.angleBetween(90, 270)).isCloseTo(180, within(1e-9));
+    }
+
+    @Test
+    void checkCarriesTheRuleVersion() {
+        assertThat(GpsGapRule.check(List.of(leaving(GAP_START, 0, 50)))).isEqualTo(new GpsGapCheck(true, GpsGapRule.VERSION));
+        assertThat(GpsGapRule.check(List.of())).isEqualTo(new GpsGapCheck(false, GpsGapRule.VERSION));
     }
 
     /** p에서 heading(°) 방향으로 meters 간 점. 100m 안에서는 평면 근사로 충분하다 */
