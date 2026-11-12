@@ -821,7 +821,7 @@ erDiagram
 - `reviews_course_id_created_at_idx`: `(course_id, created_at DESC)`. 최신순
 - `reviews_course_id_rating_idx`: `(course_id, rating, created_at DESC)`. 높은·낮은 평점순
 - `member_id`는 유니크 제약 `(member_id, course_id)`의 앞 컬럼이라 따로 인덱스를 두지 않는다. `source_run_record_id`는 같은 스키마 `course_run_records`의 PK로 찾기만 해서 인덱스가 없다.
-- `source_run_record_id`는 같은 스키마지만 FK를 걸지 않는다. 자격 복사본이 이벤트로 오기 전에 run에 직접 확인하고 쓰는 경우가 있다(개발 정책 4.3 `RunApi`).
+- `source_run_record_id`는 같은 스키마지만 FK를 걸지 않는다.
 - 리뷰 카드의 완주 횟수는 저장하지 않고 `course_run_records`에서 센다(정책 제4부 4.1 D-09).
 
 #### `review.review_photos` — 리뷰 사진
@@ -1143,7 +1143,7 @@ erDiagram
 
 #### 자유 러닝 RESULT_V1 추가 통계 (2026-10-16)
 
-`run.records.result_json`·`summary_json`에 `gpsGap` `{passed, version}`을 둔다(2026-10-27, F7 B6·결과 화면 "GPS 정확도 부족"). course의 `CourseApi.checkGpsGaps`(정책 4.1 `공통 3 GPS 등록 끊긴 구간`)에 course-source와 같은 조각을 넣은 판단이다. 쓰기 트랜잭션 밖에서 부르므로 기록 처리가 끝난 직후 처리 작업자가 채우고(경로 읽기 → 판단 → 저장), 판단 전 기록·저장한 `version`이 지금 기준과 다른 기록은 `GpsGapWorker`(1분, ShedLock)가 다시 판단한다. 판단 전이면 null. 표 컬럼은 바뀌지 않는다.
+`run.records.result_json`·`summary_json`에 `gpsGap` `{passed, version}`을 둔다(2026-10-27, F7 B6·결과 화면 "GPS 정확도 부족"). course의 `GpsGapRule.check`(정책 4.1 `공통 3 GPS 등록 끊긴 구간`)에 course-source와 같은 조각을 넣은 판단이다. 쓰기 트랜잭션 밖에서 부르므로 기록 처리가 끝난 직후 처리 작업자가 채우고(경로 읽기 → 판단 → 저장), 판단 전 기록·저장한 `version`이 지금 기준과 다른 기록은 `GpsGapWorker`(1분, ShedLock)가 다시 판단한다. 판단 전이면 null. 표 컬럼은 바뀌지 않는다.
 
 `run.records.result_json`·`summary_json`과 기기 `sessions.result`·`summary`에 선택 `stats` 객체를 추가한다. 필드는 `version="RESULT_V1"`, `elevationGainM`(nullable m), `elevationPartial`(boolean), `bestLapNumber`(nullable), `bestLapPaceSecondsPerKm`·`bestPaceSecondsPerKm`(nullable 초/km)다. 실제 측정된 상승 없음은 0, 원본 없음/분석 불가는 null이다.
 
