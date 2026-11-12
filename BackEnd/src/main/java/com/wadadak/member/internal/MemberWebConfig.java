@@ -26,6 +26,6 @@ class MemberWebConfig {
 
     @Bean
     GroupedOpenApi memberApiGroup() {
-        return GroupedOpenApi.builder().group("member").pathsToMatch("/api/v1/members/**").build();
+        return GroupedOpenApi.builder().group("member").pathsToMatch("/api/v1/members/**", "/api/v1/admin/members/**").build();
     }
 }
