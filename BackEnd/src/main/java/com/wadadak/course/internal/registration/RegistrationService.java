@@ -7,6 +7,7 @@ import com.wadadak.common.exception.CommonErrorCode;
 import com.wadadak.common.geo.GeoPoint;
 import com.wadadak.common.region.RegionResolver;
 import com.wadadak.course.CourseErrorCode;
+import com.wadadak.course.GpsGapRule;
 import com.wadadak.course.internal.course.Course;
 import com.wadadak.course.internal.course.CourseGeometry;
 import com.wadadak.course.internal.course.CourseName;

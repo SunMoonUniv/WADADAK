@@ -52,7 +52,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.within;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -485,8 +484,7 @@ class CourseRunTest {
 
     @Test
     void gpsGapCheckIsFilledAfterProcessingOutsideTheWriteAndBackfilledWhenMissingOrOutdated() {
-        when(courseApi.checkGpsGaps(any())).thenReturn(new GpsGapCheck(true, "GPS_GAP_V1"));
-        GpsGapWorker gaps = new GpsGapWorker(runs, courseApi);
+        GpsGapWorker gaps = new GpsGapWorker(runs);
         List<Input> inputs = runTo(1000);
         runs.prepare(owner, id, new Prepare(startedAt, "FREE"));
         runs.upload(owner, id, new Upload(inputs.size() - 1, inputs));
@@ -494,10 +492,6 @@ class CourseRunTest {
         assertThat(runs.result(owner, id).gpsGap()).isNull(); // 처리 트랜잭션 안에서는 부르지 않는다
 
         gaps.check(id); // 처리 작업자가 처리 직후 부른다
-        // course-source와 같은 점을 GeoPoint 조각으로 넘긴다
-        List<List<GeoPoint>> source = runs.courseSource(owner, id).segments().stream()
-                .map(segment -> segment.stream().map(p -> new GeoPoint(p.lat(), p.lng())).toList()).toList();
-        verify(courseApi).checkGpsGaps(source);
         assertThat(runs.result(owner, id).gpsGap()).isEqualTo(new GpsGapCheck(true, "GPS_GAP_V1"));
         assertThat(runs.history(owner, new Cursorable(null, 20)).content().getFirst().gpsGap())
                 .isEqualTo(new GpsGapCheck(true, "GPS_GAP_V1"));
@@ -511,10 +505,14 @@ class CourseRunTest {
         assertThat(runs.history(owner, new Cursorable(null, 20)).content().getFirst().gpsGap())
                 .isEqualTo(new GpsGapCheck(true, "GPS_GAP_V1"));
 
-        // 기준이 바뀌면(버전이 다르면) 다시 판단한다
-        when(courseApi.checkGpsGaps(any())).thenReturn(new GpsGapCheck(false, "GPS_GAP_V2"));
+        // 기준이 바뀌면(저장한 버전이 다르면) 다시 판단한다
+        db.update("UPDATE run.records SET"
+                + " summary_json = jsonb_set(summary_json::jsonb, '{gpsGap}', '{\"passed\":false,\"version\":\"GPS_GAP_V0\"}')::text,"
+                + " result_json = jsonb_set(result_json::jsonb, '{gpsGap}', '{\"passed\":false,\"version\":\"GPS_GAP_V0\"}')::text"
+                + " WHERE id = ?", id);
+        assertThat(runs.gpsGapOutdated("GPS_GAP_V1")).contains(id);
         gaps.backfill();
-        assertThat(runs.result(owner, id).gpsGap()).isEqualTo(new GpsGapCheck(false, "GPS_GAP_V2"));
-        assertThat(runs.gpsGapOutdated("GPS_GAP_V2")).doesNotContain(id);
+        assertThat(runs.result(owner, id).gpsGap()).isEqualTo(new GpsGapCheck(true, "GPS_GAP_V1"));
+        assertThat(runs.gpsGapOutdated("GPS_GAP_V1")).doesNotContain(id);
     }
 }

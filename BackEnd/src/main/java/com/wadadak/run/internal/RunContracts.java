@@ -85,7 +85,7 @@ public final class RunContracts {
                 distanceM > 0 ? elapsedMs / distanceM : null, null, 0, 0);
         }
     }
-    /** @param gpsGap GPS 코스 등록 끊긴 구간 판단(CourseApi.checkGpsGaps, F7 B6·결과 화면 "GPS 정확도 부족"). 처리 뒤 쓰기 트랜잭션 밖에서 채운다. 아직이면 null */
+    /** @param gpsGap GPS 코스 등록 끊긴 구간 판단(GpsGapRule.check, F7 B6·결과 화면 "GPS 정확도 부족"). 처리 뒤 쓰기 트랜잭션 밖에서 채운다. 아직이면 null */
     public record Result(UUID id, Instant startedAt, Instant endedAt, Instant registeredAt,
                          String endReason, Metrics metrics, List<List<GeoPoint>> routeSegments, List<Lap> laps,
                          String policyVersion, String calculationVersion, ResultStats stats, CourseOutcome course, GpsGapCheck gpsGap, GhostOutcome ghost) {
