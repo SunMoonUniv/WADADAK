@@ -2,6 +2,7 @@ package com.wadadak.review.internal;
 
 import com.wadadak.TestcontainersConfiguration;
 import com.wadadak.common.storage.ObjectStorage;
+import com.wadadak.course.CourseApi;
 import com.wadadak.member.MemberApi;
 import com.wadadak.member.MemberProfile;
 import org.junit.jupiter.api.BeforeEach;
@@ -56,6 +57,10 @@ class ReviewQueryControllerTest {
 
     @MockitoBean
     MemberApi memberApi;
+
+    // 운영자 리뷰 관리가 코스 이름을 받으려고 부른다. 이 테스트에서는 쓰지 않는다
+    @MockitoBean
+    CourseApi courseApi;
 
     /** 사진 저장소는 흉내만 낸다. 사진 주소만 만들면 된다 */
     @MockitoBean

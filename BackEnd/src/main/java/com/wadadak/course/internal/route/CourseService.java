@@ -17,7 +17,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * {@link CourseApi} 실제 구현. {@code app.stub.course: true}면 {@link CourseApiStub}이 대신 뜬다(개발 정책 3장).
@@ -54,6 +57,19 @@ class CourseService implements CourseApi {
                 .param("courseId", courseId)
                 .query(Boolean.class)
                 .single();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Map<UUID, String> getNames(Set<UUID> courseIds) {
+        if (courseIds.isEmpty()) {
+            return Map.of(); // 빈 IN ()은 SQL 문법 오류다
+        }
+        return jdbc.sql("SELECT id, name FROM course.courses WHERE id IN (:ids)")
+                .param("ids", courseIds)
+                .query((rs, rowNum) -> Map.entry(rs.getObject("id", UUID.class), rs.getString("name")))
+                .list().stream()
+                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
     @Override

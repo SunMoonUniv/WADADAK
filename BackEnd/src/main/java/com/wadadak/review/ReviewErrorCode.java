@@ -19,7 +19,8 @@ public enum ReviewErrorCode implements ErrorCode {
     TOO_MANY_PHOTOS(HttpStatus.BAD_REQUEST, "REVIEW-006", "리뷰 사진은 5장까지 올릴 수 있습니다."),
     PHOTO_NOT_FOUND(HttpStatus.BAD_REQUEST, "REVIEW-007", "사진을 찾을 수 없습니다. 다시 올려 주세요."),
     CANNOT_REPORT_OWN_REVIEW(HttpStatus.FORBIDDEN, "REVIEW-008", "내가 쓴 리뷰는 신고할 수 없습니다."),
-    ALREADY_REPORTED(HttpStatus.CONFLICT, "REVIEW-009", "이미 신고한 리뷰예요. 확인 후 처리할게요.");
+    ALREADY_REPORTED(HttpStatus.CONFLICT, "REVIEW-009", "이미 신고한 리뷰예요. 확인 후 처리할게요."),
+    NO_PENDING_REPORT(HttpStatus.CONFLICT, "REVIEW-010", "처리할 신고가 없습니다. 이미 처리했는지 확인해 주세요.");
 
     private final HttpStatus status;
     private final String code;

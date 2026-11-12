@@ -143,13 +143,17 @@ class ReviewEventHandler {
             jdbc.sql("DELETE FROM review.course_run_records WHERE course_id = :courseId")
                     .param("courseId", event.courseId())
                     .update();
+            // 처리 전 신고는 리뷰와 함께 사라진다. 이미 처리한 신고는 기록으로 남긴다
+            jdbc.sql("DELETE FROM review.review_reports WHERE course_id = :courseId AND status = 'PENDING'")
+                    .param("courseId", event.courseId())
+                    .update();
         }
     }
 
     /**
      * 회원 탈퇴. 그 회원의 리뷰를 사진과 함께 지우고, 리뷰마다 {@code ReviewDeletedEvent}를 낸다(course가 평점 합계 · 리뷰 수에서 뺀다,
      * 개발 정책 5.6). 주행 기록 복사본과 그 회원이 한 리뷰 신고도 지운다(정책 공통 4 · 5).
-     * 그 회원의 리뷰에 달린 신고는 리뷰를 지울 때 DB가 함께 지운다(ON DELETE CASCADE).
+     * 그 회원의 리뷰에 달린 신고도 지운다. 신고에 리뷰 내용 복사본이 있어서, 처리한 신고도 남기지 않는다.
      *
      * <p>탈퇴 표시를 먼저 남겨, 이 처리 뒤에 늦게 온 주행 기록 이벤트를 받지 않는다({@link #isWithdrawn}).
      * 같은 이벤트가 다시 와도 지울 리뷰가 없어 삭제 이벤트가 두 번 나가지 않는다.
@@ -173,8 +177,8 @@ class ReviewEventHandler {
         jdbc.sql("DELETE FROM review.course_run_records WHERE member_id = :memberId")
                 .param("memberId", event.memberId())
                 .update();
-        // 그 회원이 다른 리뷰에 한 신고. 신고자 ID도 개인정보라 남기지 않는다
-        jdbc.sql("DELETE FROM review.review_reports WHERE reporter_member_id = :memberId")
+        // 그 회원이 한 신고와 그 회원 리뷰에 달린 신고. 신고자 ID · 리뷰 내용 모두 개인정보라 남기지 않는다
+        jdbc.sql("DELETE FROM review.review_reports WHERE reporter_member_id = :memberId OR review_member_id = :memberId")
                 .param("memberId", event.memberId())
                 .update();
     }

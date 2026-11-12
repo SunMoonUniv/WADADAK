@@ -13,6 +13,6 @@ class ReviewWebConfig {
 
     @Bean
     GroupedOpenApi reviewApiGroup() {
-        return GroupedOpenApi.builder().group("review").pathsToMatch("/api/v1/reviews/**").build();
+        return GroupedOpenApi.builder().group("review").pathsToMatch("/api/v1/reviews/**", "/api/v1/admin/reviews/**", "/api/v1/admin/review-reports/**").build();
     }
 }

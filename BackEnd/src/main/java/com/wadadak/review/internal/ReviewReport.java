@@ -11,11 +11,14 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 
+import java.time.Instant;
 import java.util.UUID;
 
 /**
  * 리뷰 신고 한 건(G2-2). 한 회원은 한 리뷰를 한 번만 신고한다(DB 유니크 제약 {@code review_reports_review_reporter_uk}).
- * 신고는 쌓기만 하고 고치지 않는다. 처리 결과(삭제·문제 없음)는 운영자 화면을 만들 때 따로 남긴다.
+ * 신고할 때의 리뷰 내용을 함께 저장해, 운영자가 리뷰를 지운 뒤에도 무엇을 지웠는지 보인다.
+ * 처리 상태 · 메모 · 처리 시각(status · memo · handled_at)은 운영자 처리({@link AdminReviewService})가 SQL로 한꺼번에 바꾼다.
+ * 그래서 이 엔티티에는 두지 않고, 새 신고는 DB 기본값 PENDING(대기)으로 들어간다.
  */
 @Getter
 @Entity
@@ -36,11 +39,23 @@ class ReviewReport extends BaseEntity<UUID> {
     /** 자세한 내용. 없으면 {@code null} */
     private String detail;
 
+    // 신고할 때의 리뷰(복사본). 리뷰가 지워져도 운영자 화면에 남는다
+    private UUID courseId;
+    private UUID reviewMemberId;
+    private int reviewRating;
+    private String reviewContent;
+    private Instant reviewCreatedAt;
+
     /** 새 신고를 만든다. 공백만 있는 내용은 없는 것으로 본다. 저장은 서비스가 repository로 한다. */
-    static ReviewReport report(UUID reviewId, UUID reporterMemberId, ReviewReportReason reason, String detail) {
+    static ReviewReport report(Review review, UUID reporterMemberId, ReviewReportReason reason, String detail) {
         ReviewReport report = new ReviewReport();
         report.id = UuidV7.create();
-        report.reviewId = reviewId;
+        report.reviewId = review.getId();
+        report.courseId = review.getCourseId();
+        report.reviewMemberId = review.getMemberId();
+        report.reviewRating = review.getRating();
+        report.reviewContent = review.getContent();
+        report.reviewCreatedAt = review.getCreatedAt();
         report.reporterMemberId = reporterMemberId;
         report.reason = reason;
         report.detail = detail == null || detail.isBlank() ? null : detail.strip();

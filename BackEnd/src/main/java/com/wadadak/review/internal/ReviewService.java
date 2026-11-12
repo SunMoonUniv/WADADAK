@@ -30,6 +30,7 @@ class ReviewService {
     private final ReviewRepository reviewRepository;
     private final CourseRunRecords runRecords;
     private final ReviewPhotos photos;
+    private final ReviewReportRepository reports;
     private final ApplicationEventPublisher events; // 스프링 이벤트 발행기. 다른 모듈에 "리뷰가 바뀌었다"를 알린다
     private final Clock clock; // 지금 시각. 테스트에서 시각을 고정할 수 있게 직접 now()를 부르지 않는다
 
@@ -84,11 +85,34 @@ class ReviewService {
         return ReviewView.from(review, savedPhotos);
     }
 
-    /** 숨김 코스의 리뷰도 지울 수 있다. 사진 행은 함께 지워지고(DB의 ON DELETE CASCADE), 사진 파일은 커밋한 뒤 지운다. */
+    /**
+     * 숨김 코스의 리뷰도 지울 수 있다. 사진 행은 함께 지워지고(DB의 ON DELETE CASCADE), 사진 파일은 커밋한 뒤 지운다.
+     * 처리 전 신고도 지운다. 리뷰가 없어졌으니 운영자가 처리할 게 없다.
+     */
     @Transactional
     void delete(UUID memberId, UUID reviewId) {
         Review review = ownReview(memberId, reviewId);
-        photos.deleteFiles(reviewId);
+        reports.deletePending(reviewId);
+        remove(review);
+    }
+
+    /**
+     * 운영자 삭제(ADM-2 · ADM-2-2). 작성자 확인 없이 지운다. 신고 처리 상태는 부르는 쪽({@link AdminReviewService})이 바꾼다.
+     *
+     * @return 지운 리뷰
+     * @throws AppException REVIEW-003 이미 지워진 리뷰
+     */
+    @Transactional
+    Review deleteByAdmin(UUID reviewId) {
+        Review review = reviewRepository.findLockedById(reviewId)
+                .orElseThrow(() -> new AppException(ReviewErrorCode.REVIEW_NOT_FOUND));
+        remove(review);
+        return review;
+    }
+
+    /** 작성자 삭제와 운영자 삭제가 같은 길로 지운다. 사진 파일 · 리뷰 행 · 삭제 이벤트(course 평점 합계에서 뺀다). */
+    private void remove(Review review) {
+        photos.deleteFiles(review.getId());
         reviewRepository.delete(review);
         // createdAt을 실어 보내야 course가 작성일 칸의 일별 평점에서 뺄 수 있다
         events.publishEvent(new ReviewDeletedEvent(UuidV7.create(), clock.instant(), review.getId(), review.getCourseId(),

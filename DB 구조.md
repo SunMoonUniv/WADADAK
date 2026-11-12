@@ -69,7 +69,7 @@ erDiagram
     region ||..o{ member_region_history : "region_code"
     members ||..o| withdrawn_members : "member_id"
     reviews ||--o{ review_photos : "review_id"
-    reviews ||--o{ review_reports : "review_id"
+    reviews ||..o{ review_reports : "review_id"
     members ||..o{ review_reports : "reporter_member_id"
     courses ||..o{ reviews : "course_id"
     members ||..o{ reviews : "member_id"
@@ -263,10 +263,18 @@ erDiagram
     }
     review_reports {
         uuid id PK
-        uuid review_id FK
+        uuid review_id "FK 없음(지워져도 남김)"
         uuid reporter_member_id "member ID"
         varchar(20) reason "ADVERTISING, ABUSE, PRIVACY, IRRELEVANT, OTHER"
         varchar(100) detail "선택"
+        uuid course_id "신고 때 리뷰 복사본"
+        uuid review_member_id "신고 때 리뷰 복사본"
+        integer review_rating "신고 때 리뷰 복사본"
+        varchar(200) review_content "신고 때 리뷰 복사본"
+        timestamptz review_created_at "신고 때 리뷰 복사본"
+        varchar(10) status "PENDING, DELETED, DISMISSED"
+        varchar(200) memo "처리 메모, 선택"
+        timestamptz handled_at "처리 시각"
     }
     course_run_records {
         uuid run_record_id PK "run 기록 ID"
@@ -831,19 +839,30 @@ erDiagram
 
 #### `review.review_reports` — 리뷰 신고
 
-다른 러너의 리뷰를 사유와 함께 신고한다(G2-1~G2-4, 2026-11-10). 쌓기만 하고 고치지 않는다. 처리 결과(삭제 · 문제 없음)는 운영자 화면을 만들 때 따로 남긴다.
+다른 러너의 리뷰를 사유와 함께 신고한다(G2-1~G2-4, 2026-11-10). 운영자는 운영자 웹(ADM-2-1 · ADM-2-2)에서 리뷰 하나에 달린 대기 신고를 한꺼번에 처리한다(2026-11-12). 리뷰를 지운 뒤에도 무엇을 지웠는지 보이게, 신고할 때의 리뷰 내용을 함께 저장한다.
 
 | 컬럼 | 타입 | NULL | 설명 |
 | --- | --- | --- | --- |
 | `id` | `UUID` | | PK |
-| `review_id` | `UUID` | | FK `reviews.id`. 리뷰를 지우면(작성자 삭제 · 코스 삭제 · 작성자 탈퇴) 함께 지운다(`ON DELETE CASCADE`) |
+| `review_id` | `UUID` | | 신고한 리뷰 ID. 운영자가 리뷰를 지워도 신고 기록이 남도록 FK를 걸지 않는다 |
 | `reporter_member_id` | `UUID` | | 신고한 회원 ID(member 모듈, FK 없음) |
 | `reason` | `VARCHAR(20)` | | 사유. `ADVERTISING`(광고·홍보), `ABUSE`(욕설·비하), `PRIVACY`(개인정보 노출), `IRRELEVANT`(관계없는 내용), `OTHER`(기타) |
 | `detail` | `VARCHAR(100)` | ✓ | 자세한 내용. 선택 입력, 공백만 있으면 NULL |
+| `course_id` | `UUID` | | 신고할 때의 리뷰 복사본: 코스 ID(course 모듈) |
+| `review_member_id` | `UUID` | | 신고할 때의 리뷰 복사본: 작성자 ID(member 모듈) |
+| `review_rating` | `INTEGER` | | 신고할 때의 리뷰 복사본: 전체 별점 |
+| `review_content` | `VARCHAR(200)` | ✓ | 신고할 때의 리뷰 복사본: 한줄 후기 |
+| `review_created_at` | `TIMESTAMPTZ` | | 신고할 때의 리뷰 복사본: 작성 시각 |
+| `status` | `VARCHAR(10)` | | 처리 상태. `PENDING`(대기, 기본값), `DELETED`(운영자가 리뷰 삭제), `DISMISSED`(문제 없음) |
+| `memo` | `VARCHAR(200)` | ✓ | 처리 메모. 선택 입력 |
+| `handled_at` | `TIMESTAMPTZ` | ✓ | 처리 시각. 대기일 때만 NULL이다(`review_reports_handled_ck`) |
 | `created_at` | `TIMESTAMPTZ` | | 신고 시각 |
 
 - `review_reports_review_reporter_uk`: `UNIQUE (review_id, reporter_member_id)`. 한 회원은 한 리뷰를 한 번만 신고한다. 미리 확인을 통과한 동시 신고도 이 제약이 막는다(`REVIEW-009`). 리뷰 목록의 `reportedByMe`도 이 인덱스로 찾는다.
-- `review_reports_reporter_member_id_idx`: `(reporter_member_id)`. 회원 탈퇴 때 그 회원이 한 신고를 지운다.
+- `review_reports_reporter_member_id_idx`: `(reporter_member_id)`, `review_reports_review_member_id_idx`: `(review_member_id)`. 회원 탈퇴 때 그 회원이 한 신고와 그 회원 리뷰에 달린 신고(리뷰 내용 복사본)를 모두 지운다.
+- `review_reports_course_id_idx`: `(course_id)`. 코스가 삭제되면 그 코스의 대기 신고를 지운다.
+- 작성자가 리뷰를 직접 지우면 대기 신고만 지운다. 처리한 신고(`DELETED` · `DISMISSED`)는 운영자 기록으로 남는다.
+- 문제 없음으로 닫은 리뷰에 새 신고가 오면 그 리뷰는 다시 대기로 보인다(새 신고 행이 `PENDING`).
 - 내 리뷰는 신고할 수 없다(`REVIEW-008`). 신고한 사실은 작성자에게 알리지 않는다.
 
 #### `review.course_run_records` — 코스 주행 기록 복사본

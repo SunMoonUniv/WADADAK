@@ -12,7 +12,10 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * 선문대 아산캠퍼스에서 북쪽으로 곧게 뻗은 약 1km 코스를 돌려준다. 에러 확인용 ID는 {@link CourseApi} 참고.
@@ -38,6 +41,14 @@ class CourseApiStub implements CourseApi, StubImplementation {
             throw new AppException(CourseErrorCode.COURSE_NOT_AVAILABLE);
         }
         return new CourseRouteSnapshot(courseId, "스텁 코스-" + courseId.toString().substring(0, 4), ROUTE, 1001, 0);
+    }
+
+    /** 어떤 ID든 경로 조회와 같은 이름을 돌려준다. 없는 코스 확인용 ID만 빠진다. */
+    @Override
+    public Map<UUID, String> getNames(Set<UUID> courseIds) {
+        return courseIds.stream()
+                .filter(id -> !NOT_FOUND_ID.equals(id))
+                .collect(Collectors.toMap(id -> id, id -> "스텁 코스-" + id.toString().substring(0, 4)));
     }
 
     /** 계산만 하는 기준이라 고정값 대신 실제 판단을 돌려준다. run이 스텁으로도 통과 · 부족을 모두 확인할 수 있다. */
