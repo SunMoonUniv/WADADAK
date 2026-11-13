@@ -402,11 +402,11 @@ async function renderMembers() {
       ${select("socialProvider", "가입 방식", [["", "전체"], ...Object.entries(LABEL.provider)], s.socialProvider)}
       ${select("runningExperience", "러닝 경력", [["", "전체"], ...Object.entries(LABEL.experience)], s.runningExperience)}
       <span class="spacer"></span>
-      <button class="btn" type="button" id="member-reset">초기화</button>
+      <button class="btn" type="button" id="member-refresh">새로고침</button>
     </div>
     <div class="card"><div class="table-wrap" id="member-table"></div><div class="foot" id="member-foot"></div></div>`;
   $("#member-filters").addEventListener("change", (e) => { s[e.target.name] = e.target.value; s.page = 0; loadMembers(); });
-  $("#member-reset").onclick = () => { Object.assign(s, { socialProvider: "", runningExperience: "", page: 0 }); renderMembers(); };
+  $("#member-refresh").onclick = renderMembers; // 필터 · 페이지는 그대로 두고 숫자 카드와 목록을 다시 받는다
   api("/api/v1/admin/members/stats").then((st) => {
     $("#member-stats").innerHTML = [["전체 회원", st.totalMembers], ["이번 주 가입", st.weekJoined], ["이번 달 가입", st.monthJoined]]
       .map(([k, v]) => `<div class="stat"><span>${k}</span><b>${num(v)}</b></div>`).join("");
@@ -508,7 +508,7 @@ async function renderReviews() {
         : select("reason", "사유", [["", "전체"], ...Object.entries(LABEL.reason)], s.reason)
           + select("status", "처리 상태", [["", "전체"], ...Object.entries(LABEL.status).map(([k, [t]]) => [k, t])], s.status)}
       <span class="spacer"></span>
-      <button class="btn" type="button" id="review-reset">초기화</button>
+      <button class="btn" type="button" id="review-refresh">새로고침</button>
     </div>
     <div class="card"><div class="table-wrap" id="review-table"></div><div class="foot" id="review-foot"></div></div>`;
   $(".tabs").onclick = (e) => { const t = e.target.closest("[data-tab]")?.dataset.tab; if (t && t !== s.tab) { s.tab = t; renderReviews(); } };
@@ -517,10 +517,7 @@ async function renderReviews() {
     if (all) s.page = 0; else s.reportPage = 0;
     loadReviewList();
   });
-  $("#review-reset").onclick = () => {
-    Object.assign(s, all ? { rating: "", days: "", page: 0 } : { reason: "", status: "", reportPage: 0 });
-    renderReviews();
-  };
+  $("#review-refresh").onclick = renderReviews; // 필터 · 페이지는 그대로 두고 숫자 카드와 목록을 다시 받는다
   loadReviewStats();
   loadReviewList();
 }
