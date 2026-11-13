@@ -21,6 +21,20 @@ services:
     volumes:
       - wadadak-photos:/data
 
+  # 이벤트 브로커. 서버의 spring.rabbitmq 기본값과 같은 계정이다. 외부화를 켜 볼 때만 필요하다
+  # (EVENTS_EXTERNALIZATION_ENABLED=true). 관리 화면: http://localhost:15672
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    hostname: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: wadadak
+      RABBITMQ_DEFAULT_PASS: wadadak
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - wadadak-broker:/var/lib/rabbitmq
+
   # 코스 자동 생성의 길찾기. 필요할 때만 띄운다: docker compose --profile planner up -d graphhopper
   # 파일은 프로젝트 최상위 utilfile/graphhopper에 둔다(deploy/README.md `길찾기 데이터`). 설정은 공용 서버와 같다.
   graphhopper:
@@ -37,3 +51,4 @@ services:
 volumes:
   wadadak-postgres:
   wadadak-photos:
+  wadadak-broker:

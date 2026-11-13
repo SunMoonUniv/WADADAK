@@ -80,6 +80,7 @@ jobs:
           JWT_PUBLIC_KEY: ${{ secrets.JWT_PUBLIC_KEY }}
           JWT_PRIVATE_KEY: ${{ secrets.JWT_PRIVATE_KEY }}
           STORAGE_SECRET_KEY: ${{ secrets.STORAGE_SECRET_KEY }}
+          BROKER_PASSWORD: ${{ secrets.BROKER_PASSWORD }}
           TUNNEL_TOKEN: ${{ secrets.TUNNEL_TOKEN }}
           # FCM 키가 없으면 빈 값을 넘겨 푸시를 로그로만 남긴다. 'base64:'만 넘기면 서버가 빈 키를 읽다 뜨지 않는다.
           FCM_CREDENTIALS_LOCATION: ${{ secrets.FCM_SERVICE_ACCOUNT != '' && format('base64:{0}', secrets.FCM_SERVICE_ACCOUNT) || '' }}

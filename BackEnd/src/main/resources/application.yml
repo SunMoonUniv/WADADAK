@@ -24,6 +24,18 @@ spring:
       completion-mode: delete
       # 인스턴스를 여러 대로 늘리면 false로 바꾸고 EventRetryScheduler로 일원화한다(개발 정책 5.5).
       republish-outstanding-events-on-restart: true
+      # 브로커 외부화(EventBrokerConfig). 로컬 · 테스트는 끄고 공용 서버(deploy/compose.yaml)에서 켠다.
+      # 켜고 브로커가 없으면 외부화 행이 아웃박스에 미완료로 쌓인다.
+      externalization:
+        enabled: ${EVENTS_EXTERNALIZATION_ENABLED:false}
+  # 로컬 브로커는 BackEnd/compose.yaml(관리 화면 http://localhost:15672, wadadak / wadadak).
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    username: ${RABBITMQ_USERNAME:wadadak}
+    password: ${RABBITMQ_PASSWORD:wadadak}
+    # 발행 쪽 traceId를 메시지 헤더에 싣는다(개발 정책 5.7). 받는 쪽(listener)은 분리 전환 때 켠다.
+    template:
+      observation-enabled: true
   security:
     oauth2:
       resourceserver:
@@ -32,6 +44,12 @@ spring:
           public-key-location: ${JWT_PUBLIC_KEY_LOCATION:file:${app.local-dir:.local}/jwt/public.pem}
           # 가입용 토큰(aud wadadak-signup)은 API 호출에 쓸 수 없다.
           audiences: wadadak
+
+management:
+  health:
+    rabbit:
+      # 브로커가 꺼져도 서버는 healthy다. 외부화 행은 아웃박스에 남아 재전송된다(EventRetryScheduler).
+      enabled: false
 
 app:
   common:
