@@ -75,6 +75,31 @@ class RoadLayersTest {
         assertThat(layers.snap(Layer.LAMPS, north, 400)).isEqualTo(north);
     }
 
+    @Test
+    void areaCoversTheLayerWithMergedRectangles() {
+        // 출발점에서 동쪽으로 500m 가는 하천 띠
+        RoadLayers layers = new RoadLayers(Map.of(Layer.RIVER, along(START, 500)));
+
+        List<List<List<List<Double>>>> area = layers.area(Layer.RIVER, START, 1_000);
+
+        // 띠는 25m마다 찍어도 줄마다 한 칸으로 합쳐져 직사각형이 몇 개뿐이다
+        assertThat(area).isNotNull().hasSizeLessThan(5);
+        assertThat(area).allSatisfy(polygon -> assertThat(polygon.getFirst()).hasSize(5).first().isEqualTo(polygon.getFirst().getLast()));
+        assertThat(inside(area, destination(START, 250, 90))).isTrue();
+        assertThat(inside(area, destination(START, 300, 0))).isFalse();
+        assertThat(inside(area, destination(START, 800, 90))).isFalse();
+        assertThat(layers.area(Layer.LAMPS, START, 1_000)).isNull();
+        assertThat(layers.area(Layer.RIVER, destination(START, 5_000, 180), 1_000)).isNull();
+    }
+
+    /** [경도, 위도] 직사각형 중 하나에 든다 */
+    private static boolean inside(List<List<List<List<Double>>>> area, GeoPoint p) {
+        return area.stream().map(List::getFirst).anyMatch(ring -> {
+            double west = ring.get(0).get(0), south = ring.get(0).get(1), east = ring.get(2).get(0), north = ring.get(2).get(1);
+            return p.lng() >= west && p.lng() <= east && p.lat() >= south && p.lat() <= north;
+        });
+    }
+
     /** 실제 파일이 있을 때만: 한강 위는 하천이고, 종로는 인도 · 가로등이 있고, 북한산에는 둘 다 없다 */
     @Test
     void realFilesKnowTheHanRiverAndJongno() {

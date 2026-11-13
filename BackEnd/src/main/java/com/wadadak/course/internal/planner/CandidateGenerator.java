@@ -11,6 +11,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.DoubleFunction;
 import java.util.function.Supplier;
@@ -22,8 +23,12 @@ import java.util.function.Supplier;
  * 길찾기 호출 전마다 기한을 보고, 지났으면 그때까지 만든 후보만 돌려준다(앱 대기 15초 안에 답하려고).
  * 길찾기가 실패한 방향(바다 · 고립된 길 · 타임아웃)은 버리고 다음 방향으로 간다.
  *
- * <p>원하는 길 중 둘은 고르기 전에 여기서 먼저 반영한다. 큰길 피하기는 길찾기 비용에 넣고({@link RoutingClient}),
- * 강변은 한 바퀴의 경유점 · 왕복의 반환점을 가까운 하천으로 옮긴다({@link RoadLayers#snap}). 나머지는 {@link CandidateSelector}의 점수다.
+ * <p>원하는 길 중 큰길 피하기 · 강변은 길찾기 비용에 넣어 처음부터 그 길로 가게 하고({@link RoutingClient#costModel}),
+ * 강변은 한 바퀴의 경유점 · 왕복의 반환점도 가까운 하천으로 옮긴다({@link RoadLayers#snap}). 그다음 {@link CandidateSelector}가
+ * 모든 원하는 길로 점수를 매긴다. 인도 · 밝은 길은 비용에 넣지 않는다: 5곳 실측에서 점수만으로 인도 0.95 · 밝은 길 0.86이던 비율이
+ * 0.96 · 0.88로만 오르고 응답은 3~4배(최대 6.8초) 느려졌다(구역이 잘게 쪼개져 크다). 하천은 0.32 → 0.44였다.
+ * 평지 · 오르막도 넣지 않는다: 표고점으로 경사를 넣은 그래프에서 12곳을 재 보니 1km당 오르막이 평지 7.8 → 7.6m · 오르막 29.4 → 27.0m로
+ * 나아지지 않았다. 원 위 경유점이 경로 모양을 거의 정해 방향별 평균만 줄고, 고르는 데 쓰는 가장 좋은 방향은 그대로였다.
  */
 @Component
 @RequiredArgsConstructor
@@ -50,6 +55,8 @@ class CandidateGenerator {
     static final int VIA_CANDIDATES = 3;
     /** 강변: 경유점 · 반환점에서 원 반지름 · 반환점 거리의 이 비율 안에 하천이 있으면 그리로 옮긴다 */
     static final double RIVER_SNAP_RATIO = 0.5;
+    /** 편도 · 경유의 비용 구역 반경: 출발에서 도착 · 경유지까지 거리 + 이만큼(m). 경유는 옆으로 최대 1,200m 비켜 돈다 */
+    private static final double PLACE_AREA_MARGIN_METERS = 1_500;
 
     private final RoutingClient routing;
     private final RoadLayers layers;
@@ -61,30 +68,33 @@ class CandidateGenerator {
      * @param prefer       원하는 길. null이면 없음
      */
     List<RoutedPath> generate(Shape shape, GeoPoint start, GeoPoint place, Integer targetMeters, Set<Pref> prefer, Instant deadline) {
-        boolean avoid = prefer != null && prefer.contains(Pref.AVOID_ARTERIAL);
-        boolean river = prefer != null && prefer.contains(Pref.RIVER);
+        Set<Pref> wants = prefer == null ? Set.of() : prefer;
+        boolean river = wants.contains(Pref.RIVER);
+        // 한 바퀴 · 왕복은 출발에서 목표의 절반 넘게 멀어지지 않는다
+        double reach = place == null ? targetMeters / 2.0 : start.distanceMeters(place) + PLACE_AREA_MARGIN_METERS;
+        Map<String, Object> cost = costModel(wants, start, reach);
         List<RoutedPath> paths = new ArrayList<>();
         switch (shape) {
-            case LOOP -> loops(start, targetMeters, avoid, river, deadline, paths);
+            case LOOP -> loops(start, targetMeters, cost, river, deadline, paths);
             case OUT_AND_BACK -> {
                 for (int round = 0; round < ROUNDS; round++) {
                     for (int heading = round * OUT_AND_BACK_HEADING_STEP / ROUNDS; heading < 360; heading += OUT_AND_BACK_HEADING_STEP) {
                         int h = heading;
                         addIfPresent(paths, fit(targetMeters / 2.0 / DETOUR, targetMeters, CandidateSelector.OUT_AND_BACK_TOLERANCE,
                                 deadline, half -> routing.route(List.of(start, toRiver(river, destination(start, half, h), half), start),
-                                        false, avoid)));
+                                        false, cost)));
                     }
                 }
             }
             case POINT_TO_POINT -> {
                 if (!expired(deadline)) {
-                    addIfRouted(paths, () -> routing.route(List.of(start, place), false, avoid));
+                    addIfRouted(paths, () -> routing.route(List.of(start, place), false, cost));
                 }
             }
             case VIA -> {
                 for (int i = 0; i < VIA_CANDIDATES && !expired(deadline); i++) {
                     GeoPoint side = destination(place, VIA_SIDE_STEP_METERS * (i + 1), i * 120);
-                    addIfRouted(paths, () -> routing.route(List.of(start, place, side, start), true, avoid));
+                    addIfRouted(paths, () -> routing.route(List.of(start, place, side, start), true, cost));
                 }
             }
         }
@@ -92,19 +102,25 @@ class CandidateGenerator {
     }
 
     /** 출발점을 지나는 원 위의 경유점 3개로 돈다 */
-    private void loops(GeoPoint start, int targetMeters, boolean avoid, boolean river, Instant deadline, List<RoutedPath> paths) {
+    private void loops(GeoPoint start, int targetMeters, Map<String, Object> cost, boolean river, Instant deadline, List<RoutedPath> paths) {
         for (int round = 0; round < ROUNDS; round++) {
             for (int heading = round * LOOP_HEADING_STEP / ROUNDS; heading < 360; heading += LOOP_HEADING_STEP) {
                 int h = heading;
                 addIfPresent(paths, fit(targetMeters / (2 * Math.PI * DETOUR), targetMeters, CandidateSelector.LOOP_TOLERANCE,
                         deadline, radius -> routing.route(circle(start, radius, h).stream()
-                                .map(p -> p.equals(start) ? p : toRiver(river, p, radius)).toList(), true, avoid)));
+                                .map(p -> p.equals(start) ? p : toRiver(river, p, radius)).toList(), true, cost)));
             }
             for (long seed = (long) round * ROUND_TRIP_SEEDS; seed < (round + 1L) * ROUND_TRIP_SEEDS && !expired(deadline); seed++) {
                 long s = seed;
-                addIfRouted(paths, () -> routing.roundTrip(start, targetMeters, s, avoid));
+                addIfRouted(paths, () -> routing.roundTrip(start, targetMeters, s, cost));
             }
         }
+    }
+
+    /** 원하는 길의 길찾기 비용. 강변은 출발에서 reach 안의 하천을 구역으로 보낸다(파일이 없거나 하천이 없으면 뺀다). 없으면 null */
+    private Map<String, Object> costModel(Set<Pref> wants, GeoPoint start, double reach) {
+        List<List<List<List<Double>>>> river = wants.contains(Pref.RIVER) ? layers.area(Layer.RIVER, start, reach) : null;
+        return RoutingClient.costModel(wants.contains(Pref.AVOID_ARTERIAL), river == null ? Map.of() : Map.of("river", river));
     }
 
     /** 강변을 원하면 point를 size × {@value #RIVER_SNAP_RATIO} 안의 하천 가까운 점으로 옮긴다. 하천이 없으면 그대로 */

@@ -16,9 +16,14 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * 인도 · 강변 · 밝은 길 조건에 쓰는 전국 칸 집합({@code app.course.planner.layers-dir}의 sidewalk.bin · river.bin · lamps.bin).
@@ -41,6 +46,8 @@ class RoadLayers {
 
     /** 경로를 이 간격(m)으로 다시 찍어 가까운 점의 비율을 구한다 */
     static final double STEP_METERS = 25;
+    /** {@link #area}가 한 변에 찍어 보는 최대 점 수. 반경이 크면 칸보다 넓게 찍는다 */
+    static final int MAX_AREA_STEPS = 300;
     /** {@link #snap}이 둘레를 찾는 간격(m) · 방향(도) */
     private static final double SNAP_STEP_METERS = 50;
     private static final int SNAP_BEARING_STEP = 30;
@@ -92,6 +99,62 @@ class RoadLayers {
             }
         }
         return point;
+    }
+
+    /**
+     * center에서 radiusMeters 안의 layer 가까운 곳을 위경도 직사각형들로(길찾기 비용 구역, GeoJSON MultiPolygon 좌표 [경도, 위도]).
+     * 칸 크기 간격으로 찍어 보고, 같은 줄의 이어진 점은 하나로, 위아래 줄이 같은 폭이면 다시 하나로 합친다.
+     * 파일이 없거나 하나도 없으면 null.
+     */
+    List<List<List<List<Double>>>> area(Layer layer, GeoPoint center, double radiusMeters) {
+        CellSet set = sets.get(layer);
+        if (set == null) {
+            return null;
+        }
+        // ponytail: 반경이 크면 간격을 넓혀(최대 한 변 300점) 좁은 인도는 빠질 수 있다. 22km 한 바퀴 기준 약 37m
+        int n = (int) Math.ceil(radiusMeters / Math.max(set.cell(), 2 * radiusMeters / MAX_AREA_STEPS));
+        double step = radiusMeters / n;
+        double dLat = Math.toDegrees(step / GeoPoint.EARTH_RADIUS_M);
+        double dLng = dLat / Math.cos(Math.toRadians(center.lat()));
+        List<List<List<List<Double>>>> rectangles = new ArrayList<>();
+        Map<Long, Integer> open = new HashMap<>(); // 열린 직사각형: (시작 열, 끝 열) → 시작 줄
+        for (int r = -n; r <= n + 1; r++) {
+            Set<Long> runs = new HashSet<>();
+            int from = Integer.MIN_VALUE;
+            for (int c = -n; r <= n && c <= n + 1; c++) {
+                boolean in = c <= n && (long) r * r + (long) c * c <= (long) n * n
+                        && near(set, new GeoPoint(center.lat() + r * dLat, center.lng() + c * dLng));
+                if (in && from == Integer.MIN_VALUE) {
+                    from = c;
+                } else if (!in && from != Integer.MIN_VALUE) {
+                    runs.add(((long) from << 32) | ((c - 1) & 0xffffffffL));
+                    from = Integer.MIN_VALUE;
+                }
+            }
+            for (Iterator<Map.Entry<Long, Integer>> it = open.entrySet().iterator(); it.hasNext(); ) {
+                Map.Entry<Long, Integer> rect = it.next();
+                if (!runs.remove(rect.getKey())) {
+                    int c0 = (int) (rect.getKey() >> 32);
+                    int c1 = (int) (long) rect.getKey();
+                    double south = center.lat() + (rect.getValue() - 0.5) * dLat;
+                    double north = center.lat() + (r - 0.5) * dLat;
+                    double west = center.lng() + (c0 - 0.5) * dLng;
+                    double east = center.lng() + (c1 + 0.5) * dLng;
+                    rectangles.add(List.of(List.of(corner(west, south), corner(east, south), corner(east, north), corner(west, north),
+                            corner(west, south))));
+                    it.remove();
+                }
+            }
+            for (long run : runs) {
+                open.put(run, r);
+            }
+        }
+        return rectangles.isEmpty() ? null : rectangles;
+    }
+
+    /** [경도, 위도], 소수 6자리(약 0.1m) */
+    private static List<Double> corner(double lng, double lat) {
+        return List.of(Math.round(lng * 1e6) / 1e6, Math.round(lat * 1e6) / 1e6);
     }
 
     private static boolean near(CellSet set, GeoPoint point) {

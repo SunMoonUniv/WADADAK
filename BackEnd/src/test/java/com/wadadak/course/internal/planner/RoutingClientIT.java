@@ -24,7 +24,7 @@ class RoutingClientIT {
 
     @Test
     void routesWithRoadClasses() {
-        RoutedPath path = routing.route(List.of(SUNMOON, new GeoPoint(36.8050, 127.0800)), false, false);
+        RoutedPath path = routing.route(List.of(SUNMOON, new GeoPoint(36.8050, 127.0800)), false, null);
 
         assertThat(path.distanceMeters()).isPositive();
         assertThat(path.points()).hasSizeGreaterThan(2);
