@@ -122,6 +122,10 @@ class SentenceRulesTest {
         assertThat(SentenceRules.spans("천안역부터 5km 한 바퀴").start()).isEqualTo("천안역");
         assertThat(SentenceRules.spans("지금부터 30분 달릴 코스").start()).isNull();
         assertThat(SentenceRules.keywordPrefs("평평하고 사람 많이 안다니는 선문대 인문관부터 3km 코스")).containsExactly(Pref.FLAT);
+        // 밝은 길. "밤에"만으로는 붙이지 않는다
+        assertThat(SentenceRules.keywordPrefs("가로등 있는 길로 5km")).containsExactly(Pref.LIT);
+        assertThat(SentenceRules.keywordPrefs("어두운 길은 무서워 3km")).containsExactly(Pref.LIT);
+        assertThat(SentenceRules.keywordPrefs("밤에 5km 한 바퀴")).isEmpty();
         // 오르막을 부정하면 평지다
         assertThat(SentenceRules.keywordPrefs("오르막아닌 5km 코스")).containsExactly(Pref.FLAT);
         assertThat(SentenceRules.keywordPrefs("언덕은 별로인 3km")).containsExactly(Pref.FLAT);

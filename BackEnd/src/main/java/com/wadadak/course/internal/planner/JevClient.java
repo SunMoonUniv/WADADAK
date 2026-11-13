@@ -120,9 +120,10 @@ class JevClient {
     @JsonIgnoreProperties(ignoreUnknown = true)
     record JevAnswers(Map<String, Answer> answers) {
 
-        /** 예일 확률 0~1 */
+        /** 예일 확률 0~1. 묻지 않은 질문(밝은 길은 규칙만 읽는다)은 0 */
         double noul(String id) {
-            return answers.get(id).noul();
+            Answer a = answers.get(id);
+            return a == null ? 0 : a.noul();
         }
 
         String choice(String id) {

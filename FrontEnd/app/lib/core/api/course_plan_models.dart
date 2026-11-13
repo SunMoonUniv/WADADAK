@@ -32,7 +32,8 @@ enum PlanShape {
 }
 
 /// 원하는 길. [supported]만 반영하고, 나머지는 문장에서 읽어도 후보 화면에 `아직 반영하지 않았어요`로 알린다.
-/// 평지 · 오르막은 서버에 표고점 데이터가 없으면 반영하지 않고 같은 안내가 온다.
+/// 평지 · 오르막(표고점) · 인도 · 강변 · 밝은 길(전국 칸 집합)은 서버에 그 데이터가 없으면 반영하지 않고 같은 안내가 온다.
+/// 밝은 길은 후보 둘레에 가로등 · 보안등 자료가 하나도 없는 지역에서도 같은 안내가 온다.
 enum PlanPref {
   avoidArterial('AVOID_ARTERIAL', '큰길 피하기'),
   noRetrace('NO_RETRACE', '같은 길 반복 없이'),
@@ -42,14 +43,15 @@ enum PlanPref {
   sidewalk('SIDEWALK', '인도'),
   toiletOnRoute('TOILET_ON_ROUTE', '화장실 들르기'),
   river('RIVER', '강변'),
-  park('PARK', '공원');
+  park('PARK', '공원'),
+  lit('LIT', '밝은 길');
 
   const PlanPref(this.apiName, this.label);
   final String apiName;
   final String label;
 
   /// A7 `원하는 길` 칩 순서. 평지와 오르막은 함께 고르지 않는다.
-  static const supported = [avoidArterial, noRetrace, storeOnRoute, toiletOnRoute, flat, hilly];
+  static const supported = [avoidArterial, noRetrace, storeOnRoute, toiletOnRoute, flat, hilly, sidewalk, river, lit];
 
   static PlanPref? fromApi(String? name) => values.where((value) => value.apiName == name).firstOrNull;
 }
@@ -192,6 +194,9 @@ class PlanCandidate {
     required this.storeCount,
     this.toiletCount = 0,
     this.ascentMeters,
+    this.sidewalkRatio,
+    this.riverRatio,
+    this.litRatio,
   });
 
   factory PlanCandidate.fromJson(Map<Object?, Object?> json) => PlanCandidate(
@@ -202,6 +207,9 @@ class PlanCandidate {
         storeCount: json['storeCount']! as int,
         toiletCount: json['toiletCount'] as int? ?? 0,
         ascentMeters: json['ascentMeters'] as int?,
+        sidewalkRatio: (json['sidewalkRatio'] as num?)?.toDouble(),
+        riverRatio: (json['riverRatio'] as num?)?.toDouble(),
+        litRatio: (json['litRatio'] as num?)?.toDouble(),
       );
 
   /// 고르면 B3 입력점으로 채운다(최대 500개, 정책 B3-A08). 첫 점이 출발이다.
@@ -222,4 +230,13 @@ class PlanCandidate {
 
   /// 경로를 따라 오른 높이(m). 서버가 모르면 null.
   final int? ascentMeters;
+
+  /// 인도가 있는 길 비율(0~1). 서버에 데이터가 없으면 null(아래 둘도 같다).
+  final double? sidewalkRatio;
+
+  /// 하천을 따라가는 비율(0~1).
+  final double? riverRatio;
+
+  /// 가로등 · 보안등이 있는 길 비율(0~1).
+  final double? litRatio;
 }

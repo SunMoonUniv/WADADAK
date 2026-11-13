@@ -24,7 +24,7 @@ class RoutingClientIT {
 
     @Test
     void routesWithRoadClasses() {
-        RoutedPath path = routing.route(List.of(SUNMOON, new GeoPoint(36.8050, 127.0800)), false);
+        RoutedPath path = routing.route(List.of(SUNMOON, new GeoPoint(36.8050, 127.0800)), false, false);
 
         assertThat(path.distanceMeters()).isPositive();
         assertThat(path.points()).hasSizeGreaterThan(2);
@@ -34,7 +34,7 @@ class RoutingClientIT {
     @Test
     void sunmoon5kmLoopHasAtLeastThreeGoodCandidates() {
         Clock clock = Clock.systemUTC();
-        List<RoutedPath> paths = new CandidateGenerator(routing, clock).generate(Shape.LOOP, SUNMOON, null, 5_000, clock.instant().plusSeconds(10));
+        List<RoutedPath> paths = new CandidateGenerator(routing, new RoadLayers(java.util.Map.of()), clock).generate(Shape.LOOP, SUNMOON, null, 5_000, java.util.Set.of(), clock.instant().plusSeconds(10));
 
         // 거리 ±5% · 되돌아감 20% 이하(검증 때 24개 중 6개 통과, 겹치지 않는 3개)
         long good = paths.stream()

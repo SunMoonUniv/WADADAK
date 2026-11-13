@@ -100,6 +100,9 @@ void main() {
           'storeCount': 3,
           'toiletCount': 1,
           'ascentMeters': 32,
+          'sidewalkRatio': 0.9,
+          'riverRatio': 0.35,
+          'litRatio': null,
         },
       ],
       'reason': null,
@@ -140,6 +143,9 @@ void main() {
     expect(candidate.retraceRatio, 0.02);
     expect(candidate.storeCount, 3);
     expect(candidate.toiletCount, 1);
+    expect(candidate.sidewalkRatio, 0.9);
+    expect(candidate.riverRatio, 0.35);
+    expect(candidate.litRatio, isNull, reason: '서버에 데이터가 없으면 null');
     expect(candidate.ascentMeters, 32);
     expect(result.notApplied, {PlanPref.park});
     expect(result.reason, isNull);

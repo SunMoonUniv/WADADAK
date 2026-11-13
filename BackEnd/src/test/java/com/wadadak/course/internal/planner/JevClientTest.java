@@ -74,6 +74,9 @@ class JevClientTest {
     void asksAQuestionForEveryPref() {
         ResponseActions request = jev.expect(requestTo(URL));
         for (Pref pref : Pref.values()) {
+            if (pref == Pref.LIT) {
+                continue; // 밝은 길은 규칙만 읽는다
+            }
             request.andExpect(jsonPath("$.questions.pref_" + pref.name().toLowerCase(Locale.ROOT)).exists());
         }
         request.andRespond(withSuccess(recordedResponse(), MediaType.APPLICATION_JSON));

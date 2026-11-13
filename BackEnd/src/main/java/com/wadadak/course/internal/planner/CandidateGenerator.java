@@ -1,7 +1,9 @@
 package com.wadadak.course.internal.planner;
 
 import com.wadadak.common.geo.GeoPoint;
+import com.wadadak.course.internal.planner.PlanForm.Pref;
 import com.wadadak.course.internal.planner.PlanForm.Shape;
+import com.wadadak.course.internal.planner.RoadLayers.Layer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -9,6 +11,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.function.DoubleFunction;
 import java.util.function.Supplier;
 
@@ -18,6 +21,9 @@ import java.util.function.Supplier;
  * 왕복은 스크립트와 달리 한 바퀴처럼 반환점 거리를 고친다(고르기가 목표 ±10%만 남기므로).
  * 길찾기 호출 전마다 기한을 보고, 지났으면 그때까지 만든 후보만 돌려준다(앱 대기 15초 안에 답하려고).
  * 길찾기가 실패한 방향(바다 · 고립된 길 · 타임아웃)은 버리고 다음 방향으로 간다.
+ *
+ * <p>원하는 길 중 둘은 고르기 전에 여기서 먼저 반영한다. 큰길 피하기는 길찾기 비용에 넣고({@link RoutingClient}),
+ * 강변은 한 바퀴의 경유점 · 왕복의 반환점을 가까운 하천으로 옮긴다({@link RoadLayers#snap}). 나머지는 {@link CandidateSelector}의 점수다.
  */
 @Component
 @RequiredArgsConstructor
@@ -42,36 +48,43 @@ class CandidateGenerator {
     /** 경유: 경유지에서 옆으로 비켜 돌아오는 점. 같은 길로 되돌아오지 않게 한다 */
     static final int VIA_SIDE_STEP_METERS = 400;
     static final int VIA_CANDIDATES = 3;
+    /** 강변: 경유점 · 반환점에서 원 반지름 · 반환점 거리의 이 비율 안에 하천이 있으면 그리로 옮긴다 */
+    static final double RIVER_SNAP_RATIO = 0.5;
 
     private final RoutingClient routing;
+    private final RoadLayers layers;
     private final Clock clock;
 
     /**
      * @param place        편도의 도착지 또는 경유의 경유지. 한 바퀴 · 왕복은 null
      * @param targetMeters 한 바퀴 · 왕복의 목표 거리(m). 편도 · 경유는 쓰지 않는다
+     * @param prefer       원하는 길. null이면 없음
      */
-    List<RoutedPath> generate(Shape shape, GeoPoint start, GeoPoint place, Integer targetMeters, Instant deadline) {
+    List<RoutedPath> generate(Shape shape, GeoPoint start, GeoPoint place, Integer targetMeters, Set<Pref> prefer, Instant deadline) {
+        boolean avoid = prefer != null && prefer.contains(Pref.AVOID_ARTERIAL);
+        boolean river = prefer != null && prefer.contains(Pref.RIVER);
         List<RoutedPath> paths = new ArrayList<>();
         switch (shape) {
-            case LOOP -> loops(start, targetMeters, deadline, paths);
+            case LOOP -> loops(start, targetMeters, avoid, river, deadline, paths);
             case OUT_AND_BACK -> {
                 for (int round = 0; round < ROUNDS; round++) {
                     for (int heading = round * OUT_AND_BACK_HEADING_STEP / ROUNDS; heading < 360; heading += OUT_AND_BACK_HEADING_STEP) {
                         int h = heading;
                         addIfPresent(paths, fit(targetMeters / 2.0 / DETOUR, targetMeters, CandidateSelector.OUT_AND_BACK_TOLERANCE,
-                                deadline, half -> routing.route(List.of(start, destination(start, half, h), start), false)));
+                                deadline, half -> routing.route(List.of(start, toRiver(river, destination(start, half, h), half), start),
+                                        false, avoid)));
                     }
                 }
             }
             case POINT_TO_POINT -> {
                 if (!expired(deadline)) {
-                    addIfRouted(paths, () -> routing.route(List.of(start, place), false));
+                    addIfRouted(paths, () -> routing.route(List.of(start, place), false, avoid));
                 }
             }
             case VIA -> {
                 for (int i = 0; i < VIA_CANDIDATES && !expired(deadline); i++) {
                     GeoPoint side = destination(place, VIA_SIDE_STEP_METERS * (i + 1), i * 120);
-                    addIfRouted(paths, () -> routing.route(List.of(start, place, side, start), true));
+                    addIfRouted(paths, () -> routing.route(List.of(start, place, side, start), true, avoid));
                 }
             }
         }
@@ -79,18 +92,24 @@ class CandidateGenerator {
     }
 
     /** 출발점을 지나는 원 위의 경유점 3개로 돈다 */
-    private void loops(GeoPoint start, int targetMeters, Instant deadline, List<RoutedPath> paths) {
+    private void loops(GeoPoint start, int targetMeters, boolean avoid, boolean river, Instant deadline, List<RoutedPath> paths) {
         for (int round = 0; round < ROUNDS; round++) {
             for (int heading = round * LOOP_HEADING_STEP / ROUNDS; heading < 360; heading += LOOP_HEADING_STEP) {
                 int h = heading;
                 addIfPresent(paths, fit(targetMeters / (2 * Math.PI * DETOUR), targetMeters, CandidateSelector.LOOP_TOLERANCE,
-                        deadline, radius -> routing.route(circle(start, radius, h), true)));
+                        deadline, radius -> routing.route(circle(start, radius, h).stream()
+                                .map(p -> p.equals(start) ? p : toRiver(river, p, radius)).toList(), true, avoid)));
             }
             for (long seed = (long) round * ROUND_TRIP_SEEDS; seed < (round + 1L) * ROUND_TRIP_SEEDS && !expired(deadline); seed++) {
                 long s = seed;
-                addIfRouted(paths, () -> routing.roundTrip(start, targetMeters, s));
+                addIfRouted(paths, () -> routing.roundTrip(start, targetMeters, s, avoid));
             }
         }
+    }
+
+    /** 강변을 원하면 point를 size × {@value #RIVER_SNAP_RATIO} 안의 하천 가까운 점으로 옮긴다. 하천이 없으면 그대로 */
+    private GeoPoint toRiver(boolean river, GeoPoint point, double size) {
+        return river ? layers.snap(Layer.RIVER, point, size * RIVER_SNAP_RATIO) : point;
     }
 
     /**
