@@ -57,21 +57,26 @@ record PlanForm(@NotNull @Valid Start start,
 
     /**
      * 원하는 길. 지금 후보에 반영하는 것은 {@link #SUPPORTED}뿐이고, 나머지는 결과의 notApplied로 알린다(정책 B3-A03).
-     * 평지 · 오르막은 표고점 파일이 없으면 반영하지 않는다({@link SpotHeights})
+     * 평지 · 오르막은 표고점 파일({@link SpotHeights}), 인도 · 강변 · 밝은 길은 칸 집합 파일({@link RoadLayers})이 없으면 반영하지 않는다
      */
     enum Pref {
-        FLAT, HILLY, SIDEWALK, AVOID_ARTERIAL, STORE_ON_ROUTE, TOILET_ON_ROUTE, RIVER, PARK, NO_RETRACE;
+        FLAT, HILLY, SIDEWALK, AVOID_ARTERIAL, STORE_ON_ROUTE, TOILET_ON_ROUTE, RIVER, PARK, NO_RETRACE,
+        /** 밤에 밝은 길(가로등 · 보안등) */
+        LIT;
 
-        static final Set<Pref> SUPPORTED = Set.of(AVOID_ARTERIAL, STORE_ON_ROUTE, NO_RETRACE, TOILET_ON_ROUTE, FLAT, HILLY);
-        static final Set<Pref> NEEDS_HEIGHTS = Set.of(FLAT, HILLY);
+        static final Set<Pref> SUPPORTED = Set.of(AVOID_ARTERIAL, STORE_ON_ROUTE, NO_RETRACE, TOILET_ON_ROUTE, FLAT, HILLY, SIDEWALK, RIVER, LIT);
 
-        /** 요청한 것 중 후보에 반영하지 못하는 것. 표고점이 없으면 평지 · 오르막도 든다 */
-        static Set<Pref> notApplied(Set<Pref> prefer, boolean heightsAvailable) {
+        /**
+         * 요청한 것 중 후보에 반영하지 못하는 것.
+         *
+         * @param noData 지원하지만 지금 데이터가 없어 반영하지 못하는 것
+         */
+        static Set<Pref> notApplied(Set<Pref> prefer, Set<Pref> noData) {
             Set<Pref> notApplied = EnumSet.noneOf(Pref.class);
             if (prefer != null) {
                 notApplied.addAll(prefer);
             }
-            notApplied.removeIf(p -> SUPPORTED.contains(p) && (heightsAvailable || !NEEDS_HEIGHTS.contains(p)));
+            notApplied.removeIf(p -> SUPPORTED.contains(p) && !noData.contains(p));
             return Set.copyOf(notApplied);
         }
     }

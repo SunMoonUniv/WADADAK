@@ -11,6 +11,7 @@ import com.wadadak.course.internal.planner.PlanForm.Pref;
 import com.wadadak.course.internal.planner.PlanForm.Shape;
 import com.wadadak.course.internal.planner.PlanResult.PlanCandidate;
 import com.wadadak.course.internal.planner.PlannerRepository.PoiCounts;
+import com.wadadak.course.internal.planner.RoadLayers.Layer;
 import com.wadadak.course.internal.planner.RoutedPath.RoadClassSpan;
 import com.wadadak.course.internal.route.RouteService;
 import com.wadadak.member.MemberApi;
@@ -35,6 +36,7 @@ import java.util.stream.IntStream;
 import static com.wadadak.course.internal.planner.CandidateGenerator.destination;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
 
 /**
@@ -54,6 +56,10 @@ class CandidateSelectorTest {
     @MockitoBean
     SpotHeights spotHeights;
 
+    // 기본은 칸 집합 파일이 없을 때(비율 null). 인도 · 강변 · 밝은 길 시험만 값을 준다
+    @MockitoBean
+    RoadLayers layers;
+
     @Autowired
     CandidateSelector selector;
 
@@ -63,6 +69,7 @@ class CandidateSelectorTest {
     @BeforeEach
     void noHeights() {
         when(spotHeights.ascentMeters(any())).thenReturn(null);
+        when(layers.ratio(any(), any())).thenReturn(null);
     }
 
     @Test
@@ -175,6 +182,36 @@ class CandidateSelectorTest {
 
         assertThat(result.notApplied()).containsExactlyInAnyOrder(Pref.FLAT, Pref.PARK);
         assertThat(result.candidates().getFirst().ascentMeters()).isNull();
+    }
+
+    @Test
+    void ranksByRiverSidewalkAndLampRatios() {
+        GeoPoint base = new GeoPoint(35.80, 128.10);
+        List<GeoPoint> riverside = square(base, 0);
+        List<GeoPoint> inland = square(destination(base, 3_000, 90), 0);
+        when(layers.available(any())).thenReturn(true);
+        when(layers.ratio(Layer.RIVER, riverside)).thenReturn(0.8);
+        when(layers.ratio(Layer.RIVER, inland)).thenReturn(0.1);
+        when(layers.ratio(eq(Layer.SIDEWALK), any())).thenReturn(0.5);
+        when(layers.ratio(eq(Layer.LAMPS), any())).thenReturn(0.0);
+
+        // 강변 +30×0.8 · +30×0.1. 인도는 둘이 같아 순위를 바꾸지 않는다
+        Selection result = select(Shape.LOOP, 5_000, List.of(path(inland), path(riverside)), Set.of(Pref.RIVER, Pref.SIDEWALK, Pref.LIT));
+
+        assertThat(result.candidates()).extracting(PlanCandidate::riverRatio).containsExactly(0.8, 0.1);
+        assertThat(result.candidates().getFirst().sidewalkRatio()).isEqualTo(0.5);
+        // 통과한 후보 어디에도 등이 없으면 밝은 길은 반영하지 못한 것으로 알린다
+        assertThat(result.notApplied()).containsExactly(Pref.LIT);
+    }
+
+    @Test
+    void layerPreferencesAreNotAppliedWithoutFiles() {
+        List<GeoPoint> loop = square(new GeoPoint(35.85, 128.10), 0);
+
+        Selection result = select(Shape.LOOP, 5_000, List.of(path(loop)), Set.of(Pref.RIVER, Pref.SIDEWALK, Pref.LIT, Pref.NO_RETRACE));
+
+        assertThat(result.notApplied()).containsExactlyInAnyOrder(Pref.RIVER, Pref.SIDEWALK, Pref.LIT);
+        assertThat(result.candidates().getFirst().riverRatio()).isNull();
     }
 
     @Test

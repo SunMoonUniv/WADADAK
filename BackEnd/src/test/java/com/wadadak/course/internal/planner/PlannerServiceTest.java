@@ -79,7 +79,7 @@ class PlannerServiceTest {
     @Test
     void plansFromCurrentLocation() {
         List<RoutedPath> paths = List.of(new RoutedPath(List.of(HERE, HERE), 5_000, List.of()));
-        when(generator.generate(any(), any(), any(), any(), any())).thenReturn(paths);
+        when(generator.generate(any(), any(), any(), any(), any(), any())).thenReturn(paths);
         // 가짜 고르기: 받은 편의점 · 화장실 함수로 센 수를 후보에 넣는다
         when(selector.select(any(), any(), any(), any(), any())).thenAnswer(a -> {
             Function<LineString, PoiCounts> pois = a.getArgument(4);
@@ -98,7 +98,7 @@ class PlannerServiceTest {
         });
         verify(repository).reserve(MEMBER, TODAY, PlannerRepository.PLAN, PlannerService.PLAN_LIMIT);
         // 기한은 한도를 잡은 때부터 10초
-        verify(generator).generate(Shape.LOOP, HERE, null, 5_000, NOW.plusSeconds(10));
+        verify(generator).generate(Shape.LOOP, HERE, null, 5_000, Set.of(), NOW.plusSeconds(10));
         verify(selector).select(eq(Shape.LOOP), eq(5_000), eq(paths), eq(Set.of()), any());
         verify(repository, never()).release(any(), any(), any());
         verifyNoInteractions(placeSearch);
@@ -115,7 +115,7 @@ class PlannerServiceTest {
                 Shape.POINT_TO_POINT, "아산역", null, null, null, Set.of(), null), HERE, null));
 
         assertThat(result.startName()).isEqualTo("선문대학교");
-        verify(generator).generate(Shape.POINT_TO_POINT, campus, station, null, NOW.plusSeconds(10));
+        verify(generator).generate(eq(Shape.POINT_TO_POINT), eq(campus), eq(station), eq(null), any(), eq(NOW.plusSeconds(10)));
     }
 
     @Test
@@ -124,8 +124,8 @@ class PlannerServiceTest {
         service.plan(MEMBER, new PlanRequest(loopFor(30), HERE, 300));
 
         // 30분 ÷ 390초/km ≈ 4.615km, 30분 ÷ 300초/km = 6km
-        verify(generator).generate(eq(Shape.LOOP), any(), any(), eq(4_615), any());
-        verify(generator).generate(eq(Shape.LOOP), any(), any(), eq(6_000), any());
+        verify(generator).generate(eq(Shape.LOOP), any(), any(), eq(4_615), any(), any());
+        verify(generator).generate(eq(Shape.LOOP), any(), any(), eq(6_000), any(), any());
     }
 
     // --- 사유와 한도 되돌리기
@@ -176,7 +176,7 @@ class PlannerServiceTest {
 
     @Test
     void allSimilarToExistingIsCounted() {
-        when(generator.generate(any(), any(), any(), any(), any())).thenReturn(List.of(new RoutedPath(List.of(HERE, HERE), 5_000, List.of())));
+        when(generator.generate(any(), any(), any(), any(), any(), any())).thenReturn(List.of(new RoutedPath(List.of(HERE, HERE), 5_000, List.of())));
         when(selector.select(any(), any(), any(), any(), any())).thenReturn(new Selection(List.of(), true, Set.of()));
 
         PlanResult result = service.plan(MEMBER, current(Shape.LOOP, 5_000));
@@ -259,6 +259,6 @@ class PlannerServiceTest {
     }
 
     private static PlanCandidate candidate(PoiCounts pois) {
-        return new PlanCandidate(List.of(HERE), 5_000, 0.01, 0.1, pois.stores(), pois.toilets(), null);
+        return new PlanCandidate(List.of(HERE), 5_000, 0.01, 0.1, pois.stores(), pois.toilets(), null, null, null, null);
     }
 }

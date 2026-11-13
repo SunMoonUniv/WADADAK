@@ -66,9 +66,13 @@ record PlanResult(List<PlanCandidate> candidates, PlanReason reason, String mess
      * @param storeCount    경로 50m 안 편의점 수
      * @param toiletCount   경로 100m 안 공중화장실 수
      * @param ascentMeters  경로를 따라 오른 높이(m). 표고점 파일이 없거나 높이를 모르는 곳이 많으면 null
+     * @param sidewalkRatio 인도가 있는 길 비율(0~1). 칸 집합 파일이 없으면 null(아래 둘도 같다)
+     * @param riverRatio    하천을 따라가는 비율(0~1)
+     * @param litRatio      가로등 · 보안등이 있는 길 비율(0~1)
      */
     record PlanCandidate(List<GeoPoint> anchorPoints, int distanceMeters, double retraceRatio, double arterialRatio,
-                         int storeCount, int toiletCount, Integer ascentMeters) {
+                         int storeCount, int toiletCount, Integer ascentMeters,
+                         Double sidewalkRatio, Double riverRatio, Double litRatio) {
     }
 
     enum PlanReason {

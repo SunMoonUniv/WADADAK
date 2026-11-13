@@ -109,7 +109,7 @@ class PlannerService implements CoursePlanner {
         String startName = places.startName();
 
         long placed = System.nanoTime();
-        List<RoutedPath> paths = generator.generate(form.shape(), places.start(), places.place(), target, deadline);
+        List<RoutedPath> paths = generator.generate(form.shape(), places.start(), places.place(), target, form.prefer(), deadline);
         long routed = System.nanoTime();
         if (paths.isEmpty() && !routing.healthy()) {
             log.warn("코스 자동 생성: 길찾기 서버가 응답하지 않는다");

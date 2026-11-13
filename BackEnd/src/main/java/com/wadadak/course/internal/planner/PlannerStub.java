@@ -80,7 +80,7 @@ class PlannerStub implements CoursePlanner, StubImplementation {
         if ("중복".equals(start)) {
             return PlanResult.similarExists(start);
         }
-        return PlanResult.found(candidates, start, Pref.notApplied(form.prefer(), true));
+        return PlanResult.found(candidates, start, Pref.notApplied(form.prefer(), Set.of()));
     }
 
     @Override

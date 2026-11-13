@@ -246,6 +246,8 @@ final class SentenceRules {
     private static final Pattern RIVER = Pattern.compile("(강|천|하천)\\s*(따라|변)|강변|river", Pattern.CASE_INSENSITIVE);
     private static final Pattern PARK = Pattern.compile("공원\\s*(안|위주|속)");
     private static final Pattern NO_RETRACE = Pattern.compile("반복\\s*없|같은\\s*길|두\\s*번\\s*안");
+    /** 밝은 길. "밤에"만으로는 붙이지 않는다(말한 것만 채운다) */
+    private static final Pattern LIT = Pattern.compile("밝은|환한|가로등|조명|어둡지\\s*않|안\\s*어두|(어두운|깜깜한)\\s*(길|곳|데)");
 
     static Set<Pref> keywordPrefs(String text) {
         Set<Pref> p = EnumSet.noneOf(Pref.class);
@@ -276,6 +278,9 @@ final class SentenceRules {
         }
         if (NO_RETRACE.matcher(text).find()) {
             p.add(Pref.NO_RETRACE);
+        }
+        if (LIT.matcher(text).find()) {
+            p.add(Pref.LIT);
         }
         return p;
     }

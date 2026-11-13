@@ -95,6 +95,9 @@ app:
       # 후보 오르막(평지 · 오르막 조건)에 쓰는 표고점 격자 파일. 저장소 밖 utilfile/elevation에 사람이 넣는다(deploy README).
       # 파일이 없으면 서버는 그대로 뜨고 평지 · 오르막만 반영하지 않는다. 로컬 기본값은 BackEnd/에서 본 경로다.
       spot-heights: ${PLANNER_SPOT_HEIGHTS:../utilfile/elevation/spot_heights.bin}
+      # 인도 · 강변 · 밝은 길 조건에 쓰는 칸 집합 파일(sidewalk.bin · river.bin · lamps.bin) 폴더. 저장소 밖 utilfile/layers에
+      # 사람이 넣는다(deploy README). 없는 파일의 조건만 반영하지 않는다.
+      layers-dir: ${PLANNER_LAYERS_DIR:../utilfile/layers}
       # 장소 이름 → 좌표. NAVER API HUB(NCP) 지역 검색, 0건이면 NCP 지오코딩(주소 · 동 이름). 앱(키)은 둘이 따로다.
       # 키가 비어 있으면 그 API를 부르지 않는다. 둘 다 비면 장소 입력은 못 찾은 것(PLACE_NOT_FOUND)이 된다.
       place:
