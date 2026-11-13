@@ -15,7 +15,7 @@
 | 스키마 | 모듈 | 테이블 |
 | --- | --- | --- |
 | `member` | member | `members`, `agreements`, `refresh_tokens`, `region_event_backfill` |
-| `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `gps_course_sources`, `completion_elevation_profiles`, `gps_source_completion_receipts`, `course_stats`, `course_daily_stats`, `course_completions`, `course_active_runners`, `course_bookmarks`, `daily_plan_counts`, `planner_pois`, `processed_events` |
+| `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `gps_course_sources`, `completion_elevation_profiles`, `gps_source_completion_receipts`, `course_stats`, `course_daily_stats`, `course_completions`, `course_active_runners`, `course_bookmarks`, `daily_plan_counts`, `planner_pois`, `planner_parse_logs`, `planner_plan_logs`, `processed_events` |
 | `ranking` | ranking | `course_ranking_entries`, `distance_run_records`, `course_status_copies`, `member_visibility_copies`, `member_region_history`, `withdrawn_members` |
 | `review` | review | `reviews`, `review_photos`, `review_reports`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
 | `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members`, `course_attempts`, `course_runner_counts`, `ghost_starts`, `ghost_start_playbacks`, `ghost_results`, `free_ghost_starts`, `free_ghost_results`, `ghost_comparisons`, `gps_source_links`, `gps_course_status_copies` |
@@ -211,6 +211,21 @@ erDiagram
         geography location "Point"
         varchar(7) base_month "원본 기준 월"
     }
+    planner_parse_logs {
+        uuid id PK
+        varchar(64) member_hash "sha256(회원 ID)"
+        text sentence "문장 원문"
+        jsonb jev_answers "Jev 답, 못 썼으면 null"
+        jsonb form "돌려준 폼"
+    }
+    planner_plan_logs {
+        uuid id PK
+        varchar(64) member_hash "sha256(회원 ID)"
+        uuid parse_log_id FK "10분 안 마지막 채우기"
+        jsonb form "보낸 폼"
+        jsonb candidates "후보 경로 점과 지표 전부"
+    }
+    planner_parse_logs ||..o{ planner_plan_logs : "parse_log_id"
     course_ranking_entries {
         uuid run_record_id PK "run 기록 ID"
         uuid course_id "course ID"
@@ -691,6 +706,41 @@ erDiagram
 | `base_month` | `VARCHAR(7)` | | 원본 기준 월. 예: `2026-09` |
 
 - `planner_pois_location_idx`: `location` GiST. 자동 생성 후보 경로 50m 안의 편의점 수와 100m 안의 화장실 수(원하는 길 `편의점 들르기` · `화장실 들르기`, 후보 요약)를 `ST_DWithin`으로 센다. 화장실은 주소 좌표라 건물 · 공원 가운데에 찍혀 더 넓게 본다.
+
+#### `course.planner_parse_logs` — 자동 생성 분석 로그(문장 → 폼)
+
+내부 테스트 · 논문 분석용(2026-11-13). 조건 자동 채우기 요청 하나당 한 줄. 회원 ID는 남기지 않는다. 분석이 끝나면 비운다.
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `id` | `UUID` | | PK |
+| `member_hash` | `VARCHAR(64)` | | `sha256(회원 ID)` 16진수. 같은 사람끼리만 묶는다 |
+| `sentence` | `TEXT` | | 사용자가 쓴 문장 원문 |
+| `jev_answers` | `JSONB` | O | Jev 답(질문별 `noul` 또는 `choice` + `probabilities`). Jev 실패 · 키 없음이면 null(규칙만으로 채움) |
+| `form` | `JSONB` | | 앱에 돌려준 폼. 무관한 문장이면 `message`만 있다 |
+| `elapsed_ms` | `INTEGER` | | 채우기에 걸린 시간 |
+| `created_at` | `TIMESTAMPTZ` | | |
+
+- `planner_parse_logs_member_idx`: `(member_hash, created_at DESC)`. 코스 찾기 로그를 저장할 때 같은 사람의 마지막 채우기를 찾는다.
+
+#### `course.planner_plan_logs` — 자동 생성 분석 로그(폼 → 코스)
+
+코스 찾기 요청 하나당 한 줄. 길찾기 서버 장애로 오류가 난 요청은 남지 않는다. 사용자의 현재 위치는 남기지 않는다.
+
+| 컬럼 | 타입 | NULL | 설명 |
+| --- | --- | --- | --- |
+| `id` | `UUID` | | PK |
+| `member_hash` | `VARCHAR(64)` | | `sha256(회원 ID)` |
+| `parse_log_id` | `UUID` | O | FK → `planner_parse_logs`(`ON DELETE SET NULL`). 저장할 때 같은 `member_hash`가 10분 안에 남긴 마지막 채우기. 없으면 null |
+| `form` | `JSONB` | | 사용자가 확인 · 수정해서 보낸 폼 |
+| `target_meters` | `INTEGER` | O | 목표 거리. 시간이면 페이스로 환산, 편도 · 경유에서 비우면 null |
+| `candidate_count` | `INTEGER` | | 후보 수 0~3 |
+| `reason` | `VARCHAR(20)` | O | 후보가 없을 때 사유(`PLACE_NOT_FOUND` · `PLACE_TOO_FAR` · `NO_CANDIDATES` · `SIMILAR_EXISTS`) |
+| `candidates` | `JSONB` | | 앱에 돌려준 후보 전부. 경로 점(`anchorPoints`)과 지표(거리 · 큰길 · 되돌아옴 비율 · 편의점 · 화장실 수 · 오르막 등) |
+| `place_ms` | `INTEGER` | | 장소 찾기 시간 |
+| `route_ms` | `INTEGER` | O | 길찾기 시간. 장소에서 끝났으면 null |
+| `select_ms` | `INTEGER` | O | 후보 고르기 시간. 장소에서 끝났으면 null |
+| `created_at` | `TIMESTAMPTZ` | | |
 
 #### `course.processed_events` — 이벤트 처리 기록
 

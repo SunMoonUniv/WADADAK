@@ -1,6 +1,11 @@
 package com.wadadak.course.internal.planner;
 
 import com.wadadak.TestcontainersConfiguration;
+import com.wadadak.common.geo.GeoPoint;
+import com.wadadak.course.internal.planner.PlanForm.Shape;
+import com.wadadak.course.internal.planner.PlanForm.Start;
+import com.wadadak.course.internal.planner.PlanForm.StartKind;
+import com.wadadak.course.internal.planner.PlanResult.PlanCandidate;
 import com.wadadak.course.internal.planner.PlannerRepository.PoiCounts;
 import com.wadadak.member.MemberApi;
 import org.junit.jupiter.api.Test;
@@ -18,6 +23,8 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -46,6 +53,9 @@ class PlannerRepositoryTest {
 
     @Autowired
     JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    PlannerLogRepository logs;
 
     @Test
     void rejectsOverLimit() {
@@ -141,6 +151,48 @@ class PlannerRepositoryTest {
         assertThat(jdbcTemplate.queryForObject(
                 "SELECT count(*) FROM course.planner_pois WHERE source_id LIKE 'toilet:%' AND kind = 'TOILET' AND base_month = '2026-10'",
                 Integer.class)).isEqualTo(50_643);
+    }
+
+    // --- 분석 로그
+
+    @Test
+    void planLogLinksSameMembersLatestParseWithoutIdsOrCoordinates() {
+        UUID member = UUID.randomUUID();
+        PlanForm form = new PlanForm(new Start(StartKind.CURRENT, null), Shape.LOOP, null, null, 5_000, null, Set.of(), null);
+        logs.saveParse(member, "처음 문장", null, form, 10);
+        logs.saveParse(UUID.randomUUID(), "다른 사람 문장", null, form, 10);
+        logs.saveParse(member, "5km 한 바퀴", null, form, 20);
+        GeoPoint here = new GeoPoint(36.7983, 127.0746);
+        PlanCandidate candidate = new PlanCandidate(List.of(here, here), 5_100, 0, 0.1, 3, 0, null, null, null, null);
+
+        logs.savePlan(member, new PlanRequest(form, here, null), PlanResult.found(List.of(candidate), null, Set.of()), 5, 300L, 7L);
+
+        Map<String, Object> row = jdbcTemplate.queryForMap("""
+                SELECT p.sentence, g.member_hash, g.candidates::text AS candidates, g.route_ms
+                FROM course.planner_plan_logs g JOIN course.planner_parse_logs p ON p.id = g.parse_log_id
+                WHERE g.member_hash = (SELECT member_hash FROM course.planner_parse_logs WHERE sentence = '처음 문장')""");
+        // 같은 사람의 마지막 채우기와 잇는다(다른 사람 문장 · 더 이른 문장이 아니라)
+        assertThat(row.get("sentence")).isEqualTo("5km 한 바퀴");
+        // 회원 ID는 해시로만 남기고, 후보는 경로 점까지 전부 남긴다
+        assertThat((String) row.get("member_hash")).hasSize(64).doesNotContain(member.toString());
+        assertThat((String) row.get("candidates")).contains("\"distanceMeters\": 5100").contains("anchorPoints");
+        assertThat(row.get("route_ms")).isEqualTo(300);
+    }
+
+    @Test
+    void planLogWithoutRecentParseIsUnlinked() {
+        UUID member = UUID.randomUUID();
+        PlanForm form = new PlanForm(new Start(StartKind.CURRENT, null), Shape.LOOP, null, null, 5_000, null, Set.of(), null);
+        logs.saveParse(member, "오래된 문장", null, form, 10);
+        jdbcTemplate.update("UPDATE course.planner_parse_logs SET created_at = now() - interval '11 minutes' WHERE sentence = '오래된 문장'");
+
+        logs.savePlan(member, new PlanRequest(form, new GeoPoint(36.7983, 127.0746), null),
+                PlanResult.placeNotFound("없는 곳", null), 5, null, null);
+
+        // 10분이 지난 채우기와는 잇지 않는다. 길을 찾지 않았으니 길찾기 시간도 비어 있다
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT count(*) FROM course.planner_plan_logs
+                WHERE parse_log_id IS NULL AND reason = 'PLACE_NOT_FOUND' AND route_ms IS NULL""", Integer.class)).isEqualTo(1);
     }
 
     private void poi(String sourceId, String kind, double lng, double lat) {

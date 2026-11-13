@@ -101,7 +101,7 @@ void main() {
 
     // A1
     expect(find.text('오늘 남은 코스 추천 19회'), findsOneWidget);
-    expect(find.text('입력한 문장은 조건을 읽기 위해 외부 AI로 보내요.\n위치는 보내지 않아요.'), findsOneWidget);
+    expect(find.text('입력한 문장은 조건을 읽기 위해 외부 AI로 보내고, 서비스 개선을 위해 저장해요.\n위치는 보내지 않아요.'), findsOneWidget);
     expect(button(tester, '조건 자동 채우기'), isNull, reason: '문장이 비면 누를 수 없다');
     await tester.enterText(find.byType(TextField), '선문대에서 큰길 피해서 한 바퀴');
     await tester.pump();

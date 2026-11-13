@@ -27,7 +27,8 @@ import java.util.UUID;
  *
  * <p>생성은 한도를 먼저 잡고 그때부터 기한({@code app.course.planner.deadline})을 잰다. 길을 찾지 않고 끝나거나(장소 없음 · 너무 멂 ·
  * 지역 없음) 서버가 실패하면 한도를 되돌린다. 외부 호출이 길어 트랜잭션으로 묶지 않는다.
- * 로그에는 단계별 시간 · 후보 수 · 사유만 남긴다. 문장 · 장소 이름 · 좌표는 남기지 않는다.
+ * 서버 로그에는 단계별 시간 · 후보 수 · 사유만 남긴다. 문장 · 장소 이름 · 좌표는 남기지 않는다.
+ * 문장 · 폼 · 후보(경로 점 포함)는 분석 로그 테이블({@link PlannerLogRepository})에만 남긴다(회원 ID · 현재 위치 없이).
  */
 @Slf4j
 @Service
@@ -42,6 +43,7 @@ class PlannerService implements CoursePlanner {
     static final int TOILET_METERS = 100;
 
     private final PlannerRepository repository;
+    private final PlannerLogRepository logs;
     private final SentenceParser parser;
     private final PlaceSearch placeSearch;
     private final RegionResolver regionResolver;
@@ -51,10 +53,11 @@ class PlannerService implements CoursePlanner {
     private final Clock clock;
     private final Duration deadline;
 
-    PlannerService(PlannerRepository repository, SentenceParser parser, PlaceSearch placeSearch, RegionResolver regionResolver,
+    PlannerService(PlannerRepository repository, PlannerLogRepository logs, SentenceParser parser, PlaceSearch placeSearch, RegionResolver regionResolver,
                    CandidateGenerator generator, CandidateSelector selector, RoutingClient routing, Clock clock,
                    @Value("${app.course.planner.deadline}") Duration deadline) {
         this.repository = repository;
+        this.logs = logs;
         this.parser = parser;
         this.placeSearch = placeSearch;
         this.regionResolver = regionResolver;
@@ -70,7 +73,10 @@ class PlannerService implements CoursePlanner {
         if (!repository.reserve(memberId, today(), PlannerRepository.PARSE, PARSE_LIMIT)) {
             throw new AppException(CourseErrorCode.PARSE_DAILY_LIMIT_EXCEEDED);
         }
-        return parser.parse(text);
+        long started = System.nanoTime();
+        SentenceParser.Parsed parsed = parser.parse(text);
+        logs.saveParse(memberId, text, parsed.jev(), parsed.form(), millis(started, System.nanoTime()));
+        return parsed.form();
     }
 
     @Override
@@ -83,6 +89,7 @@ class PlannerService implements CoursePlanner {
         try {
             Outcome outcome = plan(request, clock.instant().plus(deadline));
             counted = outcome.routed();
+            logs.savePlan(memberId, request, outcome.result(), outcome.placeMs(), outcome.routeMs(), outcome.selectMs());
             return outcome.result();
         } finally {
             if (!counted) {
@@ -103,8 +110,9 @@ class PlannerService implements CoursePlanner {
 
         Places places = places(request, target);
         if (places.failure() != null) {
-            log.info("코스 자동 생성: {} 장소 {}ms {}", form.shape(), millis(started, System.nanoTime()), places.failure().reason());
-            return new Outcome(places.failure(), false);
+            long placeMs = millis(started, System.nanoTime());
+            log.info("코스 자동 생성: {} 장소 {}ms {}", form.shape(), placeMs, places.failure().reason());
+            return new Outcome(places.failure(), false, placeMs, null, null);
         }
         String startName = places.startName();
 
@@ -120,9 +128,12 @@ class PlannerService implements CoursePlanner {
         PlanResult result = !selection.candidates().isEmpty() ? PlanResult.found(selection.candidates(), startName, selection.notApplied())
                 : selection.allSimilarToExisting() ? PlanResult.similarExists(startName)
                 : PlanResult.noCandidates(form.shape() == Shape.LOOP, startName);
-        log.info("코스 자동 생성: {} 장소 {}ms 길찾기 {}ms({}개) 고르기 {}ms 후보 {}개 {}", form.shape(), millis(started, placed),
-                millis(placed, routed), paths.size(), millis(routed, System.nanoTime()), result.candidates().size(), result.reason());
-        return new Outcome(result, true);
+        long placeMs = millis(started, placed);
+        long routeMs = millis(placed, routed);
+        long selectMs = millis(routed, System.nanoTime());
+        log.info("코스 자동 생성: {} 장소 {}ms 길찾기 {}ms({}개) 고르기 {}ms 후보 {}개 {}", form.shape(), placeMs,
+                routeMs, paths.size(), selectMs, result.candidates().size(), result.reason());
+        return new Outcome(result, true, placeMs, routeMs, selectMs);
     }
 
     /** 출발지와 도착지 · 경유지를 찾는다. 못 찾았거나 너무 멀거나 지역 데이터 밖이면 그 안내만 돌려준다 */
@@ -174,8 +185,11 @@ class PlannerService implements CoursePlanner {
         return LocalDate.now(clock.withZone(TimeConfig.SEOUL));
     }
 
-    /** @param routed 길찾기를 했는지. false면 한도를 되돌린다 */
-    private record Outcome(PlanResult result, boolean routed) {
+    /**
+     * @param routed  길찾기를 했는지. false면 한도를 되돌린다
+     * @param routeMs 길찾기 시간. 장소에서 끝났으면 null(selectMs도 같다)
+     */
+    private record Outcome(PlanResult result, boolean routed, long placeMs, Long routeMs, Long selectMs) {
     }
 
     /**

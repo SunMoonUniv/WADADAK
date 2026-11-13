@@ -266,8 +266,8 @@ class _AutoCourseViewState extends ConsumerState<AutoCourseView> {
                   WdButton(_parsing ? '조건 읽는 중…' : '조건 자동 채우기',
                       onPressed: _text.text.trim().isEmpty || _parsing ? null : _parse),
                   if (notice != null) WdInfoBanner(notice, tone: WdBannerTone.warning),
-                  // 문장 국외 전송 고지(정책 B3-A06).
-                  const WdInfoBanner('입력한 문장은 조건을 읽기 위해 외부 AI로 보내요.\n위치는 보내지 않아요.'),
+                  // 문장 국외 전송 · 분석 저장 고지(정책 B3-A06).
+                  const WdInfoBanner('입력한 문장은 조건을 읽기 위해 외부 AI로 보내고, 서비스 개선을 위해 저장해요.\n위치는 보내지 않아요.'),
                   Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     spacing: WdSpace.s8,
