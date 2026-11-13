@@ -36,6 +36,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -57,13 +58,14 @@ class PlannerServiceTest {
     private static final LineString LINE = CourseGeometry.lineString(List.of(HERE, destination(HERE, 1_000, 0)));
 
     private final PlannerRepository repository = mock(PlannerRepository.class);
+    private final PlannerLogRepository logs = mock(PlannerLogRepository.class);
     private final SentenceParser parser = mock(SentenceParser.class);
     private final PlaceSearch placeSearch = mock(PlaceSearch.class);
     private final RegionResolver regionResolver = mock(RegionResolver.class);
     private final CandidateGenerator generator = mock(CandidateGenerator.class);
     private final CandidateSelector selector = mock(CandidateSelector.class);
     private final RoutingClient routing = mock(RoutingClient.class);
-    private final PlannerService service = new PlannerService(repository, parser, placeSearch, regionResolver, generator, selector,
+    private final PlannerService service = new PlannerService(repository, logs, parser, placeSearch, regionResolver, generator, selector,
             routing, Clock.fixed(NOW, ZoneOffset.UTC), Duration.ofSeconds(10));
 
     @BeforeEach
@@ -97,6 +99,7 @@ class PlannerServiceTest {
             assertThat(c.toiletCount()).isEqualTo(2);
         });
         verify(repository).reserve(MEMBER, TODAY, PlannerRepository.PLAN, PlannerService.PLAN_LIMIT);
+        verify(logs).savePlan(eq(MEMBER), any(), eq(result), anyLong(), any(), any());
         // 기한은 한도를 잡은 때부터 10초
         verify(generator).generate(Shape.LOOP, HERE, null, 5_000, Set.of(), NOW.plusSeconds(10));
         verify(selector).select(eq(Shape.LOOP), eq(5_000), eq(paths), eq(Set.of()), any());
@@ -217,10 +220,12 @@ class PlannerServiceTest {
     @Test
     void parseCountsAndFillsForm() {
         PlanForm form = loopFor(30);
-        when(parser.parse("30분 한 바퀴")).thenReturn(form);
+        when(parser.parse("30분 한 바퀴")).thenReturn(new SentenceParser.Parsed(form, null));
 
         assertThat(service.parse(MEMBER, "30분 한 바퀴")).isSameAs(form);
         verify(repository).reserve(MEMBER, TODAY, PlannerRepository.PARSE, PlannerService.PARSE_LIMIT);
+        // 분석 로그에 문장 · 폼을 남긴다(Jev를 못 썼으면 답은 null)
+        verify(logs).saveParse(eq(MEMBER), eq("30분 한 바퀴"), eq(null), eq(form), anyLong());
     }
 
     @Test

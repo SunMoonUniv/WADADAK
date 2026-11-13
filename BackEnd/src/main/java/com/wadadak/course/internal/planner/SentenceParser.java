@@ -40,8 +40,14 @@ class SentenceParser {
         this.jev = jev;
     }
 
-    PlanForm parse(String text) {
-        return fill(text, jev.ask(text));
+    /** 폼과 함께 Jev 답도 돌려준다. 답은 분석 로그({@link PlannerLogRepository})에만 쓴다 */
+    Parsed parse(String text) {
+        Optional<JevAnswers> answers = jev.ask(text);
+        return new Parsed(fill(text, answers), answers.orElse(null));
+    }
+
+    /** @param jev Jev를 못 썼으면(실패 · 키 없음) null. 이때 폼은 규칙만으로 채웠다 */
+    record Parsed(PlanForm form, JevAnswers jev) {
     }
 
     static PlanForm fill(String text, Optional<JevAnswers> jev) {
