@@ -84,6 +84,7 @@ mkdir C:\actions-runner-wadadak; cd C:\actions-runner-wadadak
 | `NAVER_SEARCH_CLIENT_ID` · `NAVER_SEARCH_CLIENT_SECRET` | 코스 자동 생성의 장소 검색. NCP 콘솔 NAVER API HUB에 등록한 지역 검색 앱의 Client ID · Secret. 없으면 서버는 뜨고 장소 입력만 못 찾는다 |
 | `NAVER_GEOCODE_CLIENT_ID` · `NAVER_GEOCODE_CLIENT_SECRET` | 장소 검색이 0건일 때 쓰는 NCP Maps 지오코딩 앱의 Client ID · Secret. 없으면 지오코딩을 건너뛴다 |
 | `TYPESAFE_API_KEY` | 코스 자동 생성의 문장 → 폼 보충용 판단 모델 Jev(TypeSafe) 키. 없으면 규칙만 쓴다 |
+| `ADMIN_USERNAME` · `ADMIN_PASSWORD` | 운영자 웹(`https://api.leedohyunn8n.shop/admin/`) 공용 운영자 계정. 없으면 운영자 API만 401이다 |
 
 JWT 키 만들기(Git Bash). 출력한 두 줄을 Secrets에 넣고 파일은 지운다:
 
