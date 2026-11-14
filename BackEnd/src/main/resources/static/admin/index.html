@@ -10,6 +10,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700&family=Geist:wght@600&display=swap" rel="stylesheet">
 <!--
   운영자 웹(Figma "🛠 운영자 페이지" ADM-1 · ADM-1-1 · ADM-2 · ADM-2-1 · ADM-2-2). 빌드 도구 없이 이 파일 하나로 돈다.
+  "코스 생성 로그"는 Figma 시안 없이 같은 카드 · 표 · 패널 틀로 만들었다(코스 자동 생성 분석 로그, 2026-11-13).
   서버가 /admin 으로 내보내고, 데이터는 /api/v1/admin/** 를 운영자 계정(HTTP Basic)으로 부른다.
   아이디:비밀번호는 이 탭의 sessionStorage에만 둔다(탭을 닫으면 다시 로그인).
   색은 Figma 변수 모음 "운영자 웹 · Admin" 값이다. 앱 디자인 토큰과는 따로 간다.
@@ -143,6 +144,7 @@
   .drawer .close { margin-left: auto; border: 0; background: none; width: 32px; height: 32px; border-radius: 8px; display: grid; place-items: center; }
   .drawer .close:hover { background: var(--soft); }
   .drawer .body { flex: 1; overflow-y: auto; padding: 20px 24px 28px; display: grid; gap: 24px; align-content: start; }
+  .drawer .body > * { min-width: 0; } /* 넓은 표가 패널을 옆으로 밀지 않고 표 안에서 가로로 넘기게 한다 */
   .drawer footer { display: flex; align-items: center; gap: 8px; padding: 14px 24px; border-top: 1px solid var(--border); font-size: 12px; color: var(--text-secondary); }
   .drawer footer .spacer { flex: 1; }
   .section h4 { margin: 0 0 10px; font: 700 15px/22px var(--font); letter-spacing: -.15px; display: flex; align-items: center; gap: 6px; }
@@ -208,6 +210,7 @@
     <nav class="nav">
       <a href="#members" data-page="members">회원 관리</a>
       <a href="#reviews" data-page="reviews">리뷰 관리</a>
+      <a href="#logs" data-page="logs">코스 생성 로그</a>
     </nav>
     <button class="logout" id="logout" type="button">로그아웃</button>
   </aside>
@@ -339,7 +342,9 @@ $("#logout").addEventListener("click", () => logout());
 const state = {
   members: { socialProvider: "", runningExperience: "", page: 0 },
   reviews: { tab: "all", rating: "", days: "", page: 0, status: "", reason: "", reportPage: 0 },
+  logs: { days: "", result: "", jev: "", page: 0 },
 };
+const PAGES = { members: () => renderMembers(), reviews: () => renderReviews(), logs: () => renderLogs() };
 const SIZE = 20;
 
 function start() {
@@ -349,10 +354,11 @@ function start() {
 }
 
 function route() {
-  const page = location.hash === "#reviews" ? "reviews" : "members";
+  const hash = location.hash.slice(1);
+  const page = Object.hasOwn(PAGES, hash) ? hash : "members";
   document.querySelectorAll(".nav a").forEach((a) => a.dataset.page === page ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current"));
   closeDrawer();
-  (page === "reviews" ? renderReviews : renderMembers)();
+  PAGES[page]();
 }
 window.addEventListener("hashchange", route);
 
@@ -673,6 +679,159 @@ async function handle(reviewId, result, memo) {
     buttons.forEach((b) => b.disabled = false);
     showError(err);
   }
+}
+
+// ---------- 코스 생성 로그 (코스 자동 생성 분석 로그) ----------
+const PLAN = {
+  shape: { LOOP: "한 바퀴", OUT_AND_BACK: "왕복", POINT_TO_POINT: "편도", VIA: "경유" },
+  pref: { FLAT: "평지", HILLY: "오르막", SIDEWALK: "인도", AVOID_ARTERIAL: "큰길 피하기", STORE_ON_ROUTE: "편의점 들르기",
+    TOILET_ON_ROUTE: "화장실 들르기", RIVER: "강변", PARK: "공원", NO_RETRACE: "같은 길 반복 없이", LIT: "밝은 길" },
+  reason: { PLACE_NOT_FOUND: "장소 못 찾음", PLACE_TOO_FAR: "장소가 너무 멂", NO_CANDIDATES: "길 없음", SIMILAR_EXISTS: "비슷한 코스 있음" },
+};
+const pct = (v) => v == null ? "–" : `${Math.round(v * 100)}%`;
+const sec = (ms) => ms == null ? "–" : ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}초`;
+const km = (m) => m == null ? "–" : `${Number((m / 1000).toFixed(2))}km`;
+
+// 폼의 칸을 사람이 읽는 말로. 수정 비교도 이 칸 단위로 한다
+const FORM_FIELDS = [
+  ["출발", (f) => f.start?.kind === "PLACE" ? (f.start.query || "장소(이름 없음)") : "현재 위치"],
+  ["모양", (f) => PLAN.shape[f.shape] ?? f.shape ?? "–"],
+  ["거리 · 시간", (f) => f.distanceM != null ? km(f.distanceM) : f.durationMin != null ? `${f.durationMin}분` : "–"],
+  ["도착지 · 경유지", (f) => f.endQuery || f.viaQuery || "–"],
+  ["원하는 길", (f) => (f.prefer ?? []).map((p) => PLAN.pref[p] ?? p).sort().join(" · ") || "–"],
+];
+const formSummary = (f) => f.message ? "코스와 무관한 문장"
+  : FORM_FIELDS.map(([, text]) => text(f)).filter((t) => t !== "–" && t !== "현재 위치").join(" · ");
+
+async function renderLogs() {
+  const s = state.logs;
+  $("#main").innerHTML = `
+    <h2>코스 생성 로그</h2>
+    <p class="lead">코스 자동 생성에 들어온 문장과, 채운 폼 · 코스 찾기 결과를 볼 수 있어요</p>
+    <div class="stats" id="log-stats"></div>
+    <div class="filters" id="log-filters">
+      ${select("days", "기간", [["", "전체"], [1, "오늘"], [7, "최근 7일"], [30, "최근 30일"]], s.days)}
+      ${select("result", "결과", [["", "전체"], ["FOUND", "후보 있음"], ["NONE", "후보 없음"], ["NOT_PLANNED", "찾기 안 함"]], s.result)}
+      ${select("jev", "Jev", [["", "전체"], ["true", "사용"], ["false", "규칙만"]], s.jev)}
+      <span class="spacer"></span>
+      <button class="btn" type="button" id="log-export">CSV 받기</button>
+      <button class="btn" type="button" id="log-refresh">새로고침</button>
+    </div>
+    <div class="card"><div class="table-wrap" id="log-table"></div><div class="foot" id="log-foot"></div></div>`;
+  $("#log-filters").addEventListener("change", (e) => {
+    s[e.target.name] = e.target.value;
+    s.page = 0;
+    if (e.target.name === "days") loadLogStats(); // 숫자 카드는 기간만 따른다
+    loadLogs();
+  });
+  $("#log-refresh").onclick = renderLogs;
+  $("#log-export").onclick = exportLogs;
+  loadLogStats();
+  loadLogs();
+}
+
+async function loadLogStats() {
+  let st;
+  try { st = await api(`/api/v1/admin/planner-logs/stats?${query({ days: state.logs.days })}`); } catch (err) { return showError(err); }
+  $("#log-stats").innerHTML = [["문장 채우기", num(st.parses)], ["코스 찾기", num(st.plans)], ["Jev 사용률", pct(st.jevRate)],
+    ["폼 수정률", pct(st.editedRate)], ["후보 없음", pct(st.noCandidateRate)], ["평균 찾기 시간", sec(st.planMs)]]
+    .map(([k, v]) => `<div class="stat"><span>${k}</span><b>${v}</b></div>`).join("");
+}
+
+function planCell(p) {
+  if (!p) return chip("찾기 안 함");
+  const result = p.candidateCount > 0 ? chip(`후보 ${p.candidateCount}개`, "success") : chip(PLAN.reason[p.reason] ?? p.reason, "warning");
+  return `<span class="chips">${result}${p.edited ? chip("폼 수정", "danger") : ""}${p.count > 1 ? chip(`찾기 ${p.count}회`) : ""}</span>`;
+}
+
+async function loadLogs() {
+  const s = state.logs;
+  try {
+    const data = await api(`/api/v1/admin/planner-logs?${query({ days: s.days, result: s.result, jev: s.jev, page: s.page, size: SIZE })}`);
+    const rows = data.content;
+    $("#log-table").innerHTML = rows.length ? `
+      <table>
+        <thead><tr><th>시각</th><th>사용자</th><th>문장</th><th>채운 폼</th><th>Jev</th><th>코스 찾기</th><th>시간</th><th>관리</th></tr></thead>
+        <tbody>${rows.map((r) => `
+          <tr>
+            <td>${dateTime(r.createdAt)}</td>
+            <td><code>${esc(r.user)}</code></td>
+            <td class="clip strong" title="${esc(r.sentence)}">${esc(r.sentence)}</td>
+            <td class="clip" title="${esc(formSummary(r.form))}">${esc(formSummary(r.form))}</td>
+            <td>${r.jevUsed ? chip("사용", "success") : chip("규칙만")}</td>
+            <td>${planCell(r.plan)}</td>
+            <td>${sec(r.elapsedMs)}${r.plan ? ` · ${sec(r.plan.totalMs)}` : ""}</td>
+            <td><button class="btn" type="button" data-log="${esc(r.id)}">상세</button></td>
+          </tr>`).join("")}</tbody>
+      </table>` : `<div class="empty">조건에 맞는 로그가 없어요</div>`;
+    $("#log-table").onclick = (e) => { const id = e.target.closest("[data-log]")?.dataset.log; if (id) openLog(id); };
+    const foot = $("#log-foot");
+    foot.innerHTML = `<span>${range(s.page, rows.length, data.totalCount)}개 · 시간은 채우기 · 찾기</span>`;
+    foot.append(pager(s.page, data.totalCount, (p) => { s.page = p; loadLogs(); }));
+  } catch (err) { showError(err); }
+}
+
+async function openLog(id) {
+  let d;
+  try { d = await api(`/api/v1/admin/planner-logs/${encodeURIComponent(id)}`); } catch (err) { return showError(err); }
+  const rows = (pairs) => `<dl class="rows">${pairs.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("")}</dl>`;
+  // Jev 답: 예/아니오(noul)는 "예"일 확률, 고르기(choice)는 고른 보기와 그 확률
+  const answers = d.jevAnswers?.answers ?? {};
+  const jev = d.jevAnswers ? rows(Object.keys(answers).sort().map((k) => {
+    const a = answers[k];
+    return [k, a.choice != null ? `${esc(a.choice)} <small>${pct(a.probabilities?.[a.choice])}</small>` : pct(a.noul)];
+  })) : `<p class="detail">Jev를 쓰지 못해(실패 · 키 없음) 규칙만으로 채웠어요</p>`;
+  const plans = d.plans.map((p, i) => {
+    const changes = FORM_FIELDS.filter(([, text]) => text(d.form) !== text(p.form))
+      .map(([label, text]) => [label, `${esc(text(d.form))} → <b>${esc(text(p.form))}</b>`]);
+    const cands = p.candidates.length ? `<div class="card"><div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>거리</th><th>큰길</th><th>되돌아옴</th><th>편의점</th><th>화장실</th><th>오르막</th><th>경로 점</th></tr></thead>
+        <tbody>${p.candidates.map((c, j) => `<tr><td>${j + 1}</td><td>${km(c.distanceMeters)}</td><td>${pct(c.arterialRatio)}</td>
+          <td>${pct(c.retraceRatio)}</td><td>${num(c.storeCount)}</td><td>${num(c.toiletCount)}</td>
+          <td>${c.ascentMeters == null ? "–" : `${c.ascentMeters}m`}</td><td>${num(c.anchorPoints?.length)}개</td></tr>`).join("")}</tbody>
+      </table></div></div>` : "";
+    return `<section class="section">
+      <h4>코스 찾기 ${d.plans.length > 1 ? i + 1 : ""} ${p.candidateCount > 0 ? chip(`후보 ${p.candidateCount}개`, "success") : chip(PLAN.reason[p.reason] ?? p.reason, "warning")}
+        ${p.edited ? chip("폼 수정", "danger") : chip("그대로 보냄")}</h4>
+      ${rows([
+        ["시각", dateTime(p.createdAt)],
+        ["보낸 폼", esc(formSummary(p.form))],
+        ...changes.map(([k, v]) => [`바뀐 칸 · ${k}`, v]),
+        ["목표 거리", km(p.targetMeters)],
+        ["걸린 시간", `장소 ${sec(p.placeMs)} · 길찾기 ${sec(p.routeMs)} · 고르기 ${sec(p.selectMs)}`],
+      ])}
+      ${cands}
+    </section>`;
+  }).join("");
+  openDrawer(`
+    <header>
+      <div><h3>코스 생성 로그 ${d.jevAnswers ? chip("Jev 사용", "success") : chip("규칙만")}</h3>
+        <p>${dateTime(d.createdAt)} · 사용자 ${esc(d.user)} · 채우기 ${sec(d.elapsedMs)}</p></div>
+      <button class="close" type="button" data-close aria-label="닫기">${CLOSE}</button>
+    </header>
+    <div class="body">
+      <section class="section"><h4>입력한 문장</h4><div class="review-box"><div class="content">${esc(d.sentence)}</div></div></section>
+      <section class="section"><h4>채운 폼</h4>${d.form.message
+        ? `<p class="detail">${esc(d.form.message)}</p>`
+        : rows(FORM_FIELDS.map(([label, text]) => [label, esc(text(d.form))]))}</section>
+      <section class="section"><h4>Jev 답</h4>${jev}</section>
+      ${plans || `<section class="section"><h4>코스 찾기</h4><p class="detail">이 문장으로 10분 안에 코스 찾기를 하지 않았어요</p></section>`}
+    </div>`);
+}
+
+async function exportLogs() {
+  const btn = $("#log-export");
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/v1/admin/planner-logs/export?${query({ days: state.logs.days })}`,
+      { headers: { Authorization: `Basic ${sessionStorage.getItem(KEY)}` } });
+    if (res.status === 401) return logout("다시 로그인해 주세요.");
+    if (!res.ok) throw new Error("CSV를 받지 못했어요.");
+    const name = /filename="?([^";]+)"?/.exec(res.headers.get("Content-Disposition") ?? "")?.[1] ?? "planner-logs.csv";
+    const a = Object.assign(document.createElement("a"), { href: URL.createObjectURL(await res.blob()), download: name });
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000); // 바로 지우면 일부 브라우저가 받기를 취소한다
+  } catch (err) { toast(err.message); } finally { btn.disabled = false; }
 }
 
 // ---------- 오른쪽 패널 ----------
