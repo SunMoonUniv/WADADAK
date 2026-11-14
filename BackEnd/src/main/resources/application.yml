@@ -56,6 +56,10 @@ app:
     request-log:
       # true: 요청마다 한 줄 로그(메서드 · 경로 · 상태 · 처리 시간 · IP). 공용 서버(deploy/compose.yaml)에서 켠다.
       enabled: false
+    # 서비스 사이 내부 API(/internal/v1/**, MSA 분리 2단계, 개발 정책 11.3). 게이트웨이가 /internal을 막기 전(4단계)에는
+    # 터널로 밖에서 닿으므로 끈다. 계약 테스트(InternalApiContractTests)와 분리 뒤 core 서비스에서만 켠다.
+    internal-api:
+      enabled: false
     # 사진 저장소(S3 호환 RustFS). 로컬은 BackEnd/compose.yaml, 공용 서버는 deploy/compose.yaml.
     storage:
       endpoint: ${STORAGE_ENDPOINT:http://localhost:9000}
