@@ -59,8 +59,9 @@ class EventBrokerTests {
     EventExternalizationConfiguration externalization;
 
     @BeforeEach
-    void emptyRunQueue() {
+    void emptyServiceQueues() {
         rabbitAdmin.purgeQueue(EventBrokerConfig.RUN_QUEUE);
+        rabbitAdmin.purgeQueue(EventBrokerConfig.CORE_QUEUE);
     }
 
     @Test
@@ -90,6 +91,19 @@ class EventBrokerTests {
         assertThat(message).isNotNull();
         assertThat(message.getMessageProperties().getReceivedRoutingKey()).isEqualTo("CourseRunStartedEvent");
         assertThat(rabbitTemplate.receive(EventBrokerConfig.RUN_QUEUE)).isNull();
+    }
+
+    @Test
+    void eventRunPublishesLandsInCoreQueue() {
+        CourseRunStartedEvent event = new CourseRunStartedEvent(UUID.randomUUID(), Instant.now(),
+                UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+
+        transactionTemplate.executeWithoutResult(status -> publisher.publishEvent(event));
+
+        Message message = rabbitTemplate.receive(EventBrokerConfig.CORE_QUEUE, RECEIVE_TIMEOUT_MS);
+        assertThat(message).isNotNull();
+        assertThat(message.getMessageProperties().getReceivedExchange()).isEqualTo("wadadak.run");
+        assertThat(message.getMessageProperties().getReceivedRoutingKey()).isEqualTo("CourseRunStartedEvent");
     }
 
     @Test
