@@ -1,0 +1,20 @@
+plugins {
+    id 'org.springframework.boot'
+}
+
+// run 서비스(MSA 분리 3단계). 3단계에서는 빌드 · 테스트만 하고 배포하지 않는다. 브로커 수신은 전환 PR에서 붙인다.
+// 지역 · 사진 jar는 의존하지 않는다(run은 쓰지 않는다, 개발 정책 3.3).
+dependencies {
+    implementation project(':modules:run')
+
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
+    implementation 'org.springframework.modulith:spring-modulith-observability-api'
+    implementation 'org.springframework.modulith:spring-modulith-starter-jpa'
+    runtimeOnly 'org.flywaydb:flyway-database-postgresql'
+    runtimeOnly 'org.postgresql:postgresql'
+    runtimeOnly 'org.springframework.modulith:spring-modulith-actuator'
+    runtimeOnly 'org.springframework.modulith:spring-modulith-observability-core'
+
+    testImplementation testFixtures(project(':libs:common-core'))
+}

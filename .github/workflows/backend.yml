@@ -72,7 +72,8 @@ jobs:
       # BackEnd가 그대로면 캐시로 같은 이미지가 나와 서버를 다시 띄우지 않는다.
       # provenance(빌드 시각이 든 출처 정보)를 붙이면 매번 다른 이미지가 되어 꺼 둔다.
       - name: 이미지 빌드
-        run: docker build --provenance=false -t wadadak-backend BackEnd
+        # MSA 분리 3단계: core 이미지에 run이 함께 들어 있다(deploy/MSA 분리 준비와 CI·CD 7.1). 이름은 그대로다
+        run: docker build --provenance=false -f BackEnd/services/core/Dockerfile -t wadadak-backend BackEnd
       # 바뀐 서비스만 교체하고 healthy가 될 때까지 기다린다. 서버가 못 뜨면 이 작업이 실패한다.
       - name: 서버 교체
         env:

@@ -1,0 +1,6 @@
+// 모듈 간 이벤트 record(메시지 계약). 외부화 때문에 Modulith에 의존하지는 않는다.
+// package-info의 @ApplicationModule(type = OPEN) 때문에 spring-modulith-api를 쓴다.
+dependencies {
+    api project(':libs:common-core')
+    api 'org.springframework.modulith:spring-modulith-api'
+}

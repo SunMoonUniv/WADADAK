@@ -1,0 +1,4 @@
+// 지역(법정동) 조회 · PostGIS 확장 마이그레이션. 지역을 쓰는 모듈이 있는 서비스만 의존한다(개발 정책 3.3).
+dependencies {
+    api project(':libs:common-core')
+}

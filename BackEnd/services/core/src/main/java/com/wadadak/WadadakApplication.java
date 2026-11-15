@@ -14,9 +14,13 @@ public class WadadakApplication {
 
     public static void main(String[] args) {
         SpringApplication app = new SpringApplication(WadadakApplication.class);
-        // 저장소 루트를 작업 폴더로 띄워도(IntelliJ 기본값) BackEnd/.local의 로컬 키를 찾는다.
-        if (Files.isDirectory(Path.of("BackEnd", ".local"))) {
-            app.setDefaultProperties(Map.of("app.local-dir", "BackEnd/.local"));
+        // 저장소 루트나 services/core를 작업 폴더로 띄워도(IntelliJ) BackEnd/.local의 로컬 키를 찾는다.
+        // gradlew bootRun은 BackEnd에서 띄운다(build.gradle).
+        for (String dir : new String[]{"BackEnd/.local", "../../.local"}) {
+            if (Files.isDirectory(Path.of(dir))) {
+                app.setDefaultProperties(Map.of("app.local-dir", dir));
+                break;
+            }
         }
         app.run(args);
     }

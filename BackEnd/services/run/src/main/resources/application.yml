@@ -1,0 +1,52 @@
+# run 서비스(MSA 분리 3단계, 개발 정책 11.3 · deploy/MSA 분리 준비와 CI·CD 5장).
+# 3단계에서는 빌드 · 테스트만 한다. 배포 설정(compose · 비밀값)은 전환 PR에서 넣는다.
+spring:
+  application:
+    name: wadadak-run
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/wadadak}
+    # 운영은 run 스키마 권한만 가진 계정이다(7.4 RUN_DB_PASSWORD)
+    username: ${RUN_DB_USERNAME:wadadak}
+    password: ${RUN_DB_PASSWORD:wadadak}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        # 엔티티는 @Table(schema = "run")이다. 기본 스키마는 Modulith 아웃박스(run.event_publication)용이다.
+        default_schema: run
+        jdbc:
+          time_zone: UTC
+  flyway:
+    # run 마이그레이션만 읽는다. 기본값(db/migration)은 common-core jar의 db/migration/common까지 읽는다.
+    locations: classpath:db/migration/run
+    default-schema: run
+    out-of-order: true
+    # 운영 DB의 run 스키마는 모놀리스가 만들어 이력이 common.flyway_schema_history에 있다.
+    # 처음 뜰 때 run 스키마에 이력 테이블만 만들고 이 버전까지는 적용된 것으로 본다. 전환 PR에서 그 시점 마지막 run 마이그레이션으로 맞춘다.
+    baseline-on-migrate: true
+    baseline-version: "20261112.2000"
+  modulith:
+    events:
+      completion-mode: delete
+      republish-outstanding-events-on-restart: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # 공개키만 받는다. 토큰 발급(개인키)은 core의 member만 한다(7.4).
+          public-key-location: ${JWT_PUBLIC_KEY_LOCATION:file:${app.local-dir:.local}/jwt/public.pem}
+          audiences: wadadak
+
+app:
+  common:
+    request-log:
+      enabled: false
+    shedlock:
+      table: run.shedlock
+  run:
+    # core 내부 API. 같은 PC 분리(7장)는 http://core:8080, 서버 2대(8장)는 core 서버의 사설 주소
+    core-api:
+      base-url: ${CORE_API_URL:http://localhost:8080}
+      timeout: 3s

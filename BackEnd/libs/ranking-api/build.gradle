@@ -1,0 +1,4 @@
+// 계약 jar: ranking 모듈 루트의 공개 타입과 run이 쓸 HTTP 구현체(개발 정책 11.3 3단계). core가 이 jar로 자기 내부 API를 계약 테스트한다.
+dependencies {
+    api project(':libs:common-core')
+}
