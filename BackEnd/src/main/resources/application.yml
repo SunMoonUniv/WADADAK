@@ -60,6 +60,9 @@ app:
     # 터널로 밖에서 닿으므로 끈다. 계약 테스트(InternalApiContractTests)와 분리 뒤 core 서비스에서만 켠다.
     internal-api:
       enabled: false
+    # 스케줄 잠금 테이블(SchedulingConfig). 서비스마다 자기 스키마에 둔다. 분리 뒤 run 서비스는 run.shedlock
+    shedlock:
+      table: common.shedlock
     # 사진 저장소(S3 호환 RustFS). 로컬은 BackEnd/compose.yaml, 공용 서버는 deploy/compose.yaml.
     storage:
       endpoint: ${STORAGE_ENDPOINT:http://localhost:9000}
