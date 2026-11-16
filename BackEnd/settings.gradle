@@ -1,1 +1,7 @@
 rootProject.name = 'WADADAK-BackEnd'
+
+// 구성: deploy/MSA 분리 준비와 CI·CD 3장. 공유 jar(libs) · 모듈 라이브러리(modules) · 실행 서비스(services)
+include 'libs:common-core', 'libs:common-region', 'libs:common-storage', 'libs:event',
+        'libs:course-api', 'libs:ranking-api',
+        'modules:run',
+        'services:core', 'services:run'

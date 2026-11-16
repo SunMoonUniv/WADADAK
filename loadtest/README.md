@@ -17,12 +17,12 @@ docker run -d --name wadadak-loadtest-db -p 5434:5432 --shm-size=1g -e POSTGRES_
 ```bash
 # BackEnd/에서: JWT 키(README 1번과 같다) · jar
 mkdir -p .local/jwt && openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out .local/jwt/private.pem && openssl pkey -in .local/jwt/private.pem -pubout -out .local/jwt/public.pem
-./gradlew bootJar
+./gradlew :services:core:bootJar
 ```
 
 ```bash
 # BackEnd/에서: 서버. 가짜 소셜 로그인(토큰 문자열 = 소셜 ID)과 지표 노출을 켠다. 처음 뜰 때 마이그레이션에 30초쯤 걸린다
-DB_URL=jdbc:postgresql://localhost:5434/wadadak java -Xms1g -Xmx2g -jar build/libs/WADADAK-BackEnd-0.0.1-SNAPSHOT.jar --app.member.social.fake=true --management.endpoints.web.exposure.include=health,metrics --server.port=8090
+DB_URL=jdbc:postgresql://localhost:5434/wadadak java -Xms1g -Xmx2g -jar services/core/build/libs/core-0.0.1-SNAPSHOT.jar --app.member.social.fake=true --management.endpoints.web.exposure.include=health,metrics --server.port=8090
 ```
 
 ## 2. 시드 (약 20분)

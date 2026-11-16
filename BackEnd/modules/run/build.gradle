@@ -1,0 +1,7 @@
+// run 모듈 코드. 서비스가 아니라 라이브러리로 둔다. 전환(11.3 4단계) 전까지 core가 함께 담는다(deploy/MSA 분리 준비와 CI·CD 3장).
+dependencies {
+    api project(':libs:common-core')
+    api project(':libs:event')
+    api project(':libs:course-api')
+    api project(':libs:ranking-api')
+}

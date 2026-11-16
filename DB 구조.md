@@ -1,6 +1,6 @@
 # 와다닥 DB 구조
 
-지금 구현된 DB를 정리한 문서다. 기준은 마이그레이션 파일(`BackEnd/src/main/resources/db/migration/`)이고, 이 문서는 그 결과를 설명한다.
+지금 구현된 DB를 정리한 문서다. 기준은 마이그레이션 파일(각 서브프로젝트의 `src/main/resources/db/migration/`. common은 `BackEnd/libs/common-*`, run은 `BackEnd/modules/run`, 나머지는 `BackEnd/services/core`)이고, 이 문서는 그 결과를 설명한다.
 
 > **마이그레이션을 추가하는 PR에서 이 문서도 같이 고친다.** ERD, 스키마 목록, 테이블 설명을 마이그레이션 결과와 맞춘다([개발 정책 v3](개발%20정책%20v3.md) 6.5·10.5).
 

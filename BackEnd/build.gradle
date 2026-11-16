@@ -1,21 +1,8 @@
+import org.springframework.boot.gradle.plugin.SpringBootPlugin
+
 plugins {
-    id 'java'
-    id 'org.springframework.boot' version '4.1.1'
-    id 'io.spring.dependency-management' version '1.1.7'
-}
-
-group = 'com.wadadak'
-version = '0.0.1-SNAPSHOT'
-description = 'WADADAK-BackEnd'
-
-java {
-    toolchain {
-        languageVersion = JavaLanguageVersion.of(21)
-    }
-}
-
-repositories {
-    mavenCentral()
+    id 'org.springframework.boot' version '4.1.1' apply false
+    id 'io.spring.dependency-management' version '1.1.7' apply false
 }
 
 ext {
@@ -24,55 +11,65 @@ ext {
     set('shedlockVersion', "7.10.1")
 }
 
-dependencies {
-    implementation 'org.springframework.boot:spring-boot-starter-actuator'
-    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
-    implementation 'org.springframework.boot:spring-boot-starter-flyway'
-    implementation 'org.hibernate.orm:hibernate-spatial'
-    implementation 'org.springframework.boot:spring-boot-starter-security'
-    implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-resource-server'
-    implementation 'org.springframework.boot:spring-boot-starter-validation'
-    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
-    implementation 'org.springframework.modulith:spring-modulith-observability-api'
-    implementation 'org.springframework.modulith:spring-modulith-starter-core'
-    implementation 'org.springframework.modulith:spring-modulith-starter-jpa'
-    implementation 'org.springframework.modulith:spring-modulith-events-core'
-    // 이벤트 외부화(MSA 1단계): run이 주고받는 이벤트를 RabbitMQ에도 발행한다(개발 정책 5.7)
-    implementation 'org.springframework.boot:spring-boot-starter-amqp'
-    implementation 'org.springframework.modulith:spring-modulith-events-amqp'
-    implementation "org.springdoc:springdoc-openapi-starter-webmvc-ui:${springdocVersion}"
-    implementation "net.javacrumbs.shedlock:shedlock-spring:${shedlockVersion}"
-    implementation "net.javacrumbs.shedlock:shedlock-provider-jdbc-template:${shedlockVersion}"
-    // S3 호환 저장소 클라이언트. AWS SDK v2에는 Presigned POST가 없다(개발 정책 7장 사진 업로드).
-    implementation 'io.minio:minio:9.0.3'
-    // FCM HTTP v1 액세스 토큰(서비스 계정 키 → Google OAuth). Firebase Admin SDK는 Firestore 등까지 딸려 와서 인증만 쓴다(notification)
-    implementation 'com.google.auth:google-auth-library-oauth2-http:1.48.0'
-    compileOnly 'org.projectlombok:lombok'
-    runtimeOnly 'org.flywaydb:flyway-database-postgresql'
-    runtimeOnly 'org.postgresql:postgresql'
-    runtimeOnly 'org.springframework.modulith:spring-modulith-actuator'
-    runtimeOnly 'org.springframework.modulith:spring-modulith-observability-core'
-    annotationProcessor 'org.projectlombok:lombok'
-    testImplementation 'org.springframework.boot:spring-boot-starter-actuator-test'
-    testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
-    testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
-    testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
-    testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
-    testImplementation 'org.springframework.boot:spring-boot-testcontainers'
-    testImplementation 'org.springframework.modulith:spring-modulith-starter-test'
-    testImplementation 'org.testcontainers:testcontainers-postgresql'
-    testImplementation 'org.testcontainers:testcontainers-rabbitmq'
-    testCompileOnly 'org.projectlombok:lombok'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-    testAnnotationProcessor 'org.projectlombok:lombok'
-}
+// 모든 서브프로젝트 공통. jar는 java-library 그대로, 실행 서비스만 Spring Boot 플러그인을 붙인다(개발 정책 3.3).
+subprojects {
+    apply plugin: 'java-library'
+    apply plugin: 'io.spring.dependency-management'
 
-dependencyManagement {
-    imports {
-        mavenBom "org.springframework.modulith:spring-modulith-bom:${springModulithVersion}"
+    // services:run과 modules:run은 이름이 같다. group이 같으면 Gradle이 같은 모듈로 보고 자기 자신을 의존한다
+    group = "com.wadadak.${project.parent.name}"
+    version = '0.0.1-SNAPSHOT'
+
+    java {
+        toolchain {
+            languageVersion = JavaLanguageVersion.of(21)
+        }
     }
-}
 
-tasks.named('test') {
-    useJUnitPlatform()
+    repositories {
+        mavenCentral()
+    }
+
+    dependencyManagement {
+        imports {
+            mavenBom SpringBootPlugin.BOM_COORDINATES
+            mavenBom "org.springframework.modulith:spring-modulith-bom:${springModulithVersion}"
+        }
+    }
+
+    dependencies {
+        compileOnly 'org.projectlombok:lombok'
+        annotationProcessor 'org.projectlombok:lombok'
+        testImplementation 'org.springframework.boot:spring-boot-starter-actuator-test'
+        testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
+        testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
+        testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
+        testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+        testImplementation 'org.springframework.boot:spring-boot-testcontainers'
+        testImplementation 'org.springframework.modulith:spring-modulith-starter-test'
+        testImplementation 'org.testcontainers:testcontainers-postgresql'
+        testImplementation 'org.testcontainers:testcontainers-rabbitmq'
+        testCompileOnly 'org.projectlombok:lombok'
+        testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+        testAnnotationProcessor 'org.projectlombok:lombok'
+    }
+
+    // 매개변수 이름을 .class에 남긴다. Spring이 @RequestParam · @PathVariable · @Query(:name)을 이름으로 맞춘다.
+    // Spring Boot 플러그인은 자기가 붙은 프로젝트(services)에만 이 옵션을 넣어서 jar(libs · modules)에는 직접 넣는다.
+    tasks.withType(JavaCompile).configureEach {
+        options.compilerArgs.add('-parameters')
+    }
+
+    tasks.named('test') {
+        useJUnitPlatform()
+        // 테스트의 상대 경로(../run/fixtures, ../utilfile, build/)는 BackEnd 기준이다. 프로젝트가 나뉘어도 그대로 둔다.
+        workingDir = rootProject.projectDir
+    }
+
+    // 로컬 키(.local) · utilfile 기본 경로도 BackEnd 기준이다
+    plugins.withId('org.springframework.boot') {
+        tasks.named('bootRun') {
+            workingDir = rootProject.projectDir
+        }
+    }
 }

@@ -1,0 +1,149 @@
+spring:
+  application:
+    name: wadadak
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5433/wadadak}
+    username: ${DB_USERNAME:wadadak}
+    password: ${DB_PASSWORD:wadadak}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        # 엔티티는 @Table(schema = ...)를 명시한다. 기본 스키마는 Modulith 아웃박스(event_publication)용이다.
+        default_schema: common
+        jdbc:
+          time_zone: UTC
+  flyway:
+    # db/migration/{module}/ 아래를 모두 읽는다. 이력 테이블은 common 스키마.
+    default-schema: common
+    out-of-order: true
+    # 전환(MSA 분리 4단계) 뒤 core에는 run 마이그레이션 파일이 없는데 이력은 common.flyway_schema_history에 남는다.
+    # 무시하지 않으면 "Detected applied migration not resolved locally"로 뜨지 않는다. 지금은 파일이 있어 영향이 없다.
+    ignore-migration-patterns: "*:missing"
+  modulith:
+    events:
+      completion-mode: delete
+      # 인스턴스를 여러 대로 늘리면 false로 바꾸고 EventRetryScheduler로 일원화한다(개발 정책 5.5).
+      republish-outstanding-events-on-restart: true
+      # 브로커 외부화(EventBrokerConfig). 로컬 · 테스트는 끄고 공용 서버(deploy/compose.yaml)에서 켠다.
+      # 켜고 브로커가 없으면 외부화 행이 아웃박스에 미완료로 쌓인다.
+      externalization:
+        enabled: ${EVENTS_EXTERNALIZATION_ENABLED:false}
+  # 로컬 브로커는 BackEnd/compose.yaml(관리 화면 http://localhost:15672, wadadak / wadadak).
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    username: ${RABBITMQ_USERNAME:wadadak}
+    password: ${RABBITMQ_PASSWORD:wadadak}
+    # 발행 쪽 traceId를 메시지 헤더에 싣는다(개발 정책 5.7). 받는 쪽(listener)은 분리 전환 때 켠다.
+    template:
+      observation-enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # app.local-dir: 로컬 키 폴더. 저장소 루트에서 띄우면 WadadakApplication이 BackEnd/.local로 잡는다.
+          public-key-location: ${JWT_PUBLIC_KEY_LOCATION:file:${app.local-dir:.local}/jwt/public.pem}
+          # 가입용 토큰(aud wadadak-signup)은 API 호출에 쓸 수 없다.
+          audiences: wadadak
+
+management:
+  health:
+    rabbit:
+      # 브로커가 꺼져도 서버는 healthy다. 외부화 행은 아웃박스에 남아 재전송된다(EventRetryScheduler).
+      enabled: false
+
+app:
+  common:
+    request-log:
+      # true: 요청마다 한 줄 로그(메서드 · 경로 · 상태 · 처리 시간 · IP). 공용 서버(deploy/compose.yaml)에서 켠다.
+      enabled: false
+    # 서비스 사이 내부 API(/internal/v1/**, MSA 분리 2단계, 개발 정책 11.3). 게이트웨이가 /internal을 막기 전(4단계)에는
+    # 터널로 밖에서 닿으므로 끈다. 계약 테스트(InternalApiContractTests)와 분리 뒤 core 서비스에서만 켠다.
+    internal-api:
+      enabled: false
+    # 스케줄 잠금 테이블(SchedulingConfig). 서비스마다 자기 스키마에 둔다. 분리 뒤 run 서비스는 run.shedlock
+    shedlock:
+      table: common.shedlock
+    # 사진 저장소(S3 호환 RustFS). 로컬은 BackEnd/compose.yaml, 공용 서버는 deploy/compose.yaml.
+    storage:
+      endpoint: ${STORAGE_ENDPOINT:http://localhost:9000}
+      # 앱이 사진을 올리고 받는 주소. 에뮬레이터에서 로컬 서버를 쓰면 http://10.0.2.2:9000
+      public-url: ${STORAGE_PUBLIC_URL:http://localhost:9000}
+      bucket: wadadak
+      access-key: ${STORAGE_ACCESS_KEY:wadadak}
+      secret-key: ${STORAGE_SECRET_KEY:wadadak-local}
+  # 운영자 웹(/admin) · 운영자 API(/api/v1/admin/**) 로그인. 공용 운영자 계정 하나다(2026-11-12).
+  # 비밀값이라 환경 변수로만 받는다(GitHub Secrets → backend.yml → deploy/compose.yaml). 비어 있으면 운영자 API는 모두 401.
+  admin:
+    username: ${ADMIN_USERNAME:}
+    password: ${ADMIN_PASSWORD:}
+  stub:
+    member: false
+    course: false
+    # 내 코스 관리(G4 · B7). true면 스텁으로 답한다(공용 서버는 prod라 켤 수 없다)
+    course-mine: false
+    # 코스 자동 생성(B3 자동 생성). true면 스텁으로 답한다(공용 서버는 prod라 켤 수 없다)
+    course-planner: false
+    ranking: false
+  course:
+    # 기존 GPS 등록 원본 보완은 검토 후 명시적으로 켠다. 신규 등록의 연결 이벤트는 항상 발행한다.
+    gps-source-backfill:
+      enabled: false
+    # 만료 배치(F11): 1분마다 만료 코스 비공개 · 숨긴 지 24시간 지난 코스 삭제, 매일 09:00 만료 임박(D-7 · D-1) 알림.
+    retention-batch:
+      enabled: true
+    # 코스 자동 생성(B3 자동 생성). 비밀값은 환경 변수로만 받는다(GitHub Secrets → backend.yml → deploy/compose.yaml).
+    planner:
+      # 생성 요청 하나의 기한. 지나면 그때까지 만든 후보로 답한다(앱 수신 대기 15초)
+      deadline: 10s
+      # 길찾기. 공용 서버는 compose가 GRAPHHOPPER_URL을 넘긴다. 로컬은 BackEnd/compose.yaml --profile planner
+      routing:
+        base-url: ${GRAPHHOPPER_URL:http://localhost:8989}
+        timeout: 3s
+      # 후보 오르막(평지 · 오르막 조건)에 쓰는 표고점 격자 파일. 저장소 밖 utilfile/elevation에 사람이 넣는다(deploy README).
+      # 파일이 없으면 서버는 그대로 뜨고 평지 · 오르막만 반영하지 않는다. 로컬 기본값은 BackEnd/에서 본 경로다.
+      spot-heights: ${PLANNER_SPOT_HEIGHTS:../utilfile/elevation/spot_heights.bin}
+      # 인도 · 강변 · 밝은 길 조건에 쓰는 칸 집합 파일(sidewalk.bin · river.bin · lamps.bin) 폴더. 저장소 밖 utilfile/layers에
+      # 사람이 넣는다(deploy README). 없는 파일의 조건만 반영하지 않는다.
+      layers-dir: ${PLANNER_LAYERS_DIR:../utilfile/layers}
+      # 장소 이름 → 좌표. NAVER API HUB(NCP) 지역 검색, 0건이면 NCP 지오코딩(주소 · 동 이름). 앱(키)은 둘이 따로다.
+      # 키가 비어 있으면 그 API를 부르지 않는다. 둘 다 비면 장소 입력은 못 찾은 것(PLACE_NOT_FOUND)이 된다.
+      place:
+        search:
+          base-url: https://naverapihub.apigw.ntruss.com
+          client-id: ${NAVER_SEARCH_CLIENT_ID:}
+          client-secret: ${NAVER_SEARCH_CLIENT_SECRET:}
+        geocode:
+          base-url: https://maps.apigw.ntruss.com
+          client-id: ${NAVER_GEOCODE_CLIENT_ID:}
+          client-secret: ${NAVER_GEOCODE_CLIENT_SECRET:}
+        timeout: 3s
+      # 문장 → 폼 보충에 쓰는 판단 모델 Jev(TypeSafe). 키가 비어 있으면 규칙만 쓴다.
+      # 보내는 것은 문장뿐이다(위치 없음). 버전을 고정할 수 있으면 model을 시험한 jev-1.14.0으로 둔다.
+      jev:
+        base-url: https://api.typesafe.ai
+        api-key: ${TYPESAFE_API_KEY:}
+        model: jev-latest
+        timeout: 2s
+  member:
+    jwt:
+      # public-key-location과 같은 키 쌍의 개인키(PKCS#8 PEM).
+      private-key-location: ${JWT_PRIVATE_KEY_LOCATION:file:${app.local-dir:.local}/jwt/private.pem}
+    social:
+      # true: 토큰 문자열을 소셜 ID로 쓰는 가짜 로그인(prod 프로필에서는 기동 실패). 테스트만 켠다.
+      fake: false
+      # 카카오 앱 ID는 공개 값이다(토큰 정보로 누구나 본다). 키가 아니다.
+      kakao-app-id: ${KAKAO_APP_ID:1573475}
+      apple-client-ids: ${APPLE_CLIENT_IDS:}
+      # Google 웹 클라이언트 ID(wadadak-server)도 공개 값이다. 앱이 serverClientId로 넘겨 ID 토큰의 aud가 된다.
+      google-client-ids: ${GOOGLE_CLIENT_IDS:1048451496052-jmrq4n20oah17vkcru3qv6gikrc23obs.apps.googleusercontent.com}
+  notification:
+    fcm:
+      # Firebase 서비스 계정 키(JSON) 위치. file:/경로/key.json 또는 base64:<키 JSON을 base64로>. 비밀값이라 커밋하지 않는다.
+      # 비어 있으면 푸시를 보내지 않고 로그로만 남긴다(로컬 · 시험). 알림 만들기 · 발송 기록은 그대로 돈다.
+      credentials-location: ${FCM_CREDENTIALS_LOCATION:}
+    # 발송 작업(10초마다 차례가 된 푸시를 보낸다). 시험은 끄고 직접 부른다.
+    dispatch:
+      enabled: true

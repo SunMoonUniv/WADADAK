@@ -1,0 +1,22 @@
+plugins {
+    id 'java-test-fixtures'
+}
+
+// 모든 서비스가 쓰는 공통(개발 정책 3.3). 서비스의 웹 · JPA · 보안 · 아웃박스 · 스케줄 잠금 기반이다.
+dependencies {
+    api 'org.springframework.boot:spring-boot-starter-data-jpa'
+    api 'org.springframework.boot:spring-boot-starter-security'
+    api 'org.springframework.boot:spring-boot-starter-security-oauth2-resource-server'
+    api 'org.springframework.boot:spring-boot-starter-validation'
+    api 'org.springframework.boot:spring-boot-starter-webmvc'
+    api 'org.springframework.modulith:spring-modulith-starter-core'
+    api 'org.springframework.modulith:spring-modulith-events-core'
+    api "org.springdoc:springdoc-openapi-starter-webmvc-ui:${springdocVersion}"
+    api "net.javacrumbs.shedlock:shedlock-spring:${shedlockVersion}"
+    api "net.javacrumbs.shedlock:shedlock-provider-jdbc-template:${shedlockVersion}"
+
+    // TestcontainersConfiguration을 서비스 테스트가 함께 쓴다
+    testFixturesApi 'org.springframework.boot:spring-boot-starter-test'
+    testFixturesApi 'org.springframework.boot:spring-boot-testcontainers'
+    testFixturesApi 'org.testcontainers:testcontainers-postgresql'
+}

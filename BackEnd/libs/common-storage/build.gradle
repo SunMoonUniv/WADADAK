@@ -1,0 +1,6 @@
+// 사진 저장소(S3 호환). 사진을 쓰는 모듈이 있는 서비스만 의존한다(개발 정책 3.3).
+dependencies {
+    api project(':libs:common-core')
+    // AWS SDK v2에는 Presigned POST가 없다(개발 정책 7장 사진 업로드).
+    api 'io.minio:minio:9.0.3'
+}
