@@ -1,6 +1,5 @@
 # 게이트웨이(MSA 분리 4단계, deploy/MSA 분리 준비와 CI·CD 7.2·7.3). 터널(cloudflared)이 api 요청을 여기로 보낸다.
 # 하는 일은 경로 라우팅과 /internal 차단뿐이다. HTTPS는 터널이, 인증은 각 서비스가 JWT로 한다.
-# 4-A: 모든 요청을 지금 backend로 보낸다. 전환(4-B)에서 /api/v1/runs/*를 run으로 나눈다.
 {
 	servers {
 		# 같은 Docker 망의 cloudflared가 넘긴 X-Forwarded-*를 믿는다.
@@ -15,7 +14,11 @@
 	handle /internal/* {
 		respond 404
 	}
+	@run path /api/v1/runs /api/v1/runs/*
+	handle @run {
+		reverse_proxy run:8080
+	}
 	handle {
-		reverse_proxy backend:8080
+		reverse_proxy core:8080
 	}
 }

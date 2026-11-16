@@ -11,59 +11,64 @@ import com.wadadak.event.run.GpsSourceLinkedEvent;
 import com.wadadak.event.run.GpsSourceUnlinkedEvent;
 import com.wadadak.event.run.RunRecordDeletedEvent;
 import com.wadadak.event.run.RunSessionEndedEvent;
+import org.springframework.amqp.AmqpRejectAndDontRequeueException;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.Declarable;
 import org.springframework.amqp.core.Declarables;
+import org.springframework.amqp.core.Message;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
+import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.modulith.events.EventExternalizationConfiguration;
 import org.springframework.modulith.events.RoutingTarget;
+import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.json.JsonMapper;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * 이벤트 외부화(MSA 분리 1단계, 개발 정책 5.7·11.3). run이 보내고 받는 이벤트를 RabbitMQ에도 발행한다.
- * 모놀리스 안의 전달은 그대로다. 켜고 끄는 값은 {@code spring.modulith.events.externalization.enabled}.
+ * core 서비스의 이벤트 브로커(MSA 분리 4단계, 개발 정책 5.7·11.3). run 서비스에 같은 모양의 설정이 있다.
  * <ul>
- *   <li>exchange는 {@code wadadak.{발행 모듈}}, 라우팅 키는 이벤트 이름이다. 큐는 필요한 이벤트 이름만 바인딩한다.</li>
- *   <li>브로커에서 받는 리스너는 두지 않는다. 지금 받으면 자기가 보낸 이벤트를 다시 발행해 끝없이 돈다.
- *       받는 쪽은 분리 전환(11.3 4단계) 때 서비스마다 둔다.</li>
- *   <li>run 큐·core 큐는 지금 선언한다. 전환 전후에 나간 이벤트가 큐에 남아 각 서비스가 처음 뜰 때 받는다.
- *       바인딩 없는 exchange에 발행된 메시지는 버려지므로, 전환 때 어느 서비스가 먼저 떠도 상대 큐가 있어야 한다.
- *       그때까지 큐가 커진다(이미 처리한 이벤트는 받는 모듈의 멱등 기록이 걸러낸다, 개발 정책 5.4).
- *       run 서비스가 쓸 아웃박스·ShedLock 테이블도 같은 배포에서 만든다({@code db/migration/run}).</li>
+ *   <li>보내기: core가 발행하고 run이 받는 이벤트만 외부화한다. 받은 이벤트까지 고르면 다시 발행하는 순간 브로커로 되돌아가 끝없이 돈다.</li>
+ *   <li>받기: core 큐의 메시지를 트랜잭션 안에서 다시 발행한다. 기존 {@code @ApplicationModuleListener}가 그대로 처리하고,
+ *       실패하면 core 아웃박스에서 재시도된다. 커밋 전 실패는 브로커 재시도 뒤 DLQ에 남는다(application.yml).</li>
+ *   <li>선언: 두 서비스 큐를 양쪽에서 모두 선언한다. 어느 서비스가 먼저 떠도 상대 큐가 있어야 발행한 메시지가 버려지지 않는다.</li>
  * </ul>
- * 분리 뒤에는 서비스마다 자기 모듈이 발행한 이벤트만 고른다. 그래서 공통 모듈이 아니라 애플리케이션 루트에 둔다.
+ * exchange는 {@code wadadak.{발행 모듈}}, 라우팅 키는 이벤트 이름이다.
  */
 @Configuration(proxyBeanMethods = false)
 class EventBrokerConfig {
 
-    /** run이 보내는 이벤트(run → core) */
-    static final Set<Class<?>> RUN_PUBLISHED = Set.of(
+    /** core가 보내고 run이 받는 이벤트. run 큐에 바인딩한다 */
+    static final Set<Class<?>> PUBLISHED = Set.of(
+            MemberWithdrawnEvent.class, MemberVisibilityChangedEvent.class,
+            CourseStatusChangedEvent.class, GpsCourseRegisteredEvent.class);
+
+    /** run이 보내고 core가 받는 이벤트. core 큐에 바인딩한다 */
+    static final Set<Class<?>> CONSUMED = Set.of(
             CourseRunStartedEvent.class, RunSessionEndedEvent.class, RunRecordDeletedEvent.class,
             CourseActiveRunnersChangedEvent.class, GpsSourceLinkedEvent.class, GpsSourceUnlinkedEvent.class,
             CourseRunTrackEvent.class);
 
-    /** run이 받는 이벤트(core → run). run 큐에 바인딩한다 */
-    static final Set<Class<?>> RUN_CONSUMED = Set.of(
-            MemberWithdrawnEvent.class, MemberVisibilityChangedEvent.class,
-            CourseStatusChangedEvent.class, GpsCourseRegisteredEvent.class);
+    static final String QUEUE = "wadadak.core-service";
+
+    /** 재시도를 다 쓴 메시지·역직렬화 실패 메시지가 남는 곳. 기본 exchange로 큐 이름에 보낸다 */
+    static final String DLQ = QUEUE + ".dlq";
 
     static final String RUN_QUEUE = "wadadak.run-service";
 
-    /** 재시도를 다 쓴 메시지·역직렬화 실패 메시지가 남는 곳(개발 정책 5.7). 기본 exchange로 큐 이름에 보낸다 */
     static final String RUN_DLQ = RUN_QUEUE + ".dlq";
-
-    /** core 서비스 큐. run이 보내는 이벤트(run → core)를 바인딩한다 */
-    static final String CORE_QUEUE = "wadadak.core-service";
-
-    static final String CORE_DLQ = CORE_QUEUE + ".dlq";
 
     // ponytail: 기본 외부화 모드는 publisher confirm을 기다리지 않는다(Modulith 2.1 module-listener).
     // 브로커가 꺼져 있으면 전송이 실패해 아웃박스에서 재전송되지만, exchange가 없으면 조용히 버려진다.
@@ -71,24 +76,58 @@ class EventBrokerConfig {
     @Bean
     EventExternalizationConfiguration eventExternalizationConfiguration() {
         return EventExternalizationConfiguration.externalizing()
-                .selectByType(type -> RUN_PUBLISHED.contains(type) || RUN_CONSUMED.contains(type))
+                .selectByType(PUBLISHED::contains)
                 .routeAllByType(type -> RoutingTarget.forTarget(exchangeOf(type)).andKey(type.getSimpleName()))
                 .build();
     }
 
     /**
      * 브로커 연결이 처음 열릴 때 RabbitAdmin이 선언한다(이미 있으면 그대로).
-     * DLQ 인자는 지금 붙인다. 큐 인자는 만든 뒤 바꿀 수 없어, 나중에 붙이려면 쌓인 큐를 지우고 다시 만들어야 한다.
+     * DLQ 인자는 처음부터 붙인다. 큐 인자는 만든 뒤 바꿀 수 없다.
      */
     @Bean
     Declarables eventBrokerTopology() {
         List<Declarable> declarables = new ArrayList<>();
-        Stream.concat(RUN_PUBLISHED.stream(), RUN_CONSUMED.stream())
+        Stream.concat(PUBLISHED.stream(), CONSUMED.stream())
                 .map(EventBrokerConfig::exchangeOf).distinct()
                 .forEach(name -> declarables.add(new TopicExchange(name)));
-        declareQueue(declarables, RUN_QUEUE, RUN_DLQ, RUN_CONSUMED);
-        declareQueue(declarables, CORE_QUEUE, CORE_DLQ, RUN_PUBLISHED);
+        declareQueue(declarables, QUEUE, DLQ, CONSUMED);
+        declareQueue(declarables, RUN_QUEUE, RUN_DLQ, PUBLISHED);
         return new Declarables(declarables);
+    }
+
+    /** 브로커를 쓰는 환경(공용 서버)에서만 받는다. 로컬 · 테스트는 브로커 없이 뜬다 */
+    @Bean
+    @ConditionalOnBooleanProperty("spring.modulith.events.externalization.enabled")
+    BrokerEventRelay brokerEventRelay(JsonMapper json, TransactionTemplate transaction, ApplicationEventPublisher events) {
+        return new BrokerEventRelay(json, transaction, events);
+    }
+
+    static class BrokerEventRelay {
+
+        private static final Map<String, Class<?>> TYPES = CONSUMED.stream()
+                .collect(Collectors.toUnmodifiableMap(Class::getSimpleName, Function.identity()));
+
+        private final JsonMapper json;
+        private final TransactionTemplate transaction;
+        private final ApplicationEventPublisher events;
+
+        BrokerEventRelay(JsonMapper json, TransactionTemplate transaction, ApplicationEventPublisher events) {
+            this.json = json;
+            this.transaction = transaction;
+            this.events = events;
+        }
+
+        @RabbitListener(queues = QUEUE)
+        void relay(Message message) {
+            String key = message.getMessageProperties().getReceivedRoutingKey();
+            Class<?> type = TYPES.get(key);
+            if (type == null) {
+                throw new AmqpRejectAndDontRequeueException("core가 받지 않는 이벤트: " + key);
+            }
+            Object event = json.readValue(message.getBody(), type);
+            transaction.executeWithoutResult(status -> events.publishEvent(event));
+        }
     }
 
     private static void declareQueue(List<Declarable> declarables, String name, String dlq, Set<Class<?>> types) {
