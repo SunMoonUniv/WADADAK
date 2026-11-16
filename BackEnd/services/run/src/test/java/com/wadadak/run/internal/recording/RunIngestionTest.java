@@ -322,7 +322,7 @@ class RunIngestionTest {
         assertThatThrownBy(()->runs.upload(owner,id,new Upload(9,inputs))).isInstanceOf(AppException.class);
         tx.executeWithoutResult(status->events.publishEvent(event));
         await().atMost(Duration.ofSeconds(10)).untilAsserted(()->
-            assertThat(db.queryForObject("SELECT count(*) FROM common.event_publication",Long.class)).isZero());
+            assertThat(db.queryForObject("SELECT count(*) FROM run.event_publication",Long.class)).isZero());
         assertThat(db.queryForObject("SELECT count(*) FROM run.withdrawn_members WHERE member_id=?",Long.class,owner)).isOne();
     }
     @Test void pendingPublicationPreservesOriginalRegistrationTime() {

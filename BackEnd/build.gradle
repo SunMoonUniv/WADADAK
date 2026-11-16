@@ -54,6 +54,12 @@ subprojects {
         testAnnotationProcessor 'org.projectlombok:lombok'
     }
 
+    // 매개변수 이름을 .class에 남긴다. Spring이 @RequestParam · @PathVariable · @Query(:name)을 이름으로 맞춘다.
+    // Spring Boot 플러그인은 자기가 붙은 프로젝트(services)에만 이 옵션을 넣어서 jar(libs · modules)에는 직접 넣는다.
+    tasks.withType(JavaCompile).configureEach {
+        options.compilerArgs.add('-parameters')
+    }
+
     tasks.named('test') {
         useJUnitPlatform()
         // 테스트의 상대 경로(../run/fixtures, ../utilfile, build/)는 BackEnd 기준이다. 프로젝트가 나뉘어도 그대로 둔다.
