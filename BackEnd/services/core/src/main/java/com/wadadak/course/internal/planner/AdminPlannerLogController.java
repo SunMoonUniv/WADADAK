@@ -79,7 +79,8 @@ class AdminPlannerLogController {
 
     @Operation(summary = "[운영자] 코스 생성 로그 CSV",
             description = "논문 분석용. 채우기와 코스 찾기를 이어 한 줄씩(찾기 안 한 문장 · 직접 조건으로 찾은 요청 포함). "
-                    + "UTF-8(BOM), 시각은 한국 시각, 후보는 경로 점을 뺀 지표만.")
+                    + "UTF-8(BOM), 시각은 한국 시각. 폼은 칸별(출발 · 모양 · 거리 …), Jev는 고른 답과 확률(%), "
+                    + "후보는 1~3번 지표를 칸으로 나눈다(JSON 없음, 경로 점 없음).")
     @GetMapping("/export")
     ResponseEntity<byte[]> export(@RequestParam(required = false) @Min(1) @Max(365) Integer days) {
         return ResponseEntity.ok()

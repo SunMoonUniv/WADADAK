@@ -149,43 +149,45 @@ class AdminPlannerLogQueries {
 
     /**
      * 논문 분석용 CSV(UTF-8, 엑셀이 한글을 읽게 BOM을 붙인다). 채우기와 코스 찾기를 이어 한 줄씩:
-     * 코스 찾기를 안 한 문장, 문장 없이 직접 조건으로 찾은 요청도 들어간다. 후보는 경로 점(anchorPoints)을 빼고 지표만 넣는다.
+     * 코스 찾기를 안 한 문장, 문장 없이 직접 조건으로 찾은 요청도 들어간다. 폼 · Jev 답 · 후보는 {@link PlannerLogCsv}가
+     * 읽기 쉬운 칸으로 푼다(경로 점은 넣지 않는다).
      *
      * <p>ponytail: 전체를 메모리에서 만든다. 내부 테스트 규모(수천 줄)면 충분하고, 커지면 스트리밍으로 바꾼다
      */
     String csv(Instant since) {
         String sql = """
-                SELECT p.id AS parse_id, p.created_at AS parsed_at, coalesce(p.member_hash, g.member_hash) AS member_hash,
-                       p.sentence, p.jev_answers::text AS jev_answers, p.form::text AS parsed_form, p.elapsed_ms AS parse_ms,
-                       g.id AS plan_id, g.created_at AS planned_at, g.form::text AS sent_form,
-                       CASE WHEN p.id IS NULL OR g.id IS NULL THEN NULL ELSE %s END AS edited,
-                       g.target_meters, g.candidate_count, g.reason, g.place_ms, g.route_ms, g.select_ms,
-                       (SELECT jsonb_agg(c - 'anchorPoints') FROM jsonb_array_elements(g.candidates) c)::text AS candidates
+                SELECT p.created_at AS parsed_at, coalesce(p.member_hash, g.member_hash) AS member_hash, p.sentence,
+                       p.jev_answers::text AS jev_answers, p.form::text AS parsed_form, p.elapsed_ms AS parse_ms,
+                       g.created_at AS planned_at, g.form::text AS sent_form, g.target_meters, g.candidate_count, g.reason,
+                       g.place_ms, g.route_ms, g.select_ms, g.candidates::text AS candidates
                 FROM course.planner_parse_logs p
-                FULL JOIN course.planner_plan_logs g ON g.parse_log_id = p.id""".formatted(edited("p", "g"))
+                FULL JOIN course.planner_plan_logs g ON g.parse_log_id = p.id"""
                 + (since == null ? "" : " WHERE coalesce(p.created_at, g.created_at) >= :since")
                 + " ORDER BY coalesce(p.created_at, g.created_at), g.created_at";
         JdbcClient.StatementSpec query = jdbc.sql(sql);
         if (since != null) {
             query = query.param("since", timestamp(since));
         }
-        String[] columns = {"parse_id", "parsed_at", "member_hash", "sentence", "jev_answers", "parsed_form", "parse_ms",
-                "plan_id", "planned_at", "sent_form", "edited", "target_meters", "candidate_count", "reason",
-                "place_ms", "route_ms", "select_ms", "candidates"};
-        StringBuilder out = new StringBuilder("﻿").append(String.join(",", columns)).append("\r\n");
+        StringBuilder out = new StringBuilder("﻿");
+        line(out, PlannerLogCsv.header());
         query.query(rs -> {
-            for (int i = 0; i < columns.length; i++) {
-                Object value = rs.getObject(columns[i]);
-                if (value instanceof OffsetDateTime time) {
-                    value = CSV_TIME.format(time);
-                } else if (value instanceof java.sql.Timestamp time) {
-                    value = CSV_TIME.format(time.toInstant());
-                }
-                out.append(i == 0 ? "" : ",").append(cell(value));
-            }
-            out.append("\r\n");
+            OffsetDateTime parsedAt = rs.getObject("parsed_at", OffsetDateTime.class);
+            OffsetDateTime plannedAt = rs.getObject("planned_at", OffsetDateTime.class);
+            line(out, PlannerLogCsv.row(
+                    parsedAt == null ? null : CSV_TIME.format(parsedAt), shortHash(rs.getString("member_hash")),
+                    rs.getString("sentence"), tree(rs.getString("jev_answers")), tree(rs.getString("parsed_form")),
+                    (Integer) rs.getObject("parse_ms"),
+                    plannedAt == null ? null : CSV_TIME.format(plannedAt), tree(rs.getString("sent_form")),
+                    (Integer) rs.getObject("target_meters"), (Integer) rs.getObject("candidate_count"), rs.getString("reason"),
+                    (Integer) rs.getObject("place_ms"), (Integer) rs.getObject("route_ms"), (Integer) rs.getObject("select_ms"),
+                    tree(rs.getString("candidates"))));
         });
         return out.toString();
+    }
+
+    /** 칸들을 쉼표로 이어 한 줄. 엑셀이 읽는 줄바꿈(CRLF)으로 끝낸다 */
+    private static void line(StringBuilder out, List<String> cells) {
+        out.append(String.join(",", cells.stream().map(AdminPlannerLogQueries::cell).toList())).append("\r\n");
     }
 
     /** CSV 칸: 쉼표 · 따옴표 · 줄바꿈이 있으면 따옴표로 감싸고 안의 따옴표는 두 번 쓴다 */
