@@ -2,6 +2,8 @@ package com.wadadak.course.internal.planner;
 
 import com.wadadak.TestcontainersConfiguration;
 import com.wadadak.common.geo.GeoPoint;
+import com.wadadak.course.internal.planner.CandidateSelector.Fate;
+import com.wadadak.course.internal.planner.CandidateSelector.PathLog;
 import com.wadadak.course.internal.planner.JevClient.Answer;
 import com.wadadak.course.internal.planner.JevClient.JevAnswers;
 import com.wadadak.course.internal.planner.PlanForm.Pref;
@@ -170,10 +172,43 @@ class AdminPlannerLogControllerTest {
                 .contains(",사용,98,한 바퀴,93,")
                 // 채운 폼과 보낸 폼은 칸별로, 바뀐 칸은 말로
                 .contains(",현재 위치,한 바퀴,5,,,,300,")
-                .contains(",예,거리(km): 5 → 6,6,후보 있음,1,10,3000,50,3060,")
+                .contains(",예,거리(km): 5 → 6,6,후보 있음,1,,,10,3000,50,3060,")
                 // 후보1: 5.1km · 큰길 10% · 되돌아옴 0% · 오르막 없음 · 편의점 3 · 화장실 0
                 .contains(",5.1,10,0,,3,0,");
         assertThat(csv).contains(",8.123,").doesNotContain("anchorPoints").doesNotContain("{");
+    }
+
+    @Test
+    void keepsEveryGeneratedPathNotOnlyTheThreeSent() throws Exception {
+        String sentence = unique("5km 한 바퀴 경로 전부");
+        UUID member = UUID.randomUUID();
+        logs.saveParse(member, sentence, null, loop(5_000, EnumSet.noneOf(Pref.class)), 30);
+        List<PathLog> paths = List.of(
+                new PathLog(1, Fate.OUT_OF_RANGE, null, 6_400, 0.01, 0.2, null, null, null, null, null, null, null, List.of(HERE, HERE)),
+                new PathLog(2, Fate.PICKED, 1, 5_100, 0, 0.1, -1.5, 3, 0, 20, null, null, null, List.of(HERE, HERE)),
+                new PathLog(3, Fate.SIMILAR_TO_PICKED, null, 5_050, 0.02, 0.3, -2.25, null, null, null, null, null, null, List.of(HERE)));
+        logs.savePlan(member, request(loop(5_000, EnumSet.noneOf(Pref.class))), found(), 10, 3_000L, 50L, paths);
+        UUID id = jdbcTemplate.queryForObject("SELECT id FROM course.planner_parse_logs WHERE sentence = ?", UUID.class, sentence);
+
+        JsonNode plan = data(admin("/api/v1/admin/planner-logs/" + id)).get("plans").get(0);
+        assertThat(plan.get("generatedCount").asInt()).isEqualTo(3);
+        assertThat(plan.get("passedCount").asInt()).isEqualTo(2);
+        assertThat(plan.get("paths")).hasSize(3);
+        assertThat(plan.get("paths").get(2).get("fate").asString()).isEqualTo("SIMILAR_TO_PICKED");
+
+        // 메인 CSV에는 수만, 경로 CSV에는 경로 하나에 한 줄
+        String main = new String(admin("/api/v1/admin/planner-logs/export?days=1").getResponse().getContentAsByteArray(),
+                StandardCharsets.UTF_8);
+        assertThat(main.lines().filter(l -> l.contains(sentence)).findFirst().orElseThrow()).contains(",후보 있음,1,3,2,");
+        MvcTestResult result = admin("/api/v1/admin/planner-logs/export/paths?days=1");
+        assertThat(result.getResponse().getHeader("Content-Disposition")).contains("planner-paths-");
+        String csv = new String(result.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
+        assertThat(csv).startsWith("﻿코스 찾기 시각,사용자,문장,모양,목표 거리(km),원하는 길,경로 번호,결과,뽑힌 순위,점수,");
+        List<String> lines = csv.lines().filter(l -> l.contains(sentence)).toList();
+        assertThat(lines).hasSize(3);
+        assertThat(lines.get(0)).contains(",한 바퀴,5,,1,거리 벗어남,,,6.4,");
+        assertThat(lines.get(1)).contains(",2,뽑힘,1,-1.5,5.1,10,0,20,3,0,");
+        assertThat(lines.get(2)).contains(",3,뽑힌 후보와 겹침,,-2.25,").endsWith(",1");
     }
 
     private MvcTestResult admin(String uri) {

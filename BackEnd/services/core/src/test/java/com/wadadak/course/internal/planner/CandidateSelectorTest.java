@@ -6,6 +6,8 @@ import com.wadadak.course.internal.course.Course;
 import com.wadadak.course.internal.course.CourseGeometry;
 import com.wadadak.course.internal.course.CourseRepository;
 import com.wadadak.course.internal.course.Difficulty;
+import com.wadadak.course.internal.planner.CandidateSelector.Fate;
+import com.wadadak.course.internal.planner.CandidateSelector.PathLog;
 import com.wadadak.course.internal.planner.CandidateSelector.Selection;
 import com.wadadak.course.internal.planner.PlanForm.Pref;
 import com.wadadak.course.internal.planner.PlanForm.Shape;
@@ -85,6 +87,7 @@ class CandidateSelectorTest {
         assertThat(result.candidates()).singleElement()
                 .satisfies(c -> assertThat(c.anchorPoints().getFirst().distanceMeters(other.getFirst())).isLessThan(0.01));
         assertThat(result.allSimilarToExisting()).isFalse();
+        assertThat(result.paths()).extracting(PathLog::fate).containsExactly(Fate.SIMILAR_TO_EXISTING, Fate.PICKED);
     }
 
     @Test
@@ -109,6 +112,7 @@ class CandidateSelectorTest {
         Selection result = select(Shape.LOOP, 5_000, List.of(path(first), path(shifted), path(other)), Set.of());
 
         assertThat(result.candidates()).hasSize(2);
+        assertThat(result.paths()).extracting(PathLog::fate).containsExactly(Fate.PICKED, Fate.SIMILAR_TO_PICKED, Fate.PICKED);
     }
 
     @Test
@@ -121,6 +125,7 @@ class CandidateSelectorTest {
         Selection result = select(Shape.OUT_AND_BACK, 5_000, List.of(plus8, plus12, oneKmOff), Set.of());
 
         assertThat(result.candidates()).singleElement().satisfies(c -> assertThat(c.distanceMeters()).isEqualTo(5_400));
+        assertThat(result.paths()).extracting(PathLog::fate).containsExactly(Fate.PICKED, Fate.OUT_OF_RANGE, Fate.OUT_OF_RANGE);
     }
 
     @Test
@@ -129,7 +134,11 @@ class CandidateSelectorTest {
         RoutedPath tooLong = new RoutedPath(square(base, 0), 5_300, List.of());
         RoutedPath retrace = outAndBack(destination(base, 3_000, 90), 0, 2_500);
 
-        assertThat(select(Shape.LOOP, 5_000, List.of(tooLong, retrace), Set.of()).candidates()).isEmpty();
+        Selection result = select(Shape.LOOP, 5_000, List.of(tooLong, retrace), Set.of());
+        assertThat(result.candidates()).isEmpty();
+        // 거리가 맞는데 걸렸으면 되돌아감 때문이다. 걸린 경로는 점수가 없다
+        assertThat(result.paths()).extracting(PathLog::fate).containsExactly(Fate.OUT_OF_RANGE, Fate.TOO_MUCH_RETRACE);
+        assertThat(result.paths()).extracting(PathLog::score).containsOnlyNulls();
     }
 
     @Test
@@ -225,7 +234,15 @@ class CandidateSelectorTest {
         };
 
         // 편의점 · 화장실을 점수에 쓰지 않으면 고른 3개만 센다
-        List<PlanCandidate> plain = selector.select(Shape.LOOP, 5_000, four, Set.of(), pois).candidates();
+        Selection selection = selector.select(Shape.LOOP, 5_000, four, Set.of(), pois);
+        List<PlanCandidate> plain = selection.candidates();
+        // 분석 로그: 3개를 고른 뒤의 경로는 겹침을 재지 않고 "점수 순위 밖"이다
+        assertThat(selection.paths()).extracting(PathLog::fate)
+                .containsExactly(Fate.PICKED, Fate.PICKED, Fate.PICKED, Fate.NOT_EXAMINED);
+        assertThat(selection.paths()).extracting(PathLog::rank).containsExactly(1, 2, 3, null);
+        // 뽑힌 경로는 앱에 보낸 입력점, 아닌 경로는 줄인 경로 점을 남긴다
+        assertThat(selection.paths().getFirst().points()).isEqualTo(plain.getFirst().anchorPoints());
+        assertThat(selection.paths().getLast().points()).isNotEmpty();
         assertThat(plain).hasSize(3).allSatisfy(c -> {
             assertThat(c.storeCount()).isEqualTo(1);
             assertThat(c.toiletCount()).isEqualTo(2);

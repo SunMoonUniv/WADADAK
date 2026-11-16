@@ -687,6 +687,9 @@ const PLAN = {
   pref: { FLAT: "평지", HILLY: "오르막", SIDEWALK: "인도", AVOID_ARTERIAL: "큰길 피하기", STORE_ON_ROUTE: "편의점 들르기",
     TOILET_ON_ROUTE: "화장실 들르기", RIVER: "강변", PARK: "공원", NO_RETRACE: "같은 길 반복 없이", LIT: "밝은 길" },
   reason: { PLACE_NOT_FOUND: "장소 못 찾음", PLACE_TOO_FAR: "장소가 너무 멂", NO_CANDIDATES: "길 없음", SIMILAR_EXISTS: "비슷한 코스 있음" },
+  // 만든 경로 하나의 결과(CandidateSelector.Fate)
+  fate: { PICKED: ["뽑힘", "success"], OUT_OF_RANGE: ["거리 벗어남", ""], TOO_MUCH_RETRACE: ["되돌아옴 많음", ""],
+    SIMILAR_TO_EXISTING: ["기존 코스와 겹침", "warning"], SIMILAR_TO_PICKED: ["뽑힌 후보와 겹침", "warning"], NOT_EXAMINED: ["점수 순위 밖", ""] },
 };
 const pct = (v) => v == null ? "–" : `${Math.round(v * 100)}%`;
 const sec = (ms) => ms == null ? "–" : ms < 1000 ? `${Math.round(ms)}ms` : `${(ms / 1000).toFixed(1)}초`;
@@ -715,6 +718,7 @@ async function renderLogs() {
       ${select("jev", "Jev", [["", "전체"], ["true", "사용"], ["false", "규칙만"]], s.jev)}
       <span class="spacer"></span>
       <button class="btn" type="button" id="log-export">CSV 받기</button>
+      <button class="btn" type="button" id="log-export-paths" title="코스 찾기에서 만든 경로 전부(걸러진 것 포함)를 한 줄씩">경로 CSV</button>
       <button class="btn" type="button" id="log-refresh">새로고침</button>
     </div>
     <div class="card"><div class="table-wrap" id="log-table"></div><div class="foot" id="log-foot"></div></div>`;
@@ -725,7 +729,8 @@ async function renderLogs() {
     loadLogs();
   });
   $("#log-refresh").onclick = renderLogs;
-  $("#log-export").onclick = exportLogs;
+  $("#log-export").onclick = () => exportLogs("export", "#log-export");
+  $("#log-export-paths").onclick = () => exportLogs("export/paths", "#log-export-paths");
   loadLogStats();
   loadLogs();
 }
@@ -790,6 +795,16 @@ async function openLog(id) {
           <td>${pct(c.retraceRatio)}</td><td>${num(c.storeCount)}</td><td>${num(c.toiletCount)}</td>
           <td>${c.ascentMeters == null ? "–" : `${c.ascentMeters}m`}</td><td>${num(c.anchorPoints?.length)}개</td></tr>`).join("")}</tbody>
       </table></div></div>` : "";
+    // 만든 경로 전부(앱에 보낸 3개 + 걸러진 것). 길어서 접어 둔다
+    const allPaths = p.paths?.length ? `<details><summary>만든 경로 ${num(p.generatedCount)}개 모두 보기</summary>
+      <div class="card"><div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>결과</th><th>거리</th><th>되돌아옴</th><th>큰길</th><th>점수</th><th>오르막</th><th>경로 점</th></tr></thead>
+        <tbody>${p.paths.map((x) => `<tr><td>${x.order}</td>
+          <td>${chip(x.rank ? `뽑힘 ${x.rank}위` : PLAN.fate[x.fate]?.[0] ?? x.fate, PLAN.fate[x.fate]?.[1] ?? "")}</td>
+          <td>${km(x.distanceMeters)}</td><td>${pct(x.retraceRatio)}</td><td>${pct(x.arterialRatio)}</td>
+          <td>${x.score == null ? "–" : Number(x.score).toFixed(1)}</td><td>${x.ascentMeters == null ? "–" : `${x.ascentMeters}m`}</td>
+          <td>${num(x.points?.length)}개</td></tr>`).join("")}</tbody>
+      </table></div></div></details>` : "";
     return `<section class="section">
       <h4>코스 찾기 ${d.plans.length > 1 ? i + 1 : ""} ${p.candidateCount > 0 ? chip(`후보 ${p.candidateCount}개`, "success") : chip(PLAN.reason[p.reason] ?? p.reason, "warning")}
         ${p.edited ? chip("폼 수정", "danger") : chip("그대로 보냄")}</h4>
@@ -799,8 +814,11 @@ async function openLog(id) {
         ...changes.map(([k, v]) => [`바뀐 칸 · ${k}`, v]),
         ["목표 거리", km(p.targetMeters)],
         ["걸린 시간", `장소 ${sec(p.placeMs)} · 길찾기 ${sec(p.routeMs)} · 고르기 ${sec(p.selectMs)}`],
+        ["만든 경로", p.generatedCount == null ? "기록 없음 <small>11/16 전 로그</small>"
+          : `${num(p.generatedCount)}개 · 조건 통과 ${num(p.passedCount)}개 · 앱에 보냄 ${num(p.candidateCount)}개`],
       ])}
       ${cands}
+      ${allPaths}
     </section>`;
   }).join("");
   openDrawer(`
@@ -819,11 +837,11 @@ async function openLog(id) {
     </div>`);
 }
 
-async function exportLogs() {
-  const btn = $("#log-export");
+async function exportLogs(path, button) {
+  const btn = $(button);
   btn.disabled = true;
   try {
-    const res = await fetch(`/api/v1/admin/planner-logs/export?${query({ days: state.logs.days })}`,
+    const res = await fetch(`/api/v1/admin/planner-logs/${path}?${query({ days: state.logs.days })}`,
       { headers: { Authorization: `Basic ${sessionStorage.getItem(KEY)}` } });
     if (res.status === 401) return logout("다시 로그인해 주세요.");
     if (!res.ok) throw new Error("CSV를 받지 못했어요.");

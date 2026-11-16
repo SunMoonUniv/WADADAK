@@ -134,14 +134,16 @@ class AdminPlannerLogQueries {
         }
         List<PlanDetail> plans = jdbc.sql("""
                         SELECT g.id, g.form::text AS form, g.target_meters, g.candidate_count, g.reason, g.candidates::text AS candidates,
-                               g.place_ms, g.route_ms, g.select_ms, g.created_at, %s AS edited
+                               g.place_ms, g.route_ms, g.select_ms, g.created_at, %s AS edited,
+                               g.generated_count, g.passed_count, g.paths::text AS paths
                         FROM course.planner_plan_logs g JOIN course.planner_parse_logs p ON p.id = g.parse_log_id
                         WHERE g.parse_log_id = :id ORDER BY g.created_at""".formatted(edited("p", "g")))
                 .param("id", id)
                 .query((rs, rowNum) -> new PlanDetail(rs.getObject("id", UUID.class), json.readTree(rs.getString("form")),
                         rs.getBoolean("edited"), (Integer) rs.getObject("target_meters"), rs.getInt("candidate_count"),
                         rs.getString("reason"), json.readTree(rs.getString("candidates")), rs.getLong("place_ms"),
-                        (Integer) rs.getObject("route_ms"), (Integer) rs.getObject("select_ms"), instant(rs, "created_at")))
+                        (Integer) rs.getObject("route_ms"), (Integer) rs.getObject("select_ms"), instant(rs, "created_at"),
+                        (Integer) rs.getObject("generated_count"), (Integer) rs.getObject("passed_count"), tree(rs.getString("paths"))))
                 .list();
         return new Detail(parse.id(), parse.user(), parse.sentence(), parse.jevAnswers(), parse.form(), parse.elapsedMs(),
                 parse.createdAt(), plans);
@@ -159,7 +161,7 @@ class AdminPlannerLogQueries {
                 SELECT p.created_at AS parsed_at, coalesce(p.member_hash, g.member_hash) AS member_hash, p.sentence,
                        p.jev_answers::text AS jev_answers, p.form::text AS parsed_form, p.elapsed_ms AS parse_ms,
                        g.created_at AS planned_at, g.form::text AS sent_form, g.target_meters, g.candidate_count, g.reason,
-                       g.place_ms, g.route_ms, g.select_ms, g.candidates::text AS candidates
+                       g.place_ms, g.route_ms, g.select_ms, g.candidates::text AS candidates, g.generated_count, g.passed_count
                 FROM course.planner_parse_logs p
                 FULL JOIN course.planner_plan_logs g ON g.parse_log_id = p.id"""
                 + (since == null ? "" : " WHERE coalesce(p.created_at, g.created_at) >= :since")
@@ -180,7 +182,35 @@ class AdminPlannerLogQueries {
                     plannedAt == null ? null : CSV_TIME.format(plannedAt), tree(rs.getString("sent_form")),
                     (Integer) rs.getObject("target_meters"), (Integer) rs.getObject("candidate_count"), rs.getString("reason"),
                     (Integer) rs.getObject("place_ms"), (Integer) rs.getObject("route_ms"), (Integer) rs.getObject("select_ms"),
-                    tree(rs.getString("candidates"))));
+                    tree(rs.getString("candidates")), (Integer) rs.getObject("generated_count"), (Integer) rs.getObject("passed_count")));
+        });
+        return out.toString();
+    }
+
+    /**
+     * 논문 분석용 경로 CSV: 코스 찾기에서 만든 경로 하나 = 한 줄(뽑힌 것 · 걸러진 것 모두). 경로 점은 넣지 않는다(상세 API에 있다).
+     * 2026-11-16 전 로그에는 경로 기록이 없어 빠진다.
+     */
+    String pathsCsv(Instant since) {
+        String sql = """
+                SELECT g.created_at, g.member_hash, p.sentence, g.form::text AS form, g.target_meters, path.value::text AS path
+                FROM course.planner_plan_logs g
+                LEFT JOIN course.planner_parse_logs p ON p.id = g.parse_log_id
+                CROSS JOIN LATERAL jsonb_array_elements(g.paths) AS path
+                WHERE g.paths IS NOT NULL"""
+                + (since == null ? "" : " AND g.created_at >= :since")
+                + " ORDER BY g.created_at, (path.value ->> 'order')::int";
+        JdbcClient.StatementSpec query = jdbc.sql(sql);
+        if (since != null) {
+            query = query.param("since", timestamp(since));
+        }
+        StringBuilder out = new StringBuilder("﻿");
+        line(out, PlannerLogCsv.pathHeader());
+        // 중괄호로 감싸야 "한 줄씩 처리(RowCallbackHandler)"로 읽힌다. 식 하나면 RowMapper와 헷갈려 컴파일이 안 된다
+        query.query(rs -> {
+            line(out, PlannerLogCsv.pathRow(CSV_TIME.format(rs.getObject("created_at", OffsetDateTime.class)),
+                    shortHash(rs.getString("member_hash")), rs.getString("sentence"), tree(rs.getString("form")),
+                    (Integer) rs.getObject("target_meters"), tree(rs.getString("path"))));
         });
         return out.toString();
     }
@@ -256,8 +286,14 @@ class AdminPlannerLogQueries {
                   List<PlanDetail> plans) {
     }
 
-    /** @param candidates 앱에 돌려준 후보 전부(경로 점 포함) */
+    /**
+     * @param candidates     앱에 돌려준 후보 전부(경로 점 포함)
+     * @param generatedCount 길찾기로 만든 경로 수. 2026-11-16 전 로그 · 길을 찾지 않은 요청은 {@code null}(아래 둘도 같다)
+     * @param passedCount    거리 · 되돌아감 조건을 통과한 경로 수
+     * @param paths          만든 경로 전부(만든 순서, {@link CandidateSelector.PathLog})
+     */
     record PlanDetail(UUID id, JsonNode form, boolean edited, Integer targetMeters, int candidateCount, String reason,
-                      JsonNode candidates, long placeMs, Integer routeMs, Integer selectMs, Instant createdAt) {
+                      JsonNode candidates, long placeMs, Integer routeMs, Integer selectMs, Instant createdAt,
+                      Integer generatedCount, Integer passedCount, JsonNode paths) {
     }
 }

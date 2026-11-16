@@ -99,7 +99,7 @@ class PlannerServiceTest {
             assertThat(c.toiletCount()).isEqualTo(2);
         });
         verify(repository).reserve(MEMBER, TODAY, PlannerRepository.PLAN, PlannerService.PLAN_LIMIT);
-        verify(logs).savePlan(eq(MEMBER), any(), eq(result), anyLong(), any(), any());
+        verify(logs).savePlan(eq(MEMBER), any(), eq(result), anyLong(), any(), any(), any());
         // 기한은 한도를 잡은 때부터 10초
         verify(generator).generate(Shape.LOOP, HERE, null, 5_000, Set.of(), NOW.plusSeconds(10));
         verify(selector).select(eq(Shape.LOOP), eq(5_000), eq(paths), eq(Set.of()), any());
