@@ -83,12 +83,25 @@ class AdminPlannerLogController {
                     + "후보는 1~3번 지표를 칸으로 나눈다(JSON 없음, 경로 점 없음).")
     @GetMapping("/export")
     ResponseEntity<byte[]> export(@RequestParam(required = false) @Min(1) @Max(365) Integer days) {
+        return csv("planner-logs", queries.csv(since(days)));
+    }
+
+    @Operation(summary = "[운영자] 코스 생성 경로 CSV",
+            description = "논문 분석용. 코스 찾기에서 길찾기로 만든 경로 하나에 한 줄(앱에 보낸 3개 말고 걸러진 경로도 모두). "
+                    + "결과는 뽑힘 · 거리 벗어남 · 되돌아옴 많음 · 기존 코스와 겹침 · 뽑힌 후보와 겹침 · 점수 순위 밖. "
+                    + "2026-11-16 전 로그에는 경로 기록이 없다. 경로 점은 상세 API에 있다.")
+    @GetMapping("/export/paths")
+    ResponseEntity<byte[]> exportPaths(@RequestParam(required = false) @Min(1) @Max(365) Integer days) {
+        return csv("planner-paths", queries.pathsCsv(since(days)));
+    }
+
+    /** CSV 내려받기 응답. 받은 파일 이름: planner-logs-2026-11-24.csv */
+    private ResponseEntity<byte[]> csv(String name, String body) {
         return ResponseEntity.ok()
                 .contentType(new MediaType("text", "csv", StandardCharsets.UTF_8))
-                // 받은 파일 이름: planner-logs-2026-11-24.csv
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment()
-                        .filename("planner-logs-%s.csv".formatted(LocalDate.now(clock.withZone(TimeConfig.SEOUL)))).build().toString())
-                .body(queries.csv(since(days)).getBytes(StandardCharsets.UTF_8));
+                        .filename("%s-%s.csv".formatted(name, LocalDate.now(clock.withZone(TimeConfig.SEOUL)))).build().toString())
+                .body(body.getBytes(StandardCharsets.UTF_8));
     }
 
     /** 최근 며칠(오늘 포함)의 시작 시각. null이면 전체 기간 */

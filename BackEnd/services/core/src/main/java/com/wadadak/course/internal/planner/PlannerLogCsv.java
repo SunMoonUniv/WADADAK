@@ -45,6 +45,10 @@ final class PlannerLogCsv {
             Map.entry("avoid_arterial", "큰길 피하기"), Map.entry("store_on_route", "편의점 들르기"),
             Map.entry("toilet_on_route", "화장실 들르기"), Map.entry("river", "강변"), Map.entry("park", "공원"),
             Map.entry("no_retrace", "같은 길 반복 없이"), Map.entry("lit", "밝은 길"));
+    /** 경로 결과({@link CandidateSelector.Fate}) */
+    private static final Map<String, String> FATE = Map.of(
+            "PICKED", "뽑힘", "OUT_OF_RANGE", "거리 벗어남", "TOO_MUCH_RETRACE", "되돌아옴 많음",
+            "SIMILAR_TO_EXISTING", "기존 코스와 겹침", "SIMILAR_TO_PICKED", "뽑힌 후보와 겹침", "NOT_EXAMINED", "점수 순위 밖");
     private static final Map<String, String> REASON = Map.of(
             "PLACE_NOT_FOUND", "장소 못 찾음", "PLACE_TOO_FAR", "장소가 너무 멂", "NO_CANDIDATES", "길 없음",
             "SIMILAR_EXISTS", "비슷한 코스 있음");
@@ -57,7 +61,7 @@ final class PlannerLogCsv {
         h.add("채우기(ms)");
         h.add("코스 찾기 시각");
         FORM_LABELS.forEach(l -> h.add("보낸 폼 " + l));
-        h.addAll(List.of("폼 수정", "바뀐 칸", "목표 거리(km)", "결과", "후보 수",
+        h.addAll(List.of("폼 수정", "바뀐 칸", "목표 거리(km)", "결과", "후보 수", "만든 경로 수", "조건 통과 수",
                 "장소 찾기(ms)", "길찾기(ms)", "고르기(ms)", "찾기 합계(ms)"));
         for (int i = 1; i <= MAX_CANDIDATES; i++) {
             for (Object[] c : CANDIDATE_COLUMNS) {
@@ -74,7 +78,8 @@ final class PlannerLogCsv {
      */
     static List<String> row(String parsedAt, String user, String sentence, JsonNode jev, JsonNode parsedForm, Integer parseMs,
                             String plannedAt, JsonNode sentForm, Integer targetMeters, Integer candidateCount, String reason,
-                            Integer placeMs, Integer routeMs, Integer selectMs, JsonNode candidates) {
+                            Integer placeMs, Integer routeMs, Integer selectMs, JsonNode candidates,
+                            Integer generatedCount, Integer passedCount) {
         List<String> row = new ArrayList<>(List.of(blank(parsedAt), blank(user), blank(sentence)));
         // Jev: 문장이 없으면(직접 조건) 칸을 비운다
         JsonNode answers = jev == null ? null : jev.get("answers");
@@ -108,6 +113,8 @@ final class PlannerLogCsv {
         row.add(km(targetMeters == null ? null : targetMeters.doubleValue()));
         row.add(candidateCount == null ? "" : candidateCount > 0 ? "후보 있음" : REASON.getOrDefault(reason, blank(reason)));
         row.add(number(candidateCount));
+        row.add(number(generatedCount));
+        row.add(number(passedCount));
         row.add(number(placeMs));
         row.add(number(routeMs));
         row.add(number(selectMs));
@@ -122,6 +129,42 @@ final class PlannerLogCsv {
             }
         }
         return row;
+    }
+
+    /** 경로 CSV 머리글: 어떤 코스 찾기였는지 + 경로 하나의 결과와 지표 */
+    static List<String> pathHeader() {
+        List<String> h = new ArrayList<>(List.of("코스 찾기 시각", "사용자", "문장", "모양", "목표 거리(km)", "원하는 길",
+                "경로 번호", "결과", "뽑힌 순위", "점수"));
+        CANDIDATE_COLUMNS.forEach(c -> h.add((String) c[0]));
+        h.add("경로 점 수");
+        return h;
+    }
+
+    /**
+     * 경로 하나를 한 줄로({@link CandidateSelector.PathLog}).
+     *
+     * @param plannedAt 이미 한국 시각 문자열로 바꾼 값
+     * @param form      사용자가 보낸 폼
+     * @param path      경로 결과 JSON(order · fate · rank · score · 지표 · points)
+     */
+    static List<String> pathRow(String plannedAt, String user, String sentence, JsonNode form, Integer targetMeters, JsonNode path) {
+        List<String> sent = form(form);
+        List<String> row = new ArrayList<>(List.of(plannedAt, user, blank(sentence), sent.get(1),
+                km(targetMeters == null ? null : targetMeters.doubleValue()), sent.get(5),
+                plain(numberOf(path, "order")), FATE.getOrDefault(text(path, "fate"), blank(text(path, "fate"))),
+                plain(numberOf(path, "rank")), round(numberOf(path, "score"))));
+        for (Object[] column : CANDIDATE_COLUMNS) {
+            Double value = numberOf(path, (String) column[1]);
+            row.add((boolean) column[2] ? percent(value) : "distanceMeters".equals(column[1]) ? km(value) : plain(value));
+        }
+        JsonNode points = path.get("points");
+        row.add(points == null || !points.isArray() ? "" : String.valueOf(points.size()));
+        return row;
+    }
+
+    /** 점수는 소수 둘째 자리까지 */
+    private static String round(Double value) {
+        return value == null ? "" : plain(BigDecimal.valueOf(value).setScale(2, RoundingMode.HALF_UP).doubleValue());
     }
 
     /** 폼을 FORM_LABELS 순서의 칸으로. 폼이 없으면 빈칸, 코스와 무관한 문장이면 출발 칸에 그렇게 적는다 */

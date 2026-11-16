@@ -11,12 +11,16 @@ import com.wadadak.course.internal.registration.SimilarityChecker;
 import com.wadadak.course.internal.route.RouteService;
 import lombok.RequiredArgsConstructor;
 import org.locationtech.jts.geom.LineString;
+import org.locationtech.jts.simplify.DouglasPeuckerSimplifier;
 import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
 
@@ -64,31 +68,44 @@ class CandidateSelector {
         boolean scorePois = wants.contains(Pref.STORE_ON_ROUTE) || wants.contains(Pref.TOILET_ON_ROUTE);
         boolean scoreClimb = wants.contains(Pref.FLAT) || wants.contains(Pref.HILLY);
         List<Scored> passed = new ArrayList<>();
-        for (RoutedPath path : paths) {
+        // 분석 로그: 만든 경로마다 어떻게 됐는지(뽑힘 · 걸러진 이유). 배열 칸 = 만든 순서
+        PathLog[] pathLogs = new PathLog[paths.size()];
+        for (int i = 0; i < paths.size(); i++) {
+            RoutedPath path = paths.get(i);
             int meters = (int) Math.round(path.distanceMeters());
             double retrace = RouteMetrics.retraceRatio(path.points());
+            double arterial = RouteMetrics.arterialRatio(path);
             if (meters < MIN_METERS || meters > MAX_METERS || !fitsShape(shape, targetMeters, meters, retrace)) {
+                // 거리는 맞는데 걸렸으면 한 바퀴의 되돌아감 때문이다
+                Fate fate = fitsShape(shape, targetMeters, meters, 0) && meters >= MIN_METERS && meters <= MAX_METERS
+                        ? Fate.TOO_MUCH_RETRACE : Fate.OUT_OF_RANGE;
+                pathLogs[i] = new PathLog(i + 1, fate, null, meters, retrace, arterial, null, null, null, null, null, null, null,
+                        logPoints(path.points()));
                 continue;
             }
             LineString line = CourseGeometry.lineString(path.points());
-            double arterial = RouteMetrics.arterialRatio(path);
             PoiCounts counts = scorePois ? pois.apply(line) : null;
             Integer ascent = scoreClimb ? spotHeights.ascentMeters(path.points()) : null;
             Double sidewalk = layers.ratio(Layer.SIDEWALK, path.points());
             Double river = layers.ratio(Layer.RIVER, path.points());
             Double lit = layers.ratio(Layer.LAMPS, path.points());
-            passed.add(new Scored(path, line, meters, retrace, arterial, counts, ascent, sidewalk, river, lit,
+            passed.add(new Scored(i, path, line, meters, retrace, arterial, counts, ascent, sidewalk, river, lit,
                     score(wants, meters, retrace, arterial, counts, ascent) + layerScore(wants, sidewalk, river, lit)));
         }
         passed.sort(Comparator.comparingDouble(Scored::score).reversed());
 
         List<Scored> picked = new ArrayList<>();
+        // 겹쳐서 빠진 경로(만든 순서 → 이유). 3개를 다 고른 뒤의 경로는 겹침을 재지 않는다(DB 조회를 늘리지 않으려고)
+        Map<Integer, Fate> skipped = new HashMap<>();
         for (Scored c : passed) {
             if (picked.size() == MAX_CANDIDATES) {
                 break;
             }
-            if (similarity.maxSimilarity(c.line()) < SimilarityChecker.MAX_SIMILARITY
-                    && picked.stream().noneMatch(p -> overlaps(c.line(), p.line()))) {
+            if (similarity.maxSimilarity(c.line()) >= SimilarityChecker.MAX_SIMILARITY) {
+                skipped.put(c.order(), Fate.SIMILAR_TO_EXISTING);
+            } else if (picked.stream().anyMatch(p -> overlaps(c.line(), p.line()))) {
+                skipped.put(c.order(), Fate.SIMILAR_TO_PICKED);
+            } else {
                 picked.add(c);
             }
         }
@@ -98,7 +115,35 @@ class CandidateSelector {
             return new PlanCandidate(anchors(c.path().points()), c.meters(), c.retrace(), c.arterial(), counts.stores(), counts.toilets(),
                     ascent, c.sidewalk(), c.river(), c.lit());
         }).toList();
-        return new Selection(candidates, picked.isEmpty() && !passed.isEmpty(), Pref.notApplied(wants, noData(passed)));
+
+        for (Scored c : passed) {
+            int rank = picked.indexOf(c);
+            if (rank >= 0) {
+                // 뽑힌 경로는 앱에 보낸 후보와 같은 값(편의점 · 오르막은 이때 구한 값)
+                PlanCandidate sent = candidates.get(rank);
+                pathLogs[c.order()] = new PathLog(c.order() + 1, Fate.PICKED, rank + 1, c.meters(), c.retrace(), c.arterial(), c.score(),
+                        sent.storeCount(), sent.toiletCount(), sent.ascentMeters(), c.sidewalk(), c.river(), c.lit(), sent.anchorPoints());
+            } else {
+                pathLogs[c.order()] = new PathLog(c.order() + 1, skipped.getOrDefault(c.order(), Fate.NOT_EXAMINED), null, c.meters(),
+                        c.retrace(), c.arterial(), c.score(), c.pois() == null ? null : c.pois().stores(),
+                        c.pois() == null ? null : c.pois().toilets(), c.ascent(), c.sidewalk(), c.river(), c.lit(),
+                        logPoints(c.path().points()));
+            }
+        }
+        return new Selection(candidates, picked.isEmpty() && !passed.isEmpty(), Pref.notApplied(wants, noData(passed)),
+                List.of(pathLogs));
+    }
+
+    /**
+     * 로그용으로 줄인 경로 점. 뽑히지 않은 경로까지 수십 개라 2m 기준으로 점을 줄인다.
+     * 뽑힌 경로의 {@link #anchors}와 달리 DB를 부르지 않고 JTS로 바로 줄인다(위경도 0.00002도 ≈ 2m).
+     */
+    private static List<GeoPoint> logPoints(List<GeoPoint> points) {
+        if (points.size() < 3) {
+            return points;
+        }
+        return Arrays.stream(DouglasPeuckerSimplifier.simplify(CourseGeometry.lineString(points), 0.00002).getCoordinates())
+                .map(c -> new GeoPoint(c.y, c.x)).toList();
     }
 
     /** 지원하지만 지금 반영하지 못하는 조건: 파일이 없거나, 통과한 후보 어디에도 등이 없다(등 자료가 없는 지역일 수 있다) */
@@ -119,8 +164,46 @@ class CandidateSelector {
         return noData;
     }
 
-    /** @param notApplied 요청한 원하는 길 중 반영하지 못한 것 */
-    record Selection(List<PlanCandidate> candidates, boolean allSimilarToExisting, Set<Pref> notApplied) {
+    /**
+     * @param notApplied 요청한 원하는 길 중 반영하지 못한 것
+     * @param paths      만든 경로 전부의 결과(만든 순서). 분석 로그에만 쓴다
+     */
+    record Selection(List<PlanCandidate> candidates, boolean allSimilarToExisting, Set<Pref> notApplied, List<PathLog> paths) {
+
+        /** 경로 결과 없이(테스트 · 길을 찾지 않은 경우) */
+        Selection(List<PlanCandidate> candidates, boolean allSimilarToExisting, Set<Pref> notApplied) {
+            this(candidates, allSimilarToExisting, notApplied, List.of());
+        }
+    }
+
+    /** 만든 경로 하나가 어떻게 됐는지 */
+    enum Fate {
+        /** 뽑혀서 앱에 보냄(rank 1~3) */
+        PICKED,
+        /** 거리가 1~100km 밖이거나 목표 거리 허용 범위(한 바퀴 ±5% · 왕복 ±10%) 밖 */
+        OUT_OF_RANGE,
+        /** 한 바퀴인데 같은 길을 20% 넘게 되돌아옴 */
+        TOO_MUCH_RETRACE,
+        /** 기존 활성 코스와 85% 이상 겹침 */
+        SIMILAR_TO_EXISTING,
+        /** 먼저 뽑힌 후보와 85% 이상 겹침 */
+        SIMILAR_TO_PICKED,
+        /** 조건은 통과했지만 점수가 낮아 3개를 다 고르기 전에 차례가 오지 않음 */
+        NOT_EXAMINED
+    }
+
+    /**
+     * 분석 로그의 경로 하나. 조건에서 걸러진 경로는 점수 · 편의점 · 오르막 · 길 비율을 재지 않아 null이다.
+     * 편의점 · 화장실 · 오르막은 원하는 길로 고르지 않았으면 뽑힌 경로만 잰다.
+     *
+     * @param order  만든 순서(1부터)
+     * @param rank   뽑힌 순위(1~3). 안 뽑혔으면 null
+     * @param score  고르기 점수(클수록 앞). 조건에서 걸렸으면 null
+     * @param points 경로 점(2m 기준으로 줄임. 뽑힌 경로는 앱에 보낸 입력점)
+     */
+    record PathLog(int order, Fate fate, Integer rank, int distanceMeters, double retraceRatio, double arterialRatio, Double score,
+                   Integer storeCount, Integer toiletCount, Integer ascentMeters, Double sidewalkRatio, Double riverRatio,
+                   Double litRatio, List<GeoPoint> points) {
     }
 
     private static boolean fitsShape(Shape shape, Integer targetMeters, int meters, double retrace) {
@@ -191,8 +274,11 @@ class CandidateSelector {
         return anchors;
     }
 
-    /** @param pois 점수에 쓰지 않았으면 null */
-    private record Scored(RoutedPath path, LineString line, int meters, double retrace, double arterial, PoiCounts pois, Integer ascent,
+    /**
+     * @param order 만든 순서(0부터). 분석 로그 칸 번호
+     * @param pois  점수에 쓰지 않았으면 null
+     */
+    private record Scored(int order, RoutedPath path, LineString line, int meters, double retrace, double arterial, PoiCounts pois, Integer ascent,
                           Double sidewalk, Double river, Double lit, double score) {
     }
 }

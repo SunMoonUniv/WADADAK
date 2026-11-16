@@ -89,7 +89,7 @@ class PlannerService implements CoursePlanner {
         try {
             Outcome outcome = plan(request, clock.instant().plus(deadline));
             counted = outcome.routed();
-            logs.savePlan(memberId, request, outcome.result(), outcome.placeMs(), outcome.routeMs(), outcome.selectMs());
+            logs.savePlan(memberId, request, outcome.result(), outcome.placeMs(), outcome.routeMs(), outcome.selectMs(), outcome.paths());
             return outcome.result();
         } finally {
             if (!counted) {
@@ -112,7 +112,7 @@ class PlannerService implements CoursePlanner {
         if (places.failure() != null) {
             long placeMs = millis(started, System.nanoTime());
             log.info("코스 자동 생성: {} 장소 {}ms {}", form.shape(), placeMs, places.failure().reason());
-            return new Outcome(places.failure(), false, placeMs, null, null);
+            return new Outcome(places.failure(), false, placeMs, null, null, null);
         }
         String startName = places.startName();
 
@@ -133,7 +133,7 @@ class PlannerService implements CoursePlanner {
         long selectMs = millis(routed, System.nanoTime());
         log.info("코스 자동 생성: {} 장소 {}ms 길찾기 {}ms({}개) 고르기 {}ms 후보 {}개 {}", form.shape(), placeMs,
                 routeMs, paths.size(), selectMs, result.candidates().size(), result.reason());
-        return new Outcome(result, true, placeMs, routeMs, selectMs);
+        return new Outcome(result, true, placeMs, routeMs, selectMs, selection.paths());
     }
 
     /** 출발지와 도착지 · 경유지를 찾는다. 못 찾았거나 너무 멀거나 지역 데이터 밖이면 그 안내만 돌려준다 */
@@ -188,8 +188,10 @@ class PlannerService implements CoursePlanner {
     /**
      * @param routed  길찾기를 했는지. false면 한도를 되돌린다
      * @param routeMs 길찾기 시간. 장소에서 끝났으면 null(selectMs도 같다)
+     * @param paths   만든 경로 전부의 결과(분석 로그용). 장소에서 끝났으면 null
      */
-    private record Outcome(PlanResult result, boolean routed, long placeMs, Long routeMs, Long selectMs) {
+    private record Outcome(PlanResult result, boolean routed, long placeMs, Long routeMs, Long selectMs,
+                           List<CandidateSelector.PathLog> paths) {
     }
 
     /**
