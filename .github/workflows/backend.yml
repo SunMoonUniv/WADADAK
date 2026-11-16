@@ -51,7 +51,8 @@ jobs:
   deploy:
     needs: backend
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    runs-on: [self-hosted, wadadak-server]
+    # 러너 라벨은 서버 역할(core). 환경 · 동시 실행 그룹 · compose 프로젝트 이름은 wadadak-server 그대로다(Secrets · 볼륨이 그 이름에 묶여 있다).
+    runs-on: [self-hosted, wadadak-core]
     # 비밀값은 이 환경의 Secrets에 둔다. 환경의 배포 브랜치를 main으로 묶어 다른 브랜치·PR은 읽지 못한다.
     environment: wadadak-server
     # 배포는 한 번에 하나. 밀린 배포는 가장 최근 것만 남는다.

@@ -49,7 +49,7 @@ self-hosted 러너는 PR 워크플로도 받는다. PR에서는 PR 작성자의 
 ```powershell
 mkdir C:\actions-runner-wadadak; cd C:\actions-runner-wadadak
 # Settings → Actions → Runners → New self-hosted runner → Windows x64의 Download 명령으로 zip을 받아 푼다
-.\config.cmd --url https://github.com/SunMoonUniv/WADADAK --token <등록 토큰> --labels wadadak-server
+.\config.cmd --url https://github.com/SunMoonUniv/WADADAK --token <등록 토큰> --labels wadadak-core
 ```
 
 - 나머지 질문은 Enter. 서비스로 돌릴지 물으면 `N`.
@@ -64,7 +64,7 @@ mkdir C:\actions-runner-wadadak; cd C:\actions-runner-wadadak
   Start-ScheduledTask -TaskName 'WADADAK GitHub Runner'
   ```
 - 끄기 · 켜기: `Stop-ScheduledTask` · `Start-ScheduledTask -TaskName 'WADADAK GitHub Runner'`. 창이 숨겨져 있어 실수로 닫히지 않는다. 로그는 `C:\actions-runner-wadadak\_diag`.
-- 확인: GitHub 러너 목록에 `wadadak-server` 라벨로 Idle(초록)
+- 확인: GitHub 러너 목록에 `wadadak-core` 라벨로 Idle(초록)
 
 ### 3. GitHub 환경과 Secrets
 저장소 Settings → Environments → New environment `wadadak-server`
