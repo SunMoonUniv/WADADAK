@@ -149,10 +149,10 @@ class AdminPlannerLogControllerTest {
     }
 
     @Test
-    void csvJoinsParseAndPlanWithoutRoutePoints() throws Exception {
+    void csvSpreadsFormJevAndCandidatesIntoReadableColumns() throws Exception {
         String sentence = unique("한강, \"평지\" 5km");
         UUID member = UUID.randomUUID();
-        logs.saveParse(member, sentence, null, loop(5_000, EnumSet.noneOf(Pref.class)), 300);
+        logs.saveParse(member, sentence, jev(), loop(5_000, EnumSet.noneOf(Pref.class)), 300);
         logs.savePlan(member, request(loop(6_000, EnumSet.noneOf(Pref.class))), found(), 10, 3_000L, 50L);
         // 문장 없이 직접 조건으로 찾은 요청도 들어간다
         logs.savePlan(UUID.randomUUID(), request(loop(8_123, EnumSet.noneOf(Pref.class))), found(), 10, 3_000L, 50L);
@@ -162,11 +162,18 @@ class AdminPlannerLogControllerTest {
         assertThat(result).hasStatusOk();
         assertThat(result.getResponse().getHeader("Content-Disposition")).startsWith("attachment").contains("planner-logs-");
         String csv = new String(result.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
-        assertThat(csv).startsWith("﻿parse_id,parsed_at,member_hash,sentence,");
+        assertThat(csv).startsWith("﻿문장 시각,사용자,문장,Jev,Jev 코스 관련(%),");
         String line = csv.lines().filter(l -> l.contains(sentence.replace("\"", "\"\""))).findFirst().orElseThrow();
-        // 쉼표 · 따옴표가 든 문장은 따옴표로 감싸고, 고쳐 보냈으니 edited는 true
-        assertThat(line).contains("\"" + sentence.replace("\"", "\"\"") + "\"").contains(",true,6000,1,");
-        assertThat(csv).contains("8123").doesNotContain("anchorPoints");
+        // 쉼표 · 따옴표가 든 문장은 따옴표로 감싼다
+        assertThat(line).contains("\"" + sentence.replace("\"", "\"\"") + "\"")
+                // Jev: 사용 · 코스 관련 98% · 모양 한 바퀴 93%
+                .contains(",사용,98,한 바퀴,93,")
+                // 채운 폼과 보낸 폼은 칸별로, 바뀐 칸은 말로
+                .contains(",현재 위치,한 바퀴,5,,,,300,")
+                .contains(",예,거리(km): 5 → 6,6,후보 있음,1,10,3000,50,3060,")
+                // 후보1: 5.1km · 큰길 10% · 되돌아옴 0% · 오르막 없음 · 편의점 3 · 화장실 0
+                .contains(",5.1,10,0,,3,0,");
+        assertThat(csv).contains(",8.123,").doesNotContain("anchorPoints").doesNotContain("{");
     }
 
     private MvcTestResult admin(String uri) {
