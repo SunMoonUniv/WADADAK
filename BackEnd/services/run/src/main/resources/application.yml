@@ -38,7 +38,8 @@ spring:
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     username: ${RABBITMQ_USERNAME:wadadak}
-    password: ${RABBITMQ_PASSWORD:wadadak}
+    # 기본값을 두지 않는다. 브로커를 켜는 곳(공용 서버 compose)에서만 넘긴다.
+    password: ${RABBITMQ_PASSWORD:}
     template:
       observation-enabled: true
     listener:

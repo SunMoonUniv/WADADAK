@@ -8,7 +8,8 @@ SET client_min_messages = warning;
 SELECT 'CREATE ROLE wadadak_run LOGIN'
 WHERE NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'wadadak_run') \gexec
 
-ALTER ROLE wadadak_run WITH LOGIN PASSWORD :'run_pw';
+-- 값은 %L로 따옴표 처리해 넣는다. 결과 문장은 화면 · 로그에 찍지 않는다(psql -q, \gexec는 실행만 한다).
+SELECT format('ALTER ROLE wadadak_run WITH LOGIN PASSWORD %L', :'run_pw') \gexec
 
 -- 새 DB(로컬 처음 띄울 때)에는 run 스키마가 없다. run 계정은 스키마를 만들 권한이 없어 여기서 만들어 준다.
 -- 빈 스키마면 run 서비스 Flyway가 처음부터 마이그레이션한다(baseline은 테이블이 있을 때만 쓴다).
