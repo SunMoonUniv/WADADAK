@@ -1,0 +1,21 @@
+# 게이트웨이(MSA 분리 4단계, deploy/MSA 분리 준비와 CI·CD 7.2·7.3). 터널(cloudflared)이 api 요청을 여기로 보낸다.
+# 하는 일은 경로 라우팅과 /internal 차단뿐이다. HTTPS는 터널이, 인증은 각 서비스가 JWT로 한다.
+# 4-A: 모든 요청을 지금 backend로 보낸다. 전환(4-B)에서 /api/v1/runs/*를 run으로 나눈다.
+{
+	servers {
+		# 같은 Docker 망의 cloudflared가 넘긴 X-Forwarded-*를 믿는다.
+		# 없으면 X-Forwarded-Proto가 http로 덮여 서버가 https 주소를 만들지 못한다(Swagger 서버 주소 등).
+		trusted_proxies static private_ranges
+	}
+}
+
+# 주소에 도메인을 쓰지 않는다. 도메인을 쓰면 Caddy가 인증서를 받으려다 실패한다(HTTPS는 터널이 처리).
+:8080 {
+	# 서비스 사이 API는 밖에 열지 않는다
+	handle /internal/* {
+		respond 404
+	}
+	handle {
+		reverse_proxy backend:8080
+	}
+}

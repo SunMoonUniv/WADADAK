@@ -111,8 +111,9 @@ Actions → Backend CI → Run workflow(main). deploy 작업이 통과하면 서
 3. 설치 안내 명령의 `--token` 뒤 문자열을 Secrets의 `TUNNEL_TOKEN`에 넣는다. 설치 명령은 실행하지 않는다(compose의 cloudflared가 띄운다).
 4. 수동 배포를 돌린다. cloudflared가 Cloudflare에 연결돼야 배포가 통과한다(토큰이 틀리면 실패). 터널 화면에 커넥터가 연결됨으로 보인다.
 5. 터널 → **Routes** 탭 → Add route → **Published application**
-   - Subdomain `api`, Domain `leedohyunn8n.shop`, Service URL `http://backend:8080`
-   - `localhost`가 아니다. cloudflared 컨테이너에서 backend는 compose 서비스 이름으로 보인다.
+   - Subdomain `api`, Domain `leedohyunn8n.shop`, Service URL `http://gateway:8080`
+   - `localhost`가 아니다. cloudflared 컨테이너에서 gateway(Caddy)는 compose 서비스 이름으로 보인다. gateway가 경로를 보고 서비스로 나눠 보낸다(`deploy/Caddyfile`).
+   - 예전 설정(`http://backend:8080`)이면 gateway가 뜬 뒤 이 주소로 바꾼다. 둘 다 떠 있어 언제 바꿔도 끊기지 않는다. 문제가 있으면 되돌린다.
    - DNS 레코드(`api` CNAME → `<터널 ID>.cfargotunnel.com`, 프록시됨)는 Cloudflare가 자동으로 만든다. 같은 이름의 레코드가 이미 있으면 지우고 다시 추가한다.
    - 한 단계 하위 도메인으로 둔다. Cloudflare 기본 인증서는 `a.b.leedohyunn8n.shop`을 덮지 않는다.
    - 사진도 같은 방법으로 하나 더 추가한다: Subdomain `files`, Service URL `http://storage:9000`

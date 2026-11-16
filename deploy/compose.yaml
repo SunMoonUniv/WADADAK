@@ -138,8 +138,24 @@ services:
       retries: 3
     restart: unless-stopped
 
+  # 게이트웨이(MSA 분리 4단계). 경로 라우팅과 /internal 차단(Caddyfile). 지금은 모든 요청을 backend로 보낸다.
+  gateway:
+    image: caddy:2.10-alpine
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    # 포트를 열지 않는다. 밖에서는 cloudflared를 거쳐서만 들어온다.
+    # Caddy 자체가 떴는지만 본다(관리 주소). backend 상태는 backend의 healthcheck가 본다.
+    healthcheck:
+      test: ["CMD", "wget", "-qO", "/dev/null", "http://127.0.0.1:2019/config/"]
+      interval: 10s
+      timeout: 5s
+      start_period: 10s
+      start_interval: 2s
+      retries: 3
+    restart: unless-stopped
+
   # Cloudflare 터널. GitHub Secrets에 TUNNEL_TOKEN이 있을 때만 뜬다(배포 작업이 COMPOSE_PROFILES=tunnel을 켠다).
-  # 터널의 공개 호스트 이름은 서비스 주소 http://backend:8080으로 보낸다.
+  # 터널의 공개 호스트 이름(api)은 서비스 주소 http://gateway:8080으로 보낸다(README 5번).
   cloudflared:
     image: cloudflare/cloudflared:latest
     profiles: [tunnel]
@@ -158,6 +174,8 @@ services:
       retries: 3
     depends_on:
       backend:
+        condition: service_healthy
+      gateway:
         condition: service_healthy
     restart: unless-stopped
 
