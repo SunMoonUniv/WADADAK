@@ -10,15 +10,13 @@ dependencies {
     implementation project(':libs:event')
     implementation project(':libs:course-api')
     implementation project(':libs:ranking-api')
-    // shortcut: 전환(MSA 분리 4단계) 전까지 run을 함께 담아 지금 모놀리스와 같은 이미지를 낸다. 전환 PR에서 이 줄을 지운다
-    implementation project(':modules:run')
 
     implementation 'org.springframework.boot:spring-boot-starter-actuator'
     implementation 'org.springframework.boot:spring-boot-starter-flyway'
     implementation 'org.hibernate.orm:hibernate-spatial'
     implementation 'org.springframework.modulith:spring-modulith-observability-api'
     implementation 'org.springframework.modulith:spring-modulith-starter-jpa'
-    // 이벤트 외부화(MSA 1단계): run이 주고받는 이벤트를 RabbitMQ에도 발행한다(개발 정책 5.7)
+    // 서비스 사이 이벤트(EventBrokerConfig, 개발 정책 5.7): run이 받는 이벤트를 RabbitMQ로 보내고, run이 보낸 이벤트를 받는다
     implementation 'org.springframework.boot:spring-boot-starter-amqp'
     implementation 'org.springframework.modulith:spring-modulith-events-amqp'
     // FCM HTTP v1 액세스 토큰(서비스 계정 키 → Google OAuth). Firebase Admin SDK는 Firestore 등까지 딸려 와서 인증만 쓴다(notification)
@@ -29,4 +27,7 @@ dependencies {
     runtimeOnly 'org.springframework.modulith:spring-modulith-observability-core'
 
     testImplementation testFixtures(project(':libs:common-core'))
+    // GpsSourceLinkTest 한 곳: run 기록 → 코스 등록 → 연결 → 랭킹 · 리뷰 · 통계까지 한 프로세스에서 이어 본다.
+    // 운영 이미지에는 들어가지 않는다(implementation이 아니다). 서비스 사이 전달은 EventBrokerTests가 따로 본다
+    testImplementation project(':modules:run')
 }

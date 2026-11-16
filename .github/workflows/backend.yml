@@ -70,15 +70,18 @@ jobs:
           clean: false
       - name: 작업 폴더 정리 (utilfile 제외)
         run: git clean -ffdx -e /utilfile/
-      # BackEnd가 그대로면 캐시로 같은 이미지가 나와 서버를 다시 띄우지 않는다.
-      # provenance(빌드 시각이 든 출처 정보)를 붙이면 매번 다른 이미지가 되어 꺼 둔다.
-      - name: 이미지 빌드
-        # MSA 분리 3단계: core 이미지에 run이 함께 들어 있다(deploy/MSA 분리 준비와 CI·CD 7.1). 이름은 그대로다
-        run: docker build --provenance=false -f BackEnd/services/core/Dockerfile -t wadadak-backend BackEnd
+      # 서비스마다 이미지 하나(deploy/MSA 분리 준비와 CI·CD 7.1). 그 서비스 코드가 그대로면 캐시로 같은 이미지가 나와
+      # compose가 그 컨테이너를 다시 띄우지 않는다. provenance(빌드 시각이 든 출처 정보)를 붙이면 매번 다른 이미지가 되어 꺼 둔다.
+      - name: core 이미지 빌드
+        run: docker build --provenance=false -f BackEnd/services/core/Dockerfile -t wadadak-core BackEnd
+      - name: run 이미지 빌드
+        run: docker build --provenance=false -f BackEnd/services/run/Dockerfile -t wadadak-run BackEnd
       # 바뀐 서비스만 교체하고 healthy가 될 때까지 기다린다. 서버가 못 뜨면 이 작업이 실패한다.
       - name: 서버 교체
         env:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          # run 서비스 DB 계정(wadadak_run, deploy/db-init.sql). 없으면 compose가 시작하지 않는다.
+          RUN_DB_PASSWORD: ${{ secrets.RUN_DB_PASSWORD }}
           JWT_PUBLIC_KEY: ${{ secrets.JWT_PUBLIC_KEY }}
           JWT_PRIVATE_KEY: ${{ secrets.JWT_PRIVATE_KEY }}
           STORAGE_SECRET_KEY: ${{ secrets.STORAGE_SECRET_KEY }}

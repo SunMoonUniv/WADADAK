@@ -27,8 +27,8 @@ spring:
       completion-mode: delete
       # 인스턴스를 여러 대로 늘리면 false로 바꾸고 EventRetryScheduler로 일원화한다(개발 정책 5.5).
       republish-outstanding-events-on-restart: true
-      # 브로커 외부화(EventBrokerConfig). 로컬 · 테스트는 끄고 공용 서버(deploy/compose.yaml)에서 켠다.
-      # 켜고 브로커가 없으면 외부화 행이 아웃박스에 미완료로 쌓인다.
+      # 서비스 사이 이벤트(EventBrokerConfig). 보내기와 받기를 함께 켠다. 로컬 · 테스트는 끄고 공용 서버(deploy/compose.yaml)에서 켠다.
+      # 끄면 run 서비스와 이벤트를 주고받지 않는다. 켜고 브로커가 없으면 외부화 행이 아웃박스에 미완료로 쌓인다.
       externalization:
         enabled: ${EVENTS_EXTERNALIZATION_ENABLED:false}
   # 로컬 브로커는 BackEnd/compose.yaml(관리 화면 http://localhost:15672, wadadak / wadadak).
@@ -36,9 +36,22 @@ spring:
     host: ${RABBITMQ_HOST:localhost}
     username: ${RABBITMQ_USERNAME:wadadak}
     password: ${RABBITMQ_PASSWORD:wadadak}
-    # 발행 쪽 traceId를 메시지 헤더에 싣는다(개발 정책 5.7). 받는 쪽(listener)은 분리 전환 때 켠다.
+    # 발행 쪽 traceId를 메시지 헤더에 싣는다(개발 정책 5.7)
     template:
       observation-enabled: true
+    listener:
+      simple:
+        # 받는 쪽도 traceId를 잇는다(개발 정책 5.7)
+        observation-enabled: true
+        # 실패한 메시지를 큐에 되돌리지 않고 DLQ로 보낸다. 되돌리면 DB가 내려가 있는 동안 끝없이 돈다
+        default-requeue-rejected: false
+        retry:
+          enabled: true
+          # 1초부터 두 배씩, 최대 1분 간격으로 10번(약 6분) 다시 시도한 뒤 DLQ
+          initial-interval: 1s
+          multiplier: 2
+          max-interval: 1m
+          max-retries: 10
   security:
     oauth2:
       resourceserver:
@@ -59,10 +72,10 @@ app:
     request-log:
       # true: 요청마다 한 줄 로그(메서드 · 경로 · 상태 · 처리 시간 · IP). 공용 서버(deploy/compose.yaml)에서 켠다.
       enabled: false
-    # 서비스 사이 내부 API(/internal/v1/**, MSA 분리 2단계, 개발 정책 11.3). 게이트웨이가 /internal을 막기 전(4단계)에는
-    # 터널로 밖에서 닿으므로 끈다. 계약 테스트(InternalApiContractTests)와 분리 뒤 core 서비스에서만 켠다.
+    # 서비스 사이 내부 API(/internal/v1/**, 개발 정책 11.3). run 서비스가 부른다. 공용 서버(deploy/compose.yaml)에서 켠다.
+    # 밖에서는 게이트웨이(deploy/Caddyfile)가 /internal을 막는다. 게이트웨이 없이 여는 로컬에서는 끈다.
     internal-api:
-      enabled: false
+      enabled: ${INTERNAL_API_ENABLED:false}
     # 스케줄 잠금 테이블(SchedulingConfig). 서비스마다 자기 스키마에 둔다. 분리 뒤 run 서비스는 run.shedlock
     shedlock:
       table: common.shedlock

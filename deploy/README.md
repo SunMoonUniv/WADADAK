@@ -7,12 +7,13 @@ PR ─► CI (GitHub 서버) ─► 승인 · 머지
 main push ─► backend.yml
                changes  (ubuntu-latest)          바뀐 파일 확인. 서버가 그대로면 아래 둘을 건너뛴다
                backend  (ubuntu-latest)          테스트
-               deploy   (서버 PC self-hosted 러너) 이미지 빌드 → compose up --wait
+               deploy   (서버 PC self-hosted 러너) core · run 이미지 빌드 → compose up --wait
                         비밀값은 GitHub 환경 wadadak-server의 Secrets에서 받는다
 
 서버 PC (Docker Desktop) · compose 프로젝트 wadadak-server
-   postgres · storage(RustFS) · backend · graphhopper · cloudflared ──► Cloudflare ◄── 폰 https://api.leedohyunn8n.shop
-   (포트를 열지 않는다)                                        └──────── 사진 https://files.leedohyunn8n.shop
+   cloudflared ──► gateway(Caddy) ─┬─ /api/v1/runs/* ─► run ──┐         Cloudflare ◄── 폰 https://api.leedohyunn8n.shop
+   (포트를 열지 않는다)              └─ 나머지 ─────────► core ─┴─ postgres · rabbitmq
+                                                           core ─ storage(RustFS) · graphhopper   사진 https://files.leedohyunn8n.shop
 ```
 
 - 주소: `https://api.leedohyunn8n.shop` · 상태 [`/actuator/health`](https://api.leedohyunn8n.shop/actuator/health) · Swagger [`/swagger-ui.html`](https://api.leedohyunn8n.shop/swagger-ui.html)
@@ -78,6 +79,7 @@ mkdir C:\actions-runner-wadadak; cd C:\actions-runner-wadadak
 | `JWT_PRIVATE_KEY` | 개인키 PEM을 base64 한 줄로(아래 명령) |
 | `JWT_PUBLIC_KEY` | 공개키 PEM을 base64 한 줄로(아래 명령) |
 | `STORAGE_SECRET_KEY` | 사진 저장소 비밀번호. 무작위 문자열(`openssl rand -hex 24`). 저장소와 서버가 같이 받는다. 바꾸면 저장소 계정도 바뀐다 |
+| `RUN_DB_PASSWORD` | run 서비스 DB 계정(`wadadak_run`, run 스키마만) 비밀번호. 무작위 문자열(영문 · 숫자). 없으면 배포가 실패한다. 배포마다 `db-init`이 계정을 만들거나 비밀번호를 이 값으로 맞춘다(`deploy/db-init.sql`) |
 | `BROKER_PASSWORD` | 이벤트 브로커(RabbitMQ) 비밀번호. 무작위 문자열(`openssl rand -hex 24`). 없으면 배포가 실패한다. 첫 배포 때 브로커 계정이 이 값으로 만들어진다. 나중에 바꾸면 브로커 볼륨(`broker`)을 지우거나 `rabbitmqctl change_password`로 함께 바꾼다 |
 | `TUNNEL_TOKEN` | Cloudflare 터널 토큰(5번). 없으면 터널 없이 뜬다 |
 | `FCM_SERVICE_ACCOUNT` | 푸시(FCM) 서비스 계정 키 JSON을 base64 한 줄로(6번). 없으면 서버는 뜨고 푸시만 로그로 남긴다 |
@@ -117,7 +119,7 @@ Actions → Backend CI → Run workflow(main). deploy 작업이 통과하면 서
    - DNS 레코드(`api` CNAME → `<터널 ID>.cfargotunnel.com`, 프록시됨)는 Cloudflare가 자동으로 만든다. 같은 이름의 레코드가 이미 있으면 지우고 다시 추가한다.
    - 한 단계 하위 도메인으로 둔다. Cloudflare 기본 인증서는 `a.b.leedohyunn8n.shop`을 덮지 않는다.
    - 사진도 같은 방법으로 하나 더 추가한다: Subdomain `files`, Service URL `http://storage:9000`
-6. `https://api.leedohyunn8n.shop/actuator/health`가 `{"status":"UP"}`, `https://files.leedohyunn8n.shop/health`가 `"status":"ok"`이면 끝. 오류 1033은 터널이 연결되지 않은 것(cloudflared가 꺼짐), 502는 Service URL이 틀렸거나 backend가 꺼진 것이다.
+6. `https://api.leedohyunn8n.shop/actuator/health`가 `{"status":"UP"}`, `https://files.leedohyunn8n.shop/health`가 `"status":"ok"`이면 끝. 오류 1033은 터널이 연결되지 않은 것(cloudflared가 꺼짐), 502는 Service URL이 틀렸거나 gateway · core가 꺼진 것이다.
 
 ### 6. 푸시 알림(FCM)
 서버가 알림(F14, 코스 만료 임박)을 휴대폰에 보내려면 Firebase 서비스 계정 키가 있어야 한다. 키가 없으면 알림은 만들어지고 발송 기록도 남지만 기기에는 가지 않는다(서버 로그에 `FCM 서비스 계정 키가 없어` 경고).
@@ -156,17 +158,17 @@ docker compose -f BackEnd/compose.yaml --profile planner run --rm graphhopper ja
 - 확인: `docker compose -p wadadak-server ps`에서 graphhopper가 healthy. 경로 시험: `docker exec wadadak-server-graphhopper-1 curl -s "http://localhost:8989/route?point=36.7983,127.0746&point=36.8050,127.0800&profile=foot"`
 - 한 달마다 새 pbf로 그래프를 다시 만든다. 서버에서는 `docker compose -p wadadak-server stop graphhopper` → `graph-cache` 폴더 교체 → `docker compose -p wadadak-server start graphhopper`. 그동안 코스 자동 생성만 실패하고 나머지는 그대로다.
 
-**표고점 파일** (원하는 길 `평지` · `오르막`): 후보 오르막을 계산하는 `utilfile/elevation/spot_heights.bin`(약 67MB)도 저장소 밖에 둔다. backend가 `../utilfile/elevation`을 읽기 전용으로 붙인다(`PLANNER_SPOT_HEIGHTS`).
+**표고점 파일** (원하는 길 `평지` · `오르막`): 후보 오르막을 계산하는 `utilfile/elevation/spot_heights.bin`(약 67MB)도 저장소 밖에 둔다. core가 `../utilfile/elevation`을 읽기 전용으로 붙인다(`PLANNER_SPOT_HEIGHTS`).
 
 - 국토지리정보원 표고점(`utilfile/표고선/N3P_F0020000`)으로 만든다: `utilfile/_스크립트/course_planner`에서 `python build_spot_heights.py ../../elevation/spot_heights.bin`
-- 만든 파일을 서버의 같은 위치에 복사한 뒤 backend를 다시 띄운다(다음 배포 또는 `docker compose -p wadadak-server restart backend`). 기동 로그에 `표고점 5378359개를 읽었다`가 남는다.
+- 만든 파일을 서버의 같은 위치에 복사한 뒤 core를 다시 띄운다(다음 배포 또는 `docker compose -p wadadak-server restart core`). 기동 로그에 `표고점 5378359개를 읽었다`가 남는다.
 - 파일이 없어도 배포는 된다. 그때 평지 · 오르막은 후보에 반영하지 않고 `아직 반영하지 않았어요`로 알린다.
 
-**칸 집합 파일** (원하는 길 `인도` · `강변` · `밝은 길`): `utilfile/layers/`의 `sidewalk.bin`(약 31MB) · `river.bin`(약 73MB) · `lamps.bin`(약 19MB)도 저장소 밖에 둔다. backend가 `../utilfile/layers`를 읽기 전용으로 붙인다(`PLANNER_LAYERS_DIR`).
+**칸 집합 파일** (원하는 길 `인도` · `강변` · `밝은 길`): `utilfile/layers/`의 `sidewalk.bin`(약 31MB) · `river.bin`(약 73MB) · `lamps.bin`(약 19MB)도 저장소 밖에 둔다. core가 `../utilfile/layers`를 읽기 전용으로 붙인다(`PLANNER_LAYERS_DIR`).
 
 - 원자료는 모두 `utilfile`에 있는 전국 자료다: 국토지리정보원 인도(보도) `인도(보도)/N3L_A0033320`, 하천경계 `하천경계/N3A_E0010001`, 생활안전지도 가로등 · 보안등 `가로등/`.
 - `utilfile/_스크립트/course_planner`에서 `python build_layers.py all ../../layers`로 만든다(셋 합쳐 약 3분).
-- 만든 폴더를 서버의 같은 위치에 복사한 뒤 backend를 다시 띄운다. 기동 로그에 `SIDEWALK 칸 3844121개를 읽었다` · `RIVER 칸 …` · `LAMPS 칸 …`이 남는다.
+- 만든 폴더를 서버의 같은 위치에 복사한 뒤 core를 다시 띄운다. 기동 로그에 `SIDEWALK 칸 3844121개를 읽었다` · `RIVER 칸 …` · `LAMPS 칸 …`이 남는다.
 - 없는 파일의 조건만 후보에 반영하지 않고 `아직 반영하지 않았어요`로 알린다. 밝은 길은 후보 둘레에 등 자료가 하나도 없는 지역(일부 군)에서도 같은 안내가 나간다.
 
 ## 운영
@@ -176,8 +178,8 @@ docker compose -f BackEnd/compose.yaml --profile planner run --rm graphhopper ja
 | 배포 | main 머지. 수동으로는 Actions → Backend CI → Run workflow(main) |
 | 되돌리기 | 문제 PR을 revert PR로 머지한다 |
 | 비밀값 바꾸기 | 환경 `wadadak-server`의 Secrets 수정 → 수동 배포 |
-| 상태 · 로그 | `docker compose -p wadadak-server ps` · `docker logs -f wadadak-server-backend-1` |
-| 요청 로그 | `docker logs -f wadadak-server-backend-1 2>&1 \| grep RequestLogFilter` — 한 줄에 메서드 · 경로 · 상태 · 처리 시간 · IP. `/actuator`는 빠진다 |
+| 상태 · 로그 | `docker compose -p wadadak-server ps` · `docker logs -f wadadak-server-core-1` · `docker logs -f wadadak-server-run-1` |
+| 요청 로그 | `docker logs -f wadadak-server-core-1 2>&1 \| grep RequestLogFilter`(러닝 API는 `run-1`) — 한 줄에 메서드 · 경로 · 상태 · 처리 시간 · IP. `/actuator`는 빠진다 |
 | DB 접속 | `docker exec -it wadadak-server-postgres-1 psql -U wadadak` |
 | DB 초기화 (데이터 전부 삭제) | `docker compose -p wadadak-server down` → `docker volume rm wadadak-server_db` → 수동 배포 |
 | 길찾기 로그 | `docker logs -f wadadak-server-graphhopper-1`. 내려가 있으면 코스 자동 생성만 실패한다. 그래프 갱신은 서버 PC 준비 7번 |
