@@ -71,6 +71,10 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      # core는 run 계정을 쓰지 않는다. compose up --wait는 끝난 컨테이너를 실패로 보는데,
+      # service_completed_successfully로 기다리는 서비스가 있으면 한 번 돌고 끝나는 작업으로 보고 넘어간다.
+      db-init:
+        condition: service_completed_successfully
     environment:
       # 스텁(app.stub.*: true)이나 가짜 소셜 검증이 켜져 있으면 기동을 막는다(StubGuard).
       SPRING_PROFILES_ACTIVE: prod
