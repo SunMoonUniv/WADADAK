@@ -102,5 +102,8 @@ jobs:
           # 터널 토큰을 넣기 전(도메인 준비 전)에는 cloudflared 없이 띄운다.
           COMPOSE_PROFILES: ${{ secrets.TUNNEL_TOKEN != '' && 'tunnel' || '' }}
         run: docker compose -f deploy/compose.yaml up -d --wait --wait-timeout 300 --remove-orphans
+      # compose는 붙인 파일(deploy/Caddyfile)이 바뀐 것을 모른다. 바뀌었으면 연결을 끊지 않고 새 설정을 쓰고, 그대로면 아무것도 안 한다.
+      - name: 게이트웨이 설정 다시 읽기
+        run: docker exec wadadak-server-gateway-1 caddy reload --config /etc/caddy/Caddyfile
       - name: 이전 이미지 정리
         run: docker image prune -f
