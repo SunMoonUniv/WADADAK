@@ -5,15 +5,36 @@
 name: wadadak-run
 
 services:
+  # run 전용 DB(DB 분리). 운영 데이터를 옮긴 뒤 GitHub 환경 wadadak-run의 변수 RUN_DB_URL로 run을 여기에 붙인다(MSA 분리 준비와 CI·CD 8.5).
+  # run은 PostGIS를 쓰지 않는다. 메이저 버전은 core PC(postgis/postgis:17)와 맞춘다.
+  # 소유자 계정이 wadadak_run이라 run Flyway가 스키마를 직접 만들고 바꾼다. 포트는 열지 않는다(같은 compose의 run만 붙는다).
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_DB: wadadak
+      POSTGRES_USER: wadadak_run
+      POSTGRES_PASSWORD: ${RUN_DB_PASSWORD:?GitHub 환경 wadadak-run에 RUN_DB_PASSWORD가 없다}
+    volumes:
+      - db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wadadak_run -d wadadak"]
+      interval: 5s
+      retries: 12
+    restart: unless-stopped
+
   # run 서비스(러닝 기록 · 고스트 · GPS 출처). run 스키마만 쓰는 계정으로 붙는다. 토큰은 공개키로 검증만 한다(개인키 없음).
   # 계정은 core PC의 db-init이 만든다. 배포는 core PC가 먼저다(backend.yml).
   run:
     # 배포 작업이 GitHub 러너에서 빌드해 GHCR에 올린 이미지(BackEnd/services/run/Dockerfile). 되돌릴 때는 IMAGE_TAG=<커밋 SHA>.
     image: ghcr.io/sunmoonuniv/wadadak-run:${IMAGE_TAG:-main}
     pull_policy: never
+    depends_on:
+      postgres:
+        condition: service_healthy
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      DB_URL: jdbc:postgresql://100.75.79.15:5432/wadadak
+      # 비어 있으면 core PC DB. 전환 뒤에는 jdbc:postgresql://postgres:5432/wadadak(이 PC의 postgres).
+      DB_URL: ${RUN_DB_URL:-jdbc:postgresql://100.75.79.15:5432/wadadak}
       RUN_DB_USERNAME: wadadak_run
       RUN_DB_PASSWORD: ${RUN_DB_PASSWORD:?GitHub 환경 wadadak-run에 RUN_DB_PASSWORD가 없다}
       JWT_PUBLIC_KEY_LOCATION: base64:${JWT_PUBLIC_KEY:?GitHub 환경 wadadak-run에 JWT_PUBLIC_KEY가 없다}
@@ -37,3 +58,6 @@ services:
       start_interval: 3s
       retries: 3
     restart: unless-stopped
+
+volumes:
+  db:

@@ -176,6 +176,7 @@ docker compose -f BackEnd/compose.yaml --profile planner run --rm graphhopper ja
 
 ### 8. run 서버 PC (MSA 분리 준비와 CI·CD 8장)
 run 서비스만 뜬다(`deploy/run/compose.yaml`, compose 프로젝트 `wadadak-run`). DB · 브로커 · core 내부 API는 core PC에 Tailscale로 붙는다.
+run 전용 PostgreSQL(`postgres`)도 함께 뜬다. run은 환경 `wadadak-run`의 변수 `RUN_DB_URL`이 있으면 그 DB를, 없으면 core PC DB를 쓴다. 옮기는 절차는 MSA 분리 준비와 CI·CD 8.5.
 
 1. 1번 PC 설정과 같다(Docker Desktop 자동 시작 · 절전 안 함 · 자동 로그인).
 2. Tailscale을 두 PC에 설치하고 같은 계정으로 로그인한다. 주소가 core `100.75.79.15` · run `100.73.249.33`이 아니면 `deploy/compose.yaml` · `deploy/run/compose.yaml` · `deploy/Caddyfile`의 주소를 바꾼다.
