@@ -1,0 +1,39 @@
+# run 서버 PC 실행 구성(러너 wadadak-run, MSA 분리 준비와 CI·CD 8장). 절차는 deploy/README.md.
+# run 서비스 하나만 뜬다. DB · 브로커 · core 내부 API는 core PC(100.75.79.15)에 Tailscale로 붙는다.
+# 비밀값(RUN_DB_PASSWORD · BROKER_PASSWORD · JWT_PUBLIC_KEY)은 배포 작업(backend.yml deploy-run)이 GitHub 환경 wadadak-run에서 넘긴다.
+# JWT 개인키 · core DB 비밀번호는 이 PC에 오지 않는다.
+name: wadadak-run
+
+services:
+  # run 서비스(러닝 기록 · 고스트 · GPS 출처). run 스키마만 쓰는 계정으로 붙는다. 토큰은 공개키로 검증만 한다(개인키 없음).
+  # 계정은 core PC의 db-init이 만든다. 배포는 core PC가 먼저다(backend.yml).
+  run:
+    # 배포 작업이 GitHub 러너에서 빌드해 GHCR에 올린 이미지(BackEnd/services/run/Dockerfile). 되돌릴 때는 IMAGE_TAG=<커밋 SHA>.
+    image: ghcr.io/sunmoonuniv/wadadak-run:${IMAGE_TAG:-main}
+    pull_policy: never
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      DB_URL: jdbc:postgresql://100.75.79.15:5432/wadadak
+      RUN_DB_USERNAME: wadadak_run
+      RUN_DB_PASSWORD: ${RUN_DB_PASSWORD:?GitHub 환경 wadadak-run에 RUN_DB_PASSWORD가 없다}
+      JWT_PUBLIC_KEY_LOCATION: base64:${JWT_PUBLIC_KEY:?GitHub 환경 wadadak-run에 JWT_PUBLIC_KEY가 없다}
+      # core PC의 gateway가 넘기는 X-Forwarded-*를 믿는다. Spring Boot 기본 내부 프록시 목록에 Tailscale 대역(100.64.0.0/10)이 들어 있다.
+      SERVER_FORWARD_HEADERS_STRATEGY: native
+      APP_COMMON_REQUESTLOG_ENABLED: "true"
+      # core 서비스와 이벤트를 주고받는다(EventBrokerConfig).
+      EVENTS_EXTERNALIZATION_ENABLED: "true"
+      RABBITMQ_HOST: 100.75.79.15
+      RABBITMQ_PASSWORD: ${BROKER_PASSWORD:?GitHub 환경 wadadak-run에 BROKER_PASSWORD가 없다}
+      # 러닝 시작 · 고스트에 쓰는 코스 경로 · 공개 고스트 후보를 core 내부 API로 묻는다.
+      CORE_API_URL: http://100.75.79.15:8080
+    # core PC의 gateway만 Tailscale로 붙는다. 이 PC의 Tailscale 주소에만 연다.
+    ports:
+      - "100.73.249.33:8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8080/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      start_period: 180s
+      start_interval: 3s
+      retries: 3
+    restart: unless-stopped

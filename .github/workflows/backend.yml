@@ -46,12 +46,44 @@ jobs:
       # verify(), 모듈 단독 기동 테스트 포함. Testcontainers는 러너의 Docker를 쓴다.
       - run: ./gradlew test
 
-  # 테스트를 통과한 main 커밋만 공용 서버 PC(self-hosted 러너)에 배포한다. PR에서는 돌지 않는다.
-  # 서버 PC 준비·보안 설정은 deploy/README.md.
-  deploy:
+  # main 커밋의 core · run 이미지를 GitHub 러너에서 한 번 빌드해 GHCR에 올린다(MSA 분리 준비와 CI·CD 8.1). PR에서는 돌지 않는다.
+  # 태그는 :main과 :커밋SHA. 서버는 :main을 받고, 되돌릴 때는 SHA 태그를 쓴다.
+  # 그 서비스 코드가 그대로면 캐시로 같은 이미지가 나와 서버가 그 컨테이너를 다시 띄우지 않는다.
+  # provenance(빌드 시각이 든 출처 정보)를 붙이면 매번 다른 이미지가 되어 꺼 둔다.
+  images:
     needs: backend
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-    # 러너 라벨은 서버 역할(core). 환경 · 동시 실행 그룹 · compose 프로젝트 이름은 wadadak-server 그대로다(Secrets · 볼륨이 그 이름에 묶여 있다).
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        service: [core, run]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/build-push-action@v6
+        with:
+          context: BackEnd
+          file: BackEnd/services/${{ matrix.service }}/Dockerfile
+          push: true
+          provenance: false
+          tags: |
+            ghcr.io/sunmoonuniv/wadadak-${{ matrix.service }}:main
+            ghcr.io/sunmoonuniv/wadadak-${{ matrix.service }}:${{ github.sha }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  # core 서버 PC(러너 wadadak-core). 제공하는 쪽(DB · 브로커 · 내부 API · db-init)을 먼저 띄운다. 서버 PC 준비·보안 설정은 deploy/README.md.
+  deploy:
+    needs: images
+    # 환경 · 동시 실행 그룹 · compose 프로젝트 이름은 wadadak-server 그대로다(Secrets · 볼륨이 그 이름에 묶여 있다).
     runs-on: [self-hosted, wadadak-core]
     # 비밀값은 이 환경의 Secrets에 둔다. 환경의 배포 브랜치를 main으로 묶어 다른 브랜치·PR은 읽지 못한다.
     environment: wadadak-server
@@ -59,6 +91,9 @@ jobs:
     concurrency:
       group: wadadak-server
       cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
     defaults:
       run:
         shell: cmd
@@ -70,17 +105,19 @@ jobs:
           clean: false
       - name: 작업 폴더 정리 (utilfile 제외)
         run: git clean -ffdx -e /utilfile/
-      # 서비스마다 이미지 하나(deploy/MSA 분리 준비와 CI·CD 7.1). 그 서비스 코드가 그대로면 캐시로 같은 이미지가 나와
-      # compose가 그 컨테이너를 다시 띄우지 않는다. provenance(빌드 시각이 든 출처 정보)를 붙이면 매번 다른 이미지가 되어 꺼 둔다.
-      - name: core 이미지 빌드
-        run: docker build --provenance=false -f BackEnd/services/core/Dockerfile -t wadadak-core BackEnd
-      - name: run 이미지 빌드
-        run: docker build --provenance=false -f BackEnd/services/run/Dockerfile -t wadadak-run BackEnd
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # 다른 이미지(cloudflared:latest 등)는 받지 않는다. compose pull은 전부 받아 바뀌지 않은 서비스까지 다시 띄운다.
+      - name: core 이미지 받기
+        run: docker pull ghcr.io/sunmoonuniv/wadadak-core:main
       # 바뀐 서비스만 교체하고 healthy가 될 때까지 기다린다. 서버가 못 뜨면 이 작업이 실패한다.
       - name: 서버 교체
         env:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          # run 서비스 DB 계정(wadadak_run, deploy/db-init.sql). 없으면 compose가 시작하지 않는다.
+          # run 서비스 DB 계정(wadadak_run, deploy/db-init.sql). core PC의 db-init이 계정 비밀번호를 이 값으로 맞춘다.
           RUN_DB_PASSWORD: ${{ secrets.RUN_DB_PASSWORD }}
           JWT_PUBLIC_KEY: ${{ secrets.JWT_PUBLIC_KEY }}
           JWT_PRIVATE_KEY: ${{ secrets.JWT_PRIVATE_KEY }}
@@ -107,3 +144,50 @@ jobs:
         run: docker exec wadadak-server-gateway-1 caddy reload --config /etc/caddy/Caddyfile
       - name: 이전 이미지 정리
         run: docker image prune -f
+
+  # run 서버 PC(러너 wadadak-run). core PC 다음에 띄운다(run DB 계정 · 큐가 그쪽에 있다).
+  deploy-run:
+    needs: deploy
+    runs-on: [self-hosted, wadadak-run]
+    # run 비밀값만 둔다(RUN_DB_PASSWORD · BROKER_PASSWORD · JWT_PUBLIC_KEY). JWT 개인키 · core DB 비밀번호는 없다.
+    environment: wadadak-run
+    concurrency:
+      group: wadadak-run
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      packages: read
+    defaults:
+      run:
+        shell: cmd
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: run 이미지 받기
+        run: docker pull ghcr.io/sunmoonuniv/wadadak-run:main
+      - name: run 교체
+        env:
+          RUN_DB_PASSWORD: ${{ secrets.RUN_DB_PASSWORD }}
+          BROKER_PASSWORD: ${{ secrets.BROKER_PASSWORD }}
+          JWT_PUBLIC_KEY: ${{ secrets.JWT_PUBLIC_KEY }}
+        run: docker compose -f deploy/run/compose.yaml up -d --wait --wait-timeout 300 --remove-orphans
+      - name: 이전 이미지 정리
+        run: docker image prune -f
+
+  # 밖에서 들어오는 길(gateway)을 거쳐 두 서비스에 닿는지 본다. 서비스가 healthy여도 gateway 설정이 틀리면 502다(2026-11-17).
+  smoke:
+    needs: deploy-run
+    runs-on: [self-hosted, wadadak-core]
+    defaults:
+      run:
+        shell: cmd
+    steps:
+      - name: core (gateway 경유 health 200)
+        run: docker exec wadadak-server-gateway-1 wget -q -O /dev/null http://127.0.0.1:8080/actuator/health
+      # 토큰 없이 부르면 run이 401로 답한다. 502 · 504면 run PC까지 못 간 것이다.
+      - name: run (gateway 경유 401)
+        run: docker exec wadadak-server-gateway-1 sh -c "wget -S -O /dev/null http://127.0.0.1:8080/api/v1/runs/records 2>&1 | grep -q ' 401 '"

@@ -1,4 +1,6 @@
-# 공용 서버 실행 구성. 절차는 deploy/README.md.
+# core 서버 PC 실행 구성(러너 wadadak-core). 절차는 deploy/README.md. run 서비스는 run 서버 PC에서 뜬다(deploy/run/compose.yaml).
+# 두 PC는 Tailscale 사설망으로 잇는다(MSA 분리 준비와 CI·CD 2.3). core PC 100.75.79.15, run PC 100.73.249.33.
+# run이 쓰는 postgres · rabbitmq · core 포트는 core PC의 Tailscale 주소에만 연다. 학교 LAN이나 밖에서는 닿지 않는다.
 # 비밀값(DB_PASSWORD · RUN_DB_PASSWORD · JWT_* · STORAGE_SECRET_KEY · BROKER_PASSWORD · TUNNEL_TOKEN · FCM_SERVICE_ACCOUNT · NAVER_* · TYPESAFE_API_KEY · ADMIN_*)은 배포 작업(backend.yml deploy)이 GitHub Secrets에서 환경 변수로 넘긴다.
 # 서버 PC에는 비밀값 파일을 두지 않는다.
 name: wadadak-server
@@ -10,7 +12,9 @@ services:
       POSTGRES_DB: wadadak
       POSTGRES_USER: wadadak
       POSTGRES_PASSWORD: ${DB_PASSWORD:?GitHub Secrets에 DB_PASSWORD가 없다}
-    # 포트를 열지 않는다. 같은 compose 안의 core · run(run 전용 계정) · db-init만 붙는다.
+    # run PC의 run 서비스(run 전용 계정 wadadak_run)만 Tailscale로 붙는다. 다른 서비스는 compose 안에서 붙는다.
+    ports:
+      - "100.75.79.15:5432:5432"
     volumes:
       - db:/var/lib/postgresql/data
     healthcheck:
@@ -44,7 +48,9 @@ services:
     environment:
       RABBITMQ_DEFAULT_USER: wadadak
       RABBITMQ_DEFAULT_PASS: ${BROKER_PASSWORD:?GitHub Secrets에 BROKER_PASSWORD가 없다}
-    # 포트를 열지 않는다. 큐 확인: docker compose -f deploy/compose.yaml exec rabbitmq rabbitmqctl list_queues
+    # run PC의 run 서비스만 Tailscale로 붙는다. 큐 확인: docker exec wadadak-server-rabbitmq-1 rabbitmqctl list_queues
+    ports:
+      - "100.75.79.15:5672:5672"
     volumes:
       - broker:/var/lib/rabbitmq
     healthcheck:
@@ -57,8 +63,8 @@ services:
 
   # core 서비스(member · course · ranking · review · notification). run 서비스와는 브로커 이벤트와 내부 API로 주고받는다.
   core:
-    # 배포 작업이 main 커밋으로 빌드한 이미지(BackEnd/services/core/Dockerfile). 레지스트리에서 받지 않는다.
-    image: wadadak-core
+    # 배포 작업이 GitHub 러너에서 빌드해 GHCR에 올린 이미지(BackEnd/services/core/Dockerfile). 되돌릴 때는 IMAGE_TAG=<커밋 SHA>.
+    image: ghcr.io/sunmoonuniv/wadadak-core:${IMAGE_TAG:-main}
     pull_policy: never
     depends_on:
       postgres:
@@ -111,7 +117,9 @@ services:
     volumes:
       - ../utilfile/elevation:/elevation:ro
       - ../utilfile/layers:/layers:ro
-    # 포트를 열지 않는다. 밖에서는 cloudflared를 거쳐서만 들어온다.
+    # 밖에서는 cloudflared → gateway를 거쳐서만 들어온다. run PC의 run 서비스만 Tailscale로 내부 API를 부른다.
+    ports:
+      - "100.75.79.15:8080:8080"
     healthcheck:
       test: ["CMD", "curl", "-fs", "http://localhost:8080/actuator/health"]
       interval: 10s
@@ -121,7 +129,7 @@ services:
       retries: 3
     restart: unless-stopped
 
-  # run 서비스 DB 계정(db-init.sql). 배포마다 한 번 돌고 끝난다. 처음에만 계정을 만들고 소유자를 넘기며, 비밀번호는 매번 Secrets 값으로 맞춘다.
+  # run 서비스 DB 계정(db-init.sql). 배포마다 한 번 돌고 끝난다. run PC 배포보다 먼저 돈다(backend.yml). 처음에만 계정을 만들고 소유자를 넘기며, 비밀번호는 매번 Secrets 값으로 맞춘다.
   db-init:
     # psql만 쓴다. postgres와 같은 이미지라 새로 받지 않는다.
     image: postgis/postgis:17-3.5
@@ -135,40 +143,6 @@ services:
       - ./db-init.sql:/db-init.sql:ro
     command: ["sh", "-c", "psql -h postgres -U wadadak -d wadadak -q -v run_pw=\"$$RUN_DB_PASSWORD\" -f /db-init.sql"]
     restart: "no"
-
-  # run 서비스(러닝 기록 · 고스트 · GPS 출처). run 스키마만 쓰는 계정으로 붙는다. 토큰은 공개키로 검증만 한다(개인키 없음).
-  run:
-    # 배포 작업이 main 커밋으로 빌드한 이미지(BackEnd/services/run/Dockerfile). 레지스트리에서 받지 않는다.
-    image: wadadak-run
-    pull_policy: never
-    depends_on:
-      db-init:
-        condition: service_completed_successfully
-      rabbitmq:
-        condition: service_healthy
-    environment:
-      SPRING_PROFILES_ACTIVE: prod
-      DB_URL: jdbc:postgresql://postgres:5432/wadadak
-      RUN_DB_USERNAME: wadadak_run
-      RUN_DB_PASSWORD: ${RUN_DB_PASSWORD}
-      JWT_PUBLIC_KEY_LOCATION: base64:${JWT_PUBLIC_KEY}
-      SERVER_FORWARD_HEADERS_STRATEGY: native
-      APP_COMMON_REQUESTLOG_ENABLED: "true"
-      # core 서비스와 이벤트를 주고받는다(EventBrokerConfig).
-      EVENTS_EXTERNALIZATION_ENABLED: "true"
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_PASSWORD: ${BROKER_PASSWORD}
-      # 러닝 시작 · 고스트에 쓰는 코스 경로 · 공개 고스트 후보를 core 내부 API로 묻는다.
-      CORE_API_URL: http://core:8080
-    # 포트를 열지 않는다. 밖에서는 gateway를 거쳐서만 들어온다.
-    healthcheck:
-      test: ["CMD", "curl", "-fs", "http://localhost:8080/actuator/health"]
-      interval: 10s
-      timeout: 5s
-      start_period: 180s
-      start_interval: 3s
-      retries: 3
-    restart: unless-stopped
 
   # 코스 자동 생성의 길찾기(GraphHopper 11.1 + 한국 OSM). 이미지는 core와 같은 JRE라 새로 받지 않는다.
   # jar · OSM 파일 · 미리 만든 그래프(graph-cache)는 저장소 밖 utilfile/graphhopper에 사람이 넣는다(README `길찾기 데이터`).
@@ -190,7 +164,7 @@ services:
       retries: 3
     restart: unless-stopped
 
-  # 게이트웨이(MSA 분리 4단계). 경로 라우팅(/api/v1/runs → run, 나머지 → core)과 /internal 차단(Caddyfile).
+  # 게이트웨이(MSA 분리 4단계). 경로 라우팅(/api/v1/runs → run PC, 나머지 → core)과 /internal 차단(Caddyfile).
   gateway:
     image: caddy:2.10-alpine
     # Caddyfile이 바뀌어도 compose는 이 컨테이너를 다시 만들지 않는다. 배포 작업이 caddy reload로 다시 읽힌다(backend.yml).

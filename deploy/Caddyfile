@@ -14,9 +14,10 @@
 	handle /internal/* {
 		respond 404
 	}
+	# run 서비스는 run PC에 있다. Tailscale 주소로 보낸다(deploy/run/compose.yaml)
 	@run path /api/v1/runs /api/v1/runs/*
 	handle @run {
-		reverse_proxy run:8080
+		reverse_proxy 100.73.249.33:8080
 	}
 	handle {
 		reverse_proxy core:8080
