@@ -20,6 +20,9 @@ import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.QueueBuilder;
 import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.rabbit.annotation.RabbitListener;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.amqp.rabbit.retry.MessageRecoverer;
+import org.springframework.amqp.rabbit.retry.RepublishMessageRecoverer;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBooleanProperty;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.annotation.Bean;
@@ -29,6 +32,7 @@ import org.springframework.modulith.events.RoutingTarget;
 import org.springframework.transaction.support.TransactionTemplate;
 import tools.jackson.databind.json.JsonMapper;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -70,6 +74,12 @@ class EventBrokerConfig {
 
     static final String CORE_DLQ = CORE_QUEUE + ".dlq";
 
+    /** DLQ로 옮긴 시각(ISO-8601). core 운영자 웹 "실패 이벤트"가 보여 준다. core의 EventBrokerConfig와 같은 이름이어야 한다 */
+    static final String FAILED_AT = "x-failed-at";
+
+    /** 몇 번째로 DLQ에 왔는지. 되돌린 메시지가 또 실패하면 1씩 늘어난다 */
+    static final String FAILED_COUNT = "x-failed-count";
+
     // ponytail: 기본 외부화 모드는 publisher confirm을 기다리지 않는다(Modulith 2.1 module-listener).
     // 브로커가 꺼져 있으면 전송이 실패해 아웃박스에서 재전송되지만, exchange가 없으면 조용히 버려진다.
     // 그래서 아래 eventBrokerTopology로 exchange를 미리 선언한다. confirm까지 필요하면 outbox 모드(JobRunr 등) 도입.
@@ -94,6 +104,35 @@ class EventBrokerConfig {
         declareQueue(declarables, QUEUE, DLQ, CONSUMED);
         declareQueue(declarables, CORE_QUEUE, CORE_DLQ, PUBLISHED);
         return new Declarables(declarables);
+    }
+
+    /**
+     * 재시도(application.yml, 약 6분)를 다 쓴 메시지를 DLQ로 보낼 때 실패 사유를 헤더에 붙인다. core에 같은 설정이 있다.
+     * <p>
+     * [MessageRecoverer] 재시도가 끝난 메시지를 마지막으로 처리하는 부품이다. 이 빈이 있으면 Spring Boot가 리스너 재시도에 끼워 넣는다.
+     * 없을 때의 기본값은 메시지를 거절만 해서(큐의 dead-letter 설정으로 DLQ행) 왜 실패했는지가 남지 않는다.
+     * <p>
+     * [RepublishMessageRecoverer] 메시지를 DLQ로 다시 보내면서 오류 메시지 · 스택 · 원래 exchange · 라우팅 키를 헤더에 붙인다.
+     * core 운영자 웹에서 "되돌리기"를 하면 그 원래 길로 다시 보낸다.
+     */
+    @Bean
+    MessageRecoverer failedEventRecoverer(RabbitTemplate rabbitTemplate) {
+        return new FailedEventRecoverer(rabbitTemplate, DLQ);
+    }
+
+    static class FailedEventRecoverer extends RepublishMessageRecoverer {
+
+        FailedEventRecoverer(RabbitTemplate rabbitTemplate, String dlq) {
+            // 기본 exchange("")에 DLQ 이름을 라우팅 키로 주면 그 큐로 바로 들어간다
+            super(rabbitTemplate, "", dlq);
+        }
+
+        @Override
+        protected Map<? extends String, ?> additionalHeaders(Message message, Throwable cause) {
+            Object previous = message.getMessageProperties().getHeader(FAILED_COUNT);
+            long count = previous instanceof Number n ? n.longValue() + 1 : 1;
+            return Map.of(FAILED_AT, Instant.now().toString(), FAILED_COUNT, count);
+        }
     }
 
     /** 브로커를 쓰는 환경(공용 서버)에서만 받는다. 테스트는 브로커 없이 뜬다 */

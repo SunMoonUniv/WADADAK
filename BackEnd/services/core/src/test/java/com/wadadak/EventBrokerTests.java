@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.amqp.core.AnonymousQueue;
 import org.springframework.amqp.core.BindingBuilder;
 import org.springframework.amqp.core.Message;
+import org.springframework.amqp.core.MessageProperties;
 import org.springframework.amqp.core.Queue;
 import org.springframework.amqp.core.TopicExchange;
 import org.springframework.amqp.rabbit.core.RabbitAdmin;
@@ -65,6 +66,9 @@ class EventBrokerTests {
 
     @Autowired
     RunEventProbe probe;
+
+    @Autowired
+    AdminFailedEvents failedEvents;
 
     @BeforeEach
     void emptyServiceQueues() {
@@ -122,6 +126,46 @@ class EventBrokerTests {
         });
 
         assertThat(rabbitTemplate.receive(EventBrokerConfig.RUN_DLQ, RECEIVE_TIMEOUT_MS)).isNotNull();
+    }
+
+    @Test
+    void failedMessageKeepsReasonAndCanBeSentBackOrDeleted() {
+        rabbitAdmin.purgeQueue(EventBrokerConfig.RUN_DLQ);
+        MemberWithdrawnEvent event = new MemberWithdrawnEvent(UUID.randomUUID(), Instant.now(), UUID.randomUUID(), Instant.now());
+        // run이 받은 모양 그대로(wadadak.member exchange · 이벤트 이름 라우팅 키)
+        MessageProperties properties = new MessageProperties();
+        properties.setReceivedExchange("wadadak.member");
+        properties.setReceivedRoutingKey("MemberWithdrawnEvent");
+        Message received = new Message(("{\"memberId\":\"" + event.memberId() + "\"}").getBytes(StandardCharsets.UTF_8), properties);
+
+        // 재시도를 다 쓴 뒤 run의 리스너 재시도가 부르는 것과 같다
+        new EventBrokerConfig.FailedEventRecoverer(rabbitTemplate, EventBrokerConfig.RUN_DLQ)
+                .recover(received, new IllegalStateException("DB가 내려가 있음"));
+
+        Awaitility.await().atMost(Duration.ofSeconds(10)).until(() -> failedEvents.stats().run() == 1);
+        List<AdminFailedEvents.Row> rows = failedEvents.list(AdminFailedEvents.Service.RUN);
+        assertThat(rows).singleElement().satisfies(row -> {
+            assertThat(row.eventType()).isEqualTo("MemberWithdrawnEvent");
+            assertThat(row.reason()).contains("DB가 내려가 있음");
+            assertThat(row.targetField()).isEqualTo("memberId");
+            assertThat(row.targetId()).isEqualTo(event.memberId().toString());
+            assertThat(row.failedCount()).isEqualTo(1);
+            assertThat(row.failedAt()).isNotNull();
+        });
+        assertThat(failedEvents.stats().run()).as("목록을 봐도 DLQ에서 빠지지 않는다").isEqualTo(1);
+
+        // 되돌리기: 처음 길(wadadak.member · MemberWithdrawnEvent)로 다시 보내 run 큐에 들어간다
+        assertThat(failedEvents.redrive(AdminFailedEvents.Service.RUN).moved()).isEqualTo(1);
+        Message back = rabbitTemplate.receive(EventBrokerConfig.RUN_QUEUE, RECEIVE_TIMEOUT_MS);
+        assertThat(back).isNotNull();
+        assertThat(back.getMessageProperties().getReceivedRoutingKey()).isEqualTo("MemberWithdrawnEvent");
+        assertThat(failedEvents.stats().run()).isZero();
+
+        // 지우기
+        rabbitTemplate.convertAndSend(EventBrokerConfig.RUN_DLQ, "poison");
+        Awaitility.await().atMost(Duration.ofSeconds(10)).until(() -> failedEvents.stats().run() == 1);
+        assertThat(failedEvents.purge(AdminFailedEvents.Service.RUN).deleted()).isEqualTo(1);
+        assertThat(failedEvents.stats().run()).isZero();
     }
 
     @Test
