@@ -11,6 +11,7 @@
 <!--
   운영자 웹(Figma "🛠 운영자 페이지" ADM-1 · ADM-1-1 · ADM-2 · ADM-2-1 · ADM-2-2). 빌드 도구 없이 이 파일 하나로 돈다.
   "코스 생성 로그"는 Figma 시안 없이 같은 카드 · 표 · 패널 틀로 만들었다(코스 자동 생성 분석 로그, 2026-11-13).
+  "실패 이벤트"(DLQ)도 Figma 없이 같은 틀로 만들었다(2026-11-18).
   서버가 /admin 으로 내보내고, 데이터는 /api/v1/admin/** 를 운영자 계정(HTTP Basic)으로 부른다.
   아이디:비밀번호는 이 탭의 sessionStorage에만 둔다(탭을 닫으면 다시 로그인).
   색은 Figma 변수 모음 "운영자 웹 · Admin" 값이다. 앱 디자인 토큰과는 따로 간다.
@@ -67,6 +68,8 @@
   .nav a { display: block; padding: 10px 12px; border-radius: 8px; text-decoration: none; color: var(--text-secondary); }
   .nav a:hover { background: var(--soft); }
   .nav a[aria-current="page"] { background: var(--ink); color: var(--white); }
+  .nav a { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .nav .count { font: 500 11px/16px var(--num); padding: 1px 7px; border-radius: 99px; background: var(--danger-bg); color: var(--danger-text); }
   .logout { margin-top: auto; align-self: flex-start; border: 0; background: none; padding: 4px 8px; font-size: 12px; color: var(--text-secondary); }
   main { padding: 32px; min-width: 0; }
   h2 { font: 700 24px/32px var(--font); letter-spacing: -.96px; margin: 0; }
@@ -153,6 +156,9 @@
   .review-box .top .date { margin-left: auto; font-size: 12px; color: var(--text-secondary); }
   .review-box .meta { font-size: 12px; color: var(--text-secondary); display: flex; flex-wrap: wrap; gap: 4px 14px; }
   .review-box .content { white-space: pre-wrap; word-break: break-word; }
+  .code { margin: 0; background: var(--header); border-radius: 12px; padding: 14px; max-height: 360px; overflow: auto;
+    font: 12px/18px ui-monospace, "Cascadia Mono", Consolas, monospace; white-space: pre-wrap; word-break: break-all; }
+  .hint { margin: -4px 0 20px; font-size: 12px; color: var(--text-secondary); }
   .photos { display: flex; flex-wrap: wrap; gap: 6px; }
   .photos img { width: 72px; height: 72px; object-fit: cover; border-radius: 8px; background: var(--neutral-bg); }
   .note { font-size: 12px; color: var(--danger-text); }
@@ -211,6 +217,7 @@
       <a href="#members" data-page="members">회원 관리</a>
       <a href="#reviews" data-page="reviews">리뷰 관리</a>
       <a href="#logs" data-page="logs">코스 생성 로그</a>
+      <a href="#failed" data-page="failed">실패 이벤트 <span class="count" id="nav-failed" hidden></span></a>
     </nav>
     <button class="logout" id="logout" type="button">로그아웃</button>
   </aside>
@@ -275,8 +282,9 @@ function toast(text) {
   setTimeout(() => el.remove(), 2400);
 }
 
-function confirmBox(title, text, ok) {
+function confirmBox(title, text, ok, danger = true) {
   const dlg = $("#confirm");
+  $("#confirm-ok").className = `btn ${danger ? "danger" : "dark"} lg`;
   $("#confirm-title").textContent = title;
   $("#confirm-text").textContent = text;
   $("#confirm-ok").textContent = ok;
@@ -343,14 +351,16 @@ const state = {
   members: { socialProvider: "", runningExperience: "", page: 0 },
   reviews: { tab: "all", rating: "", days: "", page: 0, status: "", reason: "", reportPage: 0 },
   logs: { days: "", result: "", jev: "", page: 0 },
+  failed: { service: "CORE" },
 };
-const PAGES = { members: () => renderMembers(), reviews: () => renderReviews(), logs: () => renderLogs() };
+const PAGES = { members: () => renderMembers(), reviews: () => renderReviews(), logs: () => renderLogs(), failed: () => renderFailed() };
 const SIZE = 20;
 
 function start() {
   $("#login").hidden = true;
   $("#app").hidden = false;
   route();
+  if (location.hash !== "#failed") loadFailedBadge(); // 실패 이벤트 화면은 스스로 숫자를 받는다
 }
 
 function route() {
@@ -850,6 +860,149 @@ async function exportLogs(path, button) {
     a.click();
     setTimeout(() => URL.revokeObjectURL(a.href), 1000); // 바로 지우면 일부 브라우저가 받기를 취소한다
   } catch (err) { toast(err.message); } finally { btn.disabled = false; }
+}
+
+// ---------- 실패 이벤트 (DLQ) ----------
+// 서비스 사이 이벤트 중 재시도(약 6분)를 다 쓰고도 처리하지 못한 메시지. 서버는 EventBrokerConfig · AdminFailedEvents.
+const FAILED = {
+  service: {
+    CORE: { tab: "core", who: "core가 처리 못 함", desc: "run이 보낸 이벤트를 core가 처리하지 못했어요" },
+    RUN: { tab: "run", who: "run이 처리 못 함", desc: "core가 보낸 이벤트를 run이 처리하지 못했어요" },
+  },
+  event: {
+    CourseRunStartedEvent: "코스 러닝 시작", RunSessionEndedEvent: "러닝 종료", RunRecordDeletedEvent: "기록 삭제",
+    CourseActiveRunnersChangedEvent: "현재 러너 수 변경", GpsSourceLinkedEvent: "GPS 원본 연결", GpsSourceUnlinkedEvent: "GPS 원본 연결 해제",
+    CourseRunTrackEvent: "코스 러닝 경로", MemberWithdrawnEvent: "회원 탈퇴", MemberVisibilityChangedEvent: "공개 설정 변경",
+    CourseStatusChangedEvent: "코스 상태 변경", GpsCourseRegisteredEvent: "GPS 코스 등록",
+  },
+  target: { runRecordId: "기록", runSessionId: "세션", courseId: "코스", memberId: "회원" },
+};
+let failedStats = null;
+let failedRows = [];
+const eventName = (type) => type ? FAILED.event[type] ?? type : "알 수 없음";
+const targetText = (r) => r.targetField ? `${FAILED.target[r.targetField] ?? r.targetField} ${r.targetId.slice(0, 8)}…` : "–";
+const timesChip = (n) => chip(`${n}번째`, n >= 2 ? "danger" : "");
+const failedCount = (service) => failedStats?.[service.toLowerCase()] ?? 0;
+
+function showFailedBadge() {
+  const total = failedStats ? failedStats.core + failedStats.run : 0;
+  $("#nav-failed").hidden = total === 0;
+  $("#nav-failed").textContent = num(total);
+}
+
+// 메뉴의 빨간 숫자. 브로커가 없는 로컬에서는 오류를 띄우지 않고 숨긴다
+async function loadFailedBadge() {
+  try { failedStats = await api("/api/v1/admin/failed-events/stats"); } catch { failedStats = null; }
+  showFailedBadge();
+}
+
+async function renderFailed() {
+  const s = state.failed;
+  $("#main").innerHTML = `
+    <h2>실패 이벤트 ${chip("DLQ")}</h2>
+    <p class="lead">서비스 사이 이벤트 중 재시도(약 6분)를 다 쓰고도 처리하지 못한 것이에요</p>
+    <div class="stats" id="failed-stats"></div>
+    <p class="hint">원인을 고친 뒤에 되돌리세요. 되돌린 이벤트는 다시 처리되고, 또 실패하면 약 6분 뒤 여기로 돌아와요.
+      이미 처리된 이벤트가 섞여 있어도 두 번 반영되지 않아요.</p>
+    <div class="tabs" role="tablist">
+      ${Object.entries(FAILED.service).map(([k, v]) => `<button class="tab" role="tab" type="button" data-tab="${k}" aria-selected="${k === s.service}">${v.tab} <span class="count alert" id="failed-count-${k}"></span></button>`).join("")}
+    </div>
+    <div class="filters">
+      <span>${esc(FAILED.service[s.service].desc)}</span>
+      <span class="spacer"></span>
+      <button class="btn" type="button" id="failed-redrive" disabled>모두 되돌리기</button>
+      <button class="btn danger-line" type="button" id="failed-purge" disabled>모두 지우기</button>
+      <button class="btn" type="button" id="failed-refresh">새로고침</button>
+    </div>
+    <div class="card"><div class="table-wrap" id="failed-table"></div><div class="foot" id="failed-foot"></div></div>`;
+  $(".tabs").onclick = (e) => { const t = e.target.closest("[data-tab]")?.dataset.tab; if (t && t !== s.service) { s.service = t; renderFailed(); } };
+  $("#failed-refresh").onclick = renderFailed;
+  $("#failed-redrive").onclick = redriveFailed;
+  $("#failed-purge").onclick = purgeFailed;
+  try { failedStats = await api("/api/v1/admin/failed-events/stats"); } catch (err) { return showError(err); }
+  showFailedStats();
+  loadFailed();
+}
+
+function showFailedStats() {
+  $("#failed-stats").innerHTML = Object.entries(FAILED.service).map(([k, v]) =>
+    `<div class="stat"><span>${v.who}</span><b class="${failedCount(k) ? "alert" : ""}">${num(failedCount(k))}건</b></div>`).join("");
+  Object.keys(FAILED.service).forEach((k) => { $(`#failed-count-${k}`).textContent = num(failedCount(k)); });
+  // 숫자를 받은 뒤에, 지금 탭에 메시지가 있을 때만 누를 수 있다
+  $("#failed-redrive").disabled = $("#failed-purge").disabled = !failedCount(state.failed.service);
+  showFailedBadge();
+}
+
+async function loadFailed() {
+  const s = state.failed;
+  try { failedRows = await api(`/api/v1/admin/failed-events?${query({ service: s.service })}`); } catch (err) { return showError(err); }
+  $("#failed-table").innerHTML = failedRows.length ? `
+    <table>
+      <thead><tr><th>이벤트</th><th>대상</th><th>실패 사유</th><th>실패한 시각</th><th>반송</th><th>관리</th></tr></thead>
+      <tbody>${failedRows.map((r, i) => `
+        <tr>
+          <td class="strong">${esc(eventName(r.eventType))}</td>
+          <td title="${esc(r.targetId)}">${esc(targetText(r))}</td>
+          <td class="clip" title="${esc(r.reason)}">${r.reason ? esc(r.reason) : chip("사유 없음")}</td>
+          <td>${dateTime(r.failedAt)}</td>
+          <td>${timesChip(r.failedCount)}</td>
+          <td><button class="btn" type="button" data-failed="${i}">상세</button></td>
+        </tr>`).join("")}</tbody>
+    </table>` : `<div class="empty">처리하지 못한 이벤트가 없어요</div>`;
+  $("#failed-table").onclick = (e) => { const i = e.target.closest("[data-failed]")?.dataset.failed; if (i != null) openFailed(failedRows[i]); };
+  const total = Math.max(failedCount(s.service), failedRows.length);
+  $("#failed-foot").innerHTML = `<span>${total > failedRows.length ? `${num(total)}개 중 앞 ${num(failedRows.length)}개` : `${num(total)}개`}
+    · 반송이 2번째 이상이면 되돌려도 또 실패한 것이라 코드 문제일 가능성이 커요</span>`;
+}
+
+function openFailed(r) {
+  let payload = r.payload ?? "";
+  if (!r.payloadTruncated) { try { payload = JSON.stringify(JSON.parse(payload), null, 2); } catch { /* 이벤트가 아닌 메시지는 그대로 */ } }
+  const rows = (pairs) => `<dl class="rows">${pairs.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${v}</dd>`).join("")}</dl>`;
+  openDrawer(`
+    <header>
+      <div><h3>${esc(eventName(r.eventType))} ${timesChip(r.failedCount)}</h3>
+        <p>${FAILED.service[state.failed.service].who} · ${dateTime(r.failedAt)}</p></div>
+      <button class="close" type="button" data-close aria-label="닫기">${CLOSE}</button>
+    </header>
+    <div class="body">
+      <section class="section"><h4>실패 사유</h4>${r.reason
+        ? `<div class="review-box"><div class="content">${esc(r.reason)}</div></div>`
+        : `<p class="detail">사유가 남지 않았어요. 재시도 없이 바로 거절된 메시지예요(받는 쪽이 모르는 이벤트, 모양이 맞지 않는 메시지 등). 대개 지우면 돼요.</p>`}
+        ${r.stackTrace ? `<details><summary>스택 보기</summary><pre class="code">${esc(r.stackTrace)}</pre></details>` : ""}</section>
+      <section class="section"><h4>이벤트</h4>${rows([
+        ["종류", r.eventType ? `${esc(eventName(r.eventType))}<small>${esc(r.eventType)}</small>` : "알 수 없음"],
+        ["대상", r.targetField ? `${esc(FAILED.target[r.targetField] ?? r.targetField)}<small>${esc(r.targetId)}</small>` : "–"],
+        ["발생 시각", dateTime(r.occurredAt)],
+        ["실패한 시각", dateTime(r.failedAt)],
+        ["반송", `${num(r.failedCount)}번째`],
+        ["원래 길", r.eventType ? `${esc(r.originalExchange || "기본 exchange")} → ${esc(r.eventType)}` : "알 수 없음<small>되돌려도 남아요</small>"],
+      ])}</section>
+      <section class="section"><h4>메시지 원문 ${r.payloadTruncated ? chip("앞 4,000자만", "warning") : ""}</h4><pre class="code">${esc(payload)}</pre></section>
+    </div>`);
+}
+
+async function redriveFailed() {
+  const s = state.failed;
+  if (!await confirmBox("모두 되돌릴까요?",
+    `${FAILED.service[s.service].who} ${num(failedCount(s.service))}개를 처음 왔던 길로 다시 보내요. 원인을 고친 뒤에 하세요. 또 실패하면 약 6분 뒤 여기로 돌아와요.`,
+    "되돌리기", false)) return;
+  try {
+    const r = await api(`/api/v1/admin/failed-events/${s.service}/redrive`, { method: "POST" });
+    toast(`${num(r.moved)}개를 되돌렸어요${r.skipped ? ` · 원래 길을 몰라 ${num(r.skipped)}개는 남겼어요` : ""}`);
+  } catch (err) { return showError(err); }
+  renderFailed();
+}
+
+async function purgeFailed() {
+  const s = state.failed;
+  if (!await confirmBox("모두 지울까요?",
+    `${FAILED.service[s.service].who} ${num(failedCount(s.service))}개를 지워요. 지운 이벤트는 되돌릴 수 없어요.`, "지우기")) return;
+  try {
+    const r = await api(`/api/v1/admin/failed-events/${s.service}/purge`, { method: "POST" });
+    toast(`${num(r.deleted)}개를 지웠어요`);
+  } catch (err) { return showError(err); }
+  renderFailed();
 }
 
 // ---------- 오른쪽 패널 ----------

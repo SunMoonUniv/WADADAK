@@ -50,7 +50,7 @@ spring:
         default-requeue-rejected: false
         retry:
           enabled: true
-          # 1초부터 두 배씩, 최대 1분 간격으로 10번(약 6분) 다시 시도한 뒤 DLQ
+          # 1초부터 두 배씩, 최대 1분 간격으로 10번(약 6분) 다시 시도한 뒤 실패 사유를 헤더에 붙여 DLQ(EventBrokerConfig.failedEventRecoverer)
           initial-interval: 1s
           multiplier: 2
           max-interval: 1m
