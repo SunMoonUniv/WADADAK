@@ -1,5 +1,6 @@
 package com.wadadak.course.internal.planner;
 
+import com.wadadak.course.internal.planner.CandidateSelector.Fate;
 import tools.jackson.databind.JsonNode;
 
 import java.math.BigDecimal;
@@ -55,14 +56,18 @@ final class PlannerLogCsv {
 
     /** 머리글 한 줄 */
     static List<String> header() {
-        List<String> h = new ArrayList<>(List.of("문장 시각", "사용자", "문장",
+        List<String> h = new ArrayList<>(List.of("찾기 ID", "문장 시각", "사용자", "문장",
                 "Jev", "Jev 코스 관련(%)", "Jev 모양", "Jev 모양(%)", "Jev 출발", "Jev 출발(%)", "Jev 원하는 길(50% 이상)"));
         FORM_LABELS.forEach(l -> h.add("채운 폼 " + l));
         h.add("채우기(ms)");
         h.add("코스 찾기 시각");
         FORM_LABELS.forEach(l -> h.add("보낸 폼 " + l));
-        h.addAll(List.of("폼 수정", "바뀐 칸", "목표 거리(km)", "결과", "후보 수", "만든 경로 수", "조건 통과 수",
-                "장소 찾기(ms)", "길찾기(ms)", "고르기(ms)", "찾기 합계(ms)"));
+        h.addAll(List.of("폼 수정", "바뀐 칸", "목표 거리(km)", "결과", "후보 수", "만든 경로 수", "조건 통과 수"));
+        // 만든 경로가 어떻게 됐는지 개수(경로 CSV를 열지 않고 논문 집계를 하게)
+        for (Fate fate : Fate.values()) {
+            h.add(FATE.get(fate.name()) + "(개)");
+        }
+        h.addAll(List.of("장소 찾기(ms)", "길찾기(ms)", "고르기(ms)", "찾기 합계(ms)"));
         for (int i = 1; i <= MAX_CANDIDATES; i++) {
             for (Object[] c : CANDIDATE_COLUMNS) {
                 h.add("후보" + i + " " + c[0]);
@@ -74,13 +79,15 @@ final class PlannerLogCsv {
     /**
      * 채우기 하나와 거기 이어진 코스 찾기 하나를 한 줄로. 둘 중 하나는 없을 수 있다(찾기 안 한 문장 · 직접 조건으로 찾은 요청).
      *
+     * @param searchId 찾기 ID(경로 CSV와 잇는다). 문장만 채웠으면 null
      * @param parsedAt · plannedAt 이미 한국 시각 문자열로 바꾼 값
+     * @param fates    만든 경로의 결과별 개수 {"PICKED": 3, ...}. 경로 기록이 없으면(11/16 전 · 길을 찾지 않음) null
      */
-    static List<String> row(String parsedAt, String user, String sentence, JsonNode jev, JsonNode parsedForm, Integer parseMs,
-                            String plannedAt, JsonNode sentForm, Integer targetMeters, Integer candidateCount, String reason,
-                            Integer placeMs, Integer routeMs, Integer selectMs, JsonNode candidates,
-                            Integer generatedCount, Integer passedCount) {
-        List<String> row = new ArrayList<>(List.of(blank(parsedAt), blank(user), blank(sentence)));
+    static List<String> row(String searchId, String parsedAt, String user, String sentence, JsonNode jev, JsonNode parsedForm,
+                            Integer parseMs, String plannedAt, JsonNode sentForm, Integer targetMeters, Integer candidateCount,
+                            String reason, Integer placeMs, Integer routeMs, Integer selectMs, JsonNode candidates,
+                            Integer generatedCount, Integer passedCount, JsonNode fates) {
+        List<String> row = new ArrayList<>(List.of(blank(searchId), blank(parsedAt), blank(user), blank(sentence)));
         // Jev: 문장이 없으면(직접 조건) 칸을 비운다
         JsonNode answers = jev == null ? null : jev.get("answers");
         row.add(sentence == null ? "" : jev == null ? "실패(규칙만)" : "사용");
@@ -115,6 +122,11 @@ final class PlannerLogCsv {
         row.add(number(candidateCount));
         row.add(number(generatedCount));
         row.add(number(passedCount));
+        for (Fate fate : Fate.values()) {
+            // 경로 기록이 있으면 없는 결과는 0, 기록 자체가 없으면 빈칸
+            Double n = generatedCount == null ? null : fates == null ? Double.valueOf(0) : numberOf(fates, fate.name());
+            row.add(generatedCount == null ? "" : plain(n == null ? 0.0 : n));
+        }
         row.add(number(placeMs));
         row.add(number(routeMs));
         row.add(number(selectMs));
@@ -131,10 +143,15 @@ final class PlannerLogCsv {
         return row;
     }
 
-    /** 경로 CSV 머리글: 어떤 코스 찾기였는지 + 경로 하나의 결과와 지표 */
-    static List<String> pathHeader() {
-        List<String> h = new ArrayList<>(List.of("코스 찾기 시각", "사용자", "문장", "모양", "목표 거리(km)", "원하는 길",
-                "경로 번호", "결과", "뽑힌 순위", "점수"));
+    /**
+     * 경로 CSV 머리글: 어떤 코스 찾기였는지 + 경로 하나의 결과와 지표.
+     *
+     * @param one 코스 찾기 하나만 받을 때. 줄마다 같은 찾기 칸(시각 · 문장 · 모양 …)이 반복되지 않게 뺀다
+     */
+    static List<String> pathHeader(boolean one) {
+        List<String> h = new ArrayList<>(one ? List.of()
+                : List.of("찾기 ID", "코스 찾기 시각", "사용자", "문장", "모양", "목표 거리(km)", "원하는 길"));
+        h.addAll(List.of("경로 번호", "결과", "뽑힌 순위", "점수"));
         CANDIDATE_COLUMNS.forEach(c -> h.add((String) c[0]));
         h.add("경로 점 수");
         return h;
@@ -147,11 +164,12 @@ final class PlannerLogCsv {
      * @param form      사용자가 보낸 폼
      * @param path      경로 결과 JSON(order · fate · rank · score · 지표 · points)
      */
-    static List<String> pathRow(String plannedAt, String user, String sentence, JsonNode form, Integer targetMeters, JsonNode path) {
+    static List<String> pathRow(boolean one, String searchId, String plannedAt, String user, String sentence, JsonNode form,
+                                Integer targetMeters, JsonNode path) {
         List<String> sent = form(form);
-        List<String> row = new ArrayList<>(List.of(plannedAt, user, blank(sentence), sent.get(1),
-                km(targetMeters == null ? null : targetMeters.doubleValue()), sent.get(5),
-                plain(numberOf(path, "order")), FATE.getOrDefault(text(path, "fate"), blank(text(path, "fate"))),
+        List<String> row = new ArrayList<>(one ? List.of() : List.of(searchId, plannedAt, user, blank(sentence), sent.get(1),
+                km(targetMeters == null ? null : targetMeters.doubleValue()), sent.get(5)));
+        row.addAll(List.of(plain(numberOf(path, "order")), FATE.getOrDefault(text(path, "fate"), blank(text(path, "fate"))),
                 plain(numberOf(path, "rank")), round(numberOf(path, "score"))));
         for (Object[] column : CANDIDATE_COLUMNS) {
             Double value = numberOf(path, (String) column[1]);

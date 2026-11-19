@@ -817,8 +817,10 @@ async function openLog(id) {
       </table></div></div></details>` : "";
     return `<section class="section">
       <h4>코스 찾기 ${d.plans.length > 1 ? i + 1 : ""} ${p.candidateCount > 0 ? chip(`후보 ${p.candidateCount}개`, "success") : chip(PLAN.reason[p.reason] ?? p.reason, "warning")}
-        ${p.edited ? chip("폼 수정", "danger") : chip("그대로 보냄")}</h4>
+        ${p.edited ? chip("폼 수정", "danger") : chip("그대로 보냄")}
+        ${p.generatedCount == null ? "" : `<button class="btn" type="button" style="margin-left:auto" data-plan-csv="${esc(p.id)}">이 코스 경로 받기</button>`}</h4>
       ${rows([
+        ["찾기 ID", `<code>${esc(searchId(p.id))}</code> <small>CSV의 찾기 ID 칸</small>`],
         ["시각", dateTime(p.createdAt)],
         ["보낸 폼", esc(formSummary(p.form))],
         ...changes.map(([k, v]) => [`바뀐 칸 · ${k}`, v]),
@@ -845,13 +847,20 @@ async function openLog(id) {
       <section class="section"><h4>Jev 답</h4>${jev}</section>
       ${plans || `<section class="section"><h4>코스 찾기</h4><p class="detail">이 문장으로 10분 안에 코스 찾기를 하지 않았어요</p></section>`}
     </div>`);
+  // 코스 찾기 하나의 경로만 받는다(기간과 상관없이)
+  document.querySelectorAll("[data-plan-csv]").forEach((b) => {
+    b.onclick = () => exportLogs("export/paths", b, { planId: b.dataset.planCsv });
+  });
 }
 
-async function exportLogs(path, button) {
-  const btn = $(button);
+// 서버의 AdminPlannerLogQueries.searchId와 같다: 코스 찾기 id 끝 8자리 앞에 S
+const searchId = (id) => `S${String(id).slice(-8)}`;
+
+async function exportLogs(path, button, params = { days: state.logs.days }) {
+  const btn = typeof button === "string" ? $(button) : button;
   btn.disabled = true;
   try {
-    const res = await fetch(`/api/v1/admin/planner-logs/${path}?${query({ days: state.logs.days })}`,
+    const res = await fetch(`/api/v1/admin/planner-logs/${path}?${query(params)}`,
       { headers: { Authorization: `Basic ${sessionStorage.getItem(KEY)}` } });
     if (res.status === 401) return logout("다시 로그인해 주세요.");
     if (!res.ok) throw new Error("CSV를 받지 못했어요.");
