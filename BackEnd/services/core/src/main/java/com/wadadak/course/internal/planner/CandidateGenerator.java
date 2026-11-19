@@ -53,6 +53,8 @@ class CandidateGenerator {
     /** 경유: 경유지에서 옆으로 비켜 돌아오는 점. 같은 길로 되돌아오지 않게 한다 */
     static final int VIA_SIDE_STEP_METERS = 400;
     static final int VIA_CANDIDATES = 3;
+    /** 편도: 출발 · 도착 가운데에서 좌우로 비키는 거리(직선거리에 대한 비율) */
+    static final double[] DETOUR_SIDE_RATIOS = {0.25, 0.5};
     /** 강변: 경유점 · 반환점에서 원 반지름 · 반환점 거리의 이 비율 안에 하천이 있으면 그리로 옮긴다 */
     static final double RIVER_SNAP_RATIO = 0.5;
     /** 편도 · 경유의 비용 구역 반경: 출발에서 도착 · 경유지까지 거리 + 이만큼(m). 경유는 옆으로 최대 1,200m 비켜 돈다 */
@@ -86,11 +88,7 @@ class CandidateGenerator {
                     }
                 }
             }
-            case POINT_TO_POINT -> {
-                if (!expired(deadline)) {
-                    addIfRouted(paths, () -> routing.route(List.of(start, place), false, cost));
-                }
-            }
+            case POINT_TO_POINT -> pointToPoint(start, place, cost, deadline, paths);
             case VIA -> {
                 for (int i = 0; i < VIA_CANDIDATES && !expired(deadline); i++) {
                     GeoPoint side = destination(place, VIA_SIDE_STEP_METERS * (i + 1), i * 120);
@@ -99,6 +97,45 @@ class CandidateGenerator {
             }
         }
         return paths;
+    }
+
+    /**
+     * 편도: 가장 좋은 길 + 엔진의 다른 길(최대 3개) + 옆으로 비켜 가는 길(최대 4개).
+     * 탕정역 → 선문대(직선 1.4km)처럼 길이 적은 곳은 엔진이 다른 길을 하나도 못 찾았다. 그래서 출발 · 도착 가운데에서 직선과 직각으로
+     * 직선거리의 25% · 50%만큼 좌우로 비킨 점을 지나는 길을 더 만든다(실측 2.0km → 2.4 · 2.5 · 2.9 · 4.5km).
+     * 겹치는 길은 고르기({@link CandidateSelector})가 85% 겹침으로 뺀다.
+     */
+    private void pointToPoint(GeoPoint start, GeoPoint place, Map<String, Object> cost, Instant deadline, List<RoutedPath> paths) {
+        if (expired(deadline)) {
+            return;
+        }
+        try {
+            routing.alternatives(start, place, cost).stream().filter(p -> p.distanceMeters() > 0).forEach(paths::add);
+        } catch (RuntimeException e) {
+            // 길이 없거나 엔진 오류. 비켜 가는 길도 같은 이유로 실패할 것이라 아무것도 만들지 않는다
+            return;
+        }
+        GeoPoint middle = new GeoPoint((start.lat() + place.lat()) / 2, (start.lng() + place.lng()) / 2);
+        double straight = start.distanceMeters(place);
+        double heading = bearing(start, place);
+        for (double ratio : DETOUR_SIDE_RATIOS) {
+            for (int side : new int[]{90, -90}) {
+                if (expired(deadline)) {
+                    return;
+                }
+                GeoPoint aside = destination(middle, straight * ratio, heading + side);
+                addIfRouted(paths, () -> routing.route(List.of(start, aside, place), true, cost));
+            }
+        }
+    }
+
+    /** a에서 b로 가는 방향(도, 북쪽 0 · 시계 방향). {@link #destination}의 반대 계산 */
+    static double bearing(GeoPoint a, GeoPoint b) {
+        double lat1 = Math.toRadians(a.lat());
+        double lat2 = Math.toRadians(b.lat());
+        double dLng = Math.toRadians(b.lng() - a.lng());
+        return Math.toDegrees(Math.atan2(Math.sin(dLng) * Math.cos(lat2),
+                Math.cos(lat1) * Math.sin(lat2) - Math.sin(lat1) * Math.cos(lat2) * Math.cos(dLng)));
     }
 
     /** 출발점을 지나는 원 위의 경유점 3개로 돈다 */

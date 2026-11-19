@@ -71,6 +71,20 @@ class RoutingClient {
         return post(body);
     }
 
+    /**
+     * 출발 → 도착의 가장 좋은 길과 엔진이 찾은 다른 길들(GraphHopper {@code alternative_route}, 최대 {@value #MAX_ALTERNATIVES}개).
+     * 엔진은 다른 길이 가장 좋은 길과 많이 겹치거나 너무 돌아가면 빼서, 길이 적은 곳은 하나만 올 수 있다. 점이 두 개일 때만 쓸 수 있다.
+     */
+    List<RoutedPath> alternatives(GeoPoint start, GeoPoint end, Map<String, Object> costModel) {
+        Map<String, Object> body = body(List.of(start, end), costModel);
+        body.put("algorithm", "alternative_route");
+        body.put("alternative_route.max_paths", MAX_ALTERNATIVES);
+        return postAll(body);
+    }
+
+    /** 대체 경로 최대 수(가장 좋은 길 포함) */
+    static final int MAX_ALTERNATIVES = 3;
+
     /** 출발점으로 돌아오는 약 distanceM 길이의 경로. seed마다 다른 방향으로 만든다 */
     RoutedPath roundTrip(GeoPoint start, int distanceM, long seed, Map<String, Object> costModel) {
         Map<String, Object> body = body(List.of(start), costModel);
@@ -104,13 +118,21 @@ class RoutingClient {
     }
 
     private RoutedPath post(Map<String, Object> body) {
+        return postAll(body).getFirst();
+    }
+
+    /** 응답의 경로 전부. 대체 경로를 묻지 않았으면 하나다 */
+    private List<RoutedPath> postAll(Map<String, Object> body) {
         GhResponse response = client.post().uri("/route").contentType(MediaType.APPLICATION_JSON).body(body)
                 .retrieve()
                 .body(GhResponse.class);
         if (response == null || response.paths() == null || response.paths().isEmpty()) {
             throw new IllegalStateException("길찾기 응답에 경로가 없습니다.");
         }
-        GhPath path = response.paths().getFirst();
+        return response.paths().stream().map(RoutingClient::toPath).toList();
+    }
+
+    private static RoutedPath toPath(GhPath path) {
         List<GeoPoint> points = path.points().coordinates().stream().map(c -> new GeoPoint(c.get(1), c.get(0))).toList();
         List<RoadClassSpan> roadClasses = path.details() == null ? List.of()
                 : path.details().getOrDefault("road_class", List.of()).stream()

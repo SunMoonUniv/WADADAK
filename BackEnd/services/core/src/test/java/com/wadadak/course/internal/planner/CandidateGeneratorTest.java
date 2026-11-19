@@ -188,8 +188,25 @@ class CandidateGeneratorTest {
         roadsAreLongerThanStraight();
         GeoPoint place = new GeoPoint(36.8050, 127.0800);
 
-        assertThat(generator(fixed()).generate(Shape.POINT_TO_POINT, START, place, null, Set.of(), FAR))
-                .singleElement().satisfies(p -> assertThat(p.points()).containsExactly(START, place));
+        // 엔진이 다른 길 2개를 주고, 가운데에서 좌우로 비켜 가는 길 4개를 더 만든다
+        when(routing.alternatives(any(), any(), any())).thenAnswer(a -> List.of(path(List.of(START, place), 1_000),
+                path(List.of(START, place), 1_100)));
+        List<RoutedPath> oneWay = generator(fixed()).generate(Shape.POINT_TO_POINT, START, place, null, Set.of(), FAR);
+        assertThat(oneWay).hasSize(6);
+        assertThat(oneWay.subList(0, 2)).allSatisfy(p -> assertThat(p.points()).containsExactly(START, place));
+        GeoPoint middle = new GeoPoint((START.lat() + place.lat()) / 2, (START.lng() + place.lng()) / 2);
+        double straight = START.distanceMeters(place);
+        List<RoutedPath> detours = oneWay.subList(2, 6);
+        assertThat(detours).allSatisfy(p -> assertThat(p.points()).first().isEqualTo(START))
+                .allSatisfy(p -> assertThat(p.points()).last().isEqualTo(place));
+        // 직선거리의 25% · 50%를 좌우로(같은 비율의 두 점은 가운데를 사이에 두고 마주본다)
+        assertThat(detours).extracting(p -> Math.round(middle.distanceMeters(p.points().get(1)) / straight * 100))
+                .containsExactly(25L, 25L, 50L, 50L);
+        assertThat(detours.get(0).points().get(1).distanceMeters(detours.get(1).points().get(1))).isCloseTo(straight * 0.5, within(1.0));
+
+        // 길이 없으면(엔진 오류) 비켜 가는 길도 만들지 않는다
+        when(routing.alternatives(any(), any(), any())).thenThrow(new IllegalStateException("길 없음"));
+        assertThat(generator(fixed()).generate(Shape.POINT_TO_POINT, START, place, null, Set.of(), FAR)).isEmpty();
 
         List<RoutedPath> via = generator(fixed()).generate(Shape.VIA, START, place, null, Set.of(), FAR);
         assertThat(via).hasSize(3);

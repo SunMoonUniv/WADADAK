@@ -42,4 +42,16 @@ class RoutingClientIT {
                 .count();
         assertThat(good).isGreaterThanOrEqualTo(3);
     }
+
+    @Test
+    void tangjeongToSunmoonOneWayHasSeveralRoutes() {
+        GeoPoint tangjeong = new GeoPoint(36.7884, 127.0846);
+        Clock clock = Clock.systemUTC();
+        List<RoutedPath> paths = new CandidateGenerator(routing, new RoadLayers(java.util.Map.of()), clock)
+                .generate(Shape.POINT_TO_POINT, tangjeong, SUNMOON, null, java.util.Set.of(), clock.instant().plusSeconds(10));
+
+        // 엔진은 다른 길을 못 찾는 짧은 길(직선 1.4km)이라도 옆으로 비켜 가는 길로 여러 개가 나온다
+        assertThat(paths).hasSizeGreaterThanOrEqualTo(4);
+        assertThat(paths.stream().mapToLong(p -> Math.round(p.distanceMeters() / 100)).distinct().count()).isGreaterThanOrEqualTo(3);
+    }
 }
