@@ -164,7 +164,7 @@ class AdminPlannerLogControllerTest {
         assertThat(result).hasStatusOk();
         assertThat(result.getResponse().getHeader("Content-Disposition")).startsWith("attachment").contains("planner-logs-");
         String csv = new String(result.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
-        assertThat(csv).startsWith("﻿문장 시각,사용자,문장,Jev,Jev 코스 관련(%),");
+        assertThat(csv).startsWith("﻿찾기 ID,문장 시각,사용자,문장,Jev,Jev 코스 관련(%),");
         String line = csv.lines().filter(l -> l.contains(sentence.replace("\"", "\"\""))).findFirst().orElseThrow();
         // 쉼표 · 따옴표가 든 문장은 따옴표로 감싼다
         assertThat(line).contains("\"" + sentence.replace("\"", "\"\"") + "\"")
@@ -172,7 +172,8 @@ class AdminPlannerLogControllerTest {
                 .contains(",사용,98,한 바퀴,93,")
                 // 채운 폼과 보낸 폼은 칸별로, 바뀐 칸은 말로
                 .contains(",현재 위치,한 바퀴,5,,,,300,")
-                .contains(",예,거리(km): 5 → 6,6,후보 있음,1,,,10,3000,50,3060,")
+                // 경로 기록이 없는 로그라 만든 경로 수 · 조건 통과 수 · 결과별 개수 6칸은 빈칸
+                .contains(",예,거리(km): 5 → 6,6,후보 있음,1,,,,,,,,,10,3000,50,3060,")
                 // 후보1: 5.1km · 큰길 10% · 되돌아옴 0% · 오르막 없음 · 편의점 3 · 화장실 0
                 .contains(",5.1,10,0,,3,0,");
         assertThat(csv).contains(",8.123,").doesNotContain("anchorPoints").doesNotContain("{");
@@ -196,19 +197,34 @@ class AdminPlannerLogControllerTest {
         assertThat(plan.get("paths")).hasSize(3);
         assertThat(plan.get("paths").get(2).get("fate").asString()).isEqualTo("SIMILAR_TO_PICKED");
 
-        // 메인 CSV에는 수만, 경로 CSV에는 경로 하나에 한 줄
+        // 메인 CSV에는 수와 결과별 개수(뽑힘 1 · 거리 벗어남 1 · 되돌아옴 0 · 기존 겹침 0 · 뽑힌 후보 겹침 1 · 순위 밖 0)
         String main = new String(admin("/api/v1/admin/planner-logs/export?days=1").getResponse().getContentAsByteArray(),
                 StandardCharsets.UTF_8);
-        assertThat(main.lines().filter(l -> l.contains(sentence)).findFirst().orElseThrow()).contains(",후보 있음,1,3,2,");
+        assertThat(main).contains("만든 경로 수,조건 통과 수,뽑힘(개),거리 벗어남(개),되돌아옴 많음(개),기존 코스와 겹침(개),뽑힌 후보와 겹침(개),점수 순위 밖(개),");
+        String mainLine = main.lines().filter(l -> l.contains(sentence)).findFirst().orElseThrow();
+        assertThat(mainLine).contains(",후보 있음,1,3,2,1,1,0,0,1,0,");
+        // 경로 CSV에는 경로 하나에 한 줄. 찾기 ID 칸으로 메인 CSV와 잇는다
+        UUID planId = jdbcTemplate.queryForObject("SELECT id FROM course.planner_plan_logs WHERE parse_log_id = ?", UUID.class, id);
+        String searchId = AdminPlannerLogQueries.searchId(planId);
+        assertThat(searchId).matches("S[0-9a-f]{8}");
+        assertThat(mainLine).startsWith(searchId + ",");
         MvcTestResult result = admin("/api/v1/admin/planner-logs/export/paths?days=1");
         assertThat(result.getResponse().getHeader("Content-Disposition")).contains("planner-paths-");
         String csv = new String(result.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8);
-        assertThat(csv).startsWith("﻿코스 찾기 시각,사용자,문장,모양,목표 거리(km),원하는 길,경로 번호,결과,뽑힌 순위,점수,");
+        assertThat(csv).startsWith("﻿찾기 ID,코스 찾기 시각,사용자,문장,모양,목표 거리(km),원하는 길,경로 번호,결과,뽑힌 순위,점수,");
         List<String> lines = csv.lines().filter(l -> l.contains(sentence)).toList();
-        assertThat(lines).hasSize(3);
+        assertThat(lines).hasSize(3).allSatisfy(l -> assertThat(l).startsWith(searchId + ","));
         assertThat(lines.get(0)).contains(",한 바퀴,5,,1,거리 벗어남,,,6.4,");
         assertThat(lines.get(1)).contains(",2,뽑힘,1,-1.5,5.1,10,0,20,3,0,");
         assertThat(lines.get(2)).contains(",3,뽑힌 후보와 겹침,,-2.25,").endsWith(",1");
+
+        // 코스 찾기 하나만 받으면 반복되는 찾기 칸 없이 경로 칸만, 파일 이름에 찾기 ID
+        MvcTestResult one = admin("/api/v1/admin/planner-logs/export/paths?planId=" + planId);
+        assertThat(one.getResponse().getHeader("Content-Disposition")).contains("planner-paths-" + searchId + ".csv");
+        List<String> oneLines = new String(one.getResponse().getContentAsByteArray(), StandardCharsets.UTF_8).lines().toList();
+        assertThat(oneLines.getFirst()).isEqualTo("﻿경로 번호,결과,뽑힌 순위,점수,거리(km),큰길(%),되돌아옴(%),오르막(m),편의점,화장실,인도(%),강변(%),밝은 길(%),경로 점 수");
+        assertThat(oneLines).hasSize(4);
+        assertThat(oneLines.get(1)).startsWith("1,거리 벗어남,,,6.4,");
     }
 
     private MvcTestResult admin(String uri) {

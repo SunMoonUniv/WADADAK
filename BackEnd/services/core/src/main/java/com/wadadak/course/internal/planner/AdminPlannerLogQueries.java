@@ -161,7 +161,11 @@ class AdminPlannerLogQueries {
                 SELECT p.created_at AS parsed_at, coalesce(p.member_hash, g.member_hash) AS member_hash, p.sentence,
                        p.jev_answers::text AS jev_answers, p.form::text AS parsed_form, p.elapsed_ms AS parse_ms,
                        g.created_at AS planned_at, g.form::text AS sent_form, g.target_meters, g.candidate_count, g.reason,
-                       g.place_ms, g.route_ms, g.select_ms, g.candidates::text AS candidates, g.generated_count, g.passed_count
+                       g.place_ms, g.route_ms, g.select_ms, g.candidates::text AS candidates, g.generated_count, g.passed_count,
+                       g.id AS plan_id,
+                       -- 만든 경로의 결과별 개수: {"PICKED": 3, "OUT_OF_RANGE": 28, ...}
+                       (SELECT jsonb_object_agg(f.fate, f.n) FROM (SELECT x ->> 'fate' AS fate, count(*) AS n
+                                                                  FROM jsonb_array_elements(g.paths) x GROUP BY 1) f)::text AS fates
                 FROM course.planner_parse_logs p
                 FULL JOIN course.planner_plan_logs g ON g.parse_log_id = p.id"""
                 + (since == null ? "" : " WHERE coalesce(p.created_at, g.created_at) >= :since")
@@ -175,14 +179,15 @@ class AdminPlannerLogQueries {
         query.query(rs -> {
             OffsetDateTime parsedAt = rs.getObject("parsed_at", OffsetDateTime.class);
             OffsetDateTime plannedAt = rs.getObject("planned_at", OffsetDateTime.class);
-            line(out, PlannerLogCsv.row(
+            line(out, PlannerLogCsv.row(searchId(rs.getObject("plan_id", UUID.class)),
                     parsedAt == null ? null : CSV_TIME.format(parsedAt), shortHash(rs.getString("member_hash")),
                     rs.getString("sentence"), tree(rs.getString("jev_answers")), tree(rs.getString("parsed_form")),
                     (Integer) rs.getObject("parse_ms"),
                     plannedAt == null ? null : CSV_TIME.format(plannedAt), tree(rs.getString("sent_form")),
                     (Integer) rs.getObject("target_meters"), (Integer) rs.getObject("candidate_count"), rs.getString("reason"),
                     (Integer) rs.getObject("place_ms"), (Integer) rs.getObject("route_ms"), (Integer) rs.getObject("select_ms"),
-                    tree(rs.getString("candidates")), (Integer) rs.getObject("generated_count"), (Integer) rs.getObject("passed_count")));
+                    tree(rs.getString("candidates")), (Integer) rs.getObject("generated_count"), (Integer) rs.getObject("passed_count"),
+                    tree(rs.getString("fates"))));
         });
         return out.toString();
     }
@@ -190,29 +195,50 @@ class AdminPlannerLogQueries {
     /**
      * 논문 분석용 경로 CSV: 코스 찾기에서 만든 경로 하나 = 한 줄(뽑힌 것 · 걸러진 것 모두). 경로 점은 넣지 않는다(상세 API에 있다).
      * 2026-11-16 전 로그에는 경로 기록이 없어 빠진다.
+     *
+     * @param planId 코스 찾기 하나만. 이때는 그 찾기의 문장 · 모양 같은 칸이 줄마다 반복되지 않게 빼고 경로 칸만 넣는다.
+     *               {@code null}이면 기간 안의 전부(찾기 ID 칸으로 메인 CSV와 잇는다)
      */
-    String pathsCsv(Instant since) {
+    String pathsCsv(Instant since, UUID planId) {
         String sql = """
-                SELECT g.created_at, g.member_hash, p.sentence, g.form::text AS form, g.target_meters, path.value::text AS path
+                SELECT g.id AS plan_id, g.created_at, g.member_hash, p.sentence, g.form::text AS form, g.target_meters,
+                       path.value::text AS path
                 FROM course.planner_plan_logs g
                 LEFT JOIN course.planner_parse_logs p ON p.id = g.parse_log_id
                 CROSS JOIN LATERAL jsonb_array_elements(g.paths) AS path
                 WHERE g.paths IS NOT NULL"""
-                + (since == null ? "" : " AND g.created_at >= :since")
+                + (planId != null ? " AND g.id = :planId" : since == null ? "" : " AND g.created_at >= :since")
                 + " ORDER BY g.created_at, (path.value ->> 'order')::int";
         JdbcClient.StatementSpec query = jdbc.sql(sql);
-        if (since != null) {
+        if (planId != null) {
+            query = query.param("planId", planId);
+        } else if (since != null) {
             query = query.param("since", timestamp(since));
         }
+        boolean one = planId != null;
         StringBuilder out = new StringBuilder("﻿");
-        line(out, PlannerLogCsv.pathHeader());
+        line(out, PlannerLogCsv.pathHeader(one));
         // 중괄호로 감싸야 "한 줄씩 처리(RowCallbackHandler)"로 읽힌다. 식 하나면 RowMapper와 헷갈려 컴파일이 안 된다
         query.query(rs -> {
-            line(out, PlannerLogCsv.pathRow(CSV_TIME.format(rs.getObject("created_at", OffsetDateTime.class)),
+            line(out, PlannerLogCsv.pathRow(one, searchId(rs.getObject("plan_id", UUID.class)),
+                    CSV_TIME.format(rs.getObject("created_at", OffsetDateTime.class)),
                     shortHash(rs.getString("member_hash")), rs.getString("sentence"), tree(rs.getString("form")),
                     (Integer) rs.getObject("target_meters"), tree(rs.getString("path"))));
         });
         return out.toString();
+    }
+
+    /**
+     * 메인 CSV와 경로 CSV를 잇는 "찾기 ID": 코스 찾기 로그 id의 끝 8자리.
+     * id는 UUID v7이라 앞자리는 시각이라 가까운 시각끼리 같고, 끝자리는 무작위라 겹치지 않는다. 문장만 채운 줄은 null.
+     * 앞에 S를 붙인다: "12345678"이나 "4e201234"는 엑셀이 숫자(지수)로 바꿔 버린다
+     */
+    static String searchId(UUID planId) {
+        if (planId == null) {
+            return null;
+        }
+        String id = planId.toString();
+        return "S" + id.substring(id.length() - 8);
     }
 
     /** 칸들을 쉼표로 이어 한 줄. 엑셀이 읽는 줄바꿈(CRLF)으로 끝낸다 */
