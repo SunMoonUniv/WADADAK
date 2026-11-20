@@ -62,7 +62,7 @@ final class PlannerLogCsv {
         h.add("채우기(ms)");
         h.add("코스 찾기 시각");
         FORM_LABELS.forEach(l -> h.add("보낸 폼 " + l));
-        h.addAll(List.of("폼 수정", "바뀐 칸", "목표 거리(km)", "결과", "후보 수", "만든 경로 수", "조건 통과 수"));
+        h.addAll(List.of("폼 수정", "바뀐 칸", "목표 거리(km)", "결과", "후보 수", "등록", "등록한 후보 순위", "만든 경로 수", "조건 통과 수"));
         // 만든 경로가 어떻게 됐는지 개수(경로 CSV를 열지 않고 논문 집계를 하게)
         for (Fate fate : Fate.values()) {
             h.add(FATE.get(fate.name()) + "(개)");
@@ -82,11 +82,12 @@ final class PlannerLogCsv {
      * @param searchId 찾기 ID(경로 CSV와 잇는다). 문장만 채웠으면 null
      * @param parsedAt · plannedAt 이미 한국 시각 문자열로 바꾼 값
      * @param fates    만든 경로의 결과별 개수 {"PICKED": 3, ...}. 경로 기록이 없으면(11/16 전 · 길을 찾지 않음) null
+     * @param registeredRank 이 찾기의 후보로 등록했으면 그 순위. 안 했으면 null
      */
     static List<String> row(String searchId, String parsedAt, String user, String sentence, JsonNode jev, JsonNode parsedForm,
                             Integer parseMs, String plannedAt, JsonNode sentForm, Integer targetMeters, Integer candidateCount,
                             String reason, Integer placeMs, Integer routeMs, Integer selectMs, JsonNode candidates,
-                            Integer generatedCount, Integer passedCount, JsonNode fates) {
+                            Integer generatedCount, Integer passedCount, JsonNode fates, Integer registeredRank) {
         List<String> row = new ArrayList<>(List.of(blank(searchId), blank(parsedAt), blank(user), blank(sentence)));
         // Jev: 문장이 없으면(직접 조건) 칸을 비운다
         JsonNode answers = jev == null ? null : jev.get("answers");
@@ -120,6 +121,9 @@ final class PlannerLogCsv {
         row.add(km(targetMeters == null ? null : targetMeters.doubleValue()));
         row.add(candidateCount == null ? "" : candidateCount > 0 ? "후보 있음" : REASON.getOrDefault(reason, blank(reason)));
         row.add(number(candidateCount));
+        // 등록: 후보를 받은 찾기만 예/아니오. 찾기를 안 했거나 후보가 없으면 빈칸
+        row.add(candidateCount == null || candidateCount == 0 ? "" : registeredRank != null ? "예" : "아니오");
+        row.add(number(registeredRank));
         row.add(number(generatedCount));
         row.add(number(passedCount));
         for (Fate fate : Fate.values()) {
@@ -165,11 +169,15 @@ final class PlannerLogCsv {
      * @param path      경로 결과 JSON(order · fate · rank · score · 지표 · points)
      */
     static List<String> pathRow(boolean one, String searchId, String plannedAt, String user, String sentence, JsonNode form,
-                                Integer targetMeters, JsonNode path) {
+                                Integer targetMeters, JsonNode path, Integer registeredRank) {
+        // 등록에 쓴 후보는 결과를 "뽑힘(등록)"으로
+        Double rank = numberOf(path, "rank");
+        boolean registered = rank != null && registeredRank != null && rank.intValue() == registeredRank;
+        String fate = registered ? "뽑힘(등록)" : FATE.getOrDefault(text(path, "fate"), blank(text(path, "fate")));
         List<String> sent = form(form);
         List<String> row = new ArrayList<>(one ? List.of() : List.of(searchId, plannedAt, user, blank(sentence), sent.get(1),
                 km(targetMeters == null ? null : targetMeters.doubleValue()), sent.get(5)));
-        row.addAll(List.of(plain(numberOf(path, "order")), FATE.getOrDefault(text(path, "fate"), blank(text(path, "fate"))),
+        row.addAll(List.of(plain(numberOf(path, "order")), fate,
                 plain(numberOf(path, "rank")), round(numberOf(path, "score"))));
         for (Object[] column : CANDIDATE_COLUMNS) {
             Double value = numberOf(path, (String) column[1]);

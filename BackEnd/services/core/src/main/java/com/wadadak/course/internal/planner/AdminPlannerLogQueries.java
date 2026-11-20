@@ -34,7 +34,9 @@ class AdminPlannerLogQueries {
         /** 코스 찾기를 했지만 후보가 없음(장소 못 찾음 · 너무 멂 · 길 없음 · 비슷한 코스) */
         NONE,
         /** 문장만 채우고 10분 안에 코스 찾기를 안 함 */
-        NOT_PLANNED
+        NOT_PLANNED,
+        /** 이 문장으로 찾은 후보로 코스를 실제로 등록함 */
+        REGISTERED
     }
 
     /** CSV 시각: 한국 시각 */
@@ -66,13 +68,16 @@ class AdminPlannerLogQueries {
                        (SELECT avg((%3$s)::int) FROM course.planner_plan_logs g
                         JOIN course.planner_parse_logs p ON p.id = g.parse_log_id%2$s) AS edited_rate,
                        (SELECT avg((candidate_count = 0)::int) FROM course.planner_plan_logs g%2$s) AS no_candidate_rate,
-                       (SELECT avg(place_ms + coalesce(route_ms, 0) + coalesce(select_ms, 0)) FROM course.planner_plan_logs g%2$s) AS plan_ms"""
-                .formatted(parseWhere, planWhere, edited("p", "g")));
+                       (SELECT avg(place_ms + coalesce(route_ms, 0) + coalesce(select_ms, 0)) FROM course.planner_plan_logs g%2$s) AS plan_ms,
+                       (SELECT avg((registered_course_id IS NOT NULL)::int) FROM course.planner_plan_logs g%4$s) AS registered_rate"""
+                .formatted(parseWhere, planWhere, edited("p", "g"),
+                        // 등록률은 후보를 받은 찾기 중에서
+                        since == null ? " WHERE g.candidate_count > 0" : planWhere + " AND g.candidate_count > 0"));
         if (since != null) {
             query = query.param("since", timestamp(since));
         }
         return query.query((rs, rowNum) -> new Stats(rs.getLong("parses"), rs.getLong("plans"), ratio(rs, "jev_rate"),
-                ratio(rs, "edited_rate"), ratio(rs, "no_candidate_rate"), ratio(rs, "plan_ms"))).single();
+                ratio(rs, "edited_rate"), ratio(rs, "no_candidate_rate"), ratio(rs, "plan_ms"), ratio(rs, "registered_rate"))).single();
     }
 
     /**
@@ -85,6 +90,10 @@ class AdminPlannerLogQueries {
         String sql = """
                 SELECT p.id, p.member_hash, p.sentence, p.jev_answers IS NOT NULL AS jev_used, p.form::text AS form,
                        p.elapsed_ms, p.created_at, g.candidate_count, g.reason, g.total_ms, g.edited, g.plan_count,
+                       -- 이 문장으로 한 찾기 중 하나라도 등록했으면 그 후보 순위(마지막 찾기가 아니어도)
+                       (SELECT gr.registered_rank FROM course.planner_plan_logs gr
+                        WHERE gr.parse_log_id = p.id AND gr.registered_course_id IS NOT NULL
+                        ORDER BY gr.registered_at DESC LIMIT 1) AS registered_rank,
                        count(*) OVER () AS total
                 FROM course.planner_parse_logs p
                 LEFT JOIN LATERAL (
@@ -100,6 +109,8 @@ class AdminPlannerLogQueries {
                     case FOUND -> " AND g.candidate_count > 0";
                     case NONE -> " AND g.candidate_count = 0";
                     case NOT_PLANNED -> " AND g.candidate_count IS NULL";
+                    case REGISTERED -> " AND EXISTS (SELECT 1 FROM course.planner_plan_logs gr"
+                            + " WHERE gr.parse_log_id = p.id AND gr.registered_course_id IS NOT NULL)";
                 })
                 + " ORDER BY p.created_at DESC, p.id DESC LIMIT :limit OFFSET :offset";
         JdbcClient.StatementSpec query = jdbc.sql(sql).param("limit", limit).param("offset", offset);
@@ -114,7 +125,7 @@ class AdminPlannerLogQueries {
                     rs.getBoolean("edited"), rs.getInt("plan_count"));
             return new Row(rs.getObject("id", UUID.class), shortHash(rs.getString("member_hash")), rs.getString("sentence"),
                     rs.getBoolean("jev_used"), json.readTree(rs.getString("form")), rs.getLong("elapsed_ms"),
-                    instant(rs, "created_at"), plan);
+                    instant(rs, "created_at"), plan, (Integer) rs.getObject("registered_rank"));
         }).list();
         return new NumberedPage<>(rows, total[0]);
     }
@@ -135,7 +146,7 @@ class AdminPlannerLogQueries {
         List<PlanDetail> plans = jdbc.sql("""
                         SELECT g.id, g.form::text AS form, g.target_meters, g.candidate_count, g.reason, g.candidates::text AS candidates,
                                g.place_ms, g.route_ms, g.select_ms, g.created_at, %s AS edited,
-                               g.generated_count, g.passed_count, g.paths::text AS paths
+                               g.generated_count, g.passed_count, g.paths::text AS paths, g.registered_rank, g.registered_at
                         FROM course.planner_plan_logs g JOIN course.planner_parse_logs p ON p.id = g.parse_log_id
                         WHERE g.parse_log_id = :id ORDER BY g.created_at""".formatted(edited("p", "g")))
                 .param("id", id)
@@ -143,7 +154,9 @@ class AdminPlannerLogQueries {
                         rs.getBoolean("edited"), (Integer) rs.getObject("target_meters"), rs.getInt("candidate_count"),
                         rs.getString("reason"), json.readTree(rs.getString("candidates")), rs.getLong("place_ms"),
                         (Integer) rs.getObject("route_ms"), (Integer) rs.getObject("select_ms"), instant(rs, "created_at"),
-                        (Integer) rs.getObject("generated_count"), (Integer) rs.getObject("passed_count"), tree(rs.getString("paths"))))
+                        (Integer) rs.getObject("generated_count"), (Integer) rs.getObject("passed_count"), tree(rs.getString("paths")),
+                        (Integer) rs.getObject("registered_rank"),
+                        rs.getObject("registered_at") == null ? null : instant(rs, "registered_at")))
                 .list();
         return new Detail(parse.id(), parse.user(), parse.sentence(), parse.jevAnswers(), parse.form(), parse.elapsedMs(),
                 parse.createdAt(), plans);
@@ -162,7 +175,7 @@ class AdminPlannerLogQueries {
                        p.jev_answers::text AS jev_answers, p.form::text AS parsed_form, p.elapsed_ms AS parse_ms,
                        g.created_at AS planned_at, g.form::text AS sent_form, g.target_meters, g.candidate_count, g.reason,
                        g.place_ms, g.route_ms, g.select_ms, g.candidates::text AS candidates, g.generated_count, g.passed_count,
-                       g.id AS plan_id,
+                       g.id AS plan_id, g.registered_rank,
                        -- 만든 경로의 결과별 개수: {"PICKED": 3, "OUT_OF_RANGE": 28, ...}
                        (SELECT jsonb_object_agg(f.fate, f.n) FROM (SELECT x ->> 'fate' AS fate, count(*) AS n
                                                                   FROM jsonb_array_elements(g.paths) x GROUP BY 1) f)::text AS fates
@@ -187,7 +200,7 @@ class AdminPlannerLogQueries {
                     (Integer) rs.getObject("target_meters"), (Integer) rs.getObject("candidate_count"), rs.getString("reason"),
                     (Integer) rs.getObject("place_ms"), (Integer) rs.getObject("route_ms"), (Integer) rs.getObject("select_ms"),
                     tree(rs.getString("candidates")), (Integer) rs.getObject("generated_count"), (Integer) rs.getObject("passed_count"),
-                    tree(rs.getString("fates"))));
+                    tree(rs.getString("fates")), (Integer) rs.getObject("registered_rank")));
         });
         return out.toString();
     }
@@ -202,7 +215,7 @@ class AdminPlannerLogQueries {
     String pathsCsv(Instant since, UUID planId) {
         String sql = """
                 SELECT g.id AS plan_id, g.created_at, g.member_hash, p.sentence, g.form::text AS form, g.target_meters,
-                       path.value::text AS path
+                       g.registered_rank, path.value::text AS path
                 FROM course.planner_plan_logs g
                 LEFT JOIN course.planner_parse_logs p ON p.id = g.parse_log_id
                 CROSS JOIN LATERAL jsonb_array_elements(g.paths) AS path
@@ -223,7 +236,7 @@ class AdminPlannerLogQueries {
             line(out, PlannerLogCsv.pathRow(one, searchId(rs.getObject("plan_id", UUID.class)),
                     CSV_TIME.format(rs.getObject("created_at", OffsetDateTime.class)),
                     shortHash(rs.getString("member_hash")), rs.getString("sentence"), tree(rs.getString("form")),
-                    (Integer) rs.getObject("target_meters"), tree(rs.getString("path"))));
+                    (Integer) rs.getObject("target_meters"), tree(rs.getString("path")), (Integer) rs.getObject("registered_rank")));
         });
         return out.toString();
     }
@@ -284,8 +297,10 @@ class AdminPlannerLogQueries {
      * @param editedRate      문장과 이어진 코스 찾기 중 사용자가 폼을 고쳐 보낸 비율
      * @param noCandidateRate 코스 찾기 중 후보가 없던 비율
      * @param planMs          코스 찾기 평균 시간(ms, 장소 + 길찾기 + 고르기)
+     * @param registeredRate  후보를 받은 코스 찾기 중 그 후보로 코스를 등록한 비율
      */
-    record Stats(long parses, long plans, Double jevRate, Double editedRate, Double noCandidateRate, Double planMs) {
+    record Stats(long parses, long plans, Double jevRate, Double editedRate, Double noCandidateRate, Double planMs,
+                 Double registeredRate) {
     }
 
     /**
@@ -293,10 +308,11 @@ class AdminPlannerLogQueries {
      *
      * @param user 회원 해시 앞 8자리. 같은 사람끼리 같다
      * @param form 채운 폼
-     * @param plan 이어진 마지막 코스 찾기. 안 했으면 {@code null}
+     * @param plan           이어진 마지막 코스 찾기. 안 했으면 {@code null}
+     * @param registeredRank 이 문장으로 한 찾기의 후보로 코스를 등록했으면 그 후보 순위. 안 했으면 {@code null}
      */
     record Row(UUID id, String user, String sentence, boolean jevUsed, JsonNode form, long elapsedMs, Instant createdAt,
-               Plan plan) {
+               Plan plan, Integer registeredRank) {
     }
 
     /**
@@ -317,9 +333,10 @@ class AdminPlannerLogQueries {
      * @param generatedCount 길찾기로 만든 경로 수. 2026-11-16 전 로그 · 길을 찾지 않은 요청은 {@code null}(아래 둘도 같다)
      * @param passedCount    거리 · 되돌아감 조건을 통과한 경로 수
      * @param paths          만든 경로 전부(만든 순서, {@link CandidateSelector.PathLog})
+     * @param registeredRank 이 찾기의 후보로 코스를 등록했으면 그 후보 순위(1~3). 안 했으면 {@code null}(registeredAt도 같다)
      */
     record PlanDetail(UUID id, JsonNode form, boolean edited, Integer targetMeters, int candidateCount, String reason,
                       JsonNode candidates, long placeMs, Integer routeMs, Integer selectMs, Instant createdAt,
-                      Integer generatedCount, Integer passedCount, JsonNode paths) {
+                      Integer generatedCount, Integer passedCount, JsonNode paths, Integer registeredRank, Instant registeredAt) {
     }
 }
