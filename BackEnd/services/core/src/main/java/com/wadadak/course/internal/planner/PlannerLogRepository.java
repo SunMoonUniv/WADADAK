@@ -10,6 +10,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 import tools.jackson.databind.json.JsonMapper;
 
+import com.wadadak.common.geo.GeoPoint;
+import tools.jackson.databind.JsonNode;
+
 import java.util.List;
 import java.util.UUID;
 
@@ -31,6 +34,8 @@ class PlannerLogRepository {
 
     /** 이 시간 안의 채우기만 코스 찾기와 잇는다 */
     static final String LINK_WINDOW = "10 minutes";
+    /** 코스를 등록하면 이 시간 안의 코스 찾기에서 등록에 쓴 후보를 찾는다(후보를 고르고 점을 고치고 이름을 쓰는 시간) */
+    static final String REGISTER_WINDOW = "1 hour";
 
     private static final String MEMBER_HASH = "encode(sha256(convert_to(?::text, 'UTF8')), 'hex')";
 
@@ -85,5 +90,38 @@ class PlannerLogRepository {
         } catch (RuntimeException e) {
             log.warn("코스 자동 생성 찾기 로그를 남기지 못했다: {}", e.getClass().getSimpleName());
         }
+    }
+
+    /**
+     * 같은 사람이 {@value #REGISTER_WINDOW} 안에 한, 후보가 있고 아직 등록 표시가 없는 코스 찾기. 최근 것부터.
+     *
+     * @return 찾기마다 후보(순위순)의 경로 점
+     */
+    List<RecentPlan> recentUnregistered(UUID memberId) {
+        return jdbcTemplate.query("""
+                        SELECT id, candidates::text AS candidates FROM course.planner_plan_logs
+                        WHERE member_hash = %s AND created_at >= now() - interval '%s'
+                          AND registered_course_id IS NULL AND candidate_count > 0
+                        ORDER BY created_at DESC""".formatted(MEMBER_HASH, REGISTER_WINDOW),
+                (rs, i) -> new RecentPlan(rs.getObject("id", UUID.class),
+                        json.readTree(rs.getString("candidates")).valueStream()
+                                .map(c -> c.get("anchorPoints").valueStream().map(PlannerLogRepository::point).toList())
+                                .toList()),
+                memberId);
+    }
+
+    /** 이 코스 찾기의 rank번째 후보로 courseId를 등록했다고 표시한다. 이미 표시돼 있으면 그대로 둔다(같은 이벤트를 다시 받아도 같다) */
+    void markRegistered(UUID planLogId, UUID courseId, int rank) {
+        jdbcTemplate.update("""
+                UPDATE course.planner_plan_logs SET registered_course_id = ?, registered_rank = ?, registered_at = now()
+                WHERE id = ? AND registered_course_id IS NULL""", courseId, rank, planLogId);
+    }
+
+    private static GeoPoint point(JsonNode node) {
+        return new GeoPoint(node.get("lat").asDouble(), node.get("lng").asDouble());
+    }
+
+    /** @param candidates 후보(1위부터)마다 경로 점 */
+    record RecentPlan(UUID id, List<List<GeoPoint>> candidates) {
     }
 }

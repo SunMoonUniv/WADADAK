@@ -724,7 +724,7 @@ async function renderLogs() {
     <div class="stats" id="log-stats"></div>
     <div class="filters" id="log-filters">
       ${select("days", "기간", [["", "전체"], [1, "오늘"], [7, "최근 7일"], [30, "최근 30일"]], s.days)}
-      ${select("result", "결과", [["", "전체"], ["FOUND", "후보 있음"], ["NONE", "후보 없음"], ["NOT_PLANNED", "찾기 안 함"]], s.result)}
+      ${select("result", "결과", [["", "전체"], ["FOUND", "후보 있음"], ["NONE", "후보 없음"], ["NOT_PLANNED", "찾기 안 함"], ["REGISTERED", "등록함"]], s.result)}
       ${select("jev", "Jev", [["", "전체"], ["true", "사용"], ["false", "규칙만"]], s.jev)}
       <span class="spacer"></span>
       <button class="btn" type="button" id="log-export">CSV 받기</button>
@@ -749,14 +749,16 @@ async function loadLogStats() {
   let st;
   try { st = await api(`/api/v1/admin/planner-logs/stats?${query({ days: state.logs.days })}`); } catch (err) { return showError(err); }
   $("#log-stats").innerHTML = [["문장 채우기", num(st.parses)], ["코스 찾기", num(st.plans)], ["Jev 사용률", pct(st.jevRate)],
-    ["폼 수정률", pct(st.editedRate)], ["후보 없음", pct(st.noCandidateRate)], ["평균 찾기 시간", sec(st.planMs)]]
+    ["폼 수정률", pct(st.editedRate)], ["후보 없음", pct(st.noCandidateRate)], ["등록률", pct(st.registeredRate)],
+    ["평균 찾기 시간", sec(st.planMs)]]
     .map(([k, v]) => `<div class="stat"><span>${k}</span><b>${v}</b></div>`).join("");
 }
 
-function planCell(p) {
+// registeredRank: 이 문장으로 찾은 후보로 코스를 등록했으면 그 순위
+function planCell(p, registeredRank) {
   if (!p) return chip("찾기 안 함");
   const result = p.candidateCount > 0 ? chip(`후보 ${p.candidateCount}개`, "success") : chip(PLAN.reason[p.reason] ?? p.reason, "warning");
-  return `<span class="chips">${result}${p.edited ? chip("폼 수정", "danger") : ""}${p.count > 1 ? chip(`찾기 ${p.count}회`) : ""}</span>`;
+  return `<span class="chips">${result}${registeredRank ? chip(`${registeredRank}위 등록함`, "success") : ""}${p.edited ? chip("폼 수정", "danger") : ""}${p.count > 1 ? chip(`찾기 ${p.count}회`) : ""}</span>`;
 }
 
 async function loadLogs() {
@@ -774,7 +776,7 @@ async function loadLogs() {
             <td class="clip strong" title="${esc(r.sentence)}">${esc(r.sentence)}</td>
             <td class="clip" title="${esc(formSummary(r.form))}">${esc(formSummary(r.form))}</td>
             <td>${r.jevUsed ? chip("사용", "success") : chip("규칙만")}</td>
-            <td>${planCell(r.plan)}</td>
+            <td>${planCell(r.plan, r.registeredRank)}</td>
             <td>${sec(r.elapsedMs)}${r.plan ? ` · ${sec(r.plan.totalMs)}` : ""}</td>
             <td><button class="btn" type="button" data-log="${esc(r.id)}">상세</button></td>
           </tr>`).join("")}</tbody>
@@ -810,7 +812,7 @@ async function openLog(id) {
       <div class="card"><div class="table-wrap"><table>
         <thead><tr><th>#</th><th>결과</th><th>거리</th><th>되돌아옴</th><th>큰길</th><th>점수</th><th>오르막</th><th>경로 점</th></tr></thead>
         <tbody>${p.paths.map((x) => `<tr><td>${x.order}</td>
-          <td>${chip(x.rank ? `뽑힘 ${x.rank}위` : PLAN.fate[x.fate]?.[0] ?? x.fate, PLAN.fate[x.fate]?.[1] ?? "")}</td>
+          <td>${chip(x.rank ? `뽑힘 ${x.rank}위${x.rank === p.registeredRank ? " · 등록" : ""}` : PLAN.fate[x.fate]?.[0] ?? x.fate, PLAN.fate[x.fate]?.[1] ?? "")}</td>
           <td>${km(x.distanceMeters)}</td><td>${pct(x.retraceRatio)}</td><td>${pct(x.arterialRatio)}</td>
           <td>${x.score == null ? "–" : Number(x.score).toFixed(1)}</td><td>${x.ascentMeters == null ? "–" : `${x.ascentMeters}m`}</td>
           <td>${num(x.points?.length)}개</td></tr>`).join("")}</tbody>
@@ -822,6 +824,8 @@ async function openLog(id) {
       ${rows([
         ["찾기 ID", `<code>${esc(searchId(p.id))}</code> <small>CSV의 찾기 ID 칸</small>`],
         ["시각", dateTime(p.createdAt)],
+        ["등록", p.registeredRank ? `${chip(`${p.registeredRank}위 후보로 등록함`, "success")} <small>${dateTime(p.registeredAt)}</small>`
+          : p.candidateCount > 0 ? "등록 안 함" : "–"],
         ["보낸 폼", esc(formSummary(p.form))],
         ...changes.map(([k, v]) => [`바뀐 칸 · ${k}`, v]),
         ["목표 거리", km(p.targetMeters)],

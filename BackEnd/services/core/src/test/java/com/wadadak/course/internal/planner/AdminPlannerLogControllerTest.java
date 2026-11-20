@@ -173,7 +173,7 @@ class AdminPlannerLogControllerTest {
                 // 채운 폼과 보낸 폼은 칸별로, 바뀐 칸은 말로
                 .contains(",현재 위치,한 바퀴,5,,,,300,")
                 // 경로 기록이 없는 로그라 만든 경로 수 · 조건 통과 수 · 결과별 개수 6칸은 빈칸
-                .contains(",예,거리(km): 5 → 6,6,후보 있음,1,,,,,,,,,10,3000,50,3060,")
+                .contains(",예,거리(km): 5 → 6,6,후보 있음,1,아니오,,,,,,,,,,10,3000,50,3060,")
                 // 후보1: 5.1km · 큰길 10% · 되돌아옴 0% · 오르막 없음 · 편의점 3 · 화장실 0
                 .contains(",5.1,10,0,,3,0,");
         assertThat(csv).contains(",8.123,").doesNotContain("anchorPoints").doesNotContain("{");
@@ -202,7 +202,7 @@ class AdminPlannerLogControllerTest {
                 StandardCharsets.UTF_8);
         assertThat(main).contains("만든 경로 수,조건 통과 수,뽑힘(개),거리 벗어남(개),되돌아옴 많음(개),기존 코스와 겹침(개),뽑힌 후보와 겹침(개),점수 순위 밖(개),");
         String mainLine = main.lines().filter(l -> l.contains(sentence)).findFirst().orElseThrow();
-        assertThat(mainLine).contains(",후보 있음,1,3,2,1,1,0,0,1,0,");
+        assertThat(mainLine).contains(",후보 있음,1,아니오,,3,2,1,1,0,0,1,0,");
         // 경로 CSV에는 경로 하나에 한 줄. 찾기 ID 칸으로 메인 CSV와 잇는다
         UUID planId = jdbcTemplate.queryForObject("SELECT id FROM course.planner_plan_logs WHERE parse_log_id = ?", UUID.class, id);
         String searchId = AdminPlannerLogQueries.searchId(planId);
@@ -225,6 +225,18 @@ class AdminPlannerLogControllerTest {
         assertThat(oneLines.getFirst()).isEqualTo("﻿경로 번호,결과,뽑힌 순위,점수,거리(km),큰길(%),되돌아옴(%),오르막(m),편의점,화장실,인도(%),강변(%),밝은 길(%),경로 점 수");
         assertThat(oneLines).hasSize(4);
         assertThat(oneLines.get(1)).startsWith("1,거리 벗어남,,,6.4,");
+        // 1위 후보로 등록하면 메인 CSV는 "예,1", 경로 CSV는 "뽑힘(등록)", 목록 필터 · 상세 · 등록률에도 들어간다
+        logs.markRegistered(planId, UUID.randomUUID(), 1);
+        String mainAfter = new String(admin("/api/v1/admin/planner-logs/export?days=1").getResponse().getContentAsByteArray(),
+                StandardCharsets.UTF_8);
+        assertThat(mainAfter.lines().filter(l -> l.contains(sentence)).findFirst().orElseThrow()).contains(",후보 있음,1,예,1,3,2,");
+        String oneAfter = new String(admin("/api/v1/admin/planner-logs/export/paths?planId=" + planId).getResponse()
+                .getContentAsByteArray(), StandardCharsets.UTF_8);
+        assertThat(oneAfter.lines()).anySatisfy(l -> assertThat(l).startsWith("2,뽑힘(등록),1,"));
+        JsonNode registered = data(admin("/api/v1/admin/planner-logs?result=REGISTERED&size=100")).get("content");
+        assertThat(find(registered, sentence).get("registeredRank").asInt()).isOne();
+        assertThat(data(admin("/api/v1/admin/planner-logs/" + id)).get("plans").get(0).get("registeredRank").asInt()).isOne();
+        assertThat(data(admin("/api/v1/admin/planner-logs/stats?days=1")).get("registeredRate").asDouble()).isPositive();
     }
 
     private MvcTestResult admin(String uri) {

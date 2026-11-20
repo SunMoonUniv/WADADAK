@@ -743,6 +743,9 @@ erDiagram
 | `generated_count` | `INTEGER` | O | 길찾기로 만든 경로 수(2026-11-16부터). 장소에서 끝났으면 null |
 | `passed_count` | `INTEGER` | O | 거리 · 되돌아감 조건을 통과한 경로 수 |
 | `paths` | `JSONB` | O | 만든 경로 전부(만든 순서). 경로마다 `fate`(`PICKED` 뽑힘 · `OUT_OF_RANGE` 거리 벗어남 · `TOO_MUCH_RETRACE` 되돌아옴 많음 · `SIMILAR_TO_EXISTING` 기존 코스와 겹침 · `SIMILAR_TO_PICKED` 뽑힌 후보와 겹침 · `NOT_EXAMINED` 점수 순위 밖), `rank`, 거리 · 되돌아감 · 큰길 · 점수 · 편의점 · 오르막 · 길 비율, `points`(2m로 줄인 경로 점, 뽑힌 경로는 입력점) |
+| `registered_course_id` | `UUID` | O | 이 찾기의 후보로 등록한 코스(2026-11-20부터). 1시간 안 등록 경로와 85% 이상 겹치는 후보를 찾아 남긴다. 코스가 지워져도 남긴다(FK 없음) |
+| `registered_rank` | `INTEGER` | O | 등록에 쓴 후보 순위(1~3) |
+| `registered_at` | `TIMESTAMPTZ` | O | 등록 표시 시각 |
 | `created_at` | `TIMESTAMPTZ` | | |
 
 #### `course.processed_events` — 이벤트 처리 기록
