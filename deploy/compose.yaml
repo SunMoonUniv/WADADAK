@@ -49,8 +49,10 @@ services:
       RABBITMQ_DEFAULT_USER: wadadak
       RABBITMQ_DEFAULT_PASS: ${BROKER_PASSWORD:?GitHub Secrets에 BROKER_PASSWORD가 없다}
     # run PC의 run 서비스만 Tailscale로 붙는다. 큐 확인: docker exec wadadak-server-rabbitmq-1 rabbitmqctl list_queues
+    # 15692는 RabbitMQ 지표(rabbitmq_prometheus, 이미지 기본으로 켜져 있다). run PC 모니터링의 Prometheus가 DLQ 메시지 수를 읽는다.
     ports:
       - "100.75.79.15:5672:5672"
+      - "100.75.79.15:15692:15692"
     volumes:
       - broker:/var/lib/rabbitmq
     healthcheck:
