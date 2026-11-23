@@ -9,7 +9,7 @@
 - PostgreSQL 17 + PostGIS 3.5.
   - 로컬: `BackEnd/compose.yaml`(포트 5433)
   - 팀 공용 서버: core PC의 `deploy/core/compose.yaml`. 서버 PC의 Docker에 따로 뜨고 포트를 열지 않는다. 접속·초기화는 [deploy/README.md](deploy/README.md)의 운영 표를 따른다.
-  - `run` 스키마만은 run 서버 PC의 run 전용 DB(`deploy/run/compose.yaml`, PostgreSQL 17, PostGIS 없음)에 있다. 로컬은 한 DB에 모든 스키마가 있다.
+  - `run` 스키마만은 run 서버 PC의 run 전용 DB(`deploy/run/compose.yaml`, PostgreSQL 17, PostGIS 없음)에 있다. run 전용 DB는 아웃박스 · 스케줄 잠금 · 마이그레이션 이력도 run 스키마에 따로 둔다(3.6). 로컬은 한 DB에 모든 스키마가 있다.
   - 서버가 뜰 때 Flyway가 마이그레이션을 적용한다. 공용 서버 DB에는 머지된 마이그레이션이 이미 적용돼 있어서, 머지된 파일을 고치면 체크섬이 어긋나 서버가 뜨지 않는다(개발 정책 6.5).
 - 모듈마다 스키마 하나를 쓴다. 다른 모듈의 스키마는 조회·JOIN·FK 모두 하지 않는다(개발 정책 2장·6.1).
 
@@ -19,7 +19,7 @@
 | `course` | course | `courses`, `daily_registration_counts`, `registration_requests`, `gps_course_sources`, `completion_elevation_profiles`, `gps_source_completion_receipts`, `course_stats`, `course_daily_stats`, `course_completions`, `course_active_runners`, `course_bookmarks`, `daily_plan_counts`, `planner_pois`, `planner_parse_logs`, `planner_plan_logs`, `processed_events` |
 | `ranking` | ranking | `course_ranking_entries`, `distance_run_records`, `course_status_copies`, `member_visibility_copies`, `member_region_history`, `withdrawn_members` |
 | `review` | review | `reviews`, `review_photos`, `review_reports`, `course_run_records`, `course_status_copies`, `withdrawn_members` |
-| `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members`, `course_attempts`, `course_runner_counts`, `ghost_starts`, `ghost_start_playbacks`, `ghost_results`, `free_ghost_starts`, `free_ghost_results`, `ghost_comparisons`, `gps_source_links`, `gps_course_status_copies` |
+| `run` | run | `sessions`, `inputs`, `records`, `deleted_records`, `withdrawn_members`, `course_attempts`, `course_runner_counts`, `ghost_starts`, `ghost_start_playbacks`, `ghost_results`, `free_ghost_starts`, `free_ghost_results`, `ghost_comparisons`, `member_visibility_copies`, `gps_source_links`, `gps_course_status_copies`, `event_publication`, `shedlock`, `flyway_schema_history` |
 | `notification` | notification | `device_tokens`, `notification_settings`, `notifications`, `deliveries`, `withdrawn_members` |
 | `common` | common | `region`, `event_publication`, `shedlock`, `photo_uploads`, `flyway_schema_history` |
 
@@ -37,9 +37,9 @@
 
 - 실선: 같은 스키마 안의 FK
 - 점선: 다른 모듈(스키마)의 ID를 값으로만 저장한 참조. FK 없음
-- 모든 엔티티 테이블에 있는 `created_at`·`updated_at`은 생략했다. `common`의 인프라 테이블(`event_publication`, `shedlock`, `photo_uploads`, `flyway_schema_history`)은 다른 테이블과 관계가 없어 3.5에서만 설명한다.
-- `course_ranking_entries.run_record_id`, `course_run_records.run_record_id`, `reviews.source_run_record_id`, `gps_course_sources.run_record_id`, `course_completions.run_record_id`는 run 모듈의 러닝 기록 ID다. 아래 `run_records`에 점선으로 연결했다. 다른 스키마이므로 FK는 없다.
-- `course_status_copies`·`withdrawn_members`는 ranking과 review에 같은 이름으로 있다. ERD에서는 review 쪽을 `review_` 접두사로 구분했다. notification의 `withdrawn_members`는 `notification_` 접두사로 구분했다.
+- 모든 엔티티 테이블에 있는 `created_at`·`updated_at`은 생략했다. `common`의 인프라 테이블(`event_publication`, `shedlock`, `photo_uploads`, `flyway_schema_history`)은 다른 테이블과 관계가 없어 3.5에서만 설명한다. run의 같은 인프라 테이블(`run.event_publication`, `run.shedlock`, `run.flyway_schema_history`)은 3.6, 이벤트 처리 기록 `course.processed_events`는 3.2에서만 설명한다.
+- `course_ranking_entries.run_record_id`, `course_run_records.run_record_id`, `reviews.source_run_record_id`, `gps_course_sources.run_record_id`, `gps_source_completion_receipts.run_record_id`, `course_completions.run_record_id`는 run 모듈의 러닝 기록 ID다. 아래 `run_records`에 점선으로 연결했다. 다른 스키마이므로 FK는 없다.
+- `course_status_copies`·`withdrawn_members`는 ranking과 review에 같은 이름으로 있다. ERD에서는 review 쪽을 `review_` 접두사로 구분했다. notification의 `withdrawn_members`는 `notification_` 접두사로 구분했다. run 스키마 테이블은 모두 `run_` 접두사를 붙였다(예: `run_member_visibility_copies`).
 
 ```mermaid
 erDiagram
@@ -104,6 +104,7 @@ erDiagram
         boolean info_public
         boolean profile_searchable
         timestamptz withdrawn_at
+        timestamptz nickname_changed_at "닉네임 마지막 변경"
         bigint version
     }
     agreements {
@@ -167,6 +168,8 @@ erDiagram
         uuid run_record_id UK "run 기록 ID"
         uuid member_id "member ID"
         text source_segments_json "원본 경로 조각"
+        text completion_snapshot_json "GpsCourseRegisteredEvent 자료"
+        text elevation_profile_json "고도 프로필"
     }
     completion_elevation_profiles {
         uuid course_id PK "FK"
@@ -218,13 +221,26 @@ erDiagram
         text sentence "문장 원문"
         jsonb jev_answers "Jev 답, 못 썼으면 null"
         jsonb form "돌려준 폼"
+        integer elapsed_ms "채우기 시간"
     }
     planner_plan_logs {
         uuid id PK
         varchar(64) member_hash "sha256(회원 ID)"
         uuid parse_log_id FK "10분 안 마지막 채우기"
         jsonb form "보낸 폼"
+        integer target_meters "목표 거리"
+        integer candidate_count "후보 수 0~3"
+        varchar(20) reason "후보가 없을 때 사유"
         jsonb candidates "후보 경로 점과 지표 전부"
+        integer place_ms
+        integer route_ms
+        integer select_ms
+        integer generated_count "만든 경로 수"
+        integer passed_count "조건 통과 경로 수"
+        jsonb paths "만든 경로 전부"
+        uuid registered_course_id "후보로 등록한 코스"
+        integer registered_rank
+        timestamptz registered_at
     }
     planner_parse_logs ||..o{ planner_plan_logs : "parse_log_id"
     course_ranking_entries {
@@ -334,6 +350,21 @@ erDiagram
     run_records ||..o| gps_course_sources : "run_record_id"
     run_records ||..o| course_completions : "run_record_id"
     members ||..o{ distance_run_records : "member_id"
+    run_course_attempts ||--o| run_ghost_starts : "session_id"
+    run_ghost_starts ||--o| run_ghost_start_playbacks : "session_id"
+    run_ghost_starts ||--o| run_ghost_results : "session_id"
+    run_sessions ||--o| run_free_ghost_starts : "session_id"
+    run_free_ghost_starts ||--o| run_free_ghost_results : "session_id"
+    run_ghost_starts ||--o| run_ghost_comparisons : "registered_session_id"
+    run_free_ghost_starts ||--o| run_ghost_comparisons : "free_session_id"
+    members ||..o{ run_free_ghost_starts : "member_id"
+    members ||..o{ run_ghost_comparisons : "member_id"
+    members ||..o| run_member_visibility_copies : "member_id"
+    courses ||..o| run_gps_source_links : "course_id"
+    members ||..o{ run_gps_source_links : "member_id"
+    courses ||..o| run_gps_course_status_copies : "course_id"
+    run_records ||..o| gps_source_completion_receipts : "run_record_id"
+    members ||..o{ gps_source_completion_receipts : "member_id"
     run_sessions {
         UUID id PK
         UUID member_id
@@ -375,10 +406,87 @@ erDiagram
         TIMESTAMPTZ started_event_at
         TIMESTAMPTZ released_at
         VARCHAR release_reason
+        BOOLEAN has_elevation_profile
     }
     run_course_runner_counts {
         UUID course_id PK
         BIGINT version
+    }
+    run_ghost_starts {
+        UUID session_id PK,FK
+        UUID source_record_id "상대 기록 ID (FK 없음)"
+        TIMESTAMPTZ started_at
+        TIMESTAMPTZ approved_at
+        TIMESTAMPTZ course_validated_at
+        VARCHAR approval_version
+        VARCHAR playback_version
+        VARCHAR source_policy_version
+        VARCHAR source_calculation_version
+        BIGINT source_elapsed_seconds
+        BIGINT source_duration_ms
+        VARCHAR public_period "null=내 기록, ALL/MONTH/WEEK=공개"
+        BIGINT source_course_version
+    }
+    run_ghost_start_playbacks {
+        UUID session_id PK,FK
+        TEXT playback_json
+    }
+    run_ghost_results {
+        UUID session_id PK,FK
+        TIMESTAMPTZ finalized_at
+        TEXT result_json
+    }
+    run_free_ghost_starts {
+        UUID session_id PK,FK
+        UUID member_id
+        VARCHAR reference_hash
+        TEXT approval_json
+    }
+    run_free_ghost_results {
+        UUID session_id PK,FK
+        TIMESTAMPTZ finalized_at
+        TEXT result_json
+    }
+    run_ghost_comparisons {
+        UUID session_id PK
+        UUID registered_session_id FK,UK
+        UUID free_session_id FK,UK
+        UUID member_id
+        TEXT context_json
+        TEXT result_json
+    }
+    run_member_visibility_copies {
+        UUID member_id PK
+        BOOLEAN visible
+        BIGINT source_version
+    }
+    run_gps_source_links {
+        UUID source_record_id PK "원본 기록 ID (FK 없음)"
+        UUID course_id UK
+        UUID member_id
+        UUID registration_event_id
+        TEXT snapshot_json
+        VARCHAR status "PENDING, LINKED, REJECTED, REMOVED"
+        VARCHAR failure
+        TEXT performance_json
+        TIMESTAMPTZ registered_at
+        TIMESTAMPTZ completed_at
+        BIGINT course_elapsed_seconds
+        BIGINT elapsed_ms
+        TIMESTAMPTZ linked_at
+    }
+    run_gps_course_status_copies {
+        UUID course_id PK
+        VARCHAR status
+        BIGINT source_version
+    }
+    gps_source_completion_receipts {
+        uuid run_record_id PK "run 기록 ID"
+        uuid course_id
+        uuid member_id
+        bigint course_elapsed_seconds
+        boolean applied
+        boolean removed
     }
     distance_run_records {
         UUID run_record_id PK
@@ -983,12 +1091,16 @@ ranking의 같은 이름 테이블과 같다(3.3).
 
 Spring Modulith가 관리한다. 이벤트를 발행하면 리스너마다 한 행이 생기고, 리스너가 처리를 마치면 지운다(`completion-mode: delete`).
 
-- 주요 컬럼: `listener_id`, `event_type`, `serialized_event`, `publication_date`, `completion_date`, `status`, `completion_attempts`
+- 컬럼: `id`(PK), `listener_id`, `event_type`, `serialized_event`, `publication_date`, `completion_date`, `status`, `completion_attempts`, `last_resubmission_date`
+- core 서비스(core DB)가 쓴다. run 서비스는 같은 구조의 `run.event_publication`을 쓴다(3.6).
 - 남아 있는 행은 처리되지 않은 이벤트다. 앱을 다시 시작하면 다시 발행하고, `EventMonitor`·`EventRetryScheduler`가 1분마다 확인한다(개발 정책 5.5).
 
 #### `common.shedlock` — 스케줄 작업 잠금
 
-여러 인스턴스 중 한 곳에서만 스케줄 작업을 실행하게 한다(개발 정책 8.1). 행 하나가 작업 하나다(`common.event-monitor`, `common.event-retry`, `common.photo-upload-cleanup`). 시각은 DB 시각(`TIMESTAMP`)을 쓴다.
+여러 인스턴스 중 한 곳에서만 스케줄 작업을 실행하게 한다(개발 정책 8.1). 행 하나가 작업 하나다. core 서비스의 작업은 `common.event-monitor`, `common.event-retry`, `common.photo-upload-cleanup`, `course.expiring-soon`, `course.gps-source-backfill`, `course.retention`, `notification.push-dispatch`, `notification.retention`이다. 시각은 DB 시각(`TIMESTAMP`)을 쓴다.
+
+- 컬럼: `name`(PK, 작업 이름), `lock_until`, `locked_at`, `locked_by`
+- run 서비스의 작업은 같은 구조의 `run.shedlock`에 있다(3.6).
 
 #### `common.photo_uploads` — 저장하지 않은 사진 업로드
 
@@ -1007,7 +1119,7 @@ Spring Modulith가 관리한다. 이벤트를 발행하면 리스너마다 한 �
 
 #### `common.flyway_schema_history` — 마이그레이션 이력
 
-Flyway가 관리한다. 모든 모듈의 마이그레이션 이력을 여기 한 곳에 둔다(개발 정책 6.5).
+Flyway가 관리한다. core DB에 있는 모듈(common · member · course · ranking · review · notification)의 마이그레이션 이력을 여기 한 곳에 둔다(개발 정책 6.5). run 마이그레이션 이력은 run 전용 DB의 `run.flyway_schema_history`에 있다(3.6).
 
 
 ### 3.6 run
@@ -1043,7 +1155,7 @@ PK는 `(session_id, stream_seq)`, `session_id`만 같은 run 스키마 sessions�
 
 목록은 `summary_json`만 읽는다. `(registered_at DESC, id DESC)` 인덱스를 사용하고 공통 Cursorable/CursorSlice 계약을 따른다. summary는 이미 저장된 결과에서 생성하며 거리 계산을 소급 변경하지 않는다. 새 결과의 정책 버전은 사용자 승인 날짜 `2026-10-14`, 계산 버전은 START의 `PACE_V2` 등이다. 과거 저장 결과에 없는 버전은 새 버전으로 소급 표기하지 않는다.
 
-미발행 기록 조회에는 `WHERE NOT registration_published` 부분 인덱스를 사용한다. 등록 결과와 이벤트 발행 표시는 같은 트랜잭션에서 커밋한다. 기존 서버 기록도 미발행 상태로 한 번 발행할 수 있으나 원래 결과·등록 시각을 유지한다. 이벤트 전달/재시도는 공통 Modulith 아웃박스를 사용한다.
+미발행 기록 조회에는 `WHERE NOT registration_published` 부분 인덱스를 사용한다. 등록 결과와 이벤트 발행 표시는 같은 트랜잭션에서 커밋한다. 기존 서버 기록도 미발행 상태로 한 번 발행할 수 있으나 원래 결과·등록 시각을 유지한다. 이벤트 전달/재시도는 run 서비스의 Modulith 아웃박스(`run.event_publication`)를 사용한다.
 
 #### `run.deleted_records` — 삭제 ID 예약
 
@@ -1070,6 +1182,7 @@ PK는 `(session_id, stream_seq)`, `session_id`만 같은 run 스키마 sessions�
 | `started_event_at` | TIMESTAMPTZ nullable | `CourseRunStartedEvent.occurredAt`. 기록 삭제 때 `RunRecordDeletedEvent.startedAt`으로 보내 course가 같은 날짜에서 도전 수를 뺀다 |
 | `released_at` | TIMESTAMPTZ nullable | 현재 러너 수에서 뺀 시각 |
 | `release_reason` | VARCHAR(20) nullable | `SEGMENT_END`(구간 종료 신호) · `UPLOAD`(기록 업로드 완료) · `TIMEOUT`(시작 후 3시간) · `DELETED`(기록 삭제·탈퇴) |
+| `has_elevation_profile` | BOOLEAN | 준비 때 코스에 고도 프로필이 이미 있었는지(기본 false). 있으면 완주 경로(`CourseRunTrackEvent`)를 보내지 않는다. 이 컬럼이 생기기 전(2026-11-09) 시도는 false라 보낸다 |
 
 - 현재 러너 수 = `started_at IS NOT NULL AND released_at IS NULL`인 행 수. 코스별 부분 인덱스로 센다. 일시정지 중인 러너도 포함한다(공통 7)
 - 자동 제외 작업(1분마다, ShedLock)은 `started_at` 부분 인덱스로 3시간 지난 행을 찾는다. 3시간은 D-14 남은 결정이라 코드 상수다
@@ -1218,6 +1331,14 @@ stats의 구조와 테이블은 유지하고 새 계산의 `version`을 `RESULT_
 - 기기 SQLite v6는 `sessions.guidance_state TEXT`(이번 세션 이탈 안내 억제·반복 시점·유예 시점)와 `withdrawn_run_owners(owner PRIMARY KEY)`를 추가한다. 후자는 삭제 이후 재생성 차단용 계정 식별자뿐이다.
 - 성공한 탈퇴 시 현재 기기의 해당 owner에 속한 inputs, sessions, ghost_closures, ghost_start_intents, course_start_intents, run_settings, run_deletions를 한 트랜잭션으로 삭제한다. 다른 계정·일반 로그아웃에는 적용하지 않는다. owner가 있는 테이블의 INSERT/UPDATE 트리거로 늦은 저장을 차단한다. 체중 캐시도 별도로 지운다.
 - v1~v5 원본·결과·등록 시각·계산 버전은 이관 때 보존한다. 체중/칼로리의 과거 기록 소급 계산은 하지 않는다.
+
+#### `run.event_publication` · `run.shedlock` · `run.flyway_schema_history` — run 서비스 인프라 테이블 (2026-11-12)
+
+run 서비스가 run 전용 DB에서 쓰는 아웃박스 · 스케줄 잠금 · 마이그레이션 이력이다. 구조는 common의 같은 이름 테이블과 같다(3.5). `V20261112_2000__run_service_outbox_shedlock.sql`이 서비스 분리 전에 미리 만들었다.
+
+- `run.event_publication`: run 서비스의 Spring Modulith 아웃박스. run이 발행한 이벤트와, 브로커에서 받아 트랜잭션 안에서 다시 발행한 core 이벤트가 리스너마다 한 행씩 생기고, 처리를 마치면 지운다(`completion-mode: delete`). 앱을 다시 시작하면 남은 행을 다시 발행한다.
+- `run.shedlock`: run 서비스의 스케줄 작업 잠금. 작업은 `common.event-monitor`, `common.event-retry`, `courseRunRelease`, `freeRunProcessing`, `gpsGapBackfill`, `run.gps-source-link`이다.
+- `run.flyway_schema_history`: run 마이그레이션(`db/migration/run`)만의 이력. 분리 전 run 스키마는 모놀리스가 만들어 이력이 core DB의 `common.flyway_schema_history`에 있었다. 그래서 run 서비스는 처음 뜰 때 이 테이블만 만들고 `20261112.2000`까지는 적용된 것으로 본다(baseline). 이후 run 마이그레이션은 이 버전보다 뒤여야 한다.
 
 ### 3.7 notification
 
