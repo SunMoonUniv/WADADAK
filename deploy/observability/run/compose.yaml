@@ -21,7 +21,7 @@ services:
     <<: *container-defaults
     image: grafana/grafana:13.3.1
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?run PC .env에 GRAFANA_ADMIN_PASSWORD가 없다}
       GF_USERS_ALLOW_SIGN_UP: "false"
     ports:
       - "${GRAFANA_BIND_IP:-127.0.0.1}:3000:3000"
