@@ -1,0 +1,137 @@
+# 와다닥 앱 지표 알림 (Grafana 파일 provisioning). 연락 지점은 grafana-alerting-dlq.yaml의 wadadak-discord를 같이 쓴다.
+# 제목 · 내용은 그 파일 템플릿의 기본 갈래를 탄다(제목 "⚠️ 규칙 이름", 내용 summary).
+# Grafana는 이 파일을 기동할 때만 읽는다. 고친 뒤에는 운영 PC에서 docker compose restart grafana.
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: apps
+    folder: Wadadak
+    interval: 30s
+    rules:
+      # 1) 수집 중단: core 또는 run의 /actuator/prometheus를 2분 동안 못 읽음. 서버가 멈췄거나 그 PC · Tailscale 연결이 끊긴 경우다.
+      #    배포로 컨테이너가 다시 뜨는 수십 초는 for: 2m 으로 넘긴다.
+      - uid: wadadak-app-down
+        title: 서비스 지표 수집 중단
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: wadadak-prometheus
+            model:
+              refId: A
+              editorMode: code
+              expr: 'up{job="wadadak-apps"}'
+              instant: true
+              range: false
+              legendFormat: '{{service}}'
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: KeepLast
+        for: 2m
+        labels:
+          wadadak_alert: app-down
+        annotations:
+          summary: '{{ .Labels.service }}({{ .Labels.instance }}) 지표를 읽지 못합니다. 서버가 멈췄거나 그 PC · Tailscale 연결이 끊겼을 수 있습니다. 그 PC에서 docker compose ps를 봅니다.'
+          __dashboardUid__: wadadak-apps
+          __panelId__: '1'
+        notification_settings:
+          receiver: wadadak-discord
+          group_by: [alertname, service]
+          group_wait: 30s
+          group_interval: 1m
+          repeat_interval: 4h
+        isPaused: false
+
+      # 2) 5xx 비율: 5분 동안 서버 오류가 5%를 넘음. 요청이 분당 3건 미만이면 보지 않는다(한두 건 오류로 울리지 않게).
+      - uid: wadadak-app-5xx
+        title: 서버 오류(5xx) 비율 높음
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: wadadak-prometheus
+            model:
+              refId: A
+              editorMode: code
+              expr: >-
+                (sum by (service) (rate(http_server_requests_seconds_count{job="wadadak-apps", status=~"5.."}[5m]))
+                  / sum by (service) (rate(http_server_requests_seconds_count{job="wadadak-apps"}[5m])))
+                and on (service) sum by (service) (rate(http_server_requests_seconds_count{job="wadadak-apps"}[5m])) > 0.05
+              instant: true
+              range: false
+              legendFormat: '{{service}}'
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.05] }
+        noDataState: OK
+        execErrState: KeepLast
+        for: 5m
+        labels:
+          wadadak_alert: app-5xx
+        annotations:
+          summary: '{{ .Labels.service }}의 5xx 응답이 5분 동안 5%를 넘었습니다. 그 서비스 로그(docker logs)와 대시보드 "와다닥 앱 지표"를 봅니다.'
+          __dashboardUid__: wadadak-apps
+          __panelId__: '3'
+        notification_settings:
+          receiver: wadadak-discord
+          group_by: [alertname, service]
+          group_wait: 30s
+          group_interval: 1m
+          repeat_interval: 4h
+        isPaused: false
+
+      # 3) 메모리 압박: GC 뒤에도 남는 오래된 객체가 최대치의 90%를 10분 넘게 넘음. 곧 OutOfMemoryError가 날 수 있다.
+      - uid: wadadak-app-memory
+        title: JVM 메모리 부족
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: wadadak-prometheus
+            model:
+              refId: A
+              editorMode: code
+              expr: 'max by (service) (jvm_gc_live_data_size_bytes{job="wadadak-apps"}) / max by (service) (jvm_gc_max_data_size_bytes{job="wadadak-apps"})'
+              instant: true
+              range: false
+              legendFormat: '{{service}}'
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.9] }
+        noDataState: OK
+        execErrState: KeepLast
+        for: 10m
+        labels:
+          wadadak_alert: app-memory
+        annotations:
+          summary: '{{ .Labels.service }}에서 GC 뒤에도 남는 메모리가 10분 넘게 최대치의 90%를 넘습니다. 곧 OutOfMemoryError가 날 수 있습니다.'
+          __dashboardUid__: wadadak-apps
+          __panelId__: '7'
+        notification_settings:
+          receiver: wadadak-discord
+          group_by: [alertname, service]
+          group_wait: 30s
+          group_interval: 1m
+          repeat_interval: 4h
+        isPaused: false

@@ -1,0 +1,156 @@
+name: 서버 사이 데이터 대조
+
+# core DB와 run DB가 이벤트로 맞춰졌는지 매일 개수 · md5로 비교한다(deploy/서버 사이 데이터 대조 - 2026-11-23.md).
+# 다르면 이 작업이 실패해 GitHub가 알린다. 고치는 법은 문서 4장.
+# 저장소가 공개라 로그도 공개다. 개수 · md5 · 코스 ID · 날짜만 낸다. 회원 ID는 PC 밖으로 내보내지 않는다.
+on:
+  schedule:
+    - cron: '30 19 * * *'   # UTC 19:30 = 04:30 KST
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: reconcile
+  cancel-in-progress: true
+
+jobs:
+  # self-hosted 작업은 checkout을 하지 않는다. 기본 checkout이 작업 폴더를 정리하며 utilfile을 지운다(인프라 PC 분리 3장 6번).
+  # 쿼리는 문서 5.2와 같다. 1시간 안에 생긴 것은 아직 오가는 이벤트일 수 있어 보지 않는다.
+  run-digest:
+    name: run DB 요약
+    runs-on: [self-hosted, wadadak-run]
+    outputs:
+      digest: ${{ steps.query.outputs.digest }}
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - id: query
+        run: |
+          $sql = @'
+          select 'completions', r.result_json::jsonb #>> '{course,courseId}', count(*), md5(string_agg(r.id::text, ',' order by r.id))
+            from run.records r
+            where (r.result_json::jsonb #>> '{course,completed}')::boolean
+              and (r.result_json::jsonb #>> '{course,completedAt}')::timestamptz >= '2026-10-31 00:00+09'
+              and r.registered_at < now() - interval '1 hour'
+            group by 2;
+          select 'records', (registered_at at time zone 'Asia/Seoul')::date, count(*), md5(string_agg(id::text, ',' order by id))
+            from run.records
+            where registered_at >= '2026-10-15 00:00+09' and registered_at < now() - interval '1 hour'
+            group by 2;
+          select 'withdrawn', '', count(*), md5(string_agg(member_id::text, ',' order by member_id))
+            from run.withdrawn_members
+            where withdrawn_at >= '2026-10-15 00:00+09' and withdrawn_at < now() - interval '1 hour';
+          select 'hidden_members', '', count(*), md5(string_agg(member_id::text, ',' order by member_id))
+            from run.member_visibility_copies v
+            where not visible and not exists (select 1 from run.withdrawn_members w where w.member_id = v.member_id);
+          select 'status', course_id, status from run.gps_course_status_copies;
+          '@
+          $out = $sql | docker exec -i wadadak-run-postgres-1 psql -U wadadak_run -d wadadak -At -F ',' -v ON_ERROR_STOP=1
+          if ($LASTEXITCODE -ne 0) { throw "psql failed ($LASTEXITCODE)" }
+          # Write GITHUB_OUTPUT as UTF-8 without BOM (Out-File in Windows PowerShell 5.1 adds one).
+          $eof = 'EOF' + [Guid]::NewGuid().ToString('N')
+          [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "digest<<$eof`n" + ($out -join "`n") + "`n$eof`n", (New-Object Text.UTF8Encoding $false))
+          "lines: $(@($out).Count)"
+
+  core-digest:
+    name: core DB 요약
+    runs-on: [self-hosted, wadadak-core]
+    outputs:
+      digest: ${{ steps.query.outputs.digest }}
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - id: query
+        run: |
+          $sql = @'
+          select 'completions', k.id, count(c.run_record_id), md5(string_agg(c.run_record_id::text, ',' order by c.run_record_id))
+            from course.courses k
+            left join course.course_completions c on c.course_id = k.id and c.deleted_at is null
+              and c.completed_at >= '2026-10-31 00:00+09' and c.created_at < now() - interval '1 hour'
+            where k.status = 'ACTIVE'
+            group by k.id;
+          select 'records', (registered_at at time zone 'Asia/Seoul')::date, count(*), md5(string_agg(run_record_id::text, ',' order by run_record_id))
+            from ranking.distance_run_records
+            where not deleted and registered_at >= '2026-10-15 00:00+09' and registered_at < now() - interval '1 hour'
+            group by 2;
+          select 'withdrawn', '', count(*), md5(string_agg(id::text, ',' order by id))
+            from member.members
+            where status = 'WITHDRAWN' and withdrawn_at >= '2026-10-15 00:00+09' and withdrawn_at < now() - interval '1 hour';
+          select 'hidden_members', '', count(*), md5(string_agg(id::text, ',' order by id))
+            from member.members where status = 'ACTIVE' and not info_public;
+          select 'status', id, status from course.courses
+            where status <> 'ACTIVE' and hidden_at >= '2026-11-03 00:00+09' and hidden_at < now() - interval '1 hour';
+          select 'counter', s.course_id, s.completion_count,
+                 (select count(*) from course.course_completions c where c.course_id = s.course_id and c.deleted_at is null)
+            from course.course_stats s join course.courses k on k.id = s.course_id
+            where k.status = 'ACTIVE' and k.created_at >= '2026-10-31 00:00+09';
+          '@
+          $out = $sql | docker exec -i wadadak-core-postgres-1 psql -U wadadak -d wadadak -At -F ',' -v ON_ERROR_STOP=1
+          if ($LASTEXITCODE -ne 0) { throw "psql failed ($LASTEXITCODE)" }
+          $eof = 'EOF' + [Guid]::NewGuid().ToString('N')
+          [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "digest<<$eof`n" + ($out -join "`n") + "`n$eof`n", (New-Object Text.UTF8Encoding $false))
+          "lines: $(@($out).Count)"
+
+  compare:
+    name: 비교
+    needs: [run-digest, core-digest]
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          RUN_DIGEST: ${{ needs.run-digest.outputs.digest }}
+          CORE_DIGEST: ${{ needs.core-digest.outputs.digest }}
+        run: |
+          python3 - <<'PY'
+          import os
+
+          def rows(name):
+              out = {}
+              for line in os.environ[name].splitlines():
+                  if line.strip():
+                      kind, key, *rest = line.strip().split(',')
+                      out.setdefault(kind, {})[key] = rest
+              return out
+
+          run, core = rows('RUN_DIGEST'), rows('CORE_DIGEST')
+          diffs = []
+
+          def count_md5(kind, keys, label):
+              # 없는 쪽은 개수 0 · md5 빈 값(빈 집합)으로 본다.
+              for key in sorted(keys):
+                  r = run.get(kind, {}).get(key, ['0', ''])
+                  c = core.get(kind, {}).get(key, ['0', ''])
+                  if r != c:
+                      diffs.append(f'| {label} | {key or "-"} | run {r[0]} | core {c[0]} | {"md5 다름" if r[0] == c[0] else "개수 다름"} |')
+
+          # 1 완주: core가 낸 공개 중 코스만 본다(숨김 · 삭제 코스의 run 줄은 무시).
+          count_md5('completions', core.get('completions', {}).keys(), '코스 완주')
+          # 2 기록 거리 복사: 두 쪽 날짜 전부
+          count_md5('records', set(run.get('records', {})) | set(core.get('records', {})), '기록 거리 복사')
+          # 3 · 4 회원(개수 · md5만)
+          count_md5('withdrawn', {''}, '탈퇴')
+          count_md5('hidden_members', {''}, '공개 안 함')
+          # 5 코스 상태: core 줄이 run에 같은 상태로 있어야 한다(run에만 있는 줄은 범위 전이라 무시).
+          for key, (status,) in sorted(core.get('status', {}).items()):
+              got = run.get('status', {}).get(key, ['없음'])[0]
+              if got != status:
+                  diffs.append(f'| 코스 상태 | {key} | run {got} | core {status} | 상태 다름 |')
+          # 6 완주 수 카운터(core 안)
+          for key, (counter, lines) in sorted(core.get('counter', {}).items()):
+              if counter != lines:
+                  diffs.append(f'| 완주 수 카운터 | {key} | 카운터 {counter} | 줄 {lines} | 다름 |')
+
+          summary = [f"- run 줄 {sum(len(v) for v in run.values())} · core 줄 {sum(len(v) for v in core.values())}"]
+          if diffs:
+              summary += ['', '| 대상 | 키 | run | core | 내용 |', '| --- | --- | --- | --- | --- |'] + diffs
+              summary += ['', '한 번 더 돌려도 같으면 진짜다. 고치는 법: `deploy/서버 사이 데이터 대조 - 2026-11-23.md` 4장']
+          else:
+              summary.append('- 6가지 모두 일치')
+          text = '\n'.join(['## 서버 사이 데이터 대조', ''] + summary) + '\n'
+          print(text)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as f:
+              f.write(text)
+          raise SystemExit(1 if diffs else 0)
+          PY

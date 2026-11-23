@@ -1,4 +1,4 @@
-# 운영 PC 감시 Prometheus. 인프라 PC RabbitMQ의 큐별 메시지 수와 소비자(consumer) 수만 수집한다.
+# 운영 PC 감시 Prometheus. 인프라 PC RabbitMQ의 큐별 메시지 수 · 소비자(consumer) 수와 core · run 앱 지표를 수집한다.
 # 대상: 인프라 PC Tailscale 주소의 15692(rabbitmq_prometheus).
 # host 라벨 core-pc는 서버 2대 때 이름이다. 바꾸면 DLQ 잔류 규칙(last_over_time 7일)이 옛 시계열을 7일 동안 따로 본다.
 global:
@@ -23,3 +23,17 @@ scrape_configs:
       - source_labels: [__name__]
         regex: rabbitmq_detailed_queue_messages|rabbitmq_detailed_queue_consumers
         action: keep
+
+  # core · run 앱 지표(/actuator/prometheus, Spring Boot Actuator + Micrometer). Tailscale로 직접 읽는다.
+  # 게이트웨이(deploy/Caddyfile)는 /actuator/health 말고는 막아 밖에서는 보이지 않는다.
+  - job_name: wadadak-apps
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ["100.64.78.38:8080"]
+        labels:
+          service: core
+          host: core-pc
+      - targets: ["100.73.249.33:8080"]
+        labels:
+          service: run
+          host: run-pc

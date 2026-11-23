@@ -64,6 +64,16 @@ spring:
           audiences: wadadak
 
 management:
+  endpoints:
+    web:
+      exposure:
+        # 운영 PC Prometheus가 Tailscale로 직접 읽는다. 게이트웨이(deploy/Caddyfile)는 /actuator/health 말고는 막는다.
+        include: health,prometheus
+  metrics:
+    distribution:
+      percentiles-histogram:
+        # 응답 시간 p95를 Prometheus에서 구한다(histogram_quantile)
+        http.server.requests: true
   health:
     rabbit:
       # 브로커가 꺼져도 서버는 healthy다. 외부화 행은 아웃박스에 남아 재전송된다.

@@ -14,6 +14,14 @@
 	handle /internal/* {
 		respond 404
 	}
+	# 상태 확인 말고는 actuator를 밖에 열지 않는다. 앱 지표(/actuator/prometheus)는 운영 PC Prometheus가 Tailscale로 직접 읽는다
+	@actuator {
+		path /actuator /actuator/*
+		not path /actuator/health /actuator/health/*
+	}
+	handle @actuator {
+		respond 404
+	}
 	# run 서비스는 run PC에 있다. Tailscale 주소로 보낸다(deploy/run/compose.yaml)
 	@run path /api/v1/runs /api/v1/runs/*
 	handle @run {
