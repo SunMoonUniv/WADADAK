@@ -1,5 +1,6 @@
-# run PC 모니터링 Prometheus. core PC RabbitMQ의 큐별 메시지 수와 소비자(consumer) 수만 수집한다.
-# 대상: core PC Tailscale 주소의 15692(rabbitmq_prometheus). WADADAK PR #258이 머지·배포된 뒤에 열린다.
+# 운영 PC 감시 Prometheus. 인프라 PC RabbitMQ의 큐별 메시지 수와 소비자(consumer) 수만 수집한다.
+# 대상: 인프라 PC Tailscale 주소의 15692(rabbitmq_prometheus).
+# host 라벨 core-pc는 서버 2대 때 이름이다. 바꾸면 DLQ 잔류 규칙(last_over_time 7일)이 옛 시계열을 7일 동안 따로 본다.
 global:
   scrape_interval: 15s
   scrape_timeout: 10s

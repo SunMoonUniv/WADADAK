@@ -6,6 +6,8 @@ param(
 
     [PSCredential]$Credential,
 
+    [string]$GrafanaUrl = 'http://100.111.111.92:3000',
+
     # On the first import, an old one-line stream (e.g. the core startup line) stays in Loki
     # memory, where old timestamps are not searchable. It becomes searchable after the
     # 30-minute idle flush, so allow time for it on the first run.
@@ -15,13 +17,13 @@ param(
 
 $ErrorActionPreference = 'Stop'
 if (-not $Credential) {
-    $Credential = Get-Credential -UserName 'admin' -Message 'Sign in to the local run PC Grafana.'
+    $Credential = Get-Credential -UserName 'admin' -Message 'Sign in to the ops PC Grafana.'
 }
 if (-not $Credential) { throw 'Grafana credentials are required.' }
 
 $login = '{0}:{1}' -f $Credential.UserName, $Credential.GetNetworkCredential().Password
 $headers = @{ Authorization = 'Basic ' + [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($login)) }
-$queryEndpoint = 'http://127.0.0.1:3000/api/datasources/proxy/uid/wadadak-loki/loki/api/v1/query_range'
+$queryEndpoint = "$GrafanaUrl/api/datasources/proxy/uid/wadadak-loki/loki/api/v1/query_range"
 
 function Find-GrafanaLog([string]$Query, [DateTimeOffset]$Since, [string]$ExpectedLine) {
     $start = "$($Since.ToUnixTimeMilliseconds())000000"

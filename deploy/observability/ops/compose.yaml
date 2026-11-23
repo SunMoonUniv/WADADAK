@@ -1,0 +1,61 @@
+# 운영 PC 감시(desktop-65isqe2, Tailscale 100.111.111.92). 절차는 ops/README.md.
+# Loki는 세 서비스 PC의 Alloy가 Tailscale로 로그를 보낸다. Prometheus는 인프라 PC RabbitMQ(15692)를 읽는다.
+# Grafana가 둘을 보여 주고 알림을 Discord로 보낸다. 비밀 값(Grafana 비밀번호 · Discord 웹훅)은 이 폴더 .env에만 둔다.
+name: wadadak-ops-observability
+
+x-container-defaults: &container-defaults
+  restart: unless-stopped
+  logging:
+    driver: local
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  loki:
+    <<: *container-defaults
+    image: grafana/loki:3.7.2
+    command: ["-config.file=/etc/loki/wadadak.yaml"]
+    # Alloy 셋(인프라 · core · run PC)이 보낸다. 이 PC의 Tailscale 주소에만 연다.
+    # Docker가 Tailscale보다 먼저 뜨면 바인딩이 실패한다. 그때는 docker compose up -d loki.
+    ports:
+      - "100.111.111.92:3100:3100"
+    volumes:
+      - ./loki.yaml:/etc/loki/wadadak.yaml:ro
+      - loki-data:/loki
+
+  prometheus:
+    <<: *container-defaults
+    image: prom/prometheus:v3.13.5
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    # 포트를 열지 않는다. Grafana만 compose 안에서 http://prometheus:9090으로 읽는다.
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+
+  grafana:
+    <<: *container-defaults
+    image: grafana/grafana:13.3.1
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?.env에 GRAFANA_ADMIN_PASSWORD가 없다}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # 비밀 값이다. 채팅 · 문서에 붙이지 않는다.
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:?.env에 DISCORD_WEBHOOK_URL이 없다}
+    # tailnet에서 연다(로그인 필요). 이 PC에서만 보려면 .env에 GRAFANA_BIND_IP=127.0.0.1.
+    ports:
+      - "${GRAFANA_BIND_IP:-100.111.111.92}:3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana-datasource.yaml:/etc/grafana/provisioning/datasources/loki.yaml:ro
+      - ./grafana-datasource-prometheus.yaml:/etc/grafana/provisioning/datasources/prometheus.yaml:ro
+      - ./grafana-dashboards.yaml:/etc/grafana/provisioning/dashboards/wadadak.yaml:ro
+      - ./dashboards:/etc/grafana/wadadak-dashboards:ro
+      - ./grafana-alerting-dlq.yaml:/etc/grafana/provisioning/alerting/wadadak-dlq.yaml:ro
+
+volumes:
+  loki-data:
+  prometheus-data:
+  grafana-data:

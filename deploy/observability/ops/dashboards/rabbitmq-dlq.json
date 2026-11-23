@@ -1,7 +1,7 @@
 {
   "uid": "wadadak-rabbitmq-dlq",
   "title": "와다닥 RabbitMQ DLQ",
-  "description": "core PC RabbitMQ의 DLQ(wadadak.core-service.dlq, wadadak.run-service.dlq) 메시지 수와 업무 큐 소비자 수. run PC Prometheus가 core PC 100.75.79.15:15692(/metrics/detailed, queue_coarse_metrics·queue_consumer_count)에서 15초마다 읽습니다. 보관 7일.",
+  "description": "인프라 PC RabbitMQ의 DLQ(wadadak.core-service.dlq, wadadak.run-service.dlq) 메시지 수와 업무 큐 소비자 수. 운영 PC Prometheus가 인프라 PC 100.75.79.15:15692(/metrics/detailed, queue_coarse_metrics·queue_consumer_count)에서 15초마다 읽습니다. 보관 7일.",
   "tags": ["wadadak", "rabbitmq", "dlq"],
   "schemaVersion": 39,
   "timezone": "browser",
@@ -55,7 +55,7 @@
       "id": 3,
       "type": "stat",
       "title": "지표 수집 상태",
-      "description": "Prometheus가 core PC 15692를 읽고 있는지(up). '중단'이나 '수집 안 됨'이면 DLQ 숫자를 믿을 수 없습니다.",
+      "description": "Prometheus가 인프라 PC 15692를 읽고 있는지(up). '중단'이나 '수집 안 됨'이면 DLQ 숫자를 믿을 수 없습니다.",
       "datasource": { "type": "prometheus", "uid": "wadadak-prometheus" },
       "gridPos": { "h": 6, "w": 5, "x": 10, "y": 0 },
       "targets": [

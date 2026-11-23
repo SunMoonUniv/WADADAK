@@ -24,7 +24,7 @@ loki.source.docker "run" {
 }
 
 loki.process "run" {
-  forward_to = [loki.write.local.receiver]
+  forward_to = [loki.write.ops_pc.receiver]
 
   stage.drop {
     older_than = "168h"
@@ -64,8 +64,8 @@ loki.process "run" {
   }
 }
 
-loki.write "local" {
+loki.write "ops_pc" {
   endpoint {
-    url = "http://loki:3100/loki/api/v1/push"
+    url = sys.env("LOKI_PUSH_URL")
   }
 }
