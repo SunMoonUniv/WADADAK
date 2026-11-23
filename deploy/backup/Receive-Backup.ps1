@@ -1,6 +1,6 @@
 ﻿<#
-운영 PC에서 매일 돈다. Taildrop으로 받은 덤프(Downloads)를 백업 폴더로 옮기고, $KeepDays일 지난 것을 지우고,
-그날 core · run 덤프 중 빠진 것이 있으면 Discord로 알린다. 절차는 deploy/backup/README.md.
+운영 PC에서 매일 돈다. Taildrop으로 받은 덤프 · 사진 tar(Downloads)를 백업 폴더로 옮기고, $KeepDays일 지난 것을 지우고,
+그날 core · run 덤프와 사진 tar 중 빠진 것이 있으면 Discord로 알린다. 절차는 deploy/backup/README.md.
 #>
 [CmdletBinding()]
 param(
@@ -24,23 +24,23 @@ function Send-Discord([string]$Text) {
     Invoke-RestMethod -Method Post -Uri $url -ContentType 'application/json; charset=utf-8' -Body $body | Out-Null
 }
 
-foreach ($n in 'core', 'run') { New-Item -ItemType Directory -Force (Join-Path $Dir $n) | Out-Null }
+foreach ($n in 'core', 'run', 'photos') { New-Item -ItemType Directory -Force (Join-Path $Dir $n) | Out-Null }
 
 Get-ChildItem -LiteralPath $Inbox -File | ForEach-Object {
-    if ($_.Name -match '^(core|run)-\d{8}\.dump$') {
+    if ($_.Name -match '^(core|run|photos)-\d{8}\.(dump|tar)$') {
         Move-Item -Force -LiteralPath $_.FullName -Destination (Join-Path (Join-Path $Dir $Matches[1]) $_.Name)
     }
 }
 
 $cutoff = $Date.Date.AddDays(-$KeepDays)
-Get-ChildItem -LiteralPath $Dir -Recurse -File -Filter *.dump | Where-Object {
-    $_.BaseName -match '-(\d{8})$' -and [datetime]::ParseExact($Matches[1], 'yyyyMMdd', $null) -lt $cutoff
+Get-ChildItem -LiteralPath $Dir -Recurse -File | Where-Object {
+    $_.Name -match '-(\d{8})\.(dump|tar)$' -and [datetime]::ParseExact($Matches[1], 'yyyyMMdd', $null) -lt $cutoff
 } | Remove-Item -Force
 
 $day = '{0:yyyyMMdd}' -f $Date
-$missing = @('core', 'run' | Where-Object { -not (Test-Path (Join-Path $Dir "$_\$_-$day.dump")) })
+$missing = @("core-$day.dump", "run-$day.dump", "photos-$day.tar" | Where-Object { -not (Test-Path (Join-Path (Join-Path $Dir ($_ -split '-')[0]) $_)) })
 if ($missing.Count -gt 0) {
-    Send-Discord ("⚠️ DB 백업이 오지 않았습니다: {0} ({1:yyyy-MM-dd})`n확인할 곳: 그 PC의 C:\wadadak-backup\backup.log, 작업 스케줄러 'WADADAK DB Backup'" -f ($missing -join ', '), $Date)
+    Send-Discord ("⚠️ 백업이 오지 않았습니다: {0}`n확인할 곳: 보낸 PC의 C:\wadadak-backup\backup.log, 작업 스케줄러 'WADADAK DB Backup'(core · run PC) · 'WADADAK Photo Backup'(인프라 PC)" -f ($missing -join ', '))
     exit 1
 }
-Write-Host "OK core-$day.dump, run-$day.dump"
+Write-Host "OK core-$day.dump, run-$day.dump, photos-$day.tar"
