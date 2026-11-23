@@ -1,0 +1,62 @@
+# 감시 하트비트 (Grafana 파일 provisioning). 운영 PC 자체가 멈춘 것을 바깥(healthchecks.io)에서 알게 한다.
+# 항상 울리는 규칙 하나가 5분마다 healthchecks.io 핑 주소로 webhook을 보낸다. 신호가 끊기면 healthchecks.io가 Discord로 알린다.
+# Prometheus를 조회하므로 Grafana · Prometheus · Docker · 운영 PC 중 어느 것이 멈춰도 신호가 끊긴다.
+# Grafana는 이 파일을 기동할 때만 읽는다. 고친 뒤에는 운영 PC에서 docker compose restart grafana.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: wadadak-healthchecks
+    receivers:
+      - uid: wadadak-healthchecks
+        type: webhook
+        # 해제 알림은 보내지 않는다(이 규칙은 해제되지 않는다)
+        disableResolveMessage: true
+        settings:
+          # 운영 PC .env의 HEALTHCHECKS_GRAFANA_URL (ops/compose.yaml이 Grafana 컨테이너에 넘긴다)
+          url: $HEALTHCHECKS_GRAFANA_URL
+          httpMethod: POST
+
+groups:
+  - orgId: 1
+    name: heartbeat
+    folder: Wadadak
+    interval: 1m
+    rules:
+      - uid: wadadak-heartbeat
+        title: 감시 하트비트 (항상 울림)
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: wadadak-prometheus
+            model:
+              refId: A
+              editorMode: code
+              expr: 'vector(1)'
+              instant: true
+              range: false
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        # Prometheus를 못 읽으면 울리지 않게 둔다. 그러면 신호가 끊겨 healthchecks.io가 알린다.
+        noDataState: OK
+        execErrState: OK
+        for: 0s
+        labels:
+          wadadak_alert: heartbeat
+        annotations:
+          summary: '운영 PC 감시가 살아 있다는 신호다. healthchecks.io로만 간다.'
+        notification_settings:
+          receiver: wadadak-healthchecks
+          group_by: [alertname]
+          group_wait: 0s
+          group_interval: 1m
+          repeat_interval: 5m
+        isPaused: false

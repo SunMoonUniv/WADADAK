@@ -21,6 +21,7 @@
    ```
 
    - `GRAFANA_ADMIN_PASSWORD`: Grafana `admin` 비밀번호. `$` 같은 특수문자는 작은따옴표로 감싼다.
+   - `HEALTHCHECKS_GRAFANA_URL` · `HEALTHCHECKS_RESTORE_URL`: healthchecks.io의 "감시 하트비트" · "복원 검사" 체크 핑 주소(`https://hc-ping.com/…`). 남이 알면 가짜 신호를 보낼 수 있다. 채팅에 붙이지 않는다.
    - `DISCORD_WEBHOOK_URL`: Discord 채널 → 채널 편집 → 연동 → 웹후크 → 웹후크 URL 복사. 비밀 값이다. 채팅 · 문서 · 스크린샷에 넣지 않는다. 형식만 확인한다:
 
      ```powershell
@@ -62,6 +63,8 @@
 
 알림 규칙 4개(`grafana-alerting-dlq.yaml`): DLQ 메시지 잔류, DLQ 지표 수집 중단(인프라 PC나 RabbitMQ가 멈춤), DLQ 지표 사라짐, 큐 소비자 없음(core나 run이 브로커에서 2분 넘게 떨어짐).
 
+감시 하트비트(`grafana-alerting-heartbeat.yaml`): "감시 하트비트 (항상 울림)" 규칙이 5분마다 healthchecks.io로만 핑을 보낸다(Discord로는 가지 않는다). Grafana 화면에서 늘 울리는 상태로 보이는 것이 정상이다.
+
 앱 알림 규칙 3개(`grafana-alerting-apps.yaml`, 같은 Discord 연락 지점): 서비스 지표 수집 중단(core · run이 멈췄거나 그 PC가 끊김, 2분), 서버 오류(5xx) 비율 높음(5분 동안 5% 초과, 분당 3건 이상일 때만), JVM 메모리 부족(GC 뒤 남는 메모리가 10분 넘게 90% 초과).
 
 - **고칠 때**: 파일을 고치고 `docker compose restart grafana`(알림 파일을 새로 더했으면 `docker compose up -d grafana`). 파일로 만든 규칙은 Grafana 화면에서 고칠 수 없다. `prometheus.yml`을 고치면 `docker compose restart prometheus`.
@@ -79,7 +82,7 @@
 ## 4. 알아 둘 점
 
 - **부팅 순서**: Loki · Grafana 포트는 Tailscale 주소에 바인딩되어 있다. Docker가 Tailscale보다 먼저 뜨면 바인딩이 실패해 컨테이너가 뜨지 않는다. 재부팅 뒤 `docker compose ps`로 보고, 안 떴으면 `docker compose up -d`.
-- **운영 PC가 꺼지면** 로그 · 알림이 모두 멈추고 알려 줄 곳도 없다. 바깥 감시는 보류했다([운영 PC](<../../운영 PC (감시 · 백업) - 2026-11-23.md>) 6장).
+- **운영 PC가 꺼지면** 로그 · 알림이 모두 멈춘다. 감시 하트비트가 끊겨 10분쯤 뒤 healthchecks.io가 Discord로 알린다([운영 PC](<../../운영 PC (감시 · 백업) - 2026-11-23.md>) 6장).
 - **Loki가 8분 넘게 응답하지 않으면** Alloy가 재시도하다 그 배치를 버린다. 그동안의 로그는 다시 오지 않는다.
 - **Grafana를 이 PC에서만 열려면** `.env`에 `GRAFANA_BIND_IP=127.0.0.1`을 넣고 `docker compose up -d grafana`.
 - `docker compose down`은 컨테이너만 내리고 볼륨(로그 · 지표 · Grafana 설정)은 남긴다.

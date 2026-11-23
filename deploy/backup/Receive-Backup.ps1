@@ -13,6 +13,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+# Windows PowerShell 5.1은 TLS 1.2를 기본으로 켜지 않을 수 있다(healthchecks.io · Discord는 HTTPS).
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 
 function Send-Discord([string]$Text) {
     $line = Get-Content -LiteralPath $EnvFile | Where-Object { $_ -like 'DISCORD_WEBHOOK_URL=*' } | Select-Object -First 1

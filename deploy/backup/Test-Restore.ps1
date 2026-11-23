@@ -1,6 +1,7 @@
 ﻿<#
 운영 PC에서 매주 돈다. 가장 최근 core · run 덤프를 임시 컨테이너에 복원해 본다.
 오류가 나거나 복원된 테이블 수가 덤프 목록과 다르면 Discord로 알린다. 절차는 deploy/backup/README.md.
+.env에 HEALTHCHECKS_RESTORE_URL이 있으면 성공하면 핑, 실패하면 /fail을 보낸다. 작업이 아예 안 돈 주는 healthchecks.io가 알린다.
 #>
 [CmdletBinding()]
 param(
@@ -14,10 +15,23 @@ $ErrorActionPreference = 'Stop'
 $docker = 'C:\Program Files\Docker\Docker\resources\bin\docker.exe'
 $container = 'wadadak-restore-test'
 
+# Windows PowerShell 5.1은 TLS 1.2를 기본으로 켜지 않을 수 있다(healthchecks.io · Discord는 HTTPS).
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+function Get-EnvValue([string]$Key) {
+    $line = Get-Content -LiteralPath $EnvFile | Where-Object { $_ -like "$Key=*" } | Select-Object -First 1
+    if ($line) { $line.Substring($Key.Length + 1).Trim().Trim("'", '"') }
+}
+
+# healthchecks.io 핑(.env에 주소가 있을 때만). 핑이 실패해도 결과는 바꾸지 않는다.
+function Send-Ping([string]$Suffix) {
+    $url = Get-EnvValue 'HEALTHCHECKS_RESTORE_URL'
+    if (-not $url) { return }
+    try { Invoke-WebRequest -Uri ($url + $Suffix) -UseBasicParsing -TimeoutSec 10 | Out-Null } catch { Write-Warning "ping: $($_.Exception.Message)" }
+}
+
 function Send-Discord([string]$Text) {
-    $line = Get-Content -LiteralPath $EnvFile | Where-Object { $_ -like 'DISCORD_WEBHOOK_URL=*' } | Select-Object -First 1
-    if (-not $line) { throw "$EnvFile 에 DISCORD_WEBHOOK_URL이 없다" }
-    $url = $line.Substring('DISCORD_WEBHOOK_URL='.Length).Trim().Trim("'", '"')
+    $url = Get-EnvValue 'DISCORD_WEBHOOK_URL'
+    if (-not $url) { throw "$EnvFile 에 DISCORD_WEBHOOK_URL이 없다" }
     $body = [Text.Encoding]::UTF8.GetBytes((@{ content = $Text } | ConvertTo-Json -Compress))
     Invoke-RestMethod -Method Post -Uri $url -ContentType 'application/json; charset=utf-8' -Body $body | Out-Null
 }
@@ -61,6 +75,8 @@ foreach ($n in 'core', 'run') {
 }
 
 if ($problems.Count -gt 0) {
+    Send-Ping '/fail'
     Send-Discord ("⚠️ DB 백업 복원 검사 실패`n" + ($problems -join "`n"))
     exit 1
 }
+Send-Ping ''
