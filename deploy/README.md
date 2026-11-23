@@ -1,6 +1,6 @@
 # 공용 서버 (배포)
 
-실기기에서 실제 소셜 로그인으로 시험하는 팀 공용 서버다. 서버 PC 두 대(core · run)에서 Docker로 띄우고, 포트포워딩 없이 Cloudflare 터널로 `https://api.leedohyunn8n.shop`(서버)과 `https://files.leedohyunn8n.shop`(사진)에 연다. 서버(`BackEnd/` · `deploy/`)가 바뀐 PR이 main에 머지되면 자동으로 배포된다.
+실기기에서 실제 소셜 로그인으로 시험하는 팀 공용 서버다. 서버 PC 세 대(인프라 · core · run)에서 Docker로 띄우고, 포트포워딩 없이 Cloudflare 터널로 `https://api.leedohyunn8n.shop`(서버)과 `https://files.leedohyunn8n.shop`(사진)에 연다. 서버(`BackEnd/` · `deploy/`)가 바뀐 PR이 main에 머지되면 자동으로 배포된다.
 
 ```
 PR ─► CI (GitHub 서버) ─► 승인 · 머지
@@ -8,20 +8,22 @@ main push ─► backend.yml
                changes  (ubuntu-latest)          바뀐 파일 확인. 서버가 그대로면 아래 둘을 건너뛴다
                backend  (ubuntu-latest)          테스트
                images     (ubuntu-latest)        core · run 이미지 빌드 → GHCR(ghcr.io/sunmoonuniv/wadadak-*:main · :커밋SHA)
-               deploy     (core PC 러너)         core 이미지 받기 → compose up --wait → caddy reload   환경 wadadak-server
-               deploy-run (run PC 러너)          run 이미지 받기 → compose up --wait                   환경 wadadak-run
-               smoke      (core PC 러너)         gateway를 거쳐 core health 200 · run 401 확인
+               deploy-core  (core PC 러너)      core 이미지 받기 → compose up --wait                  환경 wadadak-server
+               deploy-infra (인프라 PC 러너)    compose up --wait → caddy reload                      환경 wadadak-server
+               deploy-run   (run PC 러너)       run 이미지 받기 → compose up --wait                   환경 wadadak-run
+               smoke        (인프라 PC 러너)    gateway를 거쳐 core health 200 · run 401 확인
 
-core PC (Docker Desktop) · compose 프로젝트 wadadak-server · Tailscale 100.75.79.15
-   cloudflared ──► gateway(Caddy) ─┬─ /api/v1/runs/* ──── Tailscale ──► run PC: run (100.73.249.33:8080) ─ postgres(run)
-   (밖으로 포트를 열지 않는다)        └─ 나머지 ─► core ─ postgres · storage(RustFS) · graphhopper
-                                              rabbitmq ◄── Tailscale ── run
+인프라 PC (Docker Desktop) · compose 프로젝트 wadadak-server · Tailscale 100.75.79.15
+   cloudflared ──► gateway(Caddy) ─┬─ /api/v1/runs/* ── Tailscale ──► run PC: run ─ postgres(run)              100.73.249.33 · wadadak-run
+   (밖으로 포트를 열지 않는다)        └─ 나머지 ───────── Tailscale ──► core PC: core ─ postgres · graphhopper   100.64.78.38 · wadadak-core
+   rabbitmq ◄── Tailscale ── core · run
+   storage(RustFS) ◄── Tailscale ── core   (앱은 터널의 files 주소로 직접 올리고 받는다)
    Cloudflare ◄── 폰 https://api.leedohyunn8n.shop · 사진 https://files.leedohyunn8n.shop
 ```
 
 - 주소: `https://api.leedohyunn8n.shop` · 상태 [`/actuator/health`](https://api.leedohyunn8n.shop/actuator/health) · Swagger [`/swagger-ui.html`](https://api.leedohyunn8n.shop/swagger-ui.html)
 - 비밀값(DB 비밀번호 · JWT 키 · 사진 저장소 비밀번호 · 브로커 비밀번호 · 터널 토큰 · FCM 키 · Jev 키)은 GitHub Secrets에만 둔다. 서버 PC에는 비밀값 파일이 없다.
-- `prod` 프로필로 뜬다(`compose.yaml`의 `SPRING_PROFILES_ACTIVE`). 스텁(`app.stub.*: true`)이나 가짜 소셜 검증이 켜져 있으면 `StubGuard`가 기동을 막는다. 소셜 로그인은 실제 검증이다.
+- `prod` 프로필로 뜬다(compose의 `SPRING_PROFILES_ACTIVE`). 스텁(`app.stub.*: true`)이나 가짜 소셜 검증이 켜져 있으면 `StubGuard`가 기동을 막는다. 소셜 로그인은 실제 검증이다.
 - 사진 저장소는 S3 호환 RustFS다(개발 정책 7장 사진 업로드). 앱이 업로드 폼으로 직접 올리고, 사진은 로그인 없이 받는다(객체 받기만 허용, 목록은 막음). 버킷 `wadadak`과 공개 읽기 설정은 첫 업로드 때 서버가 만든다.
 - 서버 DB는 개발용 DB(`BackEnd/compose.yaml`, 5433)와 따로다. 서버 PC에서 개발해도 서로 겹치지 않는다.
 - Swagger(`/swagger-ui.html`)도 인터넷에 열린다. 막으려면 Cloudflare Access로 `/swagger-ui*` · `/v3/api-docs*`에 팀원 이메일 인증을 건다.
@@ -38,6 +40,15 @@ self-hosted 러너는 PR 워크플로도 받는다. PR에서는 PR 작성자의 
 
 ## 서버 PC 준비 (한 번)
 
+| PC | Tailscale 주소 | 러너 라벨 | compose (프로젝트) | 띄우는 것 |
+| --- | --- | --- | --- | --- |
+| 인프라 PC (desktop-i27ecdj) | `100.75.79.15` | `wadadak-infra` | `deploy/compose.yaml` (`wadadak-server`) | cloudflared · gateway · rabbitmq · storage |
+| core PC (desktop-elsmcmh) | `100.64.78.38` | `wadadak-core` | `deploy/core/compose.yaml` (`wadadak-core`) | core · graphhopper · core DB |
+| run PC (desktop-266eggn) | `100.73.249.33` | `wadadak-run` | `deploy/run/compose.yaml` (`wadadak-run`) | run · run DB |
+
+- 인프라 PC가 꺼지면 전체가 멈춘다(진입점 · 브로커 · 사진 저장소). core PC가 꺼지면 core API와 run의 코스 러닝 준비 · 고스트가, run PC가 꺼지면 러닝 API가 멈춘다.
+- 세 PC는 같은 LAN에 둔다. PC 사이 호출이 모두 Tailscale을 탄다.
+
 ### 1. PC 설정
 - Docker Desktop은 Windows에 로그인해 있어야 돈다.
   - Docker Desktop Settings → General → **Start Docker Desktop when you sign in**
@@ -53,9 +64,11 @@ self-hosted 러너는 PR 워크플로도 받는다. PR에서는 PR 작성자의 
 ```powershell
 mkdir C:\actions-runner-wadadak; cd C:\actions-runner-wadadak
 # Settings → Actions → Runners → New self-hosted runner → Windows x64의 Download 명령으로 zip을 받아 푼다
-.\config.cmd --url https://github.com/SunMoonUniv/WADADAK --token <등록 토큰> --labels wadadak-core
+.\config.cmd --url https://github.com/SunMoonUniv/WADADAK --token <등록 토큰> --labels <그 PC의 라벨>
 ```
 
+- 라벨은 PC마다 하나다(위 표). 같은 라벨을 가진 러너가 둘이면 어느 PC가 작업을 받을지 정해지지 않는다.
+- 인프라 PC · core PC는 **Git for Windows를 러너보다 먼저 설치한다.** git이 없거나 작업 폴더의 `.git` · origin 주소가 다르면 checkout이 배포마다 작업 폴더를 통째로 지워 utilfile(7번)이 사라진다. 러너를 먼저 띄웠으면 다시 시작한다.
 - 나머지 질문은 Enter. 서비스로 돌릴지 물으면 `N`.
 - 러너는 서비스가 아니라 **로그인할 때 작업 스케줄러가 켠다**. 서버 PC 계정에 비밀번호가 없어 서비스로 돌릴 수 없고(Windows는 비밀번호 없는 계정의 서비스 로그온을 막는다), Docker Desktop도 어차피 로그인해 있어야 돈다. 관리자 권한 없이 일반 권한으로 돈다.
   ```powershell
@@ -68,7 +81,7 @@ mkdir C:\actions-runner-wadadak; cd C:\actions-runner-wadadak
   Start-ScheduledTask -TaskName 'WADADAK GitHub Runner'
   ```
 - 끄기 · 켜기: `Stop-ScheduledTask` · `Start-ScheduledTask -TaskName 'WADADAK GitHub Runner'`. 창이 숨겨져 있어 실수로 닫히지 않는다. 로그는 `C:\actions-runner-wadadak\_diag`.
-- 확인: GitHub 러너 목록에 `wadadak-core` 라벨로 Idle(초록)
+- 확인: GitHub 러너 목록에 그 PC의 라벨로 Idle(초록)
 
 ### 3. GitHub 환경과 Secrets
 저장소 Settings → Environments → New environment `wadadak-server`
@@ -107,7 +120,7 @@ rm private.pem public.pem
 - JWT 키를 바꾸면 발급한 토큰이 모두 무효가 되어 모든 기기에서 다시 로그인해야 한다.
 
 ### 4. 첫 배포
-Actions → Backend CI → Run workflow(main). deploy 작업이 통과하면 서버가 떠 있다. 터널을 붙이기 전에는 서버 PC 안에서만 보인다(`docker compose -p wadadak-server ps`가 healthy).
+Actions → Backend CI → Run workflow(main). 배포 작업(`deploy-core` · `deploy-infra` · `deploy-run`)이 통과하면 서버가 떠 있다. 터널을 붙이기 전에는 서버 PC 안에서만 보인다(각 PC에서 `docker compose -p <프로젝트> ps`가 healthy).
 
 ### 5. Cloudflare 터널
 1. 도메인을 Cloudflare에 추가하고 상태가 **Active**가 될 때까지 기다린다(등록 업체에서 네임서버를 Cloudflare 것으로 바꾼다. Cloudflare에서 산 도메인은 바로 Active).
@@ -139,7 +152,7 @@ Actions → Backend CI → Run workflow(main). deploy 작업이 통과하면 서
 - 키는 저장소에 커밋하지 않는다. 키가 새면 서비스 계정 화면에서 그 키를 지우고 새로 만든다.
 
 ### 7. 길찾기 데이터 (코스 자동 생성)
-코스 자동 생성의 길찾기(`graphhopper` 서비스, GraphHopper 11.1 + 한국 OSM)는 파일이 수백 MB라 저장소에 넣지 않는다. 저장소 최상위의 `utilfile/graphhopper`에 직접 넣는다. 서버에서는 러너가 저장소를 받는 작업 폴더의 최상위이고, compose는 `deploy/`에서 상대경로 `../utilfile/graphhopper`로 붙인다. 배포 작업은 `utilfile/`을 지우지 않는다(`backend.yml`의 작업 폴더 정리 단계).
+코스 자동 생성의 길찾기(`graphhopper` 서비스, GraphHopper 11.1 + 한국 OSM)는 파일이 수백 MB라 저장소에 넣지 않는다. 저장소 최상위의 `utilfile/graphhopper`에 직접 넣는다. 서버에서는 core PC 러너가 저장소를 받는 작업 폴더의 최상위이고, compose는 `deploy/core/`에서 상대경로 `../../utilfile/graphhopper`로 붙인다. 배포 작업은 `utilfile/`을 지우지 않는다(`backend.yml`의 작업 폴더 정리 단계).
 
 | 파일 | 크기 | 받는 곳 |
 | --- | --- | --- |
@@ -155,30 +168,31 @@ Actions → Backend CI → Run workflow(main). deploy 작업이 통과하면 서
 docker compose -f BackEnd/compose.yaml --profile planner run --rm graphhopper java -Xmx6g -jar /data/graphhopper-web-11.1.jar import /config.yml
 ```
 
-만든 `utilfile/graphhopper/graph-cache`를 서버의 같은 위치에 복사한다. 설정(`deploy/graphhopper/config.yml`)의 프로필이나 encoded values를 바꾸면 그래프를 다시 만든다.
+만든 `utilfile/graphhopper/graph-cache`를 core PC의 같은 위치에 복사한다. 설정(`deploy/graphhopper/config.yml`)의 프로필이나 encoded values를 바꾸면 그래프를 다시 만든다.
 
-- 확인: `docker compose -p wadadak-server ps`에서 graphhopper가 healthy. 경로 시험: `docker exec wadadak-server-graphhopper-1 curl -s "http://localhost:8989/route?point=36.7983,127.0746&point=36.8050,127.0800&profile=foot"`
-- 한 달마다 새 pbf로 그래프를 다시 만든다. 서버에서는 `docker compose -p wadadak-server stop graphhopper` → `graph-cache` 폴더 교체 → `docker compose -p wadadak-server start graphhopper`. 그동안 코스 자동 생성만 실패하고 나머지는 그대로다.
+- 확인(core PC): `docker compose -p wadadak-core ps`에서 graphhopper가 healthy. 경로 시험: `docker exec wadadak-core-graphhopper-1 curl -s "http://localhost:8989/route?point=36.7983,127.0746&point=36.8050,127.0800&profile=foot"`
+- 한 달마다 새 pbf로 그래프를 다시 만든다. core PC에서 `docker compose -p wadadak-core stop graphhopper` → `graph-cache` 폴더 교체 → `docker compose -p wadadak-core start graphhopper`. 그동안 코스 자동 생성만 실패하고 나머지는 그대로다.
 
-**표고점 파일** (원하는 길 `평지` · `오르막`): 후보 오르막을 계산하는 `utilfile/elevation/spot_heights.bin`(약 67MB)도 저장소 밖에 둔다. core가 `../utilfile/elevation`을 읽기 전용으로 붙인다(`PLANNER_SPOT_HEIGHTS`).
+**표고점 파일** (원하는 길 `평지` · `오르막`): 후보 오르막을 계산하는 `utilfile/elevation/spot_heights.bin`(약 67MB)도 저장소 밖에 둔다. core가 `utilfile/elevation`을 읽기 전용으로 붙인다(`PLANNER_SPOT_HEIGHTS`).
 
 - 국토지리정보원 표고점(`utilfile/표고선/N3P_F0020000`)으로 만든다: `utilfile/_스크립트/course_planner`에서 `python build_spot_heights.py ../../elevation/spot_heights.bin`
-- 만든 파일을 서버의 같은 위치에 복사한 뒤 core를 다시 띄운다(다음 배포 또는 `docker compose -p wadadak-server restart core`). 기동 로그에 `표고점 5378359개를 읽었다`가 남는다.
+- 만든 파일을 core PC의 같은 위치에 복사한 뒤 core를 다시 띄운다(다음 배포 또는 `docker compose -p wadadak-core restart core`). 기동 로그에 `표고점 5378359개를 읽었다`가 남는다.
 - 파일이 없어도 배포는 된다. 그때 평지 · 오르막은 후보에 반영하지 않고 `아직 반영하지 않았어요`로 알린다.
 
-**칸 집합 파일** (원하는 길 `인도` · `강변` · `밝은 길`): `utilfile/layers/`의 `sidewalk.bin`(약 31MB) · `river.bin`(약 73MB) · `lamps.bin`(약 19MB)도 저장소 밖에 둔다. core가 `../utilfile/layers`를 읽기 전용으로 붙인다(`PLANNER_LAYERS_DIR`).
+**칸 집합 파일** (원하는 길 `인도` · `강변` · `밝은 길`): `utilfile/layers/`의 `sidewalk.bin`(약 31MB) · `river.bin`(약 73MB) · `lamps.bin`(약 19MB)도 저장소 밖에 둔다. core가 `utilfile/layers`를 읽기 전용으로 붙인다(`PLANNER_LAYERS_DIR`).
 
 - 원자료는 모두 `utilfile`에 있는 전국 자료다: 국토지리정보원 인도(보도) `인도(보도)/N3L_A0033320`, 하천경계 `하천경계/N3A_E0010001`, 생활안전지도 가로등 · 보안등 `가로등/`.
 - `utilfile/_스크립트/course_planner`에서 `python build_layers.py all ../../layers`로 만든다(셋 합쳐 약 3분).
-- 만든 폴더를 서버의 같은 위치에 복사한 뒤 core를 다시 띄운다. 기동 로그에 `SIDEWALK 칸 3844121개를 읽었다` · `RIVER 칸 …` · `LAMPS 칸 …`이 남는다.
+- 만든 폴더를 core PC의 같은 위치에 복사한 뒤 core를 다시 띄운다. 기동 로그에 `SIDEWALK 칸 3844121개를 읽었다` · `RIVER 칸 …` · `LAMPS 칸 …`이 남는다.
 - 없는 파일의 조건만 후보에 반영하지 않고 `아직 반영하지 않았어요`로 알린다. 밝은 길은 후보 둘레에 등 자료가 하나도 없는 지역(일부 군)에서도 같은 안내가 나간다.
 
 ### 8. run 서버 PC (MSA 분리 준비와 CI·CD 8장)
-run 서비스와 run 전용 PostgreSQL(`postgres`)이 뜬다(`deploy/run/compose.yaml`, compose 프로젝트 `wadadak-run`). 브로커 · core 내부 API는 core PC에 Tailscale로 붙는다.
+run 서비스와 run 전용 PostgreSQL(`postgres`)이 뜬다(`deploy/run/compose.yaml`, compose 프로젝트 `wadadak-run`). 브로커는 인프라 PC, core 내부 API는 core PC에 Tailscale로 붙는다.
 
 1. 1번 PC 설정과 같다(Docker Desktop 자동 시작 · 절전 안 함 · 자동 로그인).
-2. Tailscale을 두 PC에 설치하고 같은 계정으로 로그인한다. 주소가 core `100.75.79.15` · run `100.73.249.33`이 아니면 `deploy/compose.yaml` · `deploy/run/compose.yaml` · `deploy/Caddyfile`의 주소를 바꾼다.
-   - rabbitmq · core 포트는 core PC의 Tailscale 주소에만, run 포트는 run PC의 Tailscale 주소에만 연다. 학교 LAN에서는 닿지 않는다.
+2. Tailscale을 세 PC에 설치하고 같은 계정으로 로그인한다. 주소가 위 표와 다르면 `deploy/compose.yaml` · `deploy/core/compose.yaml` · `deploy/run/compose.yaml` · `deploy/Caddyfile`의 주소를 바꾼다.
+   - rabbitmq · storage 포트는 인프라 PC, core 포트는 core PC, run 포트는 run PC의 Tailscale 주소에만 연다. 학교 LAN에서는 닿지 않는다.
+   - 관리 화면 Machines에서 세 PC 모두 **Disable key expiry**. 기본으로 180일 뒤 키가 만료되어 그 PC와의 연결이 끊긴다.
    - 재부팅 뒤 Tailscale보다 Docker가 먼저 뜨면 그 주소에 포트를 못 열어 컨테이너가 뜨지 않을 수 있다. 그때는 수동 배포를 한 번 돌린다.
 3. 2번 GitHub 러너와 같은 방법으로 등록한다. 라벨은 `wadadak-run`, 폴더 · 작업 이름은 그대로 써도 된다.
 4. 환경 `wadadak-run`: Deployment branches → `main`. Secrets는 `RUN_DB_PASSWORD` · `BROKER_PASSWORD` · `JWT_PUBLIC_KEY` 셋만 넣는다. JWT 개인키 · core DB 비밀번호는 넣지 않는다.
@@ -193,12 +207,12 @@ run 서비스와 run 전용 PostgreSQL(`postgres`)이 뜬다(`deploy/run/compose
 | 배포 | main 머지. 수동으로는 Actions → Backend CI → Run workflow(main) |
 | 되돌리기 | 문제 PR을 revert PR로 머지한다 |
 | 비밀값 바꾸기 | 환경 `wadadak-server`의 Secrets 수정 → 수동 배포 |
-| 상태 · 로그 | core PC: `docker compose -p wadadak-server ps` · `docker logs -f wadadak-server-core-1`. run PC: `docker compose -p wadadak-run ps` · `docker logs -f wadadak-run-run-1` |
-| 요청 로그 | `docker logs -f wadadak-server-core-1 2>&1 \| grep RequestLogFilter`(러닝 API는 run PC의 `wadadak-run-run-1`) — 한 줄에 메서드 · 경로 · 상태 · 처리 시간 · IP. `/actuator`는 빠진다 |
-| DB 접속 | `docker exec -it wadadak-server-postgres-1 psql -U wadadak` |
-| DB 초기화 (데이터 전부 삭제) | `docker compose -p wadadak-server down` → `docker volume rm wadadak-server_db` → 수동 배포 |
-| 길찾기 로그 | `docker logs -f wadadak-server-graphhopper-1`. 내려가 있으면 코스 자동 생성만 실패한다. 그래프 갱신은 서버 PC 준비 7번 |
-| 사진 저장소 로그 | `docker logs -f wadadak-server-storage-1`. 사진 파일은 볼륨 `wadadak-server_photos`에 있다. DB를 초기화하면 사진도 같이 지운다(`docker volume rm wadadak-server_photos`) |
+| 상태 · 로그 | core PC: `docker compose -p wadadak-core ps` · `docker logs -f wadadak-core-core-1`. 인프라 PC: `docker compose -p wadadak-server ps`. run PC: `docker compose -p wadadak-run ps` · `docker logs -f wadadak-run-run-1` |
+| 요청 로그 | core PC: `docker logs -f wadadak-core-core-1 2>&1 \| grep RequestLogFilter`(러닝 API는 run PC의 `wadadak-run-run-1`) — 한 줄에 메서드 · 경로 · 상태 · 처리 시간 · IP. `/actuator`는 빠진다 |
+| DB 접속 | core PC: `docker exec -it wadadak-core-postgres-1 psql -U wadadak`. run PC: `docker exec -it wadadak-run-postgres-1 psql -U wadadak_run -d wadadak` |
+| DB 초기화 (데이터 전부 삭제) | core PC: `docker compose -p wadadak-core down` → `docker volume rm wadadak-core_db` → 수동 배포 |
+| 길찾기 로그 | core PC: `docker logs -f wadadak-core-graphhopper-1`. 내려가 있으면 코스 자동 생성만 실패한다. 그래프 갱신은 서버 PC 준비 7번 |
+| 사진 저장소 로그 | 인프라 PC: `docker logs -f wadadak-server-storage-1`. 사진 파일은 볼륨 `wadadak-server_photos`에 있다. DB를 초기화하면 사진도 같이 지운다(인프라 PC에서 `docker compose -p wadadak-server rm -sf storage` → `docker volume rm wadadak-server_photos` → 수동 배포) |
 
 ## 앱 연결
 

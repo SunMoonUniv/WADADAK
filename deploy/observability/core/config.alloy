@@ -6,9 +6,11 @@ discovery.docker "local" {
 discovery.relabel "core" {
   targets = discovery.docker.local.targets
 
+  // 같은 설정을 core PC(wadadak-core의 core)와 인프라 PC(wadadak-server의 gateway · rabbitmq · cloudflared)에 둔다.
+  // 각 PC에는 자기 Docker의 컨테이너만 보인다. wadadak-server;core는 서버 2대 구성일 때의 core다.
   rule {
     source_labels = ["__meta_docker_container_label_com_docker_compose_project", "__meta_docker_container_label_com_docker_compose_service"]
-    regex         = "wadadak-server;(core|gateway|rabbitmq|cloudflared)|wadadak-core-observability;smoke"
+    regex         = "wadadak-server;(core|gateway|rabbitmq|cloudflared)|wadadak-core;core|wadadak-core-observability;smoke"
     action        = "keep"
   }
 
@@ -17,9 +19,10 @@ discovery.relabel "core" {
     target_label  = "service"
   }
 
+  // PC 이름(compose.yaml의 ALLOY_HOST). core PC는 core-pc, 인프라 PC는 infra-pc.
   rule {
     target_label = "host"
-    replacement  = "core-pc"
+    replacement  = sys.env("ALLOY_HOST")
   }
 }
 
@@ -114,7 +117,7 @@ loki.process "core" {
   }
 
   stage.match {
-    selector            = `{allowed="",host="core-pc"}`
+    selector            = `{allowed=""}`
     action              = "drop"
     drop_counter_reason = "outside_core_log_allowlist"
   }

@@ -1,4 +1,4 @@
-# run 서비스(MSA 분리 4단계, 개발 정책 11.3 · deploy/MSA 분리 준비와 CI·CD 5장). 배포 설정은 deploy/compose.yaml.
+# run 서비스(MSA 분리 4단계, 개발 정책 11.3 · deploy/MSA 분리 준비와 CI·CD 5장). 배포 설정은 deploy/run/compose.yaml.
 spring:
   application:
     name: wadadak-run
@@ -32,7 +32,7 @@ spring:
     events:
       completion-mode: delete
       republish-outstanding-events-on-restart: true
-      # 서비스 사이 이벤트(EventBrokerConfig). 보내기와 받기를 함께 켠다. 테스트는 끄고 공용 서버(deploy/compose.yaml)에서 켠다.
+      # 서비스 사이 이벤트(EventBrokerConfig). 보내기와 받기를 함께 켠다. 테스트는 끄고 공용 서버(deploy/run/compose.yaml)에서 켠다.
       externalization:
         enabled: ${EVENTS_EXTERNALIZATION_ENABLED:false}
   rabbitmq:

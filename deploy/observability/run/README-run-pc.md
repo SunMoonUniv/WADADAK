@@ -47,22 +47,23 @@ docker compose ps loki
 
 ## 3. 접근 제한 (Tailscale)
 
-2026-11-20 기준 tailnet(`bbabbico.github`)에는 core PC와 run PC 두 대만 있다. 그래서 지금은 3100에 닿을 수 있는 기기가
-core PC뿐이다. 팀원 기기를 tailnet에 추가하기 전에 Tailscale 관리 콘솔(Access controls)에서 정책을 바꾼다.
+tailnet(`bbabbico.github`)에는 서버 PC 셋(인프라 · core · run)만 있다. 3100에 닿아야 하는 기기는 Alloy가 도는 인프라 PC와 core PC다.
+팀원 기기를 tailnet에 추가하기 전에 Tailscale 관리 콘솔(Access controls)에서 정책을 바꾼다.
 Tailscale ACL은 허용 규칙만 있으므로 "3100만 막기"가 아니라 허용할 것만 나열해야 한다. 기존 정책과 합쳐서 쓰고,
 아래는 예시다.
 
 ```jsonc
 {
   "hosts": {
-    "core-pc": "100.75.79.15",
-    "run-pc":  "100.73.249.33"
+    "infra-pc": "100.75.79.15",
+    "core-pc":  "100.64.78.38",
+    "run-pc":   "100.73.249.33"
   },
   "acls": [
-    // core PC ↔ run PC: 기존 run→core 통신과 core→run Loki 3100 포함 전부 허용
-    { "action": "accept", "src": ["core-pc", "run-pc"], "dst": ["core-pc:*", "run-pc:*"] }
+    // 서버 PC 셋 사이: gateway → core · run, core · run → 브로커 · 저장소, run → core 내부 API, Alloy → Loki 3100 포함 전부 허용
+    { "action": "accept", "src": ["infra-pc", "core-pc", "run-pc"], "dst": ["infra-pc:*", "core-pc:*", "run-pc:*"] }
     // 팀원 기기를 추가할 때는 필요한 포트만 따로 허용한다. 예: Grafana를 열려면 "run-pc:3000".
-    // run-pc:3100(Loki)은 core-pc 말고는 허용하지 않는다.
+    // run-pc:3100(Loki)은 서버 PC 말고는 허용하지 않는다.
   ]
 }
 ```

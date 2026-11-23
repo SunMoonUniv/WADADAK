@@ -1,13 +1,13 @@
-# 와다닥 core PC 로그 수집 · RabbitMQ DLQ 감시
+# 와다닥 core · 인프라 PC 로그 수집 · RabbitMQ DLQ 감시
 
 ## 저장소의 이 폴더
 
-모니터링 PC에 실제로 깔린 설정의 원본이다. 운영 배포(`deploy/compose.yaml`, `deploy/run/compose.yaml`)와 따로 띄우며, GitHub Actions 배포는 이 폴더를 쓰지 않는다.
+모니터링 PC에 실제로 깔린 설정의 원본이다. 운영 배포(`deploy/compose.yaml`, `deploy/core/compose.yaml`, `deploy/run/compose.yaml`)와 따로 띄우며, GitHub Actions 배포는 이 폴더를 쓰지 않는다.
 설정을 바꾸면 이 폴더를 먼저 고치고(PR), 같은 파일을 해당 PC에 복사해 적용한다.
 
 | 폴더 | 놓는 곳 | Compose 프로젝트 |
 | --- | --- | --- |
-| `core/` | core PC 아무 폴더(바인드 마운트하므로 옮기면 `up -d --force-recreate alloy`) | `wadadak-core-observability` |
+| `core/` | core PC · 인프라 PC 각각 아무 폴더(바인드 마운트하므로 옮기면 `up -d --force-recreate alloy`). 인프라 PC는 그 폴더 `.env`에 `ALLOY_HOST=infra-pc` | `wadadak-core-observability` |
 | `run/` | run PC `C:\Users\301B-00\Desktop\observability` | `wadadak-run-observability` |
 
 **비밀 값은 저장소에 없다.** run PC `.env`에만 둔다(`run/.gitignore`가 `.env`를 막는다).
@@ -21,22 +21,24 @@
 
 **run PC를 새로 설치할 때:** `run/` 폴더를 통째로 복사 → `.env.example`을 `.env`로 복사해 위 키를 채움 →
 `run/README-base.md`(Loki·Grafana·Alloy 기본) → `run/README-run-pc.md` 1~3번(Loki 3100을 Tailscale에 열기)·6-4~6-6번(Prometheus·알림, 검증) 순서로 진행한다.
-core PC는 `core/`에서 `docker compose up -d alloy`(아래 "운영 명령").
+core PC · 인프라 PC는 각자 `core/`에서 `docker compose up -d alloy`(아래 "운영 명령"). 인프라 PC는 먼저 `.env`에 `ALLOY_HOST=infra-pc`를 둔다.
 Grafana 데이터(`grafana-data` 볼륨)를 잃어도 데이터 소스·알림 규칙·연락 지점·대시보드는 전부 이 폴더의 파일에서 다시 만들어진다.
 
 아래 내용은 core PC 작업 폴더의 문서를 그대로 옮긴 것이다(경로 `core/`, `run/`은 이 폴더 기준).
 
-core PC(`DESKTOP-I27ECDJ`, Tailscale `100.75.79.15`)의 `wadadak-server` 컨테이너 로그를
-core PC의 Alloy가 읽어 Tailscale로 run PC(`100.73.249.33`)의 기존 Loki에 보내고, run PC의 Grafana에서 검색한다.
+core PC(`DESKTOP-ELSMCMH`, Tailscale `100.64.78.38`)의 `wadadak-core` core 로그와 인프라 PC(`DESKTOP-I27ECDJ`, `100.75.79.15`)의
+`wadadak-server` gateway · rabbitmq · cloudflared 로그를 각 PC의 Alloy가 읽어 Tailscale로 run PC(`100.73.249.33`)의 Loki에 보내고, run PC의 Grafana에서 검색한다.
+두 PC의 Alloy는 같은 `core/` 설정을 쓰고 `host` 라벨(`ALLOY_HOST`)만 다르다.
 RabbitMQ DLQ 메시지 수는 run PC Prometheus가 읽고, run PC Grafana가 Discord로 알린다(아래 "RabbitMQ DLQ 감시").
 
 ```text
-core PC: wadadak-server (core, gateway, rabbitmq, cloudflared)
-  → Alloy (Compose 프로젝트 wadadak-core-observability)
+core PC: wadadak-core (core)                                  host="core-pc"
+인프라 PC: wadadak-server (gateway, rabbitmq, cloudflared)      host="infra-pc"
+  → 각 PC의 Alloy (Compose 프로젝트 wadadak-core-observability)
   → Tailscale → run PC Loki 100.73.249.33:3100
   → run PC Grafana (127.0.0.1:3000, run PC에서만 접속)
 
-core PC: rabbitmq 15692 (rabbitmq_prometheus, 100.75.79.15에만 — WADADAK PR #258)
+인프라 PC: rabbitmq 15692 (rabbitmq_prometheus, 100.75.79.15에만 — WADADAK PR #258)
   → Tailscale → run PC Prometheus (호스트 포트 없음, 보관 7일)
   → run PC Grafana 알림 → Discord 웹훅
 ```
@@ -45,8 +47,8 @@ core PC: rabbitmq 15692 (rabbitmq_prometheus, 100.75.79.15에만 — WADADAK PR 
 
 | 경로 | 위치 | 역할 |
 | --- | --- | --- |
-| `core/compose.yaml` | core PC | Alloy v1.21.0, docker.sock 읽기 전용, 읽기 위치 볼륨 `alloy-data`, smoke 프로필(busybox, 네트워크 없음) |
-| `core/config.alloy` | core PC | 수집 대상·허용 목록 필터. 전송 주소는 `LOKI_PUSH_URL`(기본 run PC Tailscale IP) |
+| `core/compose.yaml` | core PC · 인프라 PC | Alloy v1.21.0, docker.sock 읽기 전용, 읽기 위치 볼륨 `alloy-data`, smoke 프로필(busybox, 네트워크 없음) |
+| `core/config.alloy` | core PC · 인프라 PC | 수집 대상·허용 목록 필터. 전송 주소는 `LOKI_PUSH_URL`(기본 run PC Tailscale IP), `host` 라벨은 `ALLOY_HOST`(기본 `core-pc`) |
 | `core/New-SmokeLog.ps1` | core PC | 이번 실행만의 smoke 마커를 찍고 출력 |
 | `run/compose.loki-tailnet.yaml` | run PC | Loki 3100을 run PC Tailscale IP에만 바인딩하는 override |
 | `run/Verify-Grafana.ps1` | run PC | Grafana 데이터 소스로 core smoke·실제 core·기존 run 로그를 조회 |
@@ -62,7 +64,7 @@ core PC: rabbitmq 15692 (rabbitmq_prometheus, 100.75.79.15에만 — WADADAK PR 
 
 ## 수집하는 것 (config.alloy와 동일)
 
-모든 core 로그에는 `host="core-pc"`와 Compose 서비스명으로 만든 `service` 라벨이 붙는다.
+core PC 로그에는 `host="core-pc"`, 인프라 PC 로그에는 `host="infra-pc"`와 Compose 서비스명으로 만든 `service` 라벨이 붙는다.
 아래 요약 문장만 전송하고, 원문 줄은 보내지 않는다. 허용 목록에 없는 줄과 168시간보다 오래된 줄은 버린다.
 
 | service | 전송하는 줄 | 원본 조건 |
@@ -79,9 +81,9 @@ core PC: rabbitmq 15692 (rabbitmq_prometheus, 100.75.79.15에만 — WADADAK PR 
 | `smoke` | `WADADAK_CORE_OBSERVABILITY_SMOKE <32hex>` | 검증용 임시 컨테이너 |
 
 요청 로그(쿼리 문자열·IP), 예외 메시지·스택, Caddy 접근 로그, 헬스체크(`admin.api received request`)는 보내지 않는다.
-오류의 자세한 내용은 core PC에서 `docker logs`로 확인한다.
+오류의 자세한 내용은 그 서비스가 있는 PC에서 `docker logs`로 확인한다.
 
-## 운영 명령 (core PC, `core` 폴더)
+## 운영 명령 (core PC · 인프라 PC, `core` 폴더)
 
 ```powershell
 docker compose run --rm --no-deps alloy validate /etc/alloy/config.alloy
@@ -104,9 +106,9 @@ core PC에서는 Loki API(`http://100.73.249.33:3100`)를 직접 조회해 사�
 Grafana Explore → Loki → Code에서 Last 7 days로:
 
 ```logql
-{host="core-pc"}
+{host=~"core-pc|infra-pc"}
 {host="core-pc", service="core"}
-sum by (service) (count_over_time({host="core-pc"} |~ "ERROR|error|ERR|FTL" [1h]))
+sum by (service) (count_over_time({host=~"core-pc|infra-pc"} |~ "ERROR|error|ERR|FTL" [1h]))
 {service="run"}
 ```
 
@@ -119,7 +121,8 @@ sum by (service) (count_over_time({host="core-pc"} |~ "ERROR|error|ERR|FTL" [1h]
 - **재생성 시 중복:** 읽기 위치는 초 단위로 저장되어, Alloy 재생성 직후 마지막 1초 분량을 다시 보낼 수 있다. Loki가 같은 시각·같은 줄은 중복 제거한다.
 - **run PC 부팅 순서:** Loki 포트는 Tailscale IP에 바인딩되어 있어, Docker가 Tailscale보다 먼저 Loki를 띄우면 포트 바인딩이 실패할 수 있다.
   그때는 run PC에서 `docker compose up -d loki`를 다시 실행한다.
-- **접근 제한:** 2026-11-20 기준 tailnet에는 core·run 두 대뿐이다. 다른 기기를 추가하기 전에 `run/README-run-pc.md`의 ACL을 적용한다.
+- **접근 제한:** tailnet에는 서버 PC 셋(인프라 · core · run)이 있다. 다른 기기를 추가하기 전에 `run/README-run-pc.md`의 ACL을 적용한다. Loki 3100에는 인프라 PC와 core PC가 닿아야 한다.
+- **Prometheus의 `host: core-pc` 라벨:** RabbitMQ는 인프라 PC(`100.75.79.15`)에 있지만 라벨은 서버 2대 때 이름 그대로다. 바꾸면 DLQ 잔류 규칙(`last_over_time` 7일)이 옛 라벨의 시계열을 7일 동안 따로 본다.
 - **DLQ 감시:** 아래 "RabbitMQ DLQ 감시" 절. core의 `/actuator/prometheus`는 범위 밖(Caddy 공개 경로 차단·배포 health 검사 영향).
 
 ## 대시보드

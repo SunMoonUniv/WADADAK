@@ -32,7 +32,7 @@ import java.util.regex.Pattern;
 /**
  * 사진 저장소(S3 호환, 개발 정책 7장 사진 업로드). 앱이 업로드 폼으로 직접 올리고, 모듈은 키만 저장한다.
  * 키는 {@code {module}/{UUID}.jpg}다. 사진은 공개 읽기라 {@link #url} 주소로 누구나 받는다(리뷰·프로필 사진은 모두에게 보인다).
- * 로컬은 {@code BackEnd/compose.yaml}, 공용 서버는 {@code deploy/compose.yaml}의 RustFS다.
+ * 로컬은 {@code BackEnd/compose.yaml}, 공용 서버는 인프라 PC({@code deploy/compose.yaml})의 RustFS다.
  * 폼 발급과 올라온 사진 확인은 발급 횟수를 세고 버려진 사진을 정리하는 {@link PhotoUploads}를 거친다.
  */
 @Slf4j
@@ -42,6 +42,9 @@ public class ObjectStorage {
     /** 사진 한 장 크기 한도(정책 공통 5) */
     static final long MAX_PHOTO_BYTES = 50L * 1024 * 1024;
     private static final Duration FORM_TTL = Duration.ofMinutes(10);
+    static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(3);
+    /** 쓰기 · 읽기 각각 */
+    static final Duration IO_TIMEOUT = Duration.ofSeconds(5);
     private static final String JPEG = "image/jpeg";
     /** JPEG 파일의 첫 3바이트(SOI 마커 FF D8 + 다음 마커의 FF) */
     private static final byte[] JPEG_START = {(byte) 0xFF, (byte) 0xD8, (byte) 0xFF};
@@ -62,6 +65,9 @@ public class ObjectStorage {
                   Clock clock) {
         // 리전을 정해 두면 폼 서명에 저장소를 부르지 않는다. 저장소가 꺼져 있어도 서버는 뜬다.
         this.client = MinioClient.builder().endpoint(endpoint).region("us-east-1").credentials(accessKey, secretKey).build();
+        // 공용 서버의 저장소는 다른 PC(인프라 PC)에 있다. 기본값(5분)이면 응답 없이 끊긴 망에서 사진 요청이 그만큼 매달린다.
+        // 소셜 로그인 · FCM 호출과 같은 값이다. 앱의 사진 업로드는 서버를 거치지 않아 이 제한과 관계없다.
+        this.client.setTimeout(CONNECT_TIMEOUT.toMillis(), IO_TIMEOUT.toMillis(), IO_TIMEOUT.toMillis());
         this.publicUrl = publicUrl.replaceAll("/+$", "");
         this.bucket = bucket;
         this.clock = clock;
