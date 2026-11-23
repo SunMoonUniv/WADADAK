@@ -45,7 +45,7 @@ self-hosted 러너는 PR 워크플로도 받는다. PR에서는 PR 작성자의 
 | 인프라 PC (desktop-i27ecdj) | `100.75.79.15` | `wadadak-infra` | `deploy/compose.yaml` (`wadadak-server`) | cloudflared · gateway · rabbitmq · storage |
 | core PC (desktop-elsmcmh) | `100.64.78.38` | `wadadak-core` | `deploy/core/compose.yaml` (`wadadak-core`) | core · graphhopper · core DB |
 | run PC (desktop-266eggn) | `100.73.249.33` | `wadadak-run` | `deploy/run/compose.yaml` (`wadadak-run`) | run · run DB |
-| 운영 PC (desktop-65isqe2) | `100.111.111.92` | 없음 | `deploy/observability/ops/compose.yaml` (`wadadak-ops-observability`), 손으로 띄운다 | Loki · Prometheus · Grafana, DB 백업 보관 |
+| 운영 PC (desktop-65isqe2) | `100.111.111.92` | 없음 | `deploy/observability/ops/compose.yaml` (`wadadak-ops-observability`), 손으로 띄운다 | Loki · Prometheus · Grafana, DB · 사진 백업 보관 |
 
 - 인프라 PC가 꺼지면 전체가 멈춘다(진입점 · 브로커 · 사진 저장소). core PC가 꺼지면 core API와 run의 코스 러닝 준비 · 고스트가, run PC가 꺼지면 러닝 API가 멈춘다.
 - 세 PC는 같은 LAN에 둔다. PC 사이 호출이 모두 Tailscale을 탄다.
@@ -212,7 +212,7 @@ run 서비스와 run 전용 PostgreSQL(`postgres`)이 뜬다(`deploy/run/compose
 | 요청 로그 | core PC: `docker logs -f wadadak-core-core-1 2>&1 \| grep RequestLogFilter`(러닝 API는 run PC의 `wadadak-run-run-1`) — 한 줄에 메서드 · 경로 · 상태 · 처리 시간 · IP. `/actuator`는 빠진다 |
 | DB 접속 | core PC: `docker exec -it wadadak-core-postgres-1 psql -U wadadak`. run PC: `docker exec -it wadadak-run-postgres-1 psql -U wadadak_run -d wadadak` |
 | DB 초기화 (데이터 전부 삭제) | core PC: `docker compose -p wadadak-core down` → `docker volume rm wadadak-core_db` → 수동 배포 |
-| DB 백업 · 복원 | 매일 core · run DB를 운영 PC `C:\wadadak-backup`에 30일 보관, 매주 복원 검사. 복원 명령은 [`backup/README.md`](backup/README.md) |
+| DB · 사진 백업 · 복원 | 매일 core · run DB와 사진 저장소를 운영 PC `C:\wadadak-backup`에 30일 보관, 매주 복원 검사. 복원 명령은 [`backup/README.md`](backup/README.md) |
 | 바깥 감시 | healthchecks.io(팀 관리자 계정, 프로젝트 `WADADAK`): 운영 PC 하트비트 · 복원 검사 · 데이터 대조. 신호가 끊기면 Discord로 알린다. 설정은 [운영 PC](<운영 PC (감시 · 백업) - 2026-11-23.md>) 6장 |
 | 로그 · 지표 · 알림 | 운영 PC Grafana `http://100.111.111.92:3000`(tailnet, `admin` 로그인). 로그(Loki), RabbitMQ DLQ, 앱 지표(요청 수 · 5xx · 응답 시간 · JVM · DB 연결). 설정은 [`observability/`](observability/README.md) |
 | 길찾기 로그 | core PC: `docker logs -f wadadak-core-graphhopper-1`. 내려가 있으면 코스 자동 생성만 실패한다. 그래프 갱신은 서버 PC 준비 7번 |

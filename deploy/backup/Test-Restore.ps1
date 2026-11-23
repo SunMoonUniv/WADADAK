@@ -1,6 +1,7 @@
 ﻿<#
 운영 PC에서 매주 돈다. 가장 최근 core · run 덤프를 임시 컨테이너에 복원해 본다.
 오류가 나거나 복원된 테이블 수가 덤프 목록과 다르면 Discord로 알린다. 절차는 deploy/backup/README.md.
+사진은 core 덤프와 같은 날짜 tar를 열어, 복원한 core DB가 가리키는 사진이 모두 들어 있는지 본다.
 .env에 HEALTHCHECKS_RESTORE_URL이 있으면 성공하면 핑, 실패하면 /fail을 보낸다. 작업이 아예 안 돈 주는 healthchecks.io가 알린다.
 #>
 [CmdletBinding()]
@@ -40,8 +41,11 @@ function Send-Discord([string]$Text) {
 $countTables = "select count(*) from pg_class c join pg_namespace n on n.oid = c.relnamespace " +
     "where c.relkind in ('r', 'p') and n.nspname not in ('pg_catalog', 'information_schema') and n.nspname not like 'pg_toast%' " +
     "and not exists (select 1 from pg_depend d where d.classid = 'pg_class'::regclass and d.objid = c.oid and d.deptype = 'e')"
+# 리뷰 · 프로필 사진 키(DB 구조.md). 저장하지 않은 업로드(common.photo_uploads)는 1시간 뒤 지워지니 보지 않는다.
+$photoKeysSql = 'select photo_key from review.review_photos union all select profile_image_key from member.members where profile_image_key is not null'
 
 $problems = @()
+$photoKeys = $null
 foreach ($n in 'core', 'run') {
     $file = Get-ChildItem -LiteralPath (Join-Path $Dir $n) -Filter "$n-*.dump" -ErrorAction SilentlyContinue | Sort-Object Name -Descending | Select-Object -First 1
     if (-not $file) { $problems += "${n}: 덤프가 없다"; continue }
@@ -67,6 +71,12 @@ foreach ($n in 'core', 'run') {
         $restored = (& $docker exec $container psql -U postgres -d wadadak -Atc $countTables).Trim()
         if ($restored -ne $expected) { throw "테이블 수가 다르다(덤프 $expected, 복원 $restored)" }
         Write-Host "OK $($file.Name) tables=$restored"
+        if ($n -eq 'core') {
+            $keys = @(& $docker exec $container psql -U postgres -d wadadak -Atc $photoKeysSql)
+            if ($LASTEXITCODE -ne 0) { throw "사진 키를 읽지 못했다($LASTEXITCODE)" }
+            $photoKeys = $keys
+            $photoTar = Join-Path $Dir ('photos\photos-{0}.tar' -f $file.BaseName.Substring('core-'.Length))
+        }
     } catch {
         $problems += "$n ($($file.Name)): $($_.Exception.Message)"
     } finally {
@@ -74,9 +84,25 @@ foreach ($n in 'core', 'run') {
     }
 }
 
+# 사진은 core 덤프보다 늦게 뜬다(04:00 → 04:10). 같은 날짜 tar에 그 덤프가 가리키는 사진이 모두 있어야 한다.
+# RustFS는 객체 하나를 <버킷>/<키>/xl.meta 폴더로 둔다. core 복원이 실패했으면 키가 없어 건너뛴다.
+if ($null -ne $photoKeys) {
+    try {
+        if (-not (Test-Path -LiteralPath $photoTar)) { throw '같은 날짜 사진 tar가 없다' }
+        $entries = @(& "$env:SystemRoot\System32\tar.exe" -tf $photoTar)
+        if ($LASTEXITCODE -ne 0) { throw "tar를 읽지 못했다($LASTEXITCODE)" }
+        $inTar = [Collections.Generic.HashSet[string]]::new([string[]]$entries)
+        $lost = @($photoKeys | Where-Object { -not $inTar.Contains("./wadadak/$_/xl.meta") })
+        if ($lost.Count -gt 0) { throw "사진 $($lost.Count)장이 없다: $(($lost | Select-Object -First 5) -join ', ')" }
+        Write-Host "OK $(Split-Path $photoTar -Leaf) photos=$($photoKeys.Count)"
+    } catch {
+        $problems += "photos ($(Split-Path $photoTar -Leaf)): $($_.Exception.Message)"
+    }
+}
+
 if ($problems.Count -gt 0) {
     Send-Ping '/fail'
-    Send-Discord ("⚠️ DB 백업 복원 검사 실패`n" + ($problems -join "`n"))
+    Send-Discord ("⚠️ 백업 복원 검사 실패`n" + ($problems -join "`n"))
     exit 1
 }
 Send-Ping ''
