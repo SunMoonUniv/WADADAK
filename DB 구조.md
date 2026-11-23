@@ -9,6 +9,7 @@
 - PostgreSQL 17 + PostGIS 3.5.
   - 로컬: `BackEnd/compose.yaml`(포트 5433)
   - 팀 공용 서버: `deploy/compose.yaml`. 서버 PC의 Docker에 따로 뜨고 포트를 열지 않는다. 접속·초기화는 [deploy/README.md](deploy/README.md)의 운영 표를 따른다.
+  - `run` 스키마만은 run 서버 PC의 run 전용 DB(`deploy/run/compose.yaml`, PostgreSQL 17, PostGIS 없음)에 있다. 로컬은 한 DB에 모든 스키마가 있다.
   - 서버가 뜰 때 Flyway가 마이그레이션을 적용한다. 공용 서버 DB에는 머지된 마이그레이션이 이미 적용돼 있어서, 머지된 파일을 고치면 체크섬이 어긋나 서버가 뜨지 않는다(개발 정책 6.5).
 - 모듈마다 스키마 하나를 쓴다. 다른 모듈의 스키마는 조회·JOIN·FK 모두 하지 않는다(개발 정책 2장·6.1).
 

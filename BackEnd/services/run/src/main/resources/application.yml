@@ -4,7 +4,7 @@ spring:
     name: wadadak-run
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5433/wadadak}
-    # 운영은 run 스키마 권한만 가진 계정 wadadak_run이다(7.4, deploy/db-init.sql). 기본값을 두지 않는다.
+    # 운영은 run PC의 run 전용 DB 소유자 wadadak_run이다(deploy/run/compose.yaml). 기본값을 두지 않는다.
     # 로컬은 BackEnd/compose.yaml의 계정을 환경 변수로 넘긴다.
     username: ${RUN_DB_USERNAME}
     password: ${RUN_DB_PASSWORD}
