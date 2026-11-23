@@ -6,7 +6,7 @@ services:
     restart: unless-stopped
     command: ["run", "--storage.path=/var/lib/alloy/data", "/etc/alloy/config.alloy"]
     environment:
-      LOKI_PUSH_URL: ${LOKI_PUSH_URL:-http://100.73.249.33:3100/loki/api/v1/push}
+      LOKI_PUSH_URL: ${LOKI_PUSH_URL:-http://100.111.111.92:3100/loki/api/v1/push}
       # 로그의 host 라벨. 인프라 PC는 이 폴더의 .env에 ALLOY_HOST=infra-pc를 둔다.
       ALLOY_HOST: ${ALLOY_HOST:-core-pc}
     volumes:

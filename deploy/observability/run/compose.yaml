@@ -1,3 +1,5 @@
+# run PC 로그 수집(Alloy). run 컨테이너의 요약 줄을 운영 PC Loki로 보낸다. 절차는 run/README.md.
+# 프로젝트 이름을 바꾸지 않는다. Alloy 읽기 위치 볼륨(wadadak-run-observability_alloy-data)을 이어 쓴다.
 name: wadadak-run-observability
 
 x-container-defaults: &container-defaults
@@ -9,32 +11,12 @@ x-container-defaults: &container-defaults
       max-file: "3"
 
 services:
-  loki:
-    <<: *container-defaults
-    image: grafana/loki:3.7.2
-    command: ["-config.file=/etc/loki/wadadak.yaml"]
-    volumes:
-      - ./loki.yaml:/etc/loki/wadadak.yaml:ro
-      - loki-data:/loki
-
-  grafana:
-    <<: *container-defaults
-    image: grafana/grafana:13.3.1
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
-      GF_USERS_ALLOW_SIGN_UP: "false"
-    ports:
-      - "${GRAFANA_BIND_IP:-127.0.0.1}:3000:3000"
-    volumes:
-      - grafana-data:/var/lib/grafana
-      - ./grafana-datasource.yaml:/etc/grafana/provisioning/datasources/loki.yaml:ro
-      - ./grafana-dashboards.yaml:/etc/grafana/provisioning/dashboards/wadadak.yaml:ro
-      - ./dashboards:/etc/grafana/wadadak-dashboards:ro
-
   alloy:
     <<: *container-defaults
     image: grafana/alloy:v1.21.0
     command: ["run", "--storage.path=/var/lib/alloy/data", "/etc/alloy/config.alloy"]
+    environment:
+      LOKI_PUSH_URL: ${LOKI_PUSH_URL:-http://100.111.111.92:3100/loki/api/v1/push}
     volumes:
       - ./config.alloy:/etc/alloy/config.alloy:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
@@ -46,6 +28,4 @@ services:
     command: ["sh", "-c", "printf 'WADADAK_OBSERVABILITY_SMOKE %s\\n' \"$$(date -u +%Y%m%dT%H%M%SZ)\"; sleep 180"]
 
 volumes:
-  loki-data:
-  grafana-data:
   alloy-data:

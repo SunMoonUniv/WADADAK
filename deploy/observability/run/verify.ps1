@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$GrafanaUrl = 'http://127.0.0.1:3000',
+    [string]$GrafanaUrl = 'http://100.111.111.92:3000',
     [PSCredential]$Credential
 )
 
@@ -21,7 +21,7 @@ function Test-GrafanaLogs([string]$Query, [DateTimeOffset]$Since) {
 }
 
 if (-not $Credential) {
-    $Credential = Get-Credential -UserName 'admin' -Message 'Sign in to the run PC Grafana to verify log search.'
+    $Credential = Get-Credential -UserName 'admin' -Message 'Sign in to the ops PC Grafana to verify log search.'
 }
 if (-not $Credential) { throw 'Grafana credentials are required.' }
 

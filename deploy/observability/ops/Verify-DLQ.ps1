@@ -5,14 +5,14 @@ param(
     # Grafana 연락 지점(wadadak-discord)으로 시험 메시지를 한 번 보낸다.
     [switch]$SendTest,
 
-    [string]$GrafanaUrl = 'http://127.0.0.1:3000'
+    [string]$GrafanaUrl = 'http://100.111.111.92:3000'
 )
 
-# run PC에서 실행한다. Grafana API만 쓴다(Prometheus는 호스트 포트가 없어 Grafana 데이터 소스로 조회).
+# 운영 PC(또는 tailnet의 관리자 PC)에서 실행한다. Grafana API만 쓴다(Prometheus는 호스트 포트가 없어 Grafana 데이터 소스로 조회).
 # Discord 웹훅 주소는 출력하지 않는다(Grafana도 [REDACTED]로만 돌려준다).
 $ErrorActionPreference = 'Stop'
 if (-not $Credential) {
-    $Credential = Get-Credential -UserName 'admin' -Message 'run PC Grafana에 로그인합니다.'
+    $Credential = Get-Credential -UserName 'admin' -Message '운영 PC Grafana에 로그인합니다.'
 }
 if (-not $Credential) { throw 'Grafana 로그인 정보가 필요합니다.' }
 
