@@ -13,9 +13,9 @@ main push ─► backend.yml
                smoke      (core PC 러너)         gateway를 거쳐 core health 200 · run 401 확인
 
 core PC (Docker Desktop) · compose 프로젝트 wadadak-server · Tailscale 100.75.79.15
-   cloudflared ──► gateway(Caddy) ─┬─ /api/v1/runs/* ──── Tailscale ──► run PC: run (100.73.249.33:8080)
-   (밖으로 포트를 열지 않는다)        └─ 나머지 ─► core ─ postgres · rabbitmq ◄── Tailscale ── run
-                                              core ─ storage(RustFS) · graphhopper
+   cloudflared ──► gateway(Caddy) ─┬─ /api/v1/runs/* ──── Tailscale ──► run PC: run (100.73.249.33:8080) ─ postgres(run)
+   (밖으로 포트를 열지 않는다)        └─ 나머지 ─► core ─ postgres · storage(RustFS) · graphhopper
+                                              rabbitmq ◄── Tailscale ── run
    Cloudflare ◄── 폰 https://api.leedohyunn8n.shop · 사진 https://files.leedohyunn8n.shop
 ```
 
@@ -82,7 +82,6 @@ mkdir C:\actions-runner-wadadak; cd C:\actions-runner-wadadak
 | `JWT_PRIVATE_KEY` | 개인키 PEM을 base64 한 줄로(아래 명령) |
 | `JWT_PUBLIC_KEY` | 공개키 PEM을 base64 한 줄로(아래 명령) |
 | `STORAGE_SECRET_KEY` | 사진 저장소 비밀번호. 무작위 문자열(`openssl rand -hex 24`). 저장소와 서버가 같이 받는다. 바꾸면 저장소 계정도 바뀐다 |
-| `RUN_DB_PASSWORD` | run 서비스 DB 계정(`wadadak_run`, run 스키마만) 비밀번호. 무작위 문자열(영문 · 숫자). 없으면 배포가 실패한다. 배포마다 `db-init`이 계정을 만들거나 비밀번호를 이 값으로 맞춘다(`deploy/db-init.sql`) |
 | `BROKER_PASSWORD` | 이벤트 브로커(RabbitMQ) 비밀번호. 무작위 문자열(`openssl rand -hex 24`). 없으면 배포가 실패한다. 첫 배포 때 브로커 계정이 이 값으로 만들어진다. 나중에 바꾸면 브로커 볼륨(`broker`)을 지우거나 `rabbitmqctl change_password`로 함께 바꾼다 |
 | `TUNNEL_TOKEN` | Cloudflare 터널 토큰(5번). 없으면 터널 없이 뜬다 |
 | `FCM_SERVICE_ACCOUNT` | 푸시(FCM) 서비스 계정 키 JSON을 base64 한 줄로(6번). 없으면 서버는 뜨고 푸시만 로그로 남긴다 |
@@ -175,16 +174,16 @@ docker compose -f BackEnd/compose.yaml --profile planner run --rm graphhopper ja
 - 없는 파일의 조건만 후보에 반영하지 않고 `아직 반영하지 않았어요`로 알린다. 밝은 길은 후보 둘레에 등 자료가 하나도 없는 지역(일부 군)에서도 같은 안내가 나간다.
 
 ### 8. run 서버 PC (MSA 분리 준비와 CI·CD 8장)
-run 서비스만 뜬다(`deploy/run/compose.yaml`, compose 프로젝트 `wadadak-run`). DB · 브로커 · core 내부 API는 core PC에 Tailscale로 붙는다.
-run 전용 PostgreSQL(`postgres`)도 함께 뜬다. run은 환경 `wadadak-run`의 변수 `RUN_DB_URL`이 있으면 그 DB를, 없으면 core PC DB를 쓴다. 옮기는 절차는 MSA 분리 준비와 CI·CD 8.5.
+run 서비스와 run 전용 PostgreSQL(`postgres`)이 뜬다(`deploy/run/compose.yaml`, compose 프로젝트 `wadadak-run`). 브로커 · core 내부 API는 core PC에 Tailscale로 붙는다.
 
 1. 1번 PC 설정과 같다(Docker Desktop 자동 시작 · 절전 안 함 · 자동 로그인).
 2. Tailscale을 두 PC에 설치하고 같은 계정으로 로그인한다. 주소가 core `100.75.79.15` · run `100.73.249.33`이 아니면 `deploy/compose.yaml` · `deploy/run/compose.yaml` · `deploy/Caddyfile`의 주소를 바꾼다.
-   - postgres · rabbitmq · core 포트는 core PC의 Tailscale 주소에만, run 포트는 run PC의 Tailscale 주소에만 연다. 학교 LAN에서는 닿지 않는다.
+   - rabbitmq · core 포트는 core PC의 Tailscale 주소에만, run 포트는 run PC의 Tailscale 주소에만 연다. 학교 LAN에서는 닿지 않는다.
    - 재부팅 뒤 Tailscale보다 Docker가 먼저 뜨면 그 주소에 포트를 못 열어 컨테이너가 뜨지 않을 수 있다. 그때는 수동 배포를 한 번 돌린다.
 3. 2번 GitHub 러너와 같은 방법으로 등록한다. 라벨은 `wadadak-run`, 폴더 · 작업 이름은 그대로 써도 된다.
-4. 환경 `wadadak-run`: Deployment branches → `main`. Secrets는 `RUN_DB_PASSWORD` · `BROKER_PASSWORD` · `JWT_PUBLIC_KEY` 셋만, `wadadak-server`와 **같은 값**이다. JWT 개인키 · core DB 비밀번호는 넣지 않는다.
-   - `RUN_DB_PASSWORD`를 바꿀 때는 두 환경을 함께 바꾼다. 배포 때 core PC의 db-init이 계정 비밀번호를 맞춘다.
+4. 환경 `wadadak-run`: Deployment branches → `main`. Secrets는 `RUN_DB_PASSWORD` · `BROKER_PASSWORD` · `JWT_PUBLIC_KEY` 셋만 넣는다. JWT 개인키 · core DB 비밀번호는 넣지 않는다.
+   - `BROKER_PASSWORD` · `JWT_PUBLIC_KEY`는 `wadadak-server`와 **같은 값**이다.
+   - `RUN_DB_PASSWORD`는 run 전용 DB 계정(`wadadak_run`) 비밀번호다. 무작위 문자열(영문 · 숫자). 첫 배포 때 DB가 이 값으로 만들어진다. 나중에 바꾸면 DB와 어긋나므로 `docker exec wadadak-run-postgres-1 psql -U wadadak_run -d wadadak -c "ALTER ROLE wadadak_run PASSWORD '<새 값>'"`과 함께 바꾼다.
 5. 이미지는 GHCR(`ghcr.io/sunmoonuniv/wadadak-core` · `-run`)에 있다. 첫 배포 때 저장소의 Actions가 패키지를 만들고, 배포 작업이 저장소 토큰으로 받는다. 되돌릴 때는 compose의 `IMAGE_TAG`에 커밋 SHA를 넘긴다.
 
 ## 운영

@@ -80,7 +80,7 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
-  # core 서버 PC(러너 wadadak-core). 제공하는 쪽(DB · 브로커 · 내부 API · db-init)을 먼저 띄운다. 서버 PC 준비·보안 설정은 deploy/README.md.
+  # core 서버 PC(러너 wadadak-core). 제공하는 쪽(브로커 · 내부 API)을 먼저 띄운다. 서버 PC 준비·보안 설정은 deploy/README.md.
   deploy:
     needs: images
     # 환경 · 동시 실행 그룹 · compose 프로젝트 이름은 wadadak-server 그대로다(Secrets · 볼륨이 그 이름에 묶여 있다).
@@ -117,8 +117,6 @@ jobs:
       - name: 서버 교체
         env:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
-          # run 서비스 DB 계정(wadadak_run, deploy/db-init.sql). core PC의 db-init이 계정 비밀번호를 이 값으로 맞춘다.
-          RUN_DB_PASSWORD: ${{ secrets.RUN_DB_PASSWORD }}
           JWT_PUBLIC_KEY: ${{ secrets.JWT_PUBLIC_KEY }}
           JWT_PRIVATE_KEY: ${{ secrets.JWT_PRIVATE_KEY }}
           STORAGE_SECRET_KEY: ${{ secrets.STORAGE_SECRET_KEY }}
@@ -145,7 +143,7 @@ jobs:
       - name: 이전 이미지 정리
         run: docker image prune -f
 
-  # run 서버 PC(러너 wadadak-run). core PC 다음에 띄운다(run DB 계정 · 큐가 그쪽에 있다).
+  # run 서버 PC(러너 wadadak-run). core PC 다음에 띄운다(브로커 · core 내부 API가 그쪽에 있다).
   deploy-run:
     needs: deploy
     runs-on: [self-hosted, wadadak-run]
@@ -174,8 +172,6 @@ jobs:
           RUN_DB_PASSWORD: ${{ secrets.RUN_DB_PASSWORD }}
           BROKER_PASSWORD: ${{ secrets.BROKER_PASSWORD }}
           JWT_PUBLIC_KEY: ${{ secrets.JWT_PUBLIC_KEY }}
-          # run이 붙을 DB(환경 wadadak-run의 변수). 비어 있으면 core PC DB를 쓴다. 전환 절차는 MSA 분리 준비와 CI·CD 8.5.
-          RUN_DB_URL: ${{ vars.RUN_DB_URL }}
         run: docker compose -f deploy/run/compose.yaml up -d --wait --wait-timeout 300 --remove-orphans
       - name: 이전 이미지 정리
         run: docker image prune -f
