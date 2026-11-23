@@ -54,6 +54,7 @@ services:
       - ./grafana-dashboards.yaml:/etc/grafana/provisioning/dashboards/wadadak.yaml:ro
       - ./dashboards:/etc/grafana/wadadak-dashboards:ro
       - ./grafana-alerting-dlq.yaml:/etc/grafana/provisioning/alerting/wadadak-dlq.yaml:ro
+      - ./grafana-alerting-apps.yaml:/etc/grafana/provisioning/alerting/wadadak-apps.yaml:ro
 
 volumes:
   loki-data:

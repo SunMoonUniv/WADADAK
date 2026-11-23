@@ -24,6 +24,8 @@ dependencies {
     runtimeOnly 'org.flywaydb:flyway-database-postgresql'
     runtimeOnly 'org.postgresql:postgresql'
     runtimeOnly 'org.springframework.modulith:spring-modulith-actuator'
+    // 앱 지표(/actuator/prometheus). 운영 PC Prometheus가 Tailscale로 직접 읽는다(deploy/observability/ops)
+    runtimeOnly 'io.micrometer:micrometer-registry-prometheus'
     runtimeOnly 'org.springframework.modulith:spring-modulith-observability-core'
 
     testImplementation testFixtures(project(':libs:common-core'))

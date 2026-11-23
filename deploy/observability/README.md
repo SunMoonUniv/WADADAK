@@ -19,6 +19,7 @@ core PC:   wadadak-core (core)                              Alloy host="core-pc"
 인프라 PC: wadadak-server (gateway, rabbitmq, cloudflared)  Alloy host="infra-pc" ─┼─ Tailscale ─► 운영 PC Loki 100.111.111.92:3100
 run PC:    wadadak-run (run)                                Alloy                ─┘                         │
 인프라 PC: rabbitmq 15692 ◄── Tailscale ── 운영 PC Prometheus (포트 없음, 7일) ──► 운영 PC Grafana ◄─────────┘
+core PC · run PC: :8080/actuator/prometheus ◄─┘
                                                                                      (100.111.111.92:3000) ─► Discord
 ```
 
@@ -27,12 +28,13 @@ run PC:    wadadak-run (run)                                Alloy               
 | 경로 | 역할 |
 | --- | --- |
 | `ops/compose.yaml` | Loki(3100을 운영 PC Tailscale 주소에만) · Prometheus(v3.13.5, 7일, 포트 없음) · Grafana(3000, 로그인) |
+| `ops/grafana-alerting-apps.yaml` | 앱 알림 규칙 3개(서비스 지표 수집 중단 · 5xx 비율 · JVM 메모리), 연락 지점은 `wadadak-discord`를 같이 쓴다 |
 | `ops/loki.yaml` | Loki 설정(7일 보관) |
-| `ops/prometheus.yml` | 수집 대상 `100.75.79.15:15692` `/metrics/detailed?vhost=/&family=queue_coarse_metrics&family=queue_consumer_count`, `rabbitmq_detailed_queue_messages` · `rabbitmq_detailed_queue_consumers`만 저장 |
+| `ops/prometheus.yml` | 앱 지표 `wadadak-apps`(core `100.64.78.38:8080` · run `100.73.249.33:8080`의 `/actuator/prometheus`)와 RabbitMQ 수집 대상 `100.75.79.15:15692` `/metrics/detailed?vhost=/&family=queue_coarse_metrics&family=queue_consumer_count`, `rabbitmq_detailed_queue_messages` · `rabbitmq_detailed_queue_consumers`만 저장 |
 | `ops/grafana-datasource*.yaml` · `ops/grafana-dashboards.yaml` | Loki(UID `wadadak-loki`) · Prometheus(UID `wadadak-prometheus`) 데이터 소스, 대시보드 폴더 |
 | `ops/grafana-alerting-dlq.yaml` | Discord 연락 지점 `wadadak-discord`, 알림 문구 템플릿, 알림 규칙 4개(Wadadak 폴더, 그룹 `rabbitmq-dlq`) |
 | `ops/grafana-alerting-dlq-remove.yaml` | (되돌릴 때만) 위 알림 규칙 · 연락 지점 · 템플릿 삭제용 |
-| `ops/dashboards/*.json` | "와다닥 core 서버 로그" · "와다닥 러닝 서버 로그" · "와다닥 RabbitMQ DLQ" |
+| `ops/dashboards/*.json` | "와다닥 core 서버 로그" · "와다닥 러닝 서버 로그" · "와다닥 RabbitMQ DLQ" · "와다닥 앱 지표" |
 | `ops/Verify-DLQ.ps1` | Grafana로 15692 수집 · DLQ 값 · 규칙 · 연락 지점 · 대시보드 확인, `-SendTest`로 Discord 시험 전송 |
 | `ops/Verify-Grafana.ps1` | Grafana 데이터 소스로 core smoke · 실제 core · run 로그를 조회 |
 | `core/compose.yaml` · `core/config.alloy` | Alloy v1.21.0. 수집 대상 · 허용 목록 필터. 전송 주소 `LOKI_PUSH_URL`(기본 운영 PC), `host` 라벨 `ALLOY_HOST`(기본 `core-pc`) |
@@ -109,7 +111,8 @@ sum by (service) (count_over_time({host=~"core-pc|infra-pc"} |~ "ERROR|error|ERR
   }
   ```
 - **Prometheus의 `host: core-pc` 라벨:** RabbitMQ는 인프라 PC(`100.75.79.15`)에 있지만 라벨은 서버 2대 때 이름 그대로다. 바꾸면 DLQ 잔류 규칙(`last_over_time` 7일)이 옛 라벨의 시계열을 7일 동안 따로 본다.
-- **DLQ 감시:** 아래 "RabbitMQ DLQ 감시" 절. core의 `/actuator/prometheus`는 범위 밖(Caddy 공개 경로 차단·배포 health 검사 영향).
+- **DLQ 감시:** 아래 "RabbitMQ DLQ 감시" 절.
+- **앱 지표:** core · run이 8080에서 `/actuator/prometheus`를 낸다(토큰 없이). 게이트웨이(`deploy/Caddyfile`)가 `/actuator/health` 말고는 404로 막아 인터넷에서는 보이지 않고, Tailscale 안에서만 읽힌다. 배포 healthcheck · smoke가 보는 `/actuator/health`는 그대로다.
 
 ## 대시보드
 

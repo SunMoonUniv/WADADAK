@@ -1,0 +1,507 @@
+{
+  "uid": "wadadak-apps",
+  "title": "와다닥 앱 지표",
+  "description": "core(core PC) · run(run PC)의 /actuator/prometheus. 운영 PC Prometheus가 Tailscale로 15초마다 읽는다. 보관 7일.",
+  "tags": [
+    "wadadak",
+    "apps"
+  ],
+  "schemaVersion": 39,
+  "timezone": "browser",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "refresh": "30s",
+  "editable": true,
+  "graphTooltip": 1,
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "수집 상태",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "wadadak-prometheus"
+      },
+      "description": "운영 PC Prometheus가 core · run의 /actuator/prometheus를 읽고 있는지(up). 중단이면 서버가 멈췄거나 그 PC · Tailscale 연결이 끊긴 것이다.",
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "중단",
+                  "color": "red"
+                },
+                "1": {
+                  "text": "정상",
+                  "color": "green"
+                }
+              }
+            }
+          ],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          },
+          "noValue": "수집 안 됨"
+        },
+        "overrides": []
+      },
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value_and_name",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "wadadak-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "up{job=\"wadadak-apps\"}",
+          "legendFormat": "{{service}}",
+          "instant": true,
+          "range": false
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "요청 수 (초당)",
+      "description": "API 요청 수. /actuator는 빠진다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "wadadak-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 9,
+        "x": 6,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "wadadak-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (service) (rate(http_server_requests_seconds_count{job=\"wadadak-apps\", uri!~\"/actuator.*\"}[$__rate_interval]))",
+          "legendFormat": "{{service}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "timeseries",
+      "title": "5xx 비율",
+      "description": "서버 오류(5xx) 응답 비율. 5분 동안 5%를 넘으면 알림이 간다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "wadadak-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 9,
+        "x": 15,
+        "y": 0
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "wadadak-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (service) (rate(http_server_requests_seconds_count{job=\"wadadak-apps\", status=~\"5..\"}[$__rate_interval])) / sum by (service) (rate(http_server_requests_seconds_count{job=\"wadadak-apps\"}[$__rate_interval]))",
+          "legendFormat": "{{service}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "응답 시간 p95",
+      "description": "서비스별 응답 시간 95번째 백분위수.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "wadadak-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "wadadak-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (service, le) (rate(http_server_requests_seconds_bucket{job=\"wadadak-apps\", uri!~\"/actuator.*\"}[$__rate_interval])))",
+          "legendFormat": "{{service}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "type": "timeseries",
+      "title": "느린 API (p95 상위 5)",
+      "description": "경로별 p95. 요청이 있는 경로만 나온다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "wadadak-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 5
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "wadadak-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "topk(5, histogram_quantile(0.95, sum by (service, method, uri, le) (rate(http_server_requests_seconds_bucket{job=\"wadadak-apps\", uri!~\"/actuator.*\"}[$__rate_interval]))))",
+          "legendFormat": "{{service}} {{method}} {{uri}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "type": "timeseries",
+      "title": "JVM 힙 사용량",
+      "description": "힙 사용량. GC가 돌아도 내려가지 않고 계속 늘면 메모리 누수를 의심한다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "wadadak-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 13
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "bytes",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "wadadak-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (service) (jvm_memory_used_bytes{job=\"wadadak-apps\", area=\"heap\"})",
+          "legendFormat": "{{service}} 사용",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "GC 뒤 남는 메모리 비율",
+      "description": "GC 뒤에도 남는 오래된 객체가 최대치의 몇 %인지. 10분 동안 90%를 넘으면 알림이 간다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "wadadak-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 13
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "wadadak-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "max by (service) (jvm_gc_live_data_size_bytes{job=\"wadadak-apps\"}) / max by (service) (jvm_gc_max_data_size_bytes{job=\"wadadak-apps\"})",
+          "legendFormat": "{{service}}",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "DB 연결 (Hikari)",
+      "description": "사용 중 · 기다리는 DB 연결 수. 기다림이 계속 0보다 크면 연결이 모자라다.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "wadadak-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 21
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "wadadak-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (service) (hikaricp_connections_active{job=\"wadadak-apps\"})",
+          "legendFormat": "{{service}} 사용 중",
+          "range": true
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "wadadak-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "sum by (service) (hikaricp_connections_pending{job=\"wadadak-apps\"})",
+          "legendFormat": "{{service}} 기다림",
+          "range": true
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "CPU (프로세스)",
+      "description": "서비스 프로세스의 CPU 사용률(그 PC 전체 대비).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "wadadak-prometheus"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 21
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "lineWidth": 1,
+            "fillOpacity": 10,
+            "spanNulls": false
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "desc"
+        }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "wadadak-prometheus"
+          },
+          "editorMode": "code",
+          "expr": "max by (service) (process_cpu_usage{job=\"wadadak-apps\"})",
+          "legendFormat": "{{service}}",
+          "range": true
+        }
+      ]
+    }
+  ]
+}
