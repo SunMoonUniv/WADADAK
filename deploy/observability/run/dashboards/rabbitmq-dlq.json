@@ -1,0 +1,223 @@
+{
+  "uid": "wadadak-rabbitmq-dlq",
+  "title": "와다닥 RabbitMQ DLQ",
+  "description": "core PC RabbitMQ의 DLQ(wadadak.core-service.dlq, wadadak.run-service.dlq) 메시지 수와 업무 큐 소비자 수. run PC Prometheus가 core PC 100.75.79.15:15692(/metrics/detailed, queue_coarse_metrics·queue_consumer_count)에서 15초마다 읽습니다. 보관 7일.",
+  "tags": ["wadadak", "rabbitmq", "dlq"],
+  "schemaVersion": 39,
+  "timezone": "browser",
+  "time": { "from": "now-24h", "to": "now" },
+  "refresh": "30s",
+  "editable": true,
+  "graphTooltip": 1,
+  "links": [
+    { "title": "관리자 DLQ 페이지", "type": "link", "url": "https://api.leedohyunn8n.shop/admin/#failed", "targetBlank": true, "icon": "external link" }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "DLQ 메시지 수 (지금)",
+      "description": "큐마다 지금 남아 있는 메시지 수(ready + unacked). 0이 아니면 처리하지 못한 이벤트가 있다는 뜻입니다. '수집 안 됨'은 값이 0이라는 뜻이 아니라 지금 지표를 읽지 못한다는 뜻입니다.",
+      "datasource": { "type": "prometheus", "uid": "wadadak-prometheus" },
+      "gridPos": { "h": 6, "w": 10, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "wadadak-prometheus" },
+          "editorMode": "code",
+          "expr": "rabbitmq_detailed_queue_messages{job=\"rabbitmq-dlq\", queue=~\".+\\\\.dlq\"}",
+          "instant": true,
+          "range": false,
+          "legendFormat": "{{queue}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "수집 안 됨",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "green", "value": null }, { "color": "red", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "vertical",
+        "textMode": "value_and_name",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "지표 수집 상태",
+      "description": "Prometheus가 core PC 15692를 읽고 있는지(up). '중단'이나 '수집 안 됨'이면 DLQ 숫자를 믿을 수 없습니다.",
+      "datasource": { "type": "prometheus", "uid": "wadadak-prometheus" },
+      "gridPos": { "h": 6, "w": 5, "x": 10, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "wadadak-prometheus" },
+          "editorMode": "code",
+          "expr": "max(up{job=\"rabbitmq-dlq\"})",
+          "instant": true,
+          "range": false
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "수집 안 됨",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] },
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "중단", "color": "red", "index": 0 }, "1": { "text": "정상", "color": "green", "index": 1 } } }
+          ]
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "textMode": "value",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center"
+      }
+    },
+    {
+      "id": 6,
+      "type": "text",
+      "title": "보는 법",
+      "gridPos": { "h": 6, "w": 9, "x": 15, "y": 0 },
+      "options": {
+        "mode": "markdown",
+        "content": "**처리:** [관리자 DLQ 페이지](https://api.leedohyunn8n.shop/admin/#failed)\n\n- DLQ가 0건으로 돌아와도 재처리가 성공했다는 뜻은 아닙니다. 결과는 관리자 페이지와 로그에서 확인합니다.\n- DLQ에 없어도 리스너 처리 오류는 아웃박스(`common.event_publication`, `run.event_publication`)에 남을 수 있습니다.\n- 알림: Alerting → Alert rules → Wadadak 폴더 `rabbitmq-dlq` 그룹. Discord로 갑니다."
+      }
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "DLQ 메시지 수 추이",
+      "description": "큐별 DLQ 메시지 수. 선이 끊긴 구간은 수집이 안 된 구간입니다(0이 아님).",
+      "datasource": { "type": "prometheus", "uid": "wadadak-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "wadadak-prometheus" },
+          "editorMode": "code",
+          "expr": "rabbitmq_detailed_queue_messages{job=\"rabbitmq-dlq\", queue=~\".+\\\\.dlq\"}",
+          "range": true,
+          "instant": false,
+          "legendFormat": "{{queue}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0,
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never", "spanNulls": false },
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": [] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 4,
+      "type": "timeseries",
+      "title": "업무 큐 대기 메시지 (참고)",
+      "description": "DLQ가 아닌 업무 큐(wadadak.core-service, wadadak.run-service)에 쌓인 메시지 수. 소비자가 멈추면 여기서 먼저 늘어납니다. 알림은 걸려 있지 않습니다.",
+      "datasource": { "type": "prometheus", "uid": "wadadak-prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "wadadak-prometheus" },
+          "editorMode": "code",
+          "expr": "rabbitmq_detailed_queue_messages{job=\"rabbitmq-dlq\", queue!~\".+\\\\.dlq\"}",
+          "range": true,
+          "instant": false,
+          "legendFormat": "{{queue}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "min": 0,
+          "custom": { "drawStyle": "line", "lineInterpolation": "stepAfter", "lineWidth": 1, "fillOpacity": 0, "showPoints": "never", "spanNulls": false },
+          "color": { "mode": "palette-classic" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "calcs": [] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "업무 큐 소비자 수 (지금)",
+      "description": "core·run 업무 큐를 지켜보는 consumer 수. 0이면 서버가 떠 있어도 RabbitMQ 연결이 끊겨 이벤트를 처리하지 못하는 상태일 수 있습니다(2분 이어지면 '큐 소비자 없음' 알림).",
+      "datasource": { "type": "prometheus", "uid": "wadadak-prometheus" },
+      "gridPos": { "h": 5, "w": 24, "x": 0, "y": 14 },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "wadadak-prometheus" },
+          "editorMode": "code",
+          "expr": "rabbitmq_detailed_queue_consumers{job=\"rabbitmq-dlq\", queue=~\"wadadak\\\\.(core|run)-service\"}",
+          "instant": true,
+          "range": false,
+          "legendFormat": "{{queue}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "noValue": "수집 안 됨",
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [ { "color": "red", "value": null }, { "color": "green", "value": 1 } ] }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "orientation": "vertical",
+        "textMode": "value_and_name",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "showPercentChange": false
+      }
+    },
+    {
+      "id": 5,
+      "type": "alertlist",
+      "title": "DLQ·소비자 알림 상태",
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 19 },
+      "options": {
+        "viewMode": "list",
+        "groupMode": "default",
+        "groupBy": [],
+        "maxItems": 20,
+        "sortOrder": 1,
+        "dashboardAlerts": false,
+        "alertName": "",
+        "alertInstanceLabelFilter": "{wadadak_alert=~\".+\"}",
+        "showInstances": true,
+        "stateFilter": { "firing": true, "pending": true, "noData": true, "normal": true, "error": true }
+      }
+    }
+  ]
+}

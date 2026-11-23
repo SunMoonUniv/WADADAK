@@ -1,0 +1,135 @@
+discovery.docker "local" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "5s"
+}
+
+discovery.relabel "core" {
+  targets = discovery.docker.local.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project", "__meta_docker_container_label_com_docker_compose_service"]
+    regex         = "wadadak-server;(core|gateway|rabbitmq|cloudflared)|wadadak-core-observability;smoke"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+
+  rule {
+    target_label = "host"
+    replacement  = "core-pc"
+  }
+}
+
+loki.source.docker "core" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.core.output
+  forward_to = [loki.process.core.receiver]
+}
+
+loki.process "core" {
+  forward_to = [loki.write.run_pc.receiver]
+
+  stage.drop {
+    older_than = "168h"
+  }
+
+  // Each branch writes only an allowlisted summary to safe_line.
+  stage.match {
+    selector = `{service="core"}`
+
+    stage.regex {
+      expression = `^\d{4}-\d{2}-\d{2}[T ]\S+\s+INFO\s+.+\s+(?:com\.wadadak|c\.wadadak|c\.w)\.WadadakApplication\s*:\s+(?P<startup>Started WadadakApplication in [0-9]+(?:\.[0-9]+)? seconds)\b`
+    }
+
+    stage.regex {
+      expression = `^\d{4}-\d{2}-\d{2}[T ]\S+\s+(?P<core_level>WARN|ERROR)\s+\d+\s+---\s+(?:\[[^\]]*\]\s+)+(?P<core_logger>[A-Za-z0-9_.$]+)\s*:`
+    }
+
+    stage.template {
+      source   = "safe_line"
+      template = `{{ $level := toString (default "" .core_level) }}{{ $logger := toString (default "" .core_logger) }}{{ if .startup }}{{ .startup }}{{ else if eq $level "ERROR" }}Spring ERROR {{ $logger }}{{ else if and (eq $level "WARN") (or (hasPrefix "com.wadadak." $logger) (hasPrefix "c.w." $logger)) }}Spring WARN {{ $logger }}{{ end }}`
+    }
+  }
+
+  stage.match {
+    selector = `{service="gateway"}`
+
+    stage.json {
+      expressions = {
+        caddy_level   = "level",
+        caddy_logger  = "logger",
+        caddy_message = "msg",
+      }
+    }
+
+    stage.template {
+      source   = "safe_line"
+      template = `{{ $logger := toString (default "" .caddy_logger) }}{{ $level := toString (default "" .caddy_level) }}{{ $message := toString (default "" .caddy_message) }}{{ if not (hasPrefix "http.log.access" $logger) }}{{ if and (eq $level "info") (or (eq $message "serving initial configuration") (eq $message "server running")) }}Caddy started serving{{ else if has $level (list "warn" "error" "fatal" "panic") }}Caddy {{ $level }}{{ if hasPrefix "http.log.error" $logger }} (HTTP handler){{ end }}{{ end }}{{ end }}`
+    }
+  }
+
+  stage.match {
+    selector = `{service="rabbitmq"}`
+
+    stage.regex {
+      expression = `^\d{4}-\d{2}-\d{2}[T ]\S+\s+\[info\]\s+<\d+\.\d+\.\d+>\s+(?P<broker_started>Server startup complete)\b`
+    }
+
+    stage.regex {
+      expression = `^\d{4}-\d{2}-\d{2}[T ]\S+\s+\[(?P<broker_level>warning|error|critical|alert|emergency)\]\s+<\d+\.\d+\.\d+>`
+    }
+
+    stage.template {
+      source   = "safe_line"
+      template = `{{ if .broker_started }}RabbitMQ startup complete{{ else if .broker_level }}RabbitMQ {{ .broker_level }}{{ end }}`
+    }
+  }
+
+  stage.match {
+    selector = `{service="cloudflared"}`
+
+    stage.regex {
+      expression = `^\d{4}-\d{2}-\d{2}T\S+\s+(?:INF\s+(?P<tunnel_event>Starting tunnel|Registered tunnel connection|Unregistered tunnel connection)\b|(?P<tunnel_level>WRN|ERR|FTL)\b)`
+    }
+
+    stage.template {
+      source   = "safe_line"
+      template = `{{ if .tunnel_event }}cloudflared: {{ .tunnel_event }}{{ else if .tunnel_level }}cloudflared {{ .tunnel_level }}{{ end }}`
+    }
+  }
+
+  stage.match {
+    selector = `{service="smoke"}`
+
+    stage.regex {
+      expression = `^(?P<safe_line>WADADAK_CORE_OBSERVABILITY_SMOKE [0-9a-f]{32})\s*$`
+    }
+  }
+
+  stage.labels {
+    values = { allowed = "safe_line" }
+  }
+
+  stage.match {
+    selector            = `{allowed="",host="core-pc"}`
+    action              = "drop"
+    drop_counter_reason = "outside_core_log_allowlist"
+  }
+
+  stage.label_drop {
+    values = ["allowed"]
+  }
+
+  stage.output {
+    source = "safe_line"
+  }
+}
+
+loki.write "run_pc" {
+  endpoint {
+    url = sys.env("LOKI_PUSH_URL")
+  }
+}

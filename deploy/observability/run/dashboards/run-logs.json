@@ -1,0 +1,41 @@
+{
+  "uid": "wadadak-run-logs",
+  "title": "와다닥 러닝 서버 로그",
+  "schemaVersion": 39,
+  "timezone": "browser",
+  "time": { "from": "now-24h", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "러닝 판정 예외 로그 수 (최근 5분)",
+      "description": "같은 기록이 재시도에서 다시 실패하면 로그가 한 건 더 집계됩니다. 해당 구간에 판정 예외 로그가 없으면 그래프에 값이 표시되지 않습니다.",
+      "datasource": { "type": "loki", "uid": "wadadak-loki" },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 0 },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "queryType": "range",
+          "expr": "sum(count_over_time({service=\"run\"} |= \"Free run processing failed for\" [5m]))"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "logs",
+      "title": "러닝 서버 기동 및 워커 로그",
+      "datasource": { "type": "loki", "uid": "wadadak-loki" },
+      "gridPos": { "h": 13, "w": 24, "x": 0, "y": 9 },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "queryType": "range",
+          "expr": "{service=\"run\"}"
+        }
+      ],
+      "options": { "showTime": true, "showLabels": false, "wrapLogMessage": true }
+    }
+  ]
+}
