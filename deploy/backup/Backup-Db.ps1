@@ -2,7 +2,8 @@
 그 PC의 DB를 pg_dump(custom 형식)로 떠서 운영 PC로 Taildrop으로 보낸다. 절차는 deploy/backup/README.md.
   core PC: -Container wadadak-core-postgres-1 -DbUser wadadak     -Name core
   run PC : -Container wadadak-run-postgres-1  -DbUser wadadak_run -Name run
-이 PC에는 최근 $Keep개만 남긴다. 결과는 $Dir\backup.log에 한 줄씩 남는다. 알림은 운영 PC가 보낸다(Receive-Backup.ps1).
+이 PC에는 최근 $Keep개만 남긴다. 결과는 $Dir\backup.log에 한 줄씩 남는다.
+$PingUrlFile(healthchecks.io 핑 주소 한 줄)이 있으면 성공하면 핑, 실패하면 /fail을 보낸다. 빠진 날은 healthchecks.io가 알린다.
 #>
 [CmdletBinding()]
 param(
@@ -11,7 +12,8 @@ param(
     [Parameter(Mandatory)][ValidateSet('core', 'run')][string]$Name,
     [string]$Target = 'desktop-65isqe2',
     [string]$Dir = 'C:\wadadak-backup',
-    [ValidateRange(1, 30)][int]$Keep = 3
+    [ValidateRange(1, 30)][int]$Keep = 3,
+    [string]$PingUrlFile = (Join-Path $Dir 'healthchecks-url.txt')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -23,6 +25,16 @@ New-Item -ItemType Directory -Force $Dir | Out-Null
 $log = Join-Path $Dir 'backup.log'
 function Write-Log([string]$Message) {
     Add-Content -Path $log -Value ('{0:yyyy-MM-dd HH:mm:ss} {1}' -f (Get-Date), $Message) -Encoding UTF8
+}
+
+# Windows PowerShell 5.1은 TLS 1.2를 기본으로 켜지 않을 수 있다(healthchecks.io · Discord는 HTTPS).
+[Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+# healthchecks.io 핑(주소 파일이 있을 때만). 핑이 실패해도 백업 결과는 바꾸지 않는다.
+function Send-Ping([string]$Suffix) {
+    if (-not (Test-Path -LiteralPath $PingUrlFile)) { return }
+    $url = (Get-Content -LiteralPath $PingUrlFile -TotalCount 1).Trim()
+    if (-not $url) { return }
+    try { Invoke-WebRequest -Uri ($url + $Suffix) -UseBasicParsing -TimeoutSec 10 | Out-Null } catch { Write-Log ('PING FAIL ' + $_.Exception.Message) }
 }
 
 $file = Join-Path $Dir ('{0}-{1:yyyyMMdd}.dump' -f $Name, (Get-Date))
@@ -37,8 +49,10 @@ try {
     & $tailscale file cp $file "${Target}:"
     if ($LASTEXITCODE -ne 0) { throw "Taildrop 실패($LASTEXITCODE)" }
     Write-Log ('OK {0} {1} bytes' -f (Split-Path $file -Leaf), (Get-Item $file).Length)
+    Send-Ping ''
 } catch {
     Write-Log ('FAIL {0}: {1}' -f $Name, $_.Exception.Message)
+    Send-Ping '/fail'
     throw
 }
 

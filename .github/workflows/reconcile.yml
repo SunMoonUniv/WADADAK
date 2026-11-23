@@ -154,3 +154,19 @@ jobs:
               f.write(text)
           raise SystemExit(1 if diffs else 0)
           PY
+
+  # healthchecks.io에 결과를 알린다(Secret HEALTHCHECKS_RECONCILE_URL이 있을 때만).
+  # 대조가 실패하면 /fail, 아예 안 돌면(예약 워크플로는 저장소 활동이 60일 없으면 꺼진다) 신호가 끊겨 healthchecks.io가 알린다.
+  ping:
+    name: healthchecks.io 핑
+    needs: [run-digest, core-digest, compare]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          HC_URL: ${{ secrets.HEALTHCHECKS_RECONCILE_URL }}
+          OK: ${{ needs.run-digest.result == 'success' && needs.core-digest.result == 'success' && needs.compare.result == 'success' }}
+        run: |
+          [ -n "$HC_URL" ] || exit 0
+          if [ "$OK" = true ]; then suffix=''; else suffix='/fail'; fi
+          curl -fsS -m 10 --retry 3 -o /dev/null "$HC_URL$suffix"

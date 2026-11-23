@@ -44,6 +44,8 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
       # 비밀 값이다. 채팅 · 문서에 붙이지 않는다.
       DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:?.env에 DISCORD_WEBHOOK_URL이 없다}
+      # 감시 하트비트(grafana-alerting-heartbeat.yaml)가 5분마다 부르는 healthchecks.io 핑 주소. 남이 알면 가짜 신호를 보낼 수 있다.
+      HEALTHCHECKS_GRAFANA_URL: ${HEALTHCHECKS_GRAFANA_URL:?.env에 HEALTHCHECKS_GRAFANA_URL이 없다}
     # tailnet에서 연다(로그인 필요). 이 PC에서만 보려면 .env에 GRAFANA_BIND_IP=127.0.0.1.
     ports:
       - "${GRAFANA_BIND_IP:-100.111.111.92}:3000:3000"
@@ -55,6 +57,7 @@ services:
       - ./dashboards:/etc/grafana/wadadak-dashboards:ro
       - ./grafana-alerting-dlq.yaml:/etc/grafana/provisioning/alerting/wadadak-dlq.yaml:ro
       - ./grafana-alerting-apps.yaml:/etc/grafana/provisioning/alerting/wadadak-apps.yaml:ro
+      - ./grafana-alerting-heartbeat.yaml:/etc/grafana/provisioning/alerting/wadadak-heartbeat.yaml:ro
 
 volumes:
   loki-data:

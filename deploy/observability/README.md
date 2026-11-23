@@ -11,7 +11,7 @@
 | `core/` | core PC `C:\wadadak-observability\core`, 인프라 PC의 Alloy 폴더(그 폴더 `.env`에 `ALLOY_HOST=infra-pc`) | `wadadak-core-observability` | Alloy: core · gateway · rabbitmq · cloudflared 로그 |
 | [`run/`](run/README.md) | run PC `C:\Users\301B-00\Desktop\observability` | `wadadak-run-observability` | Alloy: run 로그 |
 
-**비밀 값은 저장소에 없다.** 운영 PC `ops\.env`에만 둔다(`ops/.gitignore`가 `.env`를 막는다): `GRAFANA_ADMIN_PASSWORD`, `DISCORD_WEBHOOK_URL`.
+**비밀 값은 저장소에 없다.** 운영 PC `ops\.env`에만 둔다(`ops/.gitignore`가 `.env`를 막는다): `GRAFANA_ADMIN_PASSWORD`, `DISCORD_WEBHOOK_URL`, `HEALTHCHECKS_GRAFANA_URL`, `HEALTHCHECKS_RESTORE_URL`.
 Grafana 데이터(`grafana-data` 볼륨)를 잃어도 데이터 소스 · 알림 규칙 · 연락 지점 · 대시보드는 전부 `ops/`의 파일에서 다시 만들어진다.
 
 ```text
@@ -29,6 +29,7 @@ core PC · run PC: :8080/actuator/prometheus ◄─┘
 | --- | --- |
 | `ops/compose.yaml` | Loki(3100을 운영 PC Tailscale 주소에만) · Prometheus(v3.13.5, 7일, 포트 없음) · Grafana(3000, 로그인) |
 | `ops/grafana-alerting-apps.yaml` | 앱 알림 규칙 3개(서비스 지표 수집 중단 · 5xx 비율 · JVM 메모리), 연락 지점은 `wadadak-discord`를 같이 쓴다 |
+| `ops/grafana-alerting-heartbeat.yaml` | 감시 하트비트: 항상 울리는 규칙이 5분마다 healthchecks.io로 핑. 운영 PC · Docker · Prometheus · Grafana 중 하나가 멈추면 신호가 끊겨 healthchecks.io가 알린다 |
 | `ops/loki.yaml` | Loki 설정(7일 보관) |
 | `ops/prometheus.yml` | 앱 지표 `wadadak-apps`(core `100.64.78.38:8080` · run `100.73.249.33:8080`의 `/actuator/prometheus`)와 RabbitMQ 수집 대상 `100.75.79.15:15692` `/metrics/detailed?vhost=/&family=queue_coarse_metrics&family=queue_consumer_count`, `rabbitmq_detailed_queue_messages` · `rabbitmq_detailed_queue_consumers`만 저장 |
 | `ops/grafana-datasource*.yaml` · `ops/grafana-dashboards.yaml` | Loki(UID `wadadak-loki`) · Prometheus(UID `wadadak-prometheus`) 데이터 소스, 대시보드 폴더 |
@@ -203,7 +204,7 @@ promtool SUCCESS, provisioning 오류 없음, 규칙 쿼리가 업무 큐 2개(c
 - DLQ가 0이어도 재처리가 성공했다는 뜻은 아니다. 되돌린 메시지가 다시 실패하면 DLQ로 돌아온다.
 - DLQ에 없어도 리스너 처리 오류는 아웃박스 `common.event_publication`·`run.event_publication`에 남을 수 있다. 이 감시는 브로커 단계만 본다.
 - 회원 탈퇴 이벤트가 DLQ에 남았다는 것은 해당 소비 서비스의 후속 처리가 지연될 수 있다는 뜻이다. 건수만으로 특정 회원의 데이터 상태를 확정하지 않는다.
-- 운영 PC가 꺼지면 수집과 알림이 모두 멈춘다(알림도 오지 않음). 바깥 감시는 보류했다(`deploy/운영 PC (감시 · 백업) - 2026-11-23.md` 6장).
+- 운영 PC가 꺼지면 수집과 알림이 모두 멈춘다. 그때는 감시 하트비트가 끊겨 healthchecks.io가 Discord로 알린다(`deploy/운영 PC (감시 · 백업) - 2026-11-23.md` 6장).
 - 메시지가 남은 채로 DLQ 큐가 지워지면 잔류 알림은 최대 7일 유지되다가 "⚪ DLQ 잔류 알림 정리 (지표 없음)"으로 정리된다.
 - 파일로 만든 알림 규칙은 Grafana 화면에서 고칠 수 없다. 파일을 고치고 운영 PC에서 `docker compose restart grafana`.
 - 제안(팀 합의 미확인): 알림을 맡는 사람이 Discord 스레드에 "제가 볼게요"를 남기고 처리·재처리 결과도 같은 스레드에 남긴다.

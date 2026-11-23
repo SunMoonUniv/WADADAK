@@ -213,6 +213,7 @@ run 서비스와 run 전용 PostgreSQL(`postgres`)이 뜬다(`deploy/run/compose
 | DB 접속 | core PC: `docker exec -it wadadak-core-postgres-1 psql -U wadadak`. run PC: `docker exec -it wadadak-run-postgres-1 psql -U wadadak_run -d wadadak` |
 | DB 초기화 (데이터 전부 삭제) | core PC: `docker compose -p wadadak-core down` → `docker volume rm wadadak-core_db` → 수동 배포 |
 | DB 백업 · 복원 | 매일 core · run DB를 운영 PC `C:\wadadak-backup`에 30일 보관, 매주 복원 검사. 복원 명령은 [`backup/README.md`](backup/README.md) |
+| 바깥 감시 | healthchecks.io(팀 관리자 계정, 프로젝트 `WADADAK`): 운영 PC 하트비트 · DB 백업 · 복원 검사 · 데이터 대조. 신호가 끊기면 Discord로 알린다. 설정은 [운영 PC](<운영 PC (감시 · 백업) - 2026-11-23.md>) 6장 |
 | 로그 · 지표 · 알림 | 운영 PC Grafana `http://100.111.111.92:3000`(tailnet, `admin` 로그인). 로그(Loki), RabbitMQ DLQ, 앱 지표(요청 수 · 5xx · 응답 시간 · JVM · DB 연결). 설정은 [`observability/`](observability/README.md) |
 | 길찾기 로그 | core PC: `docker logs -f wadadak-core-graphhopper-1`. 내려가 있으면 코스 자동 생성만 실패한다. 그래프 갱신은 서버 PC 준비 7번 |
 | 사진 저장소 로그 | 인프라 PC: `docker logs -f wadadak-server-storage-1`. 사진 파일은 볼륨 `wadadak-server_photos`에 있다. DB를 초기화하면 사진도 같이 지운다(인프라 PC에서 `docker compose -p wadadak-server rm -sf storage` → `docker volume rm wadadak-server_photos` → 수동 배포) |
