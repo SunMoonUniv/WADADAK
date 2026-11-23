@@ -1,0 +1,22 @@
+# DLQ 알림을 완전히 지울 때만 쓴다(run/README-run-pc.md 6번 "되돌리기").
+# 파일로 만든 알림 규칙·연락 지점·템플릿은 provisioning 파일을 빼도 Grafana DB에 남고, 화면·API로 지울 수 없다.
+# 이 파일을 grafana-alerting-dlq.yaml 대신 provisioning/alerting에 두고 Grafana를 다시 띄우면 지워진다.
+apiVersion: 1
+
+deleteRules:
+  - orgId: 1
+    uid: wadadak-dlq-residual
+  - orgId: 1
+    uid: wadadak-dlq-scrape-down
+  - orgId: 1
+    uid: wadadak-dlq-series-missing
+  - orgId: 1
+    uid: wadadak-queue-consumer-zero
+
+deleteContactPoints:
+  - orgId: 1
+    uid: wadadak-discord
+
+deleteTemplates:
+  - orgId: 1
+    name: wadadak-dlq

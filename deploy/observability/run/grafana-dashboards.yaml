@@ -1,0 +1,9 @@
+apiVersion: 1
+
+providers:
+  - name: Wadadak
+    folder: Wadadak
+    type: file
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/wadadak-dashboards

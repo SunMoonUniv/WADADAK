@@ -1,0 +1,113 @@
+{
+  "uid": "wadadak-core-logs",
+  "title": "와다닥 core 서버 로그",
+  "description": "core PC(host=core-pc)의 core·gateway·rabbitmq·cloudflared 로그 요약. 원문이 아니라 Alloy 허용 목록을 통과한 요약 줄만 있습니다.",
+  "tags": ["wadadak", "core"],
+  "schemaVersion": 39,
+  "timezone": "browser",
+  "time": { "from": "now-7d", "to": "now" },
+  "panels": [
+    {
+      "id": 1,
+      "type": "timeseries",
+      "title": "오류 로그 수",
+      "description": "Spring ERROR, Caddy error/fatal/panic, RabbitMQ error 이상, cloudflared ERR/FTL 줄을 서비스별로 셉니다. 막대 하나는 그래프의 한 구간입니다. 해당 구간에 오류가 없으면 비어 있습니다.",
+      "datasource": { "type": "loki", "uid": "wadadak-loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "core" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }] },
+          { "matcher": { "id": "byName", "options": "gateway" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "purple" } }] },
+          { "matcher": { "id": "byName", "options": "rabbitmq" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
+          { "matcher": { "id": "byName", "options": "cloudflared" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "yellow" } }] }
+        ]
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "queryType": "range",
+          "expr": "sum by (service) (count_over_time({host=\"core-pc\"} |~ \"^(Spring ERROR|Caddy (error|fatal|panic)|RabbitMQ (error|critical|alert|emergency)|cloudflared (ERR|FTL))\" [$__auto]))",
+          "legendFormat": "{{service}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "type": "timeseries",
+      "title": "경고 로그 수",
+      "description": "core의 와다닥 코드 WARN(com.wadadak·c.w. 로거), Caddy warn, RabbitMQ warning, cloudflared WRN 줄을 서비스별로 셉니다. cloudflared는 버전 안내 경고가 하루 한 번 찍힙니다.",
+      "datasource": { "type": "loki", "uid": "wadadak-loki" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": { "drawStyle": "bars", "fillOpacity": 80, "lineWidth": 1, "showPoints": "never" }
+        },
+        "overrides": [
+          { "matcher": { "id": "byName", "options": "core" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "blue" } }] },
+          { "matcher": { "id": "byName", "options": "gateway" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "purple" } }] },
+          { "matcher": { "id": "byName", "options": "rabbitmq" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } }] },
+          { "matcher": { "id": "byName", "options": "cloudflared" }, "properties": [{ "id": "color", "value": { "mode": "fixed", "fixedColor": "yellow" } }] }
+        ]
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "queryType": "range",
+          "expr": "sum by (service) (count_over_time({host=\"core-pc\"} |~ \"^(Spring WARN|Caddy warn|RabbitMQ warning|cloudflared WRN)\" [$__auto]))",
+          "legendFormat": "{{service}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "type": "logs",
+      "title": "서비스 기동 기록 (배포·재시작)",
+      "description": "core 기동, RabbitMQ 기동 완료, Caddy 설정 적용 시점입니다. 배포나 재시작이 언제 있었는지 볼 때 씁니다.",
+      "datasource": { "type": "loki", "uid": "wadadak-loki" },
+      "gridPos": { "h": 7, "w": 24, "x": 0, "y": 8 },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "queryType": "range",
+          "expr": "{host=\"core-pc\", service=~\"core|rabbitmq|gateway\"} |~ \"^(Started WadadakApplication|RabbitMQ startup complete|Caddy started serving)\" | line_format \"[{{.service}}] {{__line__}}\""
+        }
+      ],
+      "options": { "showTime": true, "showLabels": false, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true }
+    },
+    {
+      "id": 4,
+      "type": "logs",
+      "title": "core PC 전체 요약 로그",
+      "description": "core PC에서 수집한 모든 요약 줄(검증용 smoke 제외). 오류의 자세한 내용은 core PC에서 docker logs로 확인합니다.",
+      "datasource": { "type": "loki", "uid": "wadadak-loki" },
+      "gridPos": { "h": 14, "w": 24, "x": 0, "y": 15 },
+      "targets": [
+        {
+          "refId": "A",
+          "editorMode": "code",
+          "queryType": "range",
+          "expr": "{host=\"core-pc\", service!=\"smoke\"} | line_format \"[{{.service}}] {{__line__}}\""
+        }
+      ],
+      "options": { "showTime": true, "showLabels": false, "wrapLogMessage": true, "sortOrder": "Descending", "enableLogDetails": true }
+    }
+  ]
+}

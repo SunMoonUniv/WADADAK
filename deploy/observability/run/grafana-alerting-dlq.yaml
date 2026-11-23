@@ -1,0 +1,304 @@
+# 와다닥 RabbitMQ DLQ 알림 (Grafana 파일 provisioning).
+# Grafana는 이 파일을 기동할 때만 읽는다. 고친 뒤에는 run PC에서 docker compose restart grafana.
+# 이 파일 안의 "$"는 Grafana가 환경 변수로 바꾼다. 템플릿에는 "$"를 쓰지 않는다(.Labels, .Values 사용).
+# 알림 경로는 규칙마다 notification_settings로 정한다. 기존 기본 알림 정책(notification policy)은 건드리지 않는다.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: wadadak-discord
+    receivers:
+      - uid: wadadak-discord
+        type: discord
+        disableResolveMessage: false
+        settings:
+          # run PC .env의 DISCORD_WEBHOOK_URL (compose.prometheus.yaml이 Grafana 컨테이너에 넘긴다)
+          url: $DISCORD_WEBHOOK_URL
+          title: '{{ template "wadadak.dlq.title" . }}'
+          message: '{{ template "wadadak.dlq.message" . }}'
+          use_discord_username: false
+
+templates:
+  - orgId: 1
+    name: wadadak-dlq
+    template: |
+      {{ define "wadadak.dlq.time" }}{{ . | tz "Asia/Seoul" | date "2006-01-02 15:04:05" }} KST{{ end }}
+
+      {{ define "wadadak.dlq.title" -}}
+      {{- if eq .Status "firing" -}}
+        {{- if eq .CommonLabels.wadadak_alert "dlq-residual" }}🔴 DLQ 메시지 잔류
+        {{- else if eq .CommonLabels.wadadak_alert "dlq-scrape-down" }}⚠️ DLQ 지표 수집 중단
+        {{- else if eq .CommonLabels.wadadak_alert "dlq-series-missing" }}⚠️ DLQ 지표 사라짐
+        {{- else if eq .CommonLabels.wadadak_alert "consumer-zero" }}🔴 큐 소비자 없음 (RabbitMQ 연결 끊김 의심)
+        {{- else }}⚠️ {{ .CommonLabels.alertname }}{{ end -}}
+      {{- else -}}
+        {{- if eq .CommonLabels.wadadak_alert "dlq-residual" -}}
+          {{- if eq .CommonAnnotations.grafana_state_reason "MissingSeries" }}⚪ DLQ 잔류 알림 정리 (지표 없음)
+          {{- else }}🟢 DLQ 비워짐{{ end -}}
+        {{- else if eq .CommonLabels.wadadak_alert "dlq-scrape-down" }}🟢 DLQ 지표 수집 재개
+        {{- else if eq .CommonLabels.wadadak_alert "dlq-series-missing" }}🟢 DLQ 지표 다시 보임
+        {{- else if eq .CommonLabels.wadadak_alert "consumer-zero" }}🟢 큐 소비자 다시 연결
+        {{- else }}🟢 해제: {{ .CommonLabels.alertname }}{{ end -}}
+      {{- end -}}
+      {{- with .CommonLabels.queue }} · {{ . }}{{ end -}}
+      {{- end }}
+
+      {{ define "wadadak.dlq.message" -}}
+      {{- range .Alerts.Firing }}{{ template "wadadak.dlq.alert" . }}
+      {{ end -}}
+      {{- range .Alerts.Resolved }}{{ template "wadadak.dlq.alert" . }}
+      {{ end -}}
+      {{- end }}
+
+      {{ define "wadadak.dlq.alert" -}}
+      {{- if eq .Labels.wadadak_alert "dlq-residual" -}}
+        {{- if eq .Status "firing" -}}
+      큐: {{ .Labels.queue }}
+      메시지 수: {{ index .Values "A" }}건
+      발생 시각: {{ template "wadadak.dlq.time" .StartsAt }}
+      {{- if .Annotations.grafana_state_reason }}
+      (지금은 지표를 읽지 못해 마지막으로 관측한 값입니다)
+      {{- end }}
+      관리자 DLQ 페이지: https://api.leedohyunn8n.shop/admin/#failed
+        {{- else if eq .Annotations.grafana_state_reason "MissingSeries" -}}
+      큐: {{ .Labels.queue }}
+      이 큐의 지표가 오래 보이지 않아 잔류 알림을 정리했습니다. DLQ가 비었는지는 확인되지 않았습니다.
+      잔류 시작: {{ template "wadadak.dlq.time" .StartsAt }}
+      관리자 DLQ 페이지: https://api.leedohyunn8n.shop/admin/#failed
+        {{- else -}}
+      큐: {{ .Labels.queue }}
+      정상 수집 중 실제로 0건이 관측되어 해제했습니다.
+      DLQ가 비었다는 뜻일 뿐, 되돌린 메시지의 재처리가 성공했다는 뜻은 아닙니다. 재처리 결과는 관리자 페이지와 로그에서 확인하세요.
+      잔류 시작: {{ template "wadadak.dlq.time" .StartsAt }}
+      해제 시각: {{ template "wadadak.dlq.time" .EndsAt }}
+      관리자 DLQ 페이지: https://api.leedohyunn8n.shop/admin/#failed
+        {{- end -}}
+      {{- else if eq .Labels.wadadak_alert "dlq-scrape-down" -}}
+        {{- if eq .Status "firing" -}}
+      대상: core PC RabbitMQ 지표 (100.75.79.15:15692)
+      발생 시각: {{ template "wadadak.dlq.time" .StartsAt }}
+      지금은 DLQ 상태를 알 수 없습니다. 수집이 멈춘 동안에는 새 잔류 알림이 오지 않고, 이미 온 잔류 알림도 해제되지 않습니다.
+      확인할 곳: run PC prometheus 컨테이너, core PC rabbitmq 컨테이너와 Tailscale, 15692 포트
+      {{- with .Annotations.Error }}
+      오류: {{ . }}
+      {{- end }}
+        {{- else -}}
+      DLQ 지표를 다시 읽고 있습니다.
+      중단 알림 시작: {{ template "wadadak.dlq.time" .StartsAt }} (실제 중단은 약 2분 전부터)
+      재개 시각: {{ template "wadadak.dlq.time" .EndsAt }}
+        {{- end -}}
+      {{- else if eq .Labels.wadadak_alert "dlq-series-missing" -}}
+        {{- if eq .Status "firing" -}}
+      큐: {{ .Labels.queue }}
+      수집은 되는데 이 큐의 지표만 없습니다. 큐가 지워졌거나 이름이 바뀌었을 수 있습니다. 이 큐의 잔류 알림은 지금 동작하지 않습니다.
+      발생 시각: {{ template "wadadak.dlq.time" .StartsAt }}
+      관리자 DLQ 페이지: https://api.leedohyunn8n.shop/admin/#failed
+        {{- else -}}
+      큐: {{ .Labels.queue }}
+      이 큐의 지표가 다시 보입니다.
+      사라짐 알림 시작: {{ template "wadadak.dlq.time" .StartsAt }}
+      다시 보인 시각: {{ template "wadadak.dlq.time" .EndsAt }}
+        {{- end -}}
+      {{- else if eq .Labels.wadadak_alert "consumer-zero" -}}
+        {{- if eq .Status "firing" -}}
+      큐: {{ .Labels.queue }}
+      서비스: {{ if eq .Labels.queue "wadadak.core-service" }}core{{ else if eq .Labels.queue "wadadak.run-service" }}run{{ else }}알 수 없음{{ end }}
+      이 큐를 지켜보는 소비자(consumer)가 0입니다. 서버가 떠 있어도 RabbitMQ 연결이 끊겨 이벤트를 처리하지 못하고 있을 수 있습니다.
+      그동안 들어온 메시지는 업무 큐에 쌓입니다(대시보드 "업무 큐 대기 메시지").
+      발생 시각: {{ template "wadadak.dlq.time" .StartsAt }}
+      확인할 곳: 해당 서비스 로그(RabbitMQ 연결·리스너 오류), core PC rabbitmq 컨테이너
+        {{- else -}}
+      큐: {{ .Labels.queue }}
+      소비자가 다시 붙었습니다. 쌓였던 메시지가 처리되는지 대시보드에서 확인하세요.
+      소비자 없음 알림 시작: {{ template "wadadak.dlq.time" .StartsAt }}
+      다시 연결 시각: {{ template "wadadak.dlq.time" .EndsAt }}
+        {{- end -}}
+      {{- else -}}
+      {{ .Labels.alertname }}
+      {{- with .Annotations.summary }}
+      {{ . }}
+      {{- end }}
+      시각: {{ template "wadadak.dlq.time" .StartsAt }}
+      {{- end -}}
+      {{- end }}
+
+groups:
+  - orgId: 1
+    name: rabbitmq-dlq
+    folder: Wadadak
+    interval: 30s
+    rules:
+      # 1) 잔류: 큐별 메시지 수 > 0 이 1분 이어지면 알림, 4시간마다 다시 알림.
+      #    last_over_time(...[7d])는 마지막으로 실제 수집한 값이다. 수집이 끊겨도 값이 사라지지 않으므로
+      #    no-data로 해제되지 않고, 수집 중 실제 0이 관측되어야만 해제(= "DLQ 비워짐")된다.
+      - uid: wadadak-dlq-residual
+        title: DLQ 메시지 잔류
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: wadadak-prometheus
+            model:
+              refId: A
+              editorMode: code
+              expr: 'last_over_time(rabbitmq_detailed_queue_messages{job="rabbitmq-dlq", queue=~".+\\.dlq"}[7d])'
+              instant: true
+              range: false
+              legendFormat: '{{queue}}'
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: KeepLast
+        execErrState: KeepLast
+        for: 1m
+        labels:
+          wadadak_alert: dlq-residual
+        annotations:
+          summary: '{{ .Labels.queue }}에 실패 메시지가 남아 있습니다.'
+          description: '관리자 DLQ 페이지에서 확인하세요: https://api.leedohyunn8n.shop/admin/#failed'
+          __dashboardUid__: wadadak-rabbitmq-dlq
+          __panelId__: '1'
+        notification_settings:
+          receiver: wadadak-discord
+          group_by: [alertname, queue]
+          group_wait: 30s
+          group_interval: 1m
+          repeat_interval: 4h
+        isPaused: false
+
+      # 2) 수집 중단: 15692 수집 실패(up=0), up 자체가 없음(no data), Prometheus 조회 실패(error) 모두 알림.
+      - uid: wadadak-dlq-scrape-down
+        title: DLQ 지표 수집 중단
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: wadadak-prometheus
+            model:
+              refId: A
+              editorMode: code
+              expr: 'max(up{job="rabbitmq-dlq"})'
+              instant: true
+              range: false
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: Alerting
+        execErrState: Alerting
+        for: 2m
+        labels:
+          wadadak_alert: dlq-scrape-down
+        annotations:
+          summary: 'RabbitMQ DLQ 지표(100.75.79.15:15692)를 읽지 못하고 있습니다.'
+          __dashboardUid__: wadadak-rabbitmq-dlq
+          __panelId__: '3'
+        notification_settings:
+          receiver: wadadak-discord
+          group_by: [alertname]
+          group_wait: 30s
+          group_interval: 1m
+          repeat_interval: 4h
+        isPaused: false
+
+      # 3) 한 큐 지표만 사라짐: 수집은 정상(up=1)인데 DLQ 두 개 중 하나(또는 둘 다)의 지표가 없음.
+      #    큐마다 항상 한 줄을 낸다(있으면 0, 없으면 1). 그래서 다시 보이면 실제 0으로 해제된다.
+      #    수집이 멈추면(up=0, Prometheus 오류) 결과가 비고 KeepLast로 상태를 유지한다("다시 보임"으로 잘못 해제되지 않게).
+      - uid: wadadak-dlq-series-missing
+        title: DLQ 지표 사라짐
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: wadadak-prometheus
+            model:
+              refId: A
+              editorMode: code
+              expr: >-
+                (
+                  label_replace(count(rabbitmq_detailed_queue_messages{job="rabbitmq-dlq", queue="wadadak.core-service.dlq"}) * 0, "queue", "wadadak.core-service.dlq", "", "")
+                  or label_replace(absent(rabbitmq_detailed_queue_messages{job="rabbitmq-dlq", queue="wadadak.core-service.dlq"}), "job", "", "", "")
+                  or label_replace(count(rabbitmq_detailed_queue_messages{job="rabbitmq-dlq", queue="wadadak.run-service.dlq"}) * 0, "queue", "wadadak.run-service.dlq", "", "")
+                  or label_replace(absent(rabbitmq_detailed_queue_messages{job="rabbitmq-dlq", queue="wadadak.run-service.dlq"}), "job", "", "", "")
+                ) and on() (max(up{job="rabbitmq-dlq"}) == 1)
+              instant: true
+              range: false
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+        noDataState: KeepLast
+        execErrState: KeepLast
+        for: 2m
+        labels:
+          wadadak_alert: dlq-series-missing
+        annotations:
+          summary: '{{ .Labels.queue }} 지표가 수집되지 않습니다.'
+          __dashboardUid__: wadadak-rabbitmq-dlq
+          __panelId__: '1'
+        notification_settings:
+          receiver: wadadak-discord
+          group_by: [alertname, queue]
+          group_wait: 30s
+          group_interval: 1m
+          repeat_interval: 4h
+        isPaused: false
+
+      # 4) 소비자 없음: core·run 업무 큐를 지켜보는 consumer가 0. 서버는 떠 있는데 RabbitMQ 연결이 끊긴 경우를 잡는다.
+      #    배포로 컨테이너가 다시 만들어지는 수십 초는 for: 2m 으로 넘긴다.
+      #    수집이 멈추면(지표 없음·조회 오류) 상태를 유지한다(KeepLast). 그때는 "DLQ 지표 수집 중단"이 대신 울린다.
+      - uid: wadadak-queue-consumer-zero
+        title: 큐 소비자 없음
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: wadadak-prometheus
+            model:
+              refId: A
+              editorMode: code
+              expr: 'rabbitmq_detailed_queue_consumers{job="rabbitmq-dlq", queue=~"wadadak\\.(core|run)-service"}'
+              instant: true
+              range: false
+              legendFormat: '{{queue}}'
+          - refId: C
+            relativeTimeRange: { from: 0, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: C
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+        noDataState: KeepLast
+        execErrState: KeepLast
+        for: 2m
+        labels:
+          wadadak_alert: consumer-zero
+        annotations:
+          summary: '{{ .Labels.queue }}를 지켜보는 소비자가 없습니다.'
+          __dashboardUid__: wadadak-rabbitmq-dlq
+          __panelId__: '7'
+        notification_settings:
+          receiver: wadadak-discord
+          group_by: [alertname, queue]
+          group_wait: 30s
+          group_interval: 1m
+          repeat_interval: 4h
+        isPaused: false
