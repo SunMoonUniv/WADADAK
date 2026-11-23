@@ -1,0 +1,71 @@
+discovery.docker "local" {
+  host = "unix:///var/run/docker.sock"
+}
+
+discovery.relabel "run" {
+  targets = discovery.docker.local.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_project", "__meta_docker_container_label_com_docker_compose_service"]
+    regex         = "wadadak-run;run|wadadak-run-observability;smoke"
+    action        = "keep"
+  }
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+}
+
+loki.source.docker "run" {
+  host       = "unix:///var/run/docker.sock"
+  targets    = discovery.relabel.run.output
+  forward_to = [loki.process.run.receiver]
+}
+
+loki.process "run" {
+  forward_to = [loki.write.local.receiver]
+
+  stage.drop {
+    older_than = "168h"
+  }
+
+  stage.regex {
+    expression = `(?P<safe_line>(?P<startup>Started RunServiceApplication) in [0-9.]+ seconds|(?P<failure>Free run processing failed for|GPS gap check failed for|Run event publication failed for) [0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|(?P<probe>WADADAK_OBSERVABILITY_SMOKE) [0-9]{8}T[0-9]{6}Z)`
+  }
+
+  stage.labels {
+    values = {
+      startup = "startup",
+      failure = "failure",
+      probe   = "probe",
+    }
+  }
+
+  // For this trial, forward only startup and worker failure messages.
+  stage.match {
+    selector            = `{service="run",startup="",failure=""}`
+    action              = "drop"
+    drop_counter_reason = "outside_run_trial"
+  }
+
+  stage.match {
+    selector            = `{service="smoke",probe=""}`
+    action              = "drop"
+    drop_counter_reason = "outside_smoke_probe"
+  }
+
+  stage.label_drop {
+    values = ["startup", "failure", "probe"]
+  }
+
+  stage.output {
+    source = "safe_line"
+  }
+}
+
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

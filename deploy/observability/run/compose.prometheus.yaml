@@ -1,0 +1,30 @@
+# run PC 모니터링 Compose(wadadak-run-observability)에 RabbitMQ DLQ 감시를 더하는 override.
+# .env의 COMPOSE_FILE에 이 파일을 추가해 쓴다(run/README-run-pc.md 6번).
+# Prometheus는 호스트 포트를 열지 않는다. Grafana만 Compose 네트워크 안에서 http://prometheus:9090으로 읽는다.
+services:
+  prometheus:
+    image: prom/prometheus:v3.13.5
+    restart: unless-stopped
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "3"
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=7d
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+
+  grafana:
+    environment:
+      # Discord 웹훅 주소는 비밀 값이다. run PC .env에만 넣는다(채팅·문서에 붙이지 않는다).
+      DISCORD_WEBHOOK_URL: ${DISCORD_WEBHOOK_URL:?Set DISCORD_WEBHOOK_URL in .env}
+    volumes:
+      - ./grafana-datasource-prometheus.yaml:/etc/grafana/provisioning/datasources/prometheus.yaml:ro
+      - ./grafana-alerting-dlq.yaml:/etc/grafana/provisioning/alerting/wadadak-dlq.yaml:ro
+
+volumes:
+  prometheus-data:

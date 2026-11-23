@@ -1,0 +1,24 @@
+# run PC 모니터링 Prometheus. core PC RabbitMQ의 큐별 메시지 수와 소비자(consumer) 수만 수집한다.
+# 대상: core PC Tailscale 주소의 15692(rabbitmq_prometheus). WADADAK PR #258이 머지·배포된 뒤에 열린다.
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: rabbitmq-dlq
+    # 기본 /metrics는 전체 합계라 큐별 값이 없다. 큐별 값은 /metrics/detailed에서 family로 고른다.
+    metrics_path: /metrics/detailed
+    params:
+      vhost: ["/"]
+      # queue_coarse_metrics: 메시지 수, queue_consumer_count: 큐를 지켜보는 소비자 수(core·run이 RabbitMQ에서 떨어졌는지)
+      family: ["queue_coarse_metrics", "queue_consumer_count"]
+    static_configs:
+      - targets: ["100.75.79.15:15692"]
+        labels:
+          host: core-pc
+    # 큐 깊이(ready + unacked)와 소비자 수만 남긴다. up은 Prometheus가 따로 만들므로 이 필터와 상관없이 남는다.
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: rabbitmq_detailed_queue_messages|rabbitmq_detailed_queue_consumers
+        action: keep
