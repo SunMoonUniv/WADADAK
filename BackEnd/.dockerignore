@@ -4,6 +4,6 @@
 **/build/
 .idea/
 local.properties
-# 테스트가 바뀌어도 이미지 레이어가 그대로여야 서버를 다시 띄우지 않는다(backend.yml deploy)
+# 테스트가 바뀌어도 이미지 레이어가 그대로여야 서버를 다시 띄우지 않는다(backend.yml deploy-core · deploy-run)
 **/src/test/
 **/src/testFixtures/

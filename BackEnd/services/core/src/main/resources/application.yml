@@ -27,7 +27,7 @@ spring:
       completion-mode: delete
       # 인스턴스를 여러 대로 늘리면 false로 바꾸고 EventRetryScheduler로 일원화한다(개발 정책 5.5).
       republish-outstanding-events-on-restart: true
-      # 서비스 사이 이벤트(EventBrokerConfig). 보내기와 받기를 함께 켠다. 로컬 · 테스트는 끄고 공용 서버(deploy/compose.yaml)에서 켠다.
+      # 서비스 사이 이벤트(EventBrokerConfig). 보내기와 받기를 함께 켠다. 로컬 · 테스트는 끄고 공용 서버(deploy/core/compose.yaml)에서 켠다.
       # 끄면 run 서비스와 이벤트를 주고받지 않는다. 켜고 브로커가 없으면 외부화 행이 아웃박스에 미완료로 쌓인다.
       externalization:
         enabled: ${EVENTS_EXTERNALIZATION_ENABLED:false}
@@ -70,16 +70,16 @@ management:
 app:
   common:
     request-log:
-      # true: 요청마다 한 줄 로그(메서드 · 경로 · 상태 · 처리 시간 · IP). 공용 서버(deploy/compose.yaml)에서 켠다.
+      # true: 요청마다 한 줄 로그(메서드 · 경로 · 상태 · 처리 시간 · IP). 공용 서버(deploy/core/compose.yaml)에서 켠다.
       enabled: false
-    # 서비스 사이 내부 API(/internal/v1/**, 개발 정책 11.3). run 서비스가 부른다. 공용 서버(deploy/compose.yaml)에서 켠다.
+    # 서비스 사이 내부 API(/internal/v1/**, 개발 정책 11.3). run 서비스가 부른다. 공용 서버(deploy/core/compose.yaml)에서 켠다.
     # 밖에서는 게이트웨이(deploy/Caddyfile)가 /internal을 막는다. 게이트웨이 없이 여는 로컬에서는 끈다.
     internal-api:
       enabled: ${INTERNAL_API_ENABLED:false}
     # 스케줄 잠금 테이블(SchedulingConfig). 서비스마다 자기 스키마에 둔다. 분리 뒤 run 서비스는 run.shedlock
     shedlock:
       table: common.shedlock
-    # 사진 저장소(S3 호환 RustFS). 로컬은 BackEnd/compose.yaml, 공용 서버는 deploy/compose.yaml.
+    # 사진 저장소(S3 호환 RustFS). 로컬은 BackEnd/compose.yaml, 공용 서버는 인프라 PC의 deploy/compose.yaml.
     storage:
       endpoint: ${STORAGE_ENDPOINT:http://localhost:9000}
       # 앱이 사진을 올리고 받는 주소. 에뮬레이터에서 로컬 서버를 쓰면 http://10.0.2.2:9000
@@ -88,7 +88,7 @@ app:
       access-key: ${STORAGE_ACCESS_KEY:wadadak}
       secret-key: ${STORAGE_SECRET_KEY:wadadak-local}
   # 운영자 웹(/admin) · 운영자 API(/api/v1/admin/**) 로그인. 공용 운영자 계정 하나다(2026-11-12).
-  # 비밀값이라 환경 변수로만 받는다(GitHub Secrets → backend.yml → deploy/compose.yaml). 비어 있으면 운영자 API는 모두 401.
+  # 비밀값이라 환경 변수로만 받는다(GitHub Secrets → backend.yml → deploy/core/compose.yaml). 비어 있으면 운영자 API는 모두 401.
   admin:
     username: ${ADMIN_USERNAME:}
     password: ${ADMIN_PASSWORD:}
@@ -107,7 +107,7 @@ app:
     # 만료 배치(F11): 1분마다 만료 코스 비공개 · 숨긴 지 24시간 지난 코스 삭제, 매일 09:00 만료 임박(D-7 · D-1) 알림.
     retention-batch:
       enabled: true
-    # 코스 자동 생성(B3 자동 생성). 비밀값은 환경 변수로만 받는다(GitHub Secrets → backend.yml → deploy/compose.yaml).
+    # 코스 자동 생성(B3 자동 생성). 비밀값은 환경 변수로만 받는다(GitHub Secrets → backend.yml → deploy/core/compose.yaml).
     planner:
       # 생성 요청 하나의 기한. 지나면 그때까지 만든 후보로 답한다(앱 수신 대기 15초)
       deadline: 10s

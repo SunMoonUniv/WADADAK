@@ -80,16 +80,20 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
-  # core 서버 PC(러너 wadadak-core). 제공하는 쪽(브로커 · 내부 API)을 먼저 띄운다. 서버 PC 준비·보안 설정은 deploy/README.md.
-  deploy:
+  # 서버 PC는 셋이다(deploy/compose.yaml 맨 위). 순서는 core PC → 인프라 PC → run PC → smoke.
+  # 새 core가 healthy가 된 뒤에 gateway가 새 설정을 읽는다. core PC 배포가 실패하면 인프라 PC는 손대지 않은 채로 남는다.
+  # 비밀값은 환경 wadadak-server의 Secrets에 두고, 두 작업이 같이 쓰되 자기 PC에 필요한 것만 넘긴다.
+  # 환경의 배포 브랜치를 main으로 묶어 다른 브랜치·PR은 읽지 못한다. 서버 PC 준비·보안 설정은 deploy/README.md.
+  # 동시 실행 그룹은 PC마다 따로 둔다. 한 그룹을 같이 쓰면 다음 실행의 대기 작업이 앞 실행의 대기 작업을 취소해 한 PC만 배포된 채 남는다.
+
+  # core PC(러너 wadadak-core). core · graphhopper · core DB.
+  deploy-core:
     needs: images
-    # 환경 · 동시 실행 그룹 · compose 프로젝트 이름은 wadadak-server 그대로다(Secrets · 볼륨이 그 이름에 묶여 있다).
     runs-on: [self-hosted, wadadak-core]
-    # 비밀값은 이 환경의 Secrets에 둔다. 환경의 배포 브랜치를 main으로 묶어 다른 브랜치·PR은 읽지 못한다.
     environment: wadadak-server
     # 배포는 한 번에 하나. 밀린 배포는 가장 최근 것만 남는다.
     concurrency:
-      group: wadadak-server
+      group: wadadak-core
       cancel-in-progress: false
     permissions:
       contents: read
@@ -110,18 +114,17 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # 다른 이미지(cloudflared:latest 등)는 받지 않는다. compose pull은 전부 받아 바뀌지 않은 서비스까지 다시 띄운다.
+      # 다른 이미지는 받지 않는다. compose pull은 전부 받아 바뀌지 않은 서비스까지 다시 띄운다.
       - name: core 이미지 받기
         run: docker pull ghcr.io/sunmoonuniv/wadadak-core:main
       # 바뀐 서비스만 교체하고 healthy가 될 때까지 기다린다. 서버가 못 뜨면 이 작업이 실패한다.
-      - name: 서버 교체
+      - name: core 교체
         env:
           DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
           JWT_PUBLIC_KEY: ${{ secrets.JWT_PUBLIC_KEY }}
           JWT_PRIVATE_KEY: ${{ secrets.JWT_PRIVATE_KEY }}
           STORAGE_SECRET_KEY: ${{ secrets.STORAGE_SECRET_KEY }}
           BROKER_PASSWORD: ${{ secrets.BROKER_PASSWORD }}
-          TUNNEL_TOKEN: ${{ secrets.TUNNEL_TOKEN }}
           # FCM 키가 없으면 빈 값을 넘겨 푸시를 로그로만 남긴다. 'base64:'만 넘기면 서버가 빈 키를 읽다 뜨지 않는다.
           FCM_CREDENTIALS_LOCATION: ${{ secrets.FCM_SERVICE_ACCOUNT != '' && format('base64:{0}', secrets.FCM_SERVICE_ACCOUNT) || '' }}
           # 코스 자동 생성의 장소 검색 키. 없으면 빈 값이 넘어가 장소 입력만 못 찾는다.
@@ -134,6 +137,37 @@ jobs:
           # 운영자 웹 공용 계정. 없으면 운영자 API만 401이다.
           ADMIN_USERNAME: ${{ secrets.ADMIN_USERNAME }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: docker compose -f deploy/core/compose.yaml up -d --wait --wait-timeout 300 --remove-orphans
+      - name: 이전 이미지 정리
+        run: docker image prune -f
+
+  # 인프라 PC(러너 wadadak-infra). cloudflared · gateway · rabbitmq · storage.
+  # 환경 · 동시 실행 그룹 · compose 프로젝트 이름은 wadadak-server 그대로다(Secrets · 볼륨이 그 이름에 묶여 있다).
+  deploy-infra:
+    needs: deploy-core
+    runs-on: [self-hosted, wadadak-infra]
+    environment: wadadak-server
+    concurrency:
+      group: wadadak-server
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    defaults:
+      run:
+        shell: cmd
+    steps:
+      # utilfile을 쓰지 않아도 기본 정리로 바꾸지 않는다. 옛 구성(core · graphhopper)으로 되돌릴 때 이 PC의 utilfile이 필요하다.
+      - uses: actions/checkout@v4
+        with:
+          clean: false
+      - name: 작업 폴더 정리 (utilfile 제외)
+        run: git clean -ffdx -e /utilfile/
+      # GHCR 이미지를 쓰지 않아 로그인 · pull이 없다.
+      - name: 인프라 교체
+        env:
+          STORAGE_SECRET_KEY: ${{ secrets.STORAGE_SECRET_KEY }}
+          BROKER_PASSWORD: ${{ secrets.BROKER_PASSWORD }}
+          TUNNEL_TOKEN: ${{ secrets.TUNNEL_TOKEN }}
           # 터널 토큰을 넣기 전(도메인 준비 전)에는 cloudflared 없이 띄운다.
           COMPOSE_PROFILES: ${{ secrets.TUNNEL_TOKEN != '' && 'tunnel' || '' }}
         run: docker compose -f deploy/compose.yaml up -d --wait --wait-timeout 300 --remove-orphans
@@ -143,9 +177,9 @@ jobs:
       - name: 이전 이미지 정리
         run: docker image prune -f
 
-  # run 서버 PC(러너 wadadak-run). core PC 다음에 띄운다(브로커 · core 내부 API가 그쪽에 있다).
+  # run PC(러너 wadadak-run). 브로커(인프라 PC) · core 내부 API(core PC)가 뜬 다음에 띄운다.
   deploy-run:
-    needs: deploy
+    needs: deploy-infra
     runs-on: [self-hosted, wadadak-run]
     # run 비밀값만 둔다(RUN_DB_PASSWORD · BROKER_PASSWORD · JWT_PUBLIC_KEY). JWT 개인키 · core DB 비밀번호는 없다.
     environment: wadadak-run
@@ -179,7 +213,8 @@ jobs:
   # 밖에서 들어오는 길(gateway)을 거쳐 두 서비스에 닿는지 본다. 서비스가 healthy여도 gateway 설정이 틀리면 502다(2026-11-17).
   smoke:
     needs: deploy-run
-    runs-on: [self-hosted, wadadak-core]
+    # gateway가 있는 인프라 PC에서 본다.
+    runs-on: [self-hosted, wadadak-infra]
     defaults:
       run:
         shell: cmd

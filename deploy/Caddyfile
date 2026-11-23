@@ -19,7 +19,8 @@
 	handle @run {
 		reverse_proxy 100.73.249.33:8080
 	}
+	# core 서비스는 core PC에 있다. Tailscale 주소로 보낸다(deploy/core/compose.yaml)
 	handle {
-		reverse_proxy core:8080
+		reverse_proxy 100.64.78.38:8080
 	}
 }
