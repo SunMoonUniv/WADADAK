@@ -11,10 +11,7 @@ core DB와 run DB를 매일 `pg_dump`(custom 형식)로 떠서 운영 PC(desktop
 
 - 덤프에는 회원 정보가 있다. 운영 PC로만 보내고, 저장소 · Actions artifact(저장소가 공개라 누구나 받는다) · 채팅에 올리지 않는다. 운영 PC 계정은 팀 관리자만 쓴다.
 - Discord 웹훅은 운영 PC의 `C:\wadadak-observability\ops\.env` 한 곳에만 있다. 서비스 PC의 백업 작업은 Discord로 보내지 않고, 빠진 날은 운영 PC가 찾는다.
-- healthchecks.io: 백업 · 복원 검사는 성공하면 핑, 실패하면 `/fail`을 보낸다. 작업이 아예 안 돌아 핑이 끊겨도 healthchecks.io가 알린다. 핑 주소가 없으면 핑만 건너뛴다.
-  - core PC · run PC: `C:\wadadak-backup\healthchecks-url.txt`에 그 PC 백업 체크의 핑 주소 한 줄(`https://hc-ping.com/…`)
-  - 운영 PC: `C:\wadadak-observability\ops\.env`의 `HEALTHCHECKS_RESTORE_URL`
-  - 핑 주소는 남이 알면 가짜 신호를 보낼 수 있다. 채팅에 붙이지 않는다.
+- healthchecks.io: 복원 검사는 성공하면 핑, 실패하면 `/fail`을 보낸다. 작업이 아예 안 돌아 핑이 끊겨도 healthchecks.io가 알린다. 핑 주소는 운영 PC `C:\wadadak-observability\ops\.env`의 `HEALTHCHECKS_RESTORE_URL`이고, 없으면 핑만 건너뛴다. 남이 알면 가짜 신호를 보낼 수 있어 채팅에 붙이지 않는다.
 - 서비스 PC의 결과는 `C:\wadadak-backup\backup.log`에 한 줄씩 남는다(`OK …` 또는 `FAIL …`).
 - 작업은 로그인한 세션에서 돈다(Docker Desktop이 로그인해 있어야 도는 것과 같다). 자동 로그인이 꺼져 있으면 재부팅 뒤 돌지 않는다.
 
