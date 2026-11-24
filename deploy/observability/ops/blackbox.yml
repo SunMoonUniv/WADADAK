@@ -1,0 +1,13 @@
+# 상태 확인 탐침(blackbox-exporter). 대상 주소는 prometheus.yml의 wadadak-probe에 있다.
+# 200이고 본문이 정상 상태여야 성공이다. Spring은 {"status":"UP"}(DB가 내려가면 503 DOWN), RustFS는 {"status":"ok"}를 준다.
+# 본문까지 보는 까닭: Cloudflare 등이 200으로 다른 페이지를 돌려줘도 정상으로 치지 않게.
+modules:
+  health:
+    prober: http
+    timeout: 8s
+    http:
+      method: GET
+      valid_status_codes: [200]
+      preferred_ip_protocol: ip4
+      fail_if_body_not_matches_regexp:
+        - '"status"\s*:\s*"(UP|ok)"'

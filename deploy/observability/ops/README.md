@@ -4,6 +4,7 @@
 
 - Loki(`100.111.111.92:3100`): 인프라 · core · run PC의 Alloy가 요약 로그를 보낸다. 7일 보관.
 - Prometheus(포트 없음): 인프라 PC RabbitMQ `100.75.79.15:15692`의 큐별 메시지 수 · 소비자 수와 core(`100.64.78.38:8080`) · run(`100.73.249.33:8080`)의 앱 지표(`/actuator/prometheus`). 7일 보관.
+- blackbox(포트 없음): Prometheus가 30초마다 이것을 거쳐 상태 확인 주소 다섯 곳을 부른다. 바깥 주소(`https://api.leedohyunn8n.shop/actuator/health`, `https://files.leedohyunn8n.shop/health`)와 Tailscale로 바로 가는 core · run health, RustFS `100.75.79.15:9000/health`.
 - Grafana(`http://100.111.111.92:3000`, `admin` 로그인): 대시보드와 알림(Discord). 데이터 소스 · 알림 규칙 · 연락 지점 · 대시보드는 모두 이 폴더의 파일에서 만들어진다.
 
 ## 1. 설치
@@ -11,7 +12,7 @@
 1. Docker Desktop을 켜고 **Start Docker Desktop when you sign in**을 켠다. 이미지를 PC 앞에서 받는다(SSH로 받으면 자격 증명 도우미가 실패한다).
 
    ```powershell
-   docker pull grafana/loki:3.7.2; docker pull prom/prometheus:v3.13.5; docker pull grafana/grafana:13.3.1
+   docker pull grafana/loki:3.7.2; docker pull prom/prometheus:v3.13.5; docker pull grafana/grafana:13.3.1; docker pull prom/blackbox-exporter:v0.27.0
    ```
 
 2. 이 폴더를 `C:\wadadak-observability\ops`에 복사하고 `.env.example`을 `.env`로 복사해 채운다.
@@ -34,6 +35,7 @@
    docker compose config --quiet
    docker compose run --rm --no-deps loki '-config.file=/etc/loki/wadadak.yaml' '-verify-config=true'
    docker compose run --rm --no-deps --entrypoint promtool prometheus check config /etc/prometheus/prometheus.yml
+   docker compose run --rm --no-deps blackbox '--config.file=/etc/blackbox/blackbox.yml' '--config.check'
    docker compose up -d
    docker compose logs --tail 40 grafana
    ```
@@ -53,7 +55,7 @@
 | 대시보드 | 내용 |
 | --- | --- |
 | 와다닥 core 서버 로그 | core PC(`host=core-pc`) core, 인프라 PC(`host=infra-pc`) gateway · rabbitmq · cloudflared의 오류 · 경고 수, 기동 기록, 요약 줄 |
-| 와다닥 러닝 서버 로그 | run 기동 줄, 러닝 판정 · GPS 공백 검사 · 이벤트 발행 실패 줄 |
+| 와다닥 러닝 서버 로그 | run 기동 줄, 러닝 판정 · GPS 공백 검사 · 이벤트 발행 실패 줄, `Spring ERROR` · `Spring WARN` 줄 |
 | 와다닥 RabbitMQ DLQ | DLQ 메시지 수, 수집 상태, 업무 큐 대기 메시지 · 소비자 수, 알림 상태 |
 | 와다닥 앱 지표 | core · run 수집 상태, 요청 수, 5xx 비율, 응답 시간 p95, 느린 API, JVM 힙 · GC 뒤 남는 메모리, DB 연결(Hikari), CPU |
 
@@ -65,9 +67,18 @@
 
 감시 하트비트(`grafana-alerting-heartbeat.yaml`): "감시 하트비트 (항상 울림)" 규칙이 5분마다 healthchecks.io로만 핑을 보낸다(Discord로는 가지 않는다). Grafana 화면에서 늘 울리는 상태로 보이는 것이 정상이다.
 
-앱 알림 규칙 3개(`grafana-alerting-apps.yaml`, 같은 Discord 연락 지점): 서비스 지표 수집 중단(core · run이 멈췄거나 그 PC가 끊김, 2분), 서버 오류(5xx) 비율 높음(5분 동안 5% 초과, 분당 3건 이상일 때만), JVM 메모리 부족(GC 뒤 남는 메모리가 10분 넘게 90% 초과).
+앱 알림 규칙 6개(`grafana-alerting-apps.yaml`, 같은 Discord 연락 지점):
 
-- **고칠 때**: 파일을 고치고 `docker compose restart grafana`(알림 파일을 새로 더했으면 `docker compose up -d grafana`). 파일로 만든 규칙은 Grafana 화면에서 고칠 수 없다. `prometheus.yml`을 고치면 `docker compose restart prometheus`.
+| 규칙 | 울리는 때 |
+| --- | --- |
+| 서비스 지표 수집 중단 | core · run이 멈췄거나 그 PC가 끊김(2분) |
+| 서버 오류(5xx) 비율 높음 | 5분 동안 5% 초과, 분당 3건 이상일 때만 |
+| JVM 메모리 부족 | GC 뒤 남는 메모리가 10분 넘게 90% 초과 |
+| 상태 확인 실패 | 탐침 한 곳이 2분 동안 실패. 주소마다 따로 울린다. 바깥 주소만 실패하면 진입 경로(Cloudflare · cloudflared · gateway), 바로 가는 core · run health만 실패하면 서버는 떠 있는데 DB가 내려간 경우다. 지표 수집 중단이 울리는 서비스는 빼서 두 번 울리지 않는다 |
+| core · run 로그 경보 | core · run의 `Spring ERROR` 줄, 이벤트 10분 넘게 밀림(`EventMonitor`, core · run), 길찾기 서버 무응답(`PlannerService`, core). 서비스 · 로거마다 따로, 줄이 보이면 바로, 5분 동안 없으면 해제 |
+| run 작업 실패 | run의 러닝 판정 · GPS 공백 검사 · 이벤트 발행 실패 줄 (이 줄은 `Spring ERROR`로 보내지 않아 위 규칙과 겹치지 않는다) |
+
+- **고칠 때**: 파일을 고치고 `docker compose restart grafana`(알림 파일을 새로 더했으면 `docker compose up -d grafana`). 파일로 만든 규칙은 Grafana 화면에서 고칠 수 없다. `prometheus.yml`을 고치면 `docker compose restart prometheus`, `blackbox.yml`을 고치면 `docker compose restart blackbox`.
 - **잠시 끄기**: `grafana-alerting-dlq.yaml`의 `isPaused: false` 세 곳을 `true`로 바꾸고 `docker compose restart grafana`. 되살릴 때는 `false`로.
 - **완전히 지우기**: 파일로 만든 규칙은 provisioning 파일을 빼도 Grafana DB에 남는다. 삭제용 파일로 먼저 지운다.
 

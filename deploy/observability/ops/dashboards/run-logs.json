@@ -24,7 +24,7 @@
     {
       "id": 2,
       "type": "logs",
-      "title": "러닝 서버 기동 및 워커 로그",
+      "title": "러닝 서버 요약 로그 (기동 · 작업 실패 · ERROR · WARN)",
       "datasource": { "type": "loki", "uid": "wadadak-loki" },
       "gridPos": { "h": 13, "w": 24, "x": 0, "y": 9 },
       "targets": [
