@@ -30,33 +30,45 @@ loki.process "run" {
     older_than = "168h"
   }
 
-  stage.regex {
-    expression = `(?P<safe_line>(?P<startup>Started RunServiceApplication) in [0-9.]+ seconds|(?P<failure>Free run processing failed for|GPS gap check failed for|Run event publication failed for) [0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|(?P<probe>WADADAK_OBSERVABILITY_SMOKE) [0-9]{8}T[0-9]{6}Z)`
-  }
+  // Each branch writes only an allowlisted summary to safe_line (core/config.alloy와 같은 방식).
+  // 작업 실패 줄은 ERROR지만 "Spring ERROR"가 아니라 그 줄 그대로 보낸다(알림 "run 작업 실패").
+  stage.match {
+    selector = `{service="run"}`
 
-  stage.labels {
-    values = {
-      startup = "startup",
-      failure = "failure",
-      probe   = "probe",
+    stage.regex {
+      expression = `(?P<startup>Started RunServiceApplication in [0-9.]+ seconds)|(?P<failure>(?:Free run processing|GPS gap check|Run event publication) failed for [0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})`
+    }
+
+    stage.regex {
+      expression = `^\d{4}-\d{2}-\d{2}[T ]\S+\s+(?P<run_level>WARN|ERROR)\s+\d+\s+---\s+(?:\[[^\]]*\]\s+)+(?P<run_logger>[A-Za-z0-9_.$]+)\s*:`
+    }
+
+    stage.template {
+      source   = "safe_line"
+      template = `{{ $level := toString (default "" .run_level) }}{{ $logger := toString (default "" .run_logger) }}{{ if .startup }}{{ .startup }}{{ else if .failure }}{{ .failure }}{{ else if eq $level "ERROR" }}Spring ERROR {{ $logger }}{{ else if and (eq $level "WARN") (or (hasPrefix "com.wadadak." $logger) (hasPrefix "c.w." $logger)) }}Spring WARN {{ $logger }}{{ end }}`
     }
   }
 
-  // For this trial, forward only startup and worker failure messages.
   stage.match {
-    selector            = `{service="run",startup="",failure=""}`
-    action              = "drop"
-    drop_counter_reason = "outside_run_trial"
+    selector = `{service="smoke"}`
+
+    stage.regex {
+      expression = `^(?P<safe_line>WADADAK_OBSERVABILITY_SMOKE [0-9]{8}T[0-9]{6}Z)\s*$`
+    }
+  }
+
+  stage.labels {
+    values = { allowed = "safe_line" }
   }
 
   stage.match {
-    selector            = `{service="smoke",probe=""}`
+    selector            = `{allowed=""}`
     action              = "drop"
-    drop_counter_reason = "outside_smoke_probe"
+    drop_counter_reason = "outside_run_log_allowlist"
   }
 
   stage.label_drop {
-    values = ["startup", "failure", "probe"]
+    values = ["allowed"]
   }
 
   stage.output {
