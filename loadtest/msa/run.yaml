@@ -1,0 +1,42 @@
+# MSA 이후 부하 테스트(loadtest/README.md 4번)의 run PC 쪽. 운영 run을 멈추고 이 PC에서 띄운다(프로젝트 이름 wadadak-lt).
+# 운영 이미지 그대로, 빈 부하용 run DB · 부하용 JWT 공개키(.env)로 뜬다. 브로커 · core는 부하용(5673 · 18080)에 붙는다.
+name: wadadak-lt
+
+services:
+  db:
+    image: postgres:17
+    command: ["postgres", "-c", "max_connections=200"]
+    shm_size: 1g
+    environment:
+      POSTGRES_DB: wadadak
+      POSTGRES_USER: wadadak_run
+      POSTGRES_PASSWORD: wadadak
+    volumes:
+      - db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U wadadak_run -d wadadak"]
+      interval: 5s
+      retries: 12
+
+  run:
+    image: ghcr.io/sunmoonuniv/wadadak-run:main
+    pull_policy: never
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/wadadak
+      RUN_DB_USERNAME: wadadak_run
+      RUN_DB_PASSWORD: wadadak
+      JWT_PUBLIC_KEY_LOCATION: base64:${LT_JWT_PUBLIC_KEY:?.env에 LT_JWT_PUBLIC_KEY가 없다}
+      EVENTS_EXTERNALIZATION_ENABLED: "true"
+      RABBITMQ_HOST: 100.75.79.15
+      SPRING_RABBITMQ_PORT: "5673"
+      RABBITMQ_PASSWORD: wadadak
+      CORE_API_URL: http://100.64.78.38:18080
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: health,metrics,prometheus
+    ports:
+      - "100.73.249.33:18081:8080"
+
+volumes:
+  db:
