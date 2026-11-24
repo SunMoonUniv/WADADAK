@@ -192,6 +192,7 @@ groups:
     rules:
       # 5) core 로그: 모든 ERROR, 그리고 따로 알아야 하는 WARN 둘.
       #    EventMonitor는 10분 넘게 처리되지 않은 이벤트(아웃박스), PlannerService는 길찾기 서버(GraphHopper) 무응답이다.
+      #    로그가 없으면(NoData) logger 라벨이 없다. match에는 .Labels.logger 대신 index로 넘긴다(없으면 빈 문자열).
       - uid: wadadak-log-core
         title: core 로그 경보
         condition: C
@@ -220,8 +221,8 @@ groups:
           wadadak_alert: log-core
         annotations:
           summary: >-
-            {{ if match "EventMonitor$" .Labels.logger }}core에 10분 넘게 처리되지 않은 이벤트가 있습니다. 대시보드 "와다닥 RabbitMQ DLQ"의 업무 큐와 core PC docker logs를 봅니다.
-            {{- else if match "PlannerService$" .Labels.logger }}길찾기 서버(GraphHopper)가 응답하지 않아 코스 자동 생성이 실패합니다. core PC에서 docker compose ps graphhopper를 봅니다.
+            {{ if match "EventMonitor$" (index .Labels "logger") }}core에 10분 넘게 처리되지 않은 이벤트가 있습니다. 대시보드 "와다닥 RabbitMQ DLQ"의 업무 큐와 core PC docker logs를 봅니다.
+            {{- else if match "PlannerService$" (index .Labels "logger") }}길찾기 서버(GraphHopper)가 응답하지 않아 코스 자동 생성이 실패합니다. core PC에서 docker compose ps graphhopper를 봅니다.
             {{- else }}core에서 ERROR 로그가 났습니다: {{ .Labels.logger }}. 내용은 core PC에서 docker logs로 봅니다.{{ end }}
         notification_settings:
           receiver: wadadak-discord
