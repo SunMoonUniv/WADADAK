@@ -1,5 +1,6 @@
 # 운영 PC 감시(desktop-65isqe2, Tailscale 100.111.111.92). 절차는 ops/README.md.
-# Loki는 세 서비스 PC의 Alloy가 Tailscale로 로그를 보낸다. Prometheus는 인프라 PC RabbitMQ(15692)를 읽는다.
+# Loki는 세 서비스 PC의 Alloy가 Tailscale로 로그를 보낸다. Prometheus는 인프라 PC RabbitMQ(15692)와 core · run 지표를 읽고,
+# blackbox로 바깥 주소 · 서비스 health를 찔러 본다.
 # Grafana가 둘을 보여 주고 알림을 Discord로 보낸다. 비밀 값(Grafana 비밀번호 · Discord 웹훅)은 이 폴더 .env에만 둔다.
 name: wadadak-ops-observability
 
@@ -35,6 +36,15 @@ services:
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
+
+  # 상태 확인 탐침. Prometheus가 30초마다 이것을 거쳐 health 주소를 부른다(prometheus.yml wadadak-probe, blackbox.yml).
+  blackbox:
+    <<: *container-defaults
+    image: prom/blackbox-exporter:v0.27.0
+    command: ["--config.file=/etc/blackbox/blackbox.yml"]
+    # 포트를 열지 않는다. Prometheus만 compose 안에서 blackbox:9115로 부른다.
+    volumes:
+      - ./blackbox.yml:/etc/blackbox/blackbox.yml:ro
 
   grafana:
     <<: *container-defaults

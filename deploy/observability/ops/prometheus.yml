@@ -37,3 +37,30 @@ scrape_configs:
         labels:
           service: run
           host: run-pc
+
+  # 상태 확인 탐침(blackbox.yml). probe=entry는 사용자와 같은 바깥 길(Cloudflare → cloudflared → gateway/storage),
+  # probe=direct는 Tailscale로 그 서비스에 바로 간다. 둘을 같이 보면 어느 구간이 끊겼는지 가를 수 있다.
+  # Spring health는 DB 연결을 본다(rabbit 검사는 끔). 서버는 떠 있는데 DB가 내려간 경우를 여기서 잡는다.
+  - job_name: wadadak-probe
+    scrape_interval: 30s
+    metrics_path: /probe
+    params:
+      module: [health]
+    static_configs:
+      - targets: ["https://api.leedohyunn8n.shop/actuator/health"]
+        labels: { service: core, probe: entry }
+      - targets: ["http://100.64.78.38:8080/actuator/health"]
+        labels: { service: core, probe: direct }
+      - targets: ["http://100.73.249.33:8080/actuator/health"]
+        labels: { service: run, probe: direct }
+      - targets: ["https://files.leedohyunn8n.shop/health"]
+        labels: { service: storage, probe: entry }
+      - targets: ["http://100.75.79.15:9000/health"]
+        labels: { service: storage, probe: direct }
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox:9115

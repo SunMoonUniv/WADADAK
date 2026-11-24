@@ -20,6 +20,7 @@ core PC:   wadadak-core (core)                              Alloy host="core-pc"
 run PC:    wadadak-run (run)                                Alloy                ─┘                         │
 인프라 PC: rabbitmq 15692 ◄── Tailscale ── 운영 PC Prometheus (포트 없음, 7일) ──► 운영 PC Grafana ◄─────────┘
 core PC · run PC: :8080/actuator/prometheus ◄─┘
+바깥 주소(api · files) · core · run health · RustFS ◄── 운영 PC blackbox (Prometheus가 30초마다)
                                                                                      (100.111.111.92:3000) ─► Discord
 ```
 
@@ -27,11 +28,12 @@ core PC · run PC: :8080/actuator/prometheus ◄─┘
 
 | 경로 | 역할 |
 | --- | --- |
-| `ops/compose.yaml` | Loki(3100을 운영 PC Tailscale 주소에만) · Prometheus(v3.13.5, 7일, 포트 없음) · Grafana(3000, 로그인) |
-| `ops/grafana-alerting-apps.yaml` | 앱 알림 규칙 3개(서비스 지표 수집 중단 · 5xx 비율 · JVM 메모리), 연락 지점은 `wadadak-discord`를 같이 쓴다 |
+| `ops/compose.yaml` | Loki(3100을 운영 PC Tailscale 주소에만) · Prometheus(v3.13.5, 7일, 포트 없음) · blackbox(v0.27.0, 포트 없음) · Grafana(3000, 로그인) |
+| `ops/blackbox.yml` | 상태 확인 탐침 모듈 `health`: 200이고 본문 `"status"`가 `UP`(Spring) · `ok`(RustFS)여야 성공 |
+| `ops/grafana-alerting-apps.yaml` | 앱 알림 규칙 6개(서비스 지표 수집 중단 · 5xx 비율 · JVM 메모리 · 상태 확인 실패, 로그: core 로그 경보 · run 작업 실패), 연락 지점은 `wadadak-discord`를 같이 쓴다 |
 | `ops/grafana-alerting-heartbeat.yaml` | 감시 하트비트: 항상 울리는 규칙이 5분마다 healthchecks.io로 핑. 운영 PC · Docker · Prometheus · Grafana 중 하나가 멈추면 신호가 끊겨 healthchecks.io가 알린다 |
 | `ops/loki.yaml` | Loki 설정(7일 보관) |
-| `ops/prometheus.yml` | 앱 지표 `wadadak-apps`(core `100.64.78.38:8080` · run `100.73.249.33:8080`의 `/actuator/prometheus`)와 RabbitMQ 수집 대상 `100.75.79.15:15692` `/metrics/detailed?vhost=/&family=queue_coarse_metrics&family=queue_consumer_count`, `rabbitmq_detailed_queue_messages` · `rabbitmq_detailed_queue_consumers`만 저장 |
+| `ops/prometheus.yml` | 앱 지표 `wadadak-apps`(core `100.64.78.38:8080` · run `100.73.249.33:8080`의 `/actuator/prometheus`)와 RabbitMQ 수집 대상 `100.75.79.15:15692` `/metrics/detailed?vhost=/&family=queue_coarse_metrics&family=queue_consumer_count`, `rabbitmq_detailed_queue_messages` · `rabbitmq_detailed_queue_consumers`만 저장. 탐침 `wadadak-probe`(30초): `probe=entry` 바깥 주소 둘, `probe=direct` Tailscale로 core · run health와 RustFS |
 | `ops/grafana-datasource*.yaml` · `ops/grafana-dashboards.yaml` | Loki(UID `wadadak-loki`) · Prometheus(UID `wadadak-prometheus`) 데이터 소스, 대시보드 폴더 |
 | `ops/grafana-alerting-dlq.yaml` | Discord 연락 지점 `wadadak-discord`, 알림 문구 템플릿, 알림 규칙 4개(Wadadak 폴더, 그룹 `rabbitmq-dlq`) |
 | `ops/grafana-alerting-dlq-remove.yaml` | (되돌릴 때만) 위 알림 규칙 · 연락 지점 · 템플릿 삭제용 |
