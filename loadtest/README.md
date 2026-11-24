@@ -1,7 +1,7 @@
 # 부하 테스트
 
 여정(사용자 흐름)별로 부하를 올려 어디서 느려지는지 찾고, run을 떼면 나아지는지 본다.
-결과 문서: [`deploy/모듈 부하 테스트 - 2026-11-14.md`](../deploy/모듈%20부하%20테스트%20-%202026-11-14.md)
+결과 문서: [`deploy/모듈 부하 테스트 - 2026-11-14.md`](../deploy/모듈%20부하%20테스트%20-%202026-11-14.md)(모놀리스) · [`deploy/MSA 이후 부하 테스트 - 2026-11-24.md`](../deploy/MSA%20이후%20부하%20테스트%20-%202026-11-24.md)(core · run 분리 뒤)
 
 ## 준비물
 
@@ -58,6 +58,32 @@ python ramp.py day 1,2,3,4,6,8,10,12,15 --probe --split
 - 코스 등록은 회원마다 하루 한 번이라, `register` · `day`는 한 단계에 회원 600명까지만 쓴다(속도 × 40초 ≤ 600). 단계 사이에 부하 테스트가 등록한 코스(이름 `LT…`)를 지우고 한도를 되돌린다.
 - 판정이 밀리는 단계는 다음 단계 전에 다 끝날 때까지 기다린다(`판정대기`).
 
+## 4. MSA 이후(서버 PC 셋)
+
+운영 core · run을 잠깐 멈추고 같은 PC에 부하용 스택(`msa/`, 프로젝트 이름 `wadadak-lt`)을 띄운다. 운영 이미지 그대로이고 DB는 비어 있다. 가짜 로그인 · 부하용 JWT 키로 뜬다. 부하는 이 저장소를 연 PC에서 Tailscale로 바로 건다(게이트웨이를 거치지 않는다).
+
+| PC | 파일 | 포트 |
+| --- | --- | --- |
+| 인프라 PC | `msa/broker.yaml` | 5673 (운영 브로커는 5672 그대로) |
+| core PC | `msa/core.yaml` + `.env`(`LT_JWT_PUBLIC_KEY` · `LT_JWT_PRIVATE_KEY`, PEM을 base64 한 줄로) | 18080 |
+| run PC | `msa/run.yaml` + `.env`(`LT_JWT_PUBLIC_KEY`) | 18081 |
+
+```powershell
+# 각 PC의 C:\wadadak-loadtest\에서. 운영 앱만 멈춘다(운영 DB · graphhopper는 그대로)
+docker stop wadadak-core-core-1    # core PC. run PC는 wadadak-run-run-1
+docker compose -f core.yaml up -d  # run PC는 run.yaml, 인프라 PC는 broker.yaml
+```
+
+```bash
+# loadtest/에서. 시드 · 측정 명령은 2 · 3번과 같고 LT_MSA=1만 붙인다(--split은 쓰지 않는다)
+LT_MSA=1 python ramp.py seed
+LT_MSA=1 python ramp.py day 1,2,3,4,6,8,10,12,15 --probe
+```
+
+- `PC CPU`는 core PC/run PC 순서로 둘 다 적는다(서버 JVM이 보는 Docker VM 전체 CPU라 DB도 들어 있다). `풀대기`는 core/run의 DB 커넥션 풀을 기다린 스레드 수의 최댓값이다.
+- 조회 여정은 초당 320회까지만 건다. 640회는 부하 발생 PC의 Docker(k6)가 멈췄다.
+- 끝나면 각 PC에서 `docker compose -f <파일> down -v`로 부하용 스택을 지우고 `docker start wadadak-core-core-1`(run PC는 `wadadak-run-run-1`)로 운영을 되돌린다.
+
 ## 여정
 
 | 여정 | 흐름 (앱 코드 기준 호출) | 요청 수 |
@@ -94,3 +120,4 @@ python ramp.py day 1,2,3,4,6,8,10,12,15 --probe --split
 | `ramp.py` | 시드, 단계별 증가, 판정 대기, 한도 되돌리기 |
 | `seed.js` · `lib.js` | 시드 데이터, 공용(로그인 · GPS 원본 생성 · 응답 시간 집계) |
 | `modules.js` · `run.sh` · `analyze.py` | 모듈 단위 1차 측정(문서의 결과 1~4): 모듈별 CPU · DB 비용 |
+| `msa/` | MSA 이후 측정(4번)의 PC별 부하용 스택 |
